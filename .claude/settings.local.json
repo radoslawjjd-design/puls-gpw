@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(read f *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(powershell -ExecutionPolicy ByPass -Command \"irm https://astral.sh/uv/install.ps1 | iex\" 2>&1)",
+      "PowerShell(uv init *)",
+      "PowerShell($env:Path = \"C:\\\\Users\\\\PC KOMPUTER\\\\.local\\\\bin;$env:Path\"; Set-Location \"C:\\\\test projekt\"; Get-ChildItem -Name; Write-Host \"---pyproject.toml---\"; Get-Content pyproject.toml)",
+      "PowerShell(uv add *)",
+      "PowerShell(uv run *)",
+      "PowerShell(uv *)",
+      "PowerShell(New-Item *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\test projekt\" -Force)",
+      "Bash(Select-Object -Property Name, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\test projekt\" -Force | ForEach-Object { if \\($_.PSIsContainer\\) { \"$\\($_.Name\\)/\" } else { $_.Name } })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\test projekt\" -Recurse -Depth 1 -Force | Where-Object { $_.FullName -notmatch '\\\\.venv|node_modules' } | ForEach-Object { $rel = $_.FullName -replace [regex]::Escape\\(\"C:\\\\test projekt\"\\), \".\"; $rel })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\test projekt\\\\.github\" -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })",
+      "Bash(gcloud version *)",
+      "Bash(gcloud auth *)",
+      "Bash(gcloud config *)",
+      "Bash(gcloud services enable *)",
+      "Bash(cat)",
+      "Bash(gcloud monitoring *)"
+    ]
+  }
+}
