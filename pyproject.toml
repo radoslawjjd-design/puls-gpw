@@ -5,13 +5,8 @@ description = "ESPI/EBI analyzer for GPW and NewConnect announcements"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "requests>=2.32",
-    "beautifulsoup4>=4.13",
-    "html5lib>=1.1",
-    "pypdf>=5.0",
-    "google-genai>=1.14",
-    "google-cloud-bigquery>=3.29",
-    "tzdata>=2024.1",
+    "fastapi>=0.136.1",
+    "uvicorn>=0.47.0",
 ]
 
 [dependency-groups]

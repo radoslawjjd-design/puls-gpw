@@ -15,3 +15,6 @@ wheels/
 
 # Claude Code local config (skills, permissions, 10x toolkit)
 .claude/
+.claude/**/10x-*
+.github/**/10x-*
+.agents/**/10x-*
