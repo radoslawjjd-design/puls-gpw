@@ -12,3 +12,6 @@ wheels/
 # Secrets
 .env
 .env.local
+
+# Claude Code local config (skills, permissions, 10x toolkit)
+.claude/
