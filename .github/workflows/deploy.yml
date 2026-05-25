@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+
+env:
+  PROJECT_ID: puls-gpw
+  REGION: europe-central2
+  IMAGE: europe-central2-docker.pkg.dev/puls-gpw/puls-gpw/puls-gpw
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.puls_gpw_secret }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-central2-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        run: |
+          IMAGE_TAG="${{ env.IMAGE }}:${{ github.sha }}"
+          docker build -t "$IMAGE_TAG" .
+          docker push "$IMAGE_TAG"
+
+      - name: Update Cloud Run Job
+        run: |
+          gcloud run jobs update puls-gpw \
+            --image="${{ env.IMAGE }}:${{ github.sha }}" \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }}
