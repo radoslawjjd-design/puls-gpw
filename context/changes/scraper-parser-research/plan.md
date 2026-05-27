@@ -249,25 +249,25 @@ Pola zwracane przez bankier.py:
 
 #### Automated
 
-- [x] 1.1 `uv run scripts/research/bankier_html_check.py` kończy się kodem 0 i wypisuje ≥ 1 element
+- [x] 1.1 `uv run scripts/research/bankier_html_check.py` kończy się kodem 0 i wypisuje ≥ 1 element — de462e3
 
 #### Manual
 
-- [x] 1.2 Output pokazuje poprawne tytuły i daty zgodne z bankier.pl
-- [x] 1.3 Odnotowany aktywny selektor listy (primary lub fallback)
-- [x] 1.4 Widoczne są: title, data, company, URL ogłoszenia
+- [x] 1.2 Output pokazuje poprawne tytuły i daty zgodne z bankier.pl — de462e3
+- [x] 1.3 Odnotowany aktywny selektor listy (primary lub fallback) — de462e3
+- [x] 1.4 Widoczne są: title, data, company, URL ogłoszenia — de462e3
 
 ### Phase 2: PDF Format Analysis
 
 #### Automated
 
-- [ ] 2.1 `uv run scripts/research/pdf_sampler.py` kończy się kodem 0 i wypisuje wyniki dla ≥ 5 ogłoszeń
+- [x] 2.1 `uv run scripts/research/pdf_sampler.py` kończy się kodem 0 i wypisuje wyniki dla ≥ 5 ogłoszeń
 
 #### Manual
 
-- [ ] 2.2 TEXT-classified PDFs mają sensowny polski tekst
-- [ ] 2.3 OCR decision potwierdzona (lub flagowana jeśli > 20% skanów)
-- [ ] 2.4 Fast-path KNF (table.seauid2) noted if applicable
+- [x] 2.2 TEXT-classified PDFs mają sensowny polski tekst
+- [x] 2.3 OCR decision potwierdzona (lub flagowana jeśli > 20% skanów)
+- [x] 2.4 Fast-path KNF (table.seauid2) noted if applicable
 
 ### Phase 3: Write research.md
 
