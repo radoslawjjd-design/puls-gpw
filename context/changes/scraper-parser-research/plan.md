@@ -273,8 +273,8 @@ Pola zwracane przez bankier.py:
 
 #### Manual
 
-- [x] 3.1 research.md zawiera HTML selektory
-- [x] 3.2 research.md zawiera tabelę PDF z ≥ 5 wynikami
-- [x] 3.3 OQ-2 (OCR decision) resolved w research.md
-- [x] 3.4 Schemat metadanych udokumentowany
-- [x] 3.5 change.md status = researched
+- [x] 3.1 research.md zawiera HTML selektory — 0712082
+- [x] 3.2 research.md zawiera tabelę PDF z ≥ 5 wynikami — 0712082
+- [x] 3.3 OQ-2 (OCR decision) resolved w research.md — 0712082
+- [x] 3.4 Schemat metadanych udokumentowany — 0712082
+- [x] 3.5 change.md status = researched — 0712082
