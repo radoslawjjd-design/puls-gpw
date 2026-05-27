@@ -1,7 +1,7 @@
 ---
 change_id: scraper-parser-research
 title: Research Bankier.pl HTML structure and ESPI/EBI PDF samples
-status: implementing
+status: researched
 created: 2026-05-26
 updated: 2026-05-27
 plan_reviewed: 2026-05-26

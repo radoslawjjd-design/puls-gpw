@@ -261,20 +261,20 @@ Pola zwracane przez bankier.py:
 
 #### Automated
 
-- [x] 2.1 `uv run scripts/research/pdf_sampler.py` kończy się kodem 0 i wypisuje wyniki dla ≥ 5 ogłoszeń
+- [x] 2.1 `uv run scripts/research/pdf_sampler.py` kończy się kodem 0 i wypisuje wyniki dla ≥ 5 ogłoszeń — 6ea4f2a
 
 #### Manual
 
-- [x] 2.2 TEXT-classified PDFs mają sensowny polski tekst
-- [x] 2.3 OCR decision potwierdzona (lub flagowana jeśli > 20% skanów)
-- [x] 2.4 Fast-path KNF (table.seauid2) noted if applicable
+- [x] 2.2 TEXT-classified PDFs mają sensowny polski tekst — 6ea4f2a
+- [x] 2.3 OCR decision potwierdzona (lub flagowana jeśli > 20% skanów) — 6ea4f2a
+- [x] 2.4 Fast-path KNF (table.seauid2) noted if applicable — 6ea4f2a
 
 ### Phase 3: Write research.md
 
 #### Manual
 
-- [ ] 3.1 research.md zawiera HTML selektory
-- [ ] 3.2 research.md zawiera tabelę PDF z ≥ 5 wynikami
-- [ ] 3.3 OQ-2 (OCR decision) resolved w research.md
-- [ ] 3.4 Schemat metadanych udokumentowany
-- [ ] 3.5 change.md status = researched
+- [x] 3.1 research.md zawiera HTML selektory
+- [x] 3.2 research.md zawiera tabelę PDF z ≥ 5 wynikami
+- [x] 3.3 OQ-2 (OCR decision) resolved w research.md
+- [x] 3.4 Schemat metadanych udokumentowany
+- [x] 3.5 change.md status = researched
