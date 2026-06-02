@@ -13,6 +13,9 @@ wheels/
 .env
 .env.local
 
+# Reference code — local only, never commit
+oldProjectData/
+
 # Claude Code local config (skills, permissions, 10x toolkit)
 .claude/
 .claude/**/10x-*
