@@ -12,7 +12,7 @@
 
 | Roadmap ID | Linear | GitHub | Tytuł | Labels | Status |
 |---|---|---|---|---|---|
-| F-01 | [PUL-5](https://linear.app/puls-gpw/issue/PUL-5) | [#1](https://github.com/radoslawjjd-design/puls-gpw/issues/1) | Zbadaj HTML Bankier.pl i próbki PDF ESPI/EBI | `foundation` `ready` | In Progress |
+| F-01 | [PUL-5](https://linear.app/puls-gpw/issue/PUL-5) | [#1](https://github.com/radoslawjjd-design/puls-gpw/issues/1) | Zbadaj HTML Bankier.pl i próbki PDF ESPI/EBI | `foundation` `ready` | Done |
 | F-02 | [PUL-6](https://linear.app/puls-gpw/issue/PUL-6) | [#2](https://github.com/radoslawjjd-design/puls-gpw/issues/2) | BigQuery schema announcements + klient Python | `foundation` `ready` | Todo |
 | F-03 | [PUL-7](https://linear.app/puls-gpw/issue/PUL-7) | [#3](https://github.com/radoslawjjd-design/puls-gpw/issues/3) | Structured logging + email alert na błąd pipeline'u | `foundation` `ready` | Todo |
 | S-01 | [PUL-8](https://linear.app/puls-gpw/issue/PUL-8) | [#4](https://github.com/radoslawjjd-design/puls-gpw/issues/4) | Scraper Bankier.pl + dedup check BigQuery | `slice` `proposed` | Backlog |

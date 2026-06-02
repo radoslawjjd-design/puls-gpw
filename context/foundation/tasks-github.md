@@ -1,10 +1,11 @@
 # Tasks — GitHub Issues mirror
 
-> Plik synchronizowany ręcznie z GitHub Issues.
-> Źródło prawdy dla statusów: https://github.com/radoslawjjd-design/puls-gpw/issues
-> Źródło prawdy dla zależności i kontekstu: `context/foundation/roadmap.md`
+> **DEPRECATED** — zastąpiony przez `context/foundation/tasks-linear.md`.
+> Linear jest teraz źródłem prawdy dla statusów i zależności.
+> Ten plik nie jest aktualizowany.
 >
-> Aktualizuj status (open → closed) gdy zamykasz issue w GitHub.
+> Źródło prawdy dla statusów: https://linear.app/puls-gpw
+> Źródło prawdy dla zależności i kontekstu: `context/foundation/roadmap.md`
 
 ## Milestone: MVP
 

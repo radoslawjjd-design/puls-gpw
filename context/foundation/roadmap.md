@@ -3,7 +3,7 @@ project: ESPI/EBI Analyzer
 version: 1
 status: draft
 created: 2026-05-25
-updated: 2026-05-25
+updated: 2026-06-02
 prd_version: 1
 main_goal: quality
 top_blocker: decisions
@@ -23,16 +23,16 @@ Komunikaty ESPI/EBI spółek notowanych na GPW i NewConnect są publikowane dzie
 
 **S-04: właściciel może automatycznie otrzymać X-style email z analizą nowego komunikatu ESPI/EBI** — pierwsza kompletna automatyczna iteracja pipeline'u (scraper → parser → AI → supervisor → email) udowadnia, że produkt zastępuje ręczną pracę i jest gotowy do codziennego użytku.
 
-> "Gwiazda przewodnia" to w tym dokumencie pierwsza historyjka, która udowadnia, że produkt działa — najmniejszy pełny przebieg od wejścia (nowy komunikat na gpw.pl) do wyjścia (email do właściciela), sekwencjonowany możliwie wcześnie, bo wszystko inne ma wartość tylko wtedy gdy to zadziała.
+> "Gwiazda przewodnia" to w tym dokumencie pierwsza historyjka, która udowadnia, że produkt działa — najmniejszy pełny przebieg od wejścia (nowy komunikat na Bankier.pl) do wyjścia (email do właściciela), sekwencjonowany możliwie wcześnie, bo wszystko inne ma wartość tylko wtedy gdy to zadziała.
 
 ## At a glance
 
 | ID   | Change ID               | Outcome (pipeline/właściciel może …)                                          | Prerequisites | PRD refs                               | Status   |
 | ---- | ----------------------- | ----------------------------------------------------------------------------- | ------------- | -------------------------------------- | -------- |
-| F-01 | scraper-parser-research | (foundation) HTML gpw.pl zmapowany, PDF-y zbadane, decyzja OCR podjęta       | —             | FR-001, FR-004, OQ-1, OQ-2             | ready    |
+| F-01 | scraper-parser-research | (foundation) HTML Bankier.pl zmapowany, PDF-y zbadane, decyzja OCR podjęta   | —             | FR-001, FR-004, OQ-1, OQ-2             | done     |
 | F-02 | bigquery-schema         | (foundation) tabela `announcements` w BQ, klient Python skonfigurowany        | —             | FR-002, FR-007                         | ready    |
 | F-03 | observability-baseline  | (foundation) structured logging i email alert na błąd pipeline'u              | —             | NFR (failure alerting), FR-008         | ready    |
-| S-01 | scraper-dedup           | pobrać listę nowych (nie-duplikat) komunikatów ESPI/EBI z gpw.pl              | F-01, F-02    | FR-001, FR-002, FR-003, US-01          | proposed |
+| S-01 | scraper-dedup           | pobrać listę nowych (nie-duplikat) komunikatów ESPI/EBI z Bankier.pl          | F-01, F-02    | FR-001, FR-002, FR-003, US-01          | proposed |
 | S-02 | content-parser          | wyciągnąć treść tekstową z komunikatu (PDF lub HTML fallback)                 | F-01, S-01    | FR-004, FR-005, US-01                  | proposed |
 | S-03 | ai-analysis-supervisor  | wygenerować zatwierdzony przez supervisora X-style post                       | F-02, S-02    | FR-006, FR-007, FR-008, FR-009, US-01  | proposed |
 | S-04 | email-orchestration     | automatycznie otrzymać X-style email z analizą nowego komunikatu ESPI/EBI     | F-03, S-03    | FR-010, FR-011, US-01                  | proposed |
@@ -63,7 +63,7 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 
 ### F-01: Badanie scrapera i parsera
 
-- **Outcome:** (foundation) struktura HTML gpw.pl/komunikaty zmapowana (selektory, paginacja, URL-e komunikatów), 5–10 próbek PDF ESPI/EBI zbadanych (text-selectable vs skan), decyzja OCR podjęta, schemat URL-ów i dostępnych metadanych udokumentowany
+- **Outcome:** (foundation) struktura HTML Bankier.pl (https://www.bankier.pl/gielda/wiadomosci/komunikaty-spolek) zmapowana (selektory, paginacja, URL-e komunikatów), 5–10 próbek PDF ESPI/EBI zbadanych (text-selectable vs skan), decyzja OCR podjęta, schemat URL-ów i dostępnych metadanych udokumentowany
 - **Change ID:** `scraper-parser-research`
 - **PRD refs:** FR-001 (pobieranie listy komunikatów), FR-004 (parser PDF — wymaga wiedzy o formacie), OQ-1 (dostępność oficjalnego API — resolved: brak, scraping HTML konieczny), OQ-2 (OCR — unresolved, rozstrzyga ta faza)
 - **Unlocks:** S-01 (scraper wie jakie selektory HTML parsować), S-02 (parser wie czego spodziewać się w PDF-ach i czy potrzeba OCR)
@@ -72,7 +72,7 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** bez tej fazy scraper i parser muszą być przepisane po odkryciu struktury HTML lub formatu PDF; to najważniejszy bloker z kategorii `decisions` — rozwiązany tu, przed startem jakiejkolwiek implementacji
-- **Status:** ready
+- **Status:** done
 
 ### F-02: BigQuery schema i klient Python
 
@@ -105,14 +105,14 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 
 ### S-01: Scraper i dedup
 
-- **Outcome:** pipeline może pobrać listę nowych (nie-duplikat) komunikatów ESPI/EBI z gpw.pl i zwrócić je do dalszego przetworzenia
+- **Outcome:** pipeline może pobrać listę nowych (nie-duplikat) komunikatów ESPI/EBI z Bankier.pl i zwrócić je do dalszego przetworzenia
 - **Change ID:** `scraper-dedup`
 - **PRD refs:** FR-001 (pobieranie listy komunikatów), FR-002 (dedup — ten sam komunikat nie może być przetworzony dwa razy), FR-003 (wszystkie nie-duplikaty, bez filtra tytułu), US-01
-- **Prerequisites:** F-01 (HTML struktura gpw.pl znana — selektory, paginacja), F-02 (tabela BQ gotowa do dedup check)
+- **Prerequisites:** F-01 (HTML struktura Bankier.pl znana — selektory, paginacja), F-02 (tabela BQ gotowa do dedup check)
 - **Parallel with:** —
 - **Blockers:** —
 - **Unknowns:** —
-- **Risk:** struktura HTML gpw.pl jest nieudokumentowana i może się zmienić; mitygacja: F-01 research + właściciel ma referencyjne implementacje scraperów które przyspieszą pracę; NFR freshness (15 min) wymaga że scraper jest niezawodny
+- **Risk:** struktura HTML Bankier.pl jest nieudokumentowana i może się zmienić; mitygacja: F-01 research + właściciel ma referencyjne implementacje scraperów które przyspieszą pracę; NFR freshness (15 min) wymaga że scraper jest niezawodny
 - **Status:** proposed
 
 ### S-02: Content parser (PDF i HTML)
@@ -158,10 +158,10 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 
 | Roadmap ID | Change ID               | Sugerowany tytuł issue                                      | Gotowy na `/10x-plan` | Uwagi                                                   |
 | ---------- | ----------------------- | ----------------------------------------------------------- | --------------------- | ------------------------------------------------------- |
-| F-01       | scraper-parser-research | Zbadaj HTML gpw.pl i próbki PDF ESPI/EBI (research)         | yes                   | Zacznij tu — krytyczna ścieżka; `/10x-plan scraper-parser-research` |
+| F-01       | scraper-parser-research | Zbadaj HTML Bankier.pl i próbki PDF ESPI/EBI (research)     | yes                   | Zacznij tu — krytyczna ścieżka; `/10x-plan scraper-parser-research` |
 | F-02       | bigquery-schema         | BigQuery schema `announcements` + klient Python             | yes                   | Równolegle z F-01; `/10x-plan bigquery-schema`          |
 | F-03       | observability-baseline  | Structured logging + email alert na błąd pipeline'u        | yes                   | Równolegle z F-01, F-02; `/10x-plan observability-baseline` |
-| S-01       | scraper-dedup           | Scraper gpw.pl + dedup check BigQuery                       | no                    | Czeka na F-01 + F-02                                    |
+| S-01       | scraper-dedup           | Scraper Bankier.pl + dedup check BigQuery                   | no                    | Czeka na F-01 + F-02                                    |
 | S-02       | content-parser          | Parser PDF (+ OCR fallback) i HTML                          | no                    | Czeka na F-01 + S-01                                    |
 | S-03       | ai-analysis-supervisor  | Analiza Gemini + supervisor gate (max 3 próby)              | no                    | Czeka na F-02 + S-02                                    |
 | S-04       | email-orchestration     | Email notifier + orchestracja Cloud Run Job / Scheduler     | no                    | Czeka na F-03 + S-03                                    |
@@ -187,4 +187,4 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 
 ## Done
 
-*(Puste przy pierwszym generowaniu. `/10x-archive` dopisuje tu wpis i ustawia Status: done gdy change folder zostanie zarchiwizowany.)*
+- **F-01: (foundation) HTML Bankier.pl zmapowany, PDF-y zbadane, decyzja OCR podjęta** — Archived 2026-06-02 → `context/archive/2026-05-26-scraper-parser-research/`. Lesson: —.
