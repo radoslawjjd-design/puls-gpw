@@ -244,26 +244,26 @@ Skrypt dodaje `sys.path.insert(0, root)` + `load_dotenv()` jak `scripts/test_bq.
 
 #### Automated
 
-- [x] 1.1 `uv sync` kończy się kodem 0 i aktualizuje `uv.lock`
-- [x] 1.2 `uv run python -c "from src.logging_setup import configure_logging; print('OK')"` kończy się kodem 0
-- [x] 1.3 `uv run python main.py 2>&1 | python -c "import json,sys; [json.loads(l) for l in sys.stdin if l.strip()]; print('JSON OK')"` kończy się kodem 0
+- [x] 1.1 `uv sync` kończy się kodem 0 i aktualizuje `uv.lock` — 07d6c34
+- [x] 1.2 `uv run python -c "from src.logging_setup import configure_logging; print('OK')"` kończy się kodem 0 — 07d6c34
+- [x] 1.3 `uv run python main.py 2>&1 | python -c "import json,sys; [json.loads(l) for l in sys.stdin if l.strip()]; print('JSON OK')"` kończy się kodem 0 — 07d6c34
 
 #### Manual
 
-- [x] 1.4 Output `main.py` zawiera pola `severity` i `timestamp` (nie `levelname`/`asctime`)
+- [x] 1.4 Output `main.py` zawiera pola `severity` i `timestamp` (nie `levelname`/`asctime`) — 07d6c34
 
 ### Phase 2: Exception Hierarchy + Email Alert
 
 #### Automated
 
-- [ ] 2.1 `uv run python -c "from src.exceptions import PipelineStageError, ScraperError, ParserError, AnalysisError, NotificationError; print('OK')"` kończy się kodem 0
-- [ ] 2.2 `uv run python -c "from src.notifier import send_alert; print('OK')"` kończy się kodem 0
-- [ ] 2.3 `uv run python main.py` kończy się kodem 0
+- [x] 2.1 `uv run python -c "from src.exceptions import PipelineStageError, ScraperError, ParserError, AnalysisError, NotificationError; print('OK')"` kończy się kodem 0
+- [x] 2.2 `uv run python -c "from src.notifier import send_alert; print('OK')"` kończy się kodem 0
+- [x] 2.3 `uv run python main.py` kończy się kodem 0
 
 #### Manual
 
-- [ ] 2.4 Przejrzyj `src/exceptions.py` — 5 klas z docstringami
-- [ ] 2.5 Przejrzyj `src/notifier.py` — `send_alert()` z type annotation i docstringiem
+- [x] 2.4 Przejrzyj `src/exceptions.py` — 5 klas z docstringami
+- [x] 2.5 Przejrzyj `src/notifier.py` — `send_alert()` z type annotation i docstringiem
 
 ### Phase 3: Integration Test Script
 
