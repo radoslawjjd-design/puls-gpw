@@ -31,7 +31,7 @@ Komunikaty ESPI/EBI spółek notowanych na GPW i NewConnect są publikowane dzie
 | ---- | ----------------------- | ----------------------------------------------------------------------------- | ------------- | -------------------------------------- | -------- |
 | F-01 | scraper-parser-research | (foundation) HTML Bankier.pl zmapowany, PDF-y zbadane, decyzja OCR podjęta   | —             | FR-001, FR-004, OQ-1, OQ-2             | done     |
 | F-02 | bigquery-schema         | (foundation) tabela `announcements` w BQ, klient Python skonfigurowany        | —             | FR-002, FR-007                         | done     |
-| F-03 | observability-baseline  | (foundation) structured logging i email alert na błąd pipeline'u              | —             | NFR (failure alerting), FR-008         | ready    |
+| F-03 | observability-baseline  | (foundation) structured logging i email alert na błąd pipeline'u              | —             | NFR (failure alerting), FR-008         | done     |
 | S-01 | scraper-dedup           | pobrać listę nowych (nie-duplikat) komunikatów ESPI/EBI z Bankier.pl          | F-01, F-02    | FR-001, FR-002, FR-003, US-01          | proposed |
 | S-02 | content-parser          | wyciągnąć treść tekstową z komunikatu (PDF lub HTML fallback)                 | F-01, S-01    | FR-004, FR-005, US-01                  | proposed |
 | S-03 | ai-analysis-supervisor  | wygenerować zatwierdzony przez supervisora X-style post                       | F-02, S-02    | FR-006, FR-007, FR-008, FR-009, US-01  | proposed |
@@ -99,7 +99,7 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** bez tej foundation pipeline może failować cicho w Cloud Run bez wiedzy właściciela; sekwencja przed S-04 gwarantuje że nawet pierwsza produkcyjna awaria jest natychmiast widoczna
-- **Status:** ready
+- **Status:** done
 
 ## Slices
 
@@ -189,3 +189,4 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 
 - **F-01: (foundation) HTML Bankier.pl zmapowany, PDF-y zbadane, decyzja OCR podjęta** — Archived 2026-06-02 → `context/archive/2026-05-26-scraper-parser-research/`. Lesson: —.
 - **F-02: (foundation) tabela `announcements` w BQ, klient Python skonfigurowany** — Archived 2026-06-04 → `context/archive/2026-06-02-bigquery-schema/`. Lesson: GCP client init — load_dotenv + ADC quota project.
+- **F-03: (foundation) structured logging i email alert na błąd pipeline'u** — Archived 2026-06-04 → `context/archive/2026-06-04-observability-baseline/`. Lesson: —.
