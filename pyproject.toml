@@ -11,6 +11,7 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "html5lib>=1.1",
     "pypdf>=4.0",
+    "google-cloud-bigquery>=3.25",
 ]
 
 [dependency-groups]

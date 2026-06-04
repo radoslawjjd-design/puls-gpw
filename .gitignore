@@ -16,6 +16,7 @@ wheels/
 # Reference code — local only, never commit
 oldProjectData/
 lessonMarkdown/
+lessonMarkdawn/
 
 # Claude Code local config (skills, permissions, 10x toolkit)
 .claude/
