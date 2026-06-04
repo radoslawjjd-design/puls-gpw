@@ -47,46 +47,48 @@ def main() -> None:
     )
     print(f"[2] Inserted announcement_id: {ann_id}")
 
-    # Step 3 — dedup check
-    processed = is_processed(TEST_URL)
-    assert processed, "is_processed should return True after insert"
-    print(f"[3] is_processed: {processed}")
+    try:
+        # Step 3 — dedup check
+        processed = is_processed(TEST_URL)
+        assert processed, "is_processed should return True after insert"
+        print(f"[3] is_processed: {processed}")
 
-    # Step 4 — save analysis
-    save_analysis(
-        announcement_id=ann_id,
-        post_text="Test post #TST wyniki finansowe.",
-        analysis_type="FINANCIAL",
-        supervisor_attempts=1,
-    )
-    print("[4] save_analysis: OK")
+        # Step 4 — save analysis
+        save_analysis(
+            announcement_id=ann_id,
+            post_text="Test post #TST wyniki finansowe.",
+            analysis_type="FINANCIAL",
+            supervisor_attempts=1,
+        )
+        print("[4] save_analysis: OK")
 
-    # Step 5 — read back and display
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", ann_id)]
-    )
-    rows = list(
-        client.query(
-            f"SELECT * FROM `{table}` WHERE announcement_id = @id",
-            job_config=job_config,
-        ).result()
-    )
-    assert rows, "Expected exactly one row after insert+update"
-    row = rows[0]
-    print(
-        f"[5] Record: url={row.url!r} title={row.title!r} "
-        f"analysis_type={row.analysis_type!r} post_text={row.post_text!r} "
-        f"supervisor_attempts={row.supervisor_attempts}"
-    )
-
-    # Step 6 — cleanup
-    client.query(
-        f"DELETE FROM `{table}` WHERE announcement_id = @id",
-        job_config=bigquery.QueryJobConfig(
+        # Step 5 — read back and display
+        job_config = bigquery.QueryJobConfig(
             query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", ann_id)]
-        ),
-    ).result()
-    print("[6] Cleanup: test record deleted")
+        )
+        rows = list(
+            client.query(
+                f"SELECT * FROM `{table}` WHERE announcement_id = @id",
+                job_config=job_config,
+            ).result()
+        )
+        assert rows, "Expected exactly one row after insert+update"
+        row = rows[0]
+        print(
+            f"[5] Record: url={row.url!r} title={row.title!r} "
+            f"analysis_type={row.analysis_type!r} post_text={row.post_text!r} "
+            f"supervisor_attempts={row.supervisor_attempts}"
+        )
+    finally:
+        # Step 6 — cleanup (runs even on error to avoid orphaned test records)
+        client.query(
+            f"DELETE FROM `{table}` WHERE announcement_id = @id",
+            job_config=bigquery.QueryJobConfig(
+                query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", ann_id)]
+            ),
+        ).result()
+        print("[6] Cleanup: test record deleted")
+
     print("\nAll steps passed.")
 
 

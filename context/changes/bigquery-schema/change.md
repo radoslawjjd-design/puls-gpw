@@ -1,7 +1,7 @@
 ---
 change_id: bigquery-schema
 title: BigQuery schema announcements + klient Python
-status: implemented
+status: impl_reviewed
 created: 2026-06-02
 updated: 2026-06-04
 archived_at: null

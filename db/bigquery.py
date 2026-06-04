@@ -1,5 +1,7 @@
+"""BigQuery client, schema definition, and CRUD wrappers for the announcements table."""
 import hashlib
 import os
+import threading
 from datetime import datetime
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
@@ -21,19 +23,24 @@ _SCHEMA = [
 ]
 
 _client: bigquery.Client | None = None
+_client_lock = threading.Lock()
 
 
 def _get_client() -> bigquery.Client:
     global _client
     if _client is None:
-        import google.auth
+        with _client_lock:
+            if _client is None:
+                import google.auth
 
-        project = os.environ.get("GOOGLE_CLOUD_PROJECT")
-        credentials, _ = google.auth.default()
-        # Override ADC quota project to match the target project, avoiding
-        # 403s when the ADC quota_project_id is set to a different project.
-        credentials = credentials.with_quota_project(project)
-        _client = bigquery.Client(project=project, credentials=credentials)
+                project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+                credentials, _ = google.auth.default()
+                # Override ADC quota project to match the target project, avoiding
+                # 403s when the ADC quota_project_id is set to a different project.
+                # Guard: with_quota_project is not on all credential types (e.g. WIF).
+                if hasattr(credentials, "with_quota_project"):
+                    credentials = credentials.with_quota_project(project)
+                _client = bigquery.Client(project=project, credentials=credentials)
     return _client
 
 
@@ -135,4 +142,9 @@ def save_analysis(
             bigquery.ScalarQueryParameter("id", "STRING", announcement_id),
         ]
     )
-    client.query(query, job_config=job_config).result()
+    job = client.query(query, job_config=job_config)
+    job.result()
+    if job.errors:
+        raise RuntimeError(f"save_analysis failed: {job.errors}")
+    if job.num_dml_affected_rows == 0:
+        raise RuntimeError(f"save_analysis: no row matched announcement_id={announcement_id!r}")
