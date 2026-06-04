@@ -218,8 +218,8 @@ Wywołaj `create_table_if_not_exists()` w `main.py`. Napisz skrypt `scripts/test
 
 #### Automated
 
-- [x] 1.1 `uv sync` kończy się kodem 0 i aktualizuje `uv.lock`
-- [x] 1.2 `uv run python -c "from db.bigquery import create_table_if_not_exists; print('OK')"` kończy się kodem 0
+- [x] 1.1 `uv sync` kończy się kodem 0 i aktualizuje `uv.lock` — 2e13da3
+- [x] 1.2 `uv run python -c "from db.bigquery import create_table_if_not_exists; print('OK')"` kończy się kodem 0 — 2e13da3
 
 #### Manual
 
