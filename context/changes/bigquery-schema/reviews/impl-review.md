@@ -38,7 +38,7 @@
   - Tradeoff: 2–3 lines added.
   - Confidence: HIGH
   - Blind spot: None significant.
-- **Decision**: PENDING
+- **Decision**: FIXED — aa77f4c
 
 ### F2 — with_quota_project() breaks on non-supporting credential types
 
@@ -56,7 +56,7 @@
   - Tradeoff: On a new cred type, mismatch silently skipped (better than crash).
   - Confidence: HIGH
   - Blind spot: Untested on Workload Identity.
-- **Decision**: PENDING
+- **Decision**: FIXED — aa77f4c
 
 ### F3 — Lazy _client singleton not thread-safe
 
@@ -75,7 +75,7 @@
   - Tradeoff: BQ connection at import time; breaks scripts that import without needing BQ.
   - Confidence: MED
   - Blind spot: load_dotenv() ordering interaction not verified.
-- **Decision**: PENDING
+- **Decision**: FIXED via Fix A — aa77f4c
 
 ### F4 — Test cleanup not protected by try/finally
 
@@ -85,7 +85,7 @@
 - **Location**: scripts/test_bq.py:40–88
 - **Detail**: Steps 2–5 not wrapped in try/finally. Exception between insert and delete leaves test record in production table permanently.
 - **Fix**: Wrap steps 2–5 in try/finally with DELETE in the finally block.
-- **Decision**: PENDING
+- **Decision**: FIXED — aa77f4c
 
 ### F5 — Unplanned scope additions: quota project override + dotenv
 
@@ -95,7 +95,7 @@
 - **Location**: db/bigquery.py:28–37, main.py:1–5
 - **Detail**: Two benign additions not in the plan: `credentials.with_quota_project()` and `load_dotenv()`. Both operationally necessary; plan didn't anticipate ADC quota mismatch.
 - **Fix**: No code change needed — accept as discovered-scope.
-- **Decision**: PENDING
+- **Decision**: ACCEPTED-AS-RULE — aa77f4c (lessons.md)
 
 ### F6 — Missing module docstring in db/bigquery.py
 
@@ -105,4 +105,4 @@
 - **Location**: db/bigquery.py:1
 - **Detail**: scripts/research/*.py all have module docstrings. db/bigquery.py has none.
 - **Fix**: Add a one-line module docstring at the top.
-- **Decision**: PENDING
+- **Decision**: FIXED — aa77f4c
