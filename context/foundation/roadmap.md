@@ -3,7 +3,7 @@ project: ESPI/EBI Analyzer
 version: 1
 status: draft
 created: 2026-05-25
-updated: 2026-06-02
+updated: 2026-06-04
 prd_version: 1
 main_goal: quality
 top_blocker: decisions
@@ -30,7 +30,7 @@ Komunikaty ESPI/EBI spółek notowanych na GPW i NewConnect są publikowane dzie
 | ID   | Change ID               | Outcome (pipeline/właściciel może …)                                          | Prerequisites | PRD refs                               | Status   |
 | ---- | ----------------------- | ----------------------------------------------------------------------------- | ------------- | -------------------------------------- | -------- |
 | F-01 | scraper-parser-research | (foundation) HTML Bankier.pl zmapowany, PDF-y zbadane, decyzja OCR podjęta   | —             | FR-001, FR-004, OQ-1, OQ-2             | done     |
-| F-02 | bigquery-schema         | (foundation) tabela `announcements` w BQ, klient Python skonfigurowany        | —             | FR-002, FR-007                         | ready    |
+| F-02 | bigquery-schema         | (foundation) tabela `announcements` w BQ, klient Python skonfigurowany        | —             | FR-002, FR-007                         | done     |
 | F-03 | observability-baseline  | (foundation) structured logging i email alert na błąd pipeline'u              | —             | NFR (failure alerting), FR-008         | ready    |
 | S-01 | scraper-dedup           | pobrać listę nowych (nie-duplikat) komunikatów ESPI/EBI z Bankier.pl          | F-01, F-02    | FR-001, FR-002, FR-003, US-01          | proposed |
 | S-02 | content-parser          | wyciągnąć treść tekstową z komunikatu (PDF lub HTML fallback)                 | F-01, S-01    | FR-004, FR-005, US-01                  | proposed |
@@ -86,7 +86,7 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 - **Unknowns:**
   - Jaki jest minimalny schemat tabeli wystarczający dla dedup i archiwum analiz? — Owner: właściciel/implementator. Block: no (rozsądny default: `announcement_id`, `url`, `published_at`, `title`, `company`, `ticker`, `post_text`, `processed_at`, `supervisor_attempts`).
 - **Risk:** zły schemat na starcie wymaga migracji BigQuery; cel `quality` — zaprojektować raz porządnie zamiast iterować; dataset już istnieje w poprawnym regionie, unikamy cross-region egress
-- **Status:** ready
+- **Status:** done
 
 ### F-03: Structured logging i error alerting
 
@@ -188,3 +188,4 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 ## Done
 
 - **F-01: (foundation) HTML Bankier.pl zmapowany, PDF-y zbadane, decyzja OCR podjęta** — Archived 2026-06-02 → `context/archive/2026-05-26-scraper-parser-research/`. Lesson: —.
+- **F-02: (foundation) tabela `announcements` w BQ, klient Python skonfigurowany** — Archived 2026-06-04 → `context/archive/2026-06-02-bigquery-schema/`. Lesson: GCP client init — load_dotenv + ADC quota project.

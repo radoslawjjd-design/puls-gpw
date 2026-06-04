@@ -1,10 +1,10 @@
 ---
 change_id: bigquery-schema
 title: BigQuery schema announcements + klient Python
-status: impl_reviewed
+status: archived
 created: 2026-06-02
 updated: 2026-06-04
-archived_at: null
+archived_at: 2026-06-04T17:12:13Z
 tracking:
   linear: PUL-6
   github: 2
