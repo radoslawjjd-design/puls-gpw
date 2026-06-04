@@ -39,6 +39,18 @@ puls-gpw is a scheduled Python pipeline that fetches ESPI/EBI regulatory announc
 
 No test framework is configured yet. Add `pytest` via `uv add --dev pytest` and place tests under `tests/` when the first testable unit lands. Run with `uv run pytest`. Test priority: duplicate-check logic first, supervisor retry gate second — these are the highest-risk paths in the pipeline.
 
+## Issue Tracking
+
+Every `context/changes/<change-id>/change.md` must contain a `tracking:` block:
+
+```yaml
+tracking:
+  linear: PUL-X   # Linear issue ID
+  github: N        # GitHub issue number (integer)
+```
+
+Use `null` only when no corresponding issue exists. When `/10x-implement` completes the epilogue commit, the agent automatically closes both issues and prints a confirmation block to the console — no manual action needed.
+
 ## Commit & Pull Request Guidelines
 
 No commit history exists yet. Use Conventional Commits prefixes (`feat:`, `fix:`, `chore:`, `refactor:`) from the first commit. Non-conforming messages will be flagged in PR review.
