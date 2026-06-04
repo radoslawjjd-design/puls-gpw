@@ -1,7 +1,7 @@
 ---
 change_id: observability-baseline
 title: F-03 Structured logging i email alert na błąd pipeline'u
-status: implementing
+status: implemented
 created: 2026-06-04
 updated: 2026-06-04
 archived_at: null

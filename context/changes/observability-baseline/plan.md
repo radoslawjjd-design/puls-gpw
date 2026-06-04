@@ -269,9 +269,9 @@ Skrypt dodaje `sys.path.insert(0, root)` + `load_dotenv()` jak `scripts/test_bq.
 
 #### Automated
 
-- [x] 3.1 `uv run python scripts/test_alert.py --dry-run` kończy się kodem 0 i wypisuje `[dry-run] would send alert email to...`
+- [x] 3.1 `uv run python scripts/test_alert.py --dry-run` kończy się kodem 0 i wypisuje `[dry-run] would send alert email to...` — 308064d
 
 #### Manual
 
-- [x] 3.2 `uv run python scripts/test_alert.py` (z wypełnionym `.env`) — email received z subject `[puls-gpw] Pipeline ERROR: ValueError`
-- [x] 3.3 JSON output na stderr zawiera `severity: ERROR` dla log.error() wywołań
+- [x] 3.2 `uv run python scripts/test_alert.py` (z wypełnionym `.env`) — email received z subject `[puls-gpw] Pipeline ERROR: ValueError` — 308064d
+- [x] 3.3 JSON output na stderr zawiera `severity: ERROR` dla log.error() wywołań — 308064d
