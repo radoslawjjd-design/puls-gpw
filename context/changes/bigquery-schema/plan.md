@@ -223,8 +223,8 @@ Wywołaj `create_table_if_not_exists()` w `main.py`. Napisz skrypt `scripts/test
 
 #### Manual
 
-- [x] 1.3 `uv.lock` zawiera `google-cloud-bigquery` i jego transitive deps
-- [x] 1.4 Moduł importuje się bez błędów
+- [x] 1.3 `uv.lock` zawiera `google-cloud-bigquery` i jego transitive deps — 97d08f8
+- [x] 1.4 Moduł importuje się bez błędów — 97d08f8
 
 ### Phase 2: Wrapper Functions
 
@@ -240,10 +240,10 @@ Wywołaj `create_table_if_not_exists()` w `main.py`. Napisz skrypt `scripts/test
 
 #### Automated
 
-- [x] 3.1 `uv run python main.py` kończy się kodem 0
+- [x] 3.1 `uv run python main.py` kończy się kodem 0 — 97d08f8
 
 #### Manual
 
-- [x] 3.2 `uv run scripts/test_bq.py` kończy się kodem 0 i wypisuje wszystkie 5 kroków
-- [x] 3.3 Tabela `espi_ebi.announcements` widoczna w BigQuery Console ze schematem 10 pól
-- [x] 3.4 Rekord testowy nie istnieje po zakończeniu skryptu (sprzątanie)
+- [x] 3.2 `uv run scripts/test_bq.py` kończy się kodem 0 i wypisuje wszystkie 5 kroków — 97d08f8
+- [x] 3.3 Tabela `espi_ebi.announcements` widoczna w BigQuery Console ze schematem 10 pól — 97d08f8
+- [x] 3.4 Rekord testowy nie istnieje po zakończeniu skryptu (sprzątanie) — 97d08f8
