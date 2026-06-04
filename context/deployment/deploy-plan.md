@@ -1,8 +1,8 @@
 ---
 deployed_at: 2026-05-18
-project_id: oswiadczenia-gpw
+project_id: puls-gpw
 region: europe-central2
-image: europe-central2-docker.pkg.dev/oswiadczenia-gpw/puls-gpw/puls-gpw:initial
+image: europe-central2-docker.pkg.dev/puls-gpw/puls-gpw/puls-gpw:initial
 image_digest: sha256:5ee04a3386ca6c667e3fe13b2ee6dfde2074c36a7ff4dda6024756b77826b797
 cloud_run_job: puls-gpw
 scheduler_job: puls-gpw-trigger
@@ -18,14 +18,14 @@ First deployment of puls-gpw infrastructure to GCP. Scope: container image + Clo
 
 | Resource | Name / ID |
 |---|---|
-| Artifact Registry repo | `europe-central2-docker.pkg.dev/oswiadczenia-gpw/puls-gpw` |
+| Artifact Registry repo | `europe-central2-docker.pkg.dev/puls-gpw/puls-gpw` |
 | Artifact Registry lifecycle policy | keep-last-10 (images) |
 | Container image | `puls-gpw:initial` — digest `sha256:5ee04a3386ca6c667e3fe13b2ee6dfde2074c36a7ff4dda6024756b77826b797` |
 | Cloud Run Job | `puls-gpw` (region: `europe-central2`) |
 | Cloud Scheduler job | `puls-gpw-trigger` (region: `europe-central2`) |
-| Service account — runner | `puls-gpw-runner@oswiadczenia-gpw.iam.gserviceaccount.com` |
-| Service account — scheduler | `puls-gpw-scheduler@oswiadczenia-gpw.iam.gserviceaccount.com` |
-| Cloud Monitoring alert | `projects/oswiadczenia-gpw/alertPolicies/5888120520158610756` |
+| Service account — runner | `puls-gpw-runner@puls-gpw.iam.gserviceaccount.com` |
+| Service account — scheduler | `puls-gpw-scheduler@puls-gpw.iam.gserviceaccount.com` |
+| Cloud Monitoring alert | `projects/puls-gpw/alertPolicies/5888120520158610756` |
 
 ## Cloud Run Job configuration
 

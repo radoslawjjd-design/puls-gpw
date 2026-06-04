@@ -26,7 +26,14 @@ _client: bigquery.Client | None = None
 def _get_client() -> bigquery.Client:
     global _client
     if _client is None:
-        _client = bigquery.Client(project=os.environ.get("GOOGLE_CLOUD_PROJECT"))
+        import google.auth
+
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+        credentials, _ = google.auth.default()
+        # Override ADC quota project to match the target project, avoiding
+        # 403s when the ADC quota_project_id is set to a different project.
+        credentials = credentials.with_quota_project(project)
+        _client = bigquery.Client(project=project, credentials=credentials)
     return _client
 
 
