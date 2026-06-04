@@ -256,22 +256,22 @@ Skrypt dodaje `sys.path.insert(0, root)` + `load_dotenv()` jak `scripts/test_bq.
 
 #### Automated
 
-- [x] 2.1 `uv run python -c "from src.exceptions import PipelineStageError, ScraperError, ParserError, AnalysisError, NotificationError; print('OK')"` kończy się kodem 0
-- [x] 2.2 `uv run python -c "from src.notifier import send_alert; print('OK')"` kończy się kodem 0
-- [x] 2.3 `uv run python main.py` kończy się kodem 0
+- [x] 2.1 `uv run python -c "from src.exceptions import PipelineStageError, ScraperError, ParserError, AnalysisError, NotificationError; print('OK')"` kończy się kodem 0 — da16368
+- [x] 2.2 `uv run python -c "from src.notifier import send_alert; print('OK')"` kończy się kodem 0 — da16368
+- [x] 2.3 `uv run python main.py` kończy się kodem 0 — da16368
 
 #### Manual
 
-- [x] 2.4 Przejrzyj `src/exceptions.py` — 5 klas z docstringami
-- [x] 2.5 Przejrzyj `src/notifier.py` — `send_alert()` z type annotation i docstringiem
+- [x] 2.4 Przejrzyj `src/exceptions.py` — 5 klas z docstringami — da16368
+- [x] 2.5 Przejrzyj `src/notifier.py` — `send_alert()` z type annotation i docstringiem — da16368
 
 ### Phase 3: Integration Test Script
 
 #### Automated
 
-- [ ] 3.1 `uv run python scripts/test_alert.py --dry-run` kończy się kodem 0 i wypisuje `[dry-run] would send alert email to...`
+- [x] 3.1 `uv run python scripts/test_alert.py --dry-run` kończy się kodem 0 i wypisuje `[dry-run] would send alert email to...`
 
 #### Manual
 
-- [ ] 3.2 `uv run python scripts/test_alert.py` (z wypełnionym `.env`) — email received z subject `[puls-gpw] Pipeline ERROR: ValueError`
-- [ ] 3.3 JSON output na stderr zawiera `severity: ERROR` dla log.error() wywołań
+- [x] 3.2 `uv run python scripts/test_alert.py` (z wypełnionym `.env`) — email received z subject `[puls-gpw] Pipeline ERROR: ValueError`
+- [x] 3.3 JSON output na stderr zawiera `severity: ERROR` dla log.error() wywołań
