@@ -13,6 +13,7 @@ dependencies = [
     "pypdf>=4.0",
     "google-cloud-bigquery>=3.25",
     "python-dotenv>=1.2.2",
+    "python-json-logger>=3.2",
 ]
 
 [dependency-groups]
