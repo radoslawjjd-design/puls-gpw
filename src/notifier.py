@@ -1,6 +1,7 @@
 """Email alert delivery for pipeline failures."""
 import os
 import smtplib
+import ssl
 import traceback
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
@@ -31,7 +32,7 @@ def send_alert(exc: BaseException) -> None:
     msg["From"] = user
     msg["To"] = owner
 
-    with smtplib.SMTP(host, port) as smtp:
-        smtp.starttls()
+    with smtplib.SMTP(host, port, timeout=10) as smtp:
+        smtp.starttls(context=ssl.create_default_context())
         smtp.login(user, password)
         smtp.send_message(msg)

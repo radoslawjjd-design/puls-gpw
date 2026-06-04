@@ -5,12 +5,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from db.bigquery import create_table_if_not_exists
 from src.logging_setup import configure_logging
-from src.notifier import send_alert
 
 configure_logging()
 logger = logging.getLogger(__name__)
+
+from db.bigquery import create_table_if_not_exists
+from src.notifier import send_alert
 
 
 def main():

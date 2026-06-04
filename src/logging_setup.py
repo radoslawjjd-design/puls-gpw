@@ -14,6 +14,9 @@ def configure_logging(level: str = "INFO") -> None:
     Cloud Logging requires the field 'severity' (not 'levelname') to map
     log levels correctly; rename_fields handles this transparently.
     """
+    numeric = logging.getLevelName(level.upper())
+    if not isinstance(numeric, int):
+        raise ValueError(f"Unknown log level: {level!r}")
     handler = logging.StreamHandler(sys.stderr)
     formatter = JsonFormatter(
         fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
