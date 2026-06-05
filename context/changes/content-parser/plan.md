@@ -493,27 +493,27 @@ kolumnę `parsed_content STRING NULLABLE`. Istniejące wiersze (4 testowe z S-01
 
 #### Automated
 
-- [x] 2.1 `python -c "from src.http_client import download_binary"` — brak ImportError
-- [x] 2.2 `python -c "from src.parser import parse_announcement, ParsedContent"` — brak ImportError
-- [x] 2.3 `uv sync` kończy bez błędów (pypdf zainstalowany)
+- [x] 2.1 `python -c "from src.http_client import download_binary"` — brak ImportError — cf99243
+- [x] 2.2 `python -c "from src.parser import parse_announcement, ParsedContent"` — brak ImportError — cf99243
+- [x] 2.3 `uv sync` kończy bez błędów (pypdf zainstalowany) — cf99243
 
 #### Manual
 
-- [x] 2.4 Smoke test `parse_announcement()` na URL z seauid2 — zwraca tekst
-- [x] 2.5 Smoke test na URL bez seauid2 (EBI raport roczny) — zwraca tekst z PDF lub fallback
-- [x] 2.6 Log `"Parser: seauid2|pdf|html|none for <url>"` widoczny w stdout
+- [x] 2.4 Smoke test `parse_announcement()` na URL z seauid2 — zwraca tekst — cf99243
+- [x] 2.5 Smoke test na URL bez seauid2 (EBI raport roczny) — zwraca tekst z PDF lub fallback — cf99243
+- [x] 2.6 Log `"Parser: seauid2|pdf|html|none for <url>"` widoczny w stdout — cf99243
 
 ### Phase 3: main.py integration + unit tests
 
 #### Automated
 
-- [ ] 3.1 `uv run pytest tests/ -v` — wszystkie 15 testów (6 S-01 + 9 S-02) przechodzi
-- [ ] 3.2 `uv run pytest tests/ --tb=short -q` — 0 failures, 0 errors
-- [ ] 3.3 `python -m py_compile src/parser.py main.py` — brak błędów składni
+- [x] 3.1 `uv run pytest tests/ -v` — wszystkie 15 testów (6 S-01 + 9 S-02) przechodzi
+- [x] 3.2 `uv run pytest tests/ --tb=short -q` — 0 failures, 0 errors
+- [x] 3.3 `python -m py_compile src/parser.py main.py` — brak błędów składni
 
 #### Manual
 
-- [ ] 3.4 `python main.py` kończy bez wyjątku; log `"Pipeline completed: N announcements scraped and parsed"`
-- [ ] 3.5 BQ Console: wiersze z `parsed_content` ≠ NULL i `ticker` uzupełnionym
-- [ ] 3.6 Drugi run w ciągu minuty → `"0 new announcements"` (dedup działa)
-- [ ] 3.7 Cloud Logging: structured JSON logi widoczne
+- [x] 3.4 `python main.py` kończy bez wyjątku; log `"Pipeline completed: N announcements scraped and parsed"`
+- [x] 3.5 BQ Console: wiersze z `parsed_content` ≠ NULL i `ticker` uzupełnionym
+- [x] 3.6 Drugi run w ciągu minuty → `"0 new announcements"` (dedup działa)
+- [x] 3.7 Cloud Logging: structured JSON logi widoczne
