@@ -1,9 +1,10 @@
 ---
 id: scraper-dedup
 title: "S-01: Scraper Bankier.pl + dedup check BigQuery"
-status: impl_reviewed
+status: archived
 created: 2026-06-05
 updated: 2026-06-05
+archived_at: 2026-06-05T14:04:34Z
 
 roadmap_id: S-01
 tracking:
