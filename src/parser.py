@@ -13,6 +13,8 @@ from src.exceptions import ScraperError
 from src.http_client import download_binary, get
 from src.scraper import Announcement
 
+# Parse failures are non-fatal: all errors return None fields rather than raising ParserError.
+# ParserError (src.exceptions) is reserved for future callers that need to distinguish failure modes.
 logger = logging.getLogger(__name__)
 
 _MAX_PDFS = int(os.environ.get("PARSER_MAX_PDFS", "3"))
@@ -159,7 +161,14 @@ def _extract_html_fallback(soup: BeautifulSoup) -> str | None:
     for br in section.find_all("br"):
         br.replace_with("§BR§")
     segments = [s.strip() for s in section.get_text().split("§BR§") if s.strip()]
-    text = segments[1] if len(segments) >= 2 else None
+    # segments[0] is the Bankier AI summary preamble; segments[1] is the announcement body.
+    # Fall back to segments[0] if there is no preamble (layout change or bare content).
+    if len(segments) >= 2:
+        text = segments[1]
+    elif segments:
+        text = segments[0]
+    else:
+        text = None
     return text if text and len(text) >= 50 else None
 
 

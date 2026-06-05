@@ -11,6 +11,7 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 from db.bigquery import (
+    BigQueryError,
     create_table_if_not_exists,
     ensure_schema_current,
     insert_announcement,
@@ -30,9 +31,14 @@ def main():
             logger.info("Pipeline completed: 0 new announcements")
             return
         for ann in new:
-            ann_id = insert_announcement(ann.bankier_url, ann.published_at, ann.title, None, None)
-            parsed = parse_announcement(ann, ann_id)
-            update_parsed_content(ann_id, parsed.parsed_content, parsed.ticker, parsed.company)
+            try:
+                ann_id = insert_announcement(ann.bankier_url, ann.published_at, ann.title, None, None)
+                parsed = parse_announcement(ann, ann_id)
+                update_parsed_content(ann_id, parsed.parsed_content, parsed.ticker, parsed.company)
+            except BigQueryError:
+                raise  # propagate to outer except → send_alert
+            except Exception:
+                logger.exception("Unexpected error processing %s — skipping", ann.bankier_url)
         logger.info("Pipeline completed: %d announcements scraped and parsed", len(new))
     except Exception as exc:
         logger.exception("Pipeline failed")

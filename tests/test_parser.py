@@ -66,6 +66,12 @@ _HTML_BLOCKED_PDF = """\
 <a href="/docs/report.pdf">Report</a>
 </body></html>"""
 
+_HTML_SEAUID2_WITH_PDF = f"""\
+<!DOCTYPE html><html><body>
+<table class="seauid2"><tr><td>{_SEAUID2_TEXT}</td></tr></table>
+<a href="/docs/attachment.pdf">Załącznik</a>
+</body></html>"""
+
 
 def _mock_resp(html: str) -> MagicMock:
     m = MagicMock()
@@ -150,6 +156,7 @@ def test_pdf_char_cap():
 
 
 def test_max_pdfs_limit():
+    # _find_pdf_links caps at _MAX_PDFS links before download; download_binary is called once per collected link.
     with (
         patch("src.parser.get", return_value=_mock_resp(_HTML_FIVE_PDFS)),
         patch("src.parser.download_binary", return_value=b"%PDF fake") as mock_dl,
@@ -162,6 +169,7 @@ def test_max_pdfs_limit():
 
 
 def test_ticker_company_extracted():
+    # side_effect order: [announcement page, profile page]
     with patch("src.parser.get", side_effect=[
         _mock_resp(_HTML_WITH_PROFILE),
         _mock_resp(_HTML_PROFILE_PAGE),
@@ -178,6 +186,22 @@ def test_ticker_missing_gracefully():
 
     assert result.ticker is None
     assert result.company is None
+
+
+def test_seauid2_pdf_combination():
+    """Combination branch: seauid2 present AND pdf link found — both merged."""
+    pdf_text = "PDF attachment data " * 10
+    with (
+        patch("src.parser.get", return_value=_mock_resp(_HTML_SEAUID2_WITH_PDF)),
+        patch("src.parser.download_binary", return_value=b"%PDF fake") as mock_dl,
+        patch("src.parser.pypdf.PdfReader", return_value=_make_pdf_mock(pdf_text)),
+    ):
+        result = parse_announcement(_ANN, _ANN_ID)
+
+    assert result.parsed_content is not None
+    mock_dl.assert_called_once()
+    assert _SEAUID2_TEXT[:50] in result.parsed_content
+    assert "PDF attachment data" in result.parsed_content
 
 
 def test_blocked_pdf_filtered():

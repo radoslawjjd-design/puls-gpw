@@ -1,7 +1,7 @@
 ---
 id: content-parser
 title: "S-02: Content Parser (PDF + HTML)"
-status: implemented
+status: impl_reviewed
 created: 2026-06-06
 updated: 2026-06-06
 roadmap_id: S-02
