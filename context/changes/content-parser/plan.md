@@ -481,27 +481,27 @@ kolumnę `parsed_content STRING NULLABLE`. Istniejące wiersze (4 testowe z S-01
 
 #### Automated
 
-- [x] 1.1 `python -c "from db.bigquery import ensure_schema_current, update_parsed_content"` — brak ImportError
-- [x] 1.2 `parsed_content` obecny w `_SCHEMA` — assertion passes
+- [x] 1.1 `python -c "from db.bigquery import ensure_schema_current, update_parsed_content"` — brak ImportError — 7ca0110
+- [x] 1.2 `parsed_content` obecny w `_SCHEMA` — assertion passes — 7ca0110
 
 #### Manual
 
-- [x] 1.3 `ensure_schema_current()` dodaje kolumnę do istniejącej tabeli BQ — log potwierdzający
-- [x] 1.4 BQ Console: kolumna `parsed_content STRING NULLABLE` widoczna
+- [x] 1.3 `ensure_schema_current()` dodaje kolumnę do istniejącej tabeli BQ — log potwierdzający — 7ca0110
+- [x] 1.4 BQ Console: kolumna `parsed_content STRING NULLABLE` widoczna — 7ca0110
 
 ### Phase 2: HTTP client + parser module
 
 #### Automated
 
-- [ ] 2.1 `python -c "from src.http_client import download_binary"` — brak ImportError
-- [ ] 2.2 `python -c "from src.parser import parse_announcement, ParsedContent"` — brak ImportError
-- [ ] 2.3 `uv sync` kończy bez błędów (pypdf zainstalowany)
+- [x] 2.1 `python -c "from src.http_client import download_binary"` — brak ImportError
+- [x] 2.2 `python -c "from src.parser import parse_announcement, ParsedContent"` — brak ImportError
+- [x] 2.3 `uv sync` kończy bez błędów (pypdf zainstalowany)
 
 #### Manual
 
-- [ ] 2.4 Smoke test `parse_announcement()` na URL z seauid2 — zwraca tekst
-- [ ] 2.5 Smoke test na URL bez seauid2 (EBI raport roczny) — zwraca tekst z PDF lub fallback
-- [ ] 2.6 Log `"Parser: seauid2|pdf|html|none for <url>"` widoczny w stdout
+- [x] 2.4 Smoke test `parse_announcement()` na URL z seauid2 — zwraca tekst
+- [x] 2.5 Smoke test na URL bez seauid2 (EBI raport roczny) — zwraca tekst z PDF lub fallback
+- [x] 2.6 Log `"Parser: seauid2|pdf|html|none for <url>"` widoczny w stdout
 
 ### Phase 3: main.py integration + unit tests
 

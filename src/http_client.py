@@ -54,3 +54,30 @@ def get(url: str) -> httpx.Response:
         if attempt < _MAX_RETRIES:
             time.sleep(_REQUEST_DELAY * attempt)
     raise ScraperError(f"All {_MAX_RETRIES} attempts failed for {url}")
+
+
+def download_binary(url: str) -> bytes | None:
+    """Download binary content (e.g. PDF) with retry.
+
+    Returns None (with WARNING log) instead of raising on exhausted retries —
+    a missing attachment should not abort the whole parsing run.
+    """
+    client = _get_http_client()
+    for attempt in range(1, _MAX_RETRIES + 1):
+        if attempt > 1:
+            time.sleep(_REQUEST_DELAY)
+        try:
+            resp = client.get(url)
+            resp.raise_for_status()
+            return resp.content
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "download_binary %s attempt %d/%d — HTTP %d",
+                url, attempt, _MAX_RETRIES, exc.response.status_code,
+            )
+        except httpx.RequestError as exc:
+            logger.warning("download_binary %s attempt %d/%d — %s", url, attempt, _MAX_RETRIES, exc)
+        if attempt < _MAX_RETRIES:
+            time.sleep(_REQUEST_DELAY * attempt)
+    logger.warning("download_binary: all %d attempts failed for %s", _MAX_RETRIES, url)
+    return None
