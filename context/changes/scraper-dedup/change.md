@@ -1,7 +1,7 @@
 ---
 id: scraper-dedup
 title: "S-01: Scraper Bankier.pl + dedup check BigQuery"
-status: implementing
+status: implemented
 created: 2026-06-05
 updated: 2026-06-05
 

@@ -353,11 +353,11 @@ Brak migracji schematu BQ — `ticker` i `company` są już NULLABLE w F-02. Wie
 
 #### Automated
 
-- [x] 3.1 `uv run pytest tests/ -v` — wszystkie 6 testów przechodzi
-- [x] 3.2 `python -m py_compile src/scraper.py src/http_client.py main.py` — brak błędów
+- [x] 3.1 `uv run pytest tests/ -v` — wszystkie 6 testów przechodzi — 3abae05
+- [x] 3.2 `python -m py_compile src/scraper.py src/http_client.py main.py` — brak błędów — 3abae05
 
 #### Manual
 
-- [x] 3.3 `python main.py` kończy bez wyjątku; log `"Pipeline completed: N new announcements inserted"`
-- [x] 3.4 Drugi run w ciągu minuty → log `"0 new announcements"` (dedup działa)
-- [x] 3.5 BQ Console: wiersze z `ticker=NULL`, `company=NULL`, `published_at` w ostatnich 15 min
+- [x] 3.3 `python main.py` kończy bez wyjątku; log `"Pipeline completed: N new announcements inserted"` — 3abae05
+- [x] 3.4 Drugi run w ciągu minuty → log `"0 new announcements"` (dedup działa) — 3abae05
+- [x] 3.5 BQ Console: wiersze z `ticker=NULL`, `company=NULL`, `published_at` w ostatnich 15 min — 3abae05
