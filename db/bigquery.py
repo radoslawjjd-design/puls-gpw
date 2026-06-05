@@ -25,6 +25,7 @@ _SCHEMA = [
     bigquery.SchemaField("processed_at", "TIMESTAMP", mode="NULLABLE"),
     bigquery.SchemaField("supervisor_attempts", "INTEGER", mode="NULLABLE"),
     bigquery.SchemaField("analysis_type", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("parsed_content", "STRING", mode="NULLABLE"),
 ]
 
 _client: bigquery.Client | None = None
@@ -78,6 +79,32 @@ def create_table_if_not_exists() -> None:
         table = bigquery.Table(table_id, schema=_SCHEMA)
         client.create_table(table)
         logger.info("BQ table created: %s", table_id)
+
+
+def ensure_schema_current() -> None:
+    """Add any missing columns from _SCHEMA to the existing BQ table.
+
+    Safe to call on every startup — no-op if schema is already current.
+    Raises BigQueryError if the schema update fails.
+    """
+    client = _get_client()
+    table_id = _table_ref(client)
+    try:
+        table = client.get_table(table_id)
+    except NotFound:
+        logger.info("BQ table not found — run create_table_if_not_exists() first")
+        return
+    existing_names = {f.name for f in table.schema}
+    missing = [f for f in _SCHEMA if f.name not in existing_names]
+    if not missing:
+        logger.info("BQ schema already current")
+        return
+    table.schema = table.schema + missing
+    try:
+        client.update_table(table, ["schema"])
+        logger.info("BQ schema updated: added columns %s", [f.name for f in missing])
+    except Exception as exc:
+        raise BigQueryError(f"ensure_schema_current failed: {exc}") from exc
 
 
 def is_processed(url: str) -> bool:
@@ -166,6 +193,45 @@ def save_analysis(
         raise BigQueryError(f"save_analysis failed: {job.errors}")
     if job.num_dml_affected_rows == 0:
         raise BigQueryError(f"save_analysis: no row matched announcement_id={announcement_id!r}")
+
+
+def update_parsed_content(
+    announcement_id: str,
+    parsed_content: str | None,
+    ticker: str | None,
+    company: str | None,
+) -> None:
+    """Update parsed_content, ticker, company for an existing announcement row.
+
+    parsed_content=None is valid (parse failed gracefully).
+    Raises BigQueryError if the UPDATE fails or matches 0 rows.
+    """
+    client = _get_client()
+    query = f"""
+        UPDATE `{_table_ref(client)}`
+        SET
+            parsed_content = @parsed_content,
+            ticker = @ticker,
+            company = @company
+        WHERE announcement_id = @id
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("parsed_content", "STRING", parsed_content),
+            bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
+            bigquery.ScalarQueryParameter("company", "STRING", company),
+            bigquery.ScalarQueryParameter("id", "STRING", announcement_id),
+        ]
+    )
+    job = client.query(query, job_config=job_config)
+    job.result()
+    if job.errors:
+        raise BigQueryError(f"update_parsed_content failed: {job.errors}")
+    if job.num_dml_affected_rows == 0:
+        raise BigQueryError(
+            f"update_parsed_content: no row matched announcement_id={announcement_id!r}"
+        )
+    logger.debug("Updated parsed_content for announcement_id=%s", announcement_id)
 
 
 def get_processed_ids_since(cutoff: datetime) -> set[str]:
