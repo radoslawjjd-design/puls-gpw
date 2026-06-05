@@ -507,13 +507,13 @@ kolumnę `parsed_content STRING NULLABLE`. Istniejące wiersze (4 testowe z S-01
 
 #### Automated
 
-- [x] 3.1 `uv run pytest tests/ -v` — wszystkie 15 testów (6 S-01 + 9 S-02) przechodzi
-- [x] 3.2 `uv run pytest tests/ --tb=short -q` — 0 failures, 0 errors
-- [x] 3.3 `python -m py_compile src/parser.py main.py` — brak błędów składni
+- [x] 3.1 `uv run pytest tests/ -v` — wszystkie 15 testów (6 S-01 + 9 S-02) przechodzi — 717e225
+- [x] 3.2 `uv run pytest tests/ --tb=short -q` — 0 failures, 0 errors — 717e225
+- [x] 3.3 `python -m py_compile src/parser.py main.py` — brak błędów składni — 717e225
 
 #### Manual
 
-- [x] 3.4 `python main.py` kończy bez wyjątku; log `"Pipeline completed: N announcements scraped and parsed"`
-- [x] 3.5 BQ Console: wiersze z `parsed_content` ≠ NULL i `ticker` uzupełnionym
-- [x] 3.6 Drugi run w ciągu minuty → `"0 new announcements"` (dedup działa)
-- [x] 3.7 Cloud Logging: structured JSON logi widoczne
+- [x] 3.4 `python main.py` kończy bez wyjątku; log `"Pipeline completed: N announcements scraped and parsed"` — 717e225
+- [x] 3.5 BQ Console: wiersze z `parsed_content` ≠ NULL i `ticker` uzupełnionym — 717e225
+- [x] 3.6 Drugi run w ciągu minuty → `"0 new announcements"` (dedup działa) — 717e225
+- [x] 3.7 Cloud Logging: structured JSON logi widoczne — 717e225
