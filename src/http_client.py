@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 _REQUEST_DELAY = float(os.environ.get("REQUEST_DELAY", "0.5"))
 _MAX_RETRIES = int(os.environ.get("HTTP_MAX_RETRIES", "3"))
-_TIMEOUT = 30
+_TIMEOUT = int(os.environ.get("HTTP_TIMEOUT", "30"))
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; puls-gpw/1.0)"}
 
 _http_client: httpx.Client | None = None
@@ -38,7 +38,8 @@ def get(url: str) -> httpx.Response:
     """
     client = _get_http_client()
     for attempt in range(1, _MAX_RETRIES + 1):
-        time.sleep(_REQUEST_DELAY)
+        if attempt > 1:
+            time.sleep(_REQUEST_DELAY)
         try:
             resp = client.get(url)
             resp.raise_for_status()

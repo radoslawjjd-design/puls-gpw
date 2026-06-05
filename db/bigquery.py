@@ -1,10 +1,15 @@
 """BigQuery client, schema definition, and CRUD wrappers for the announcements table."""
 import hashlib
+import logging
 import os
 import threading
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
+
+from src.exceptions import BigQueryError
 
 _DATASET = os.environ.get("BIGQUERY_DATASET", "espi_ebi")
 _TABLE_NAME = "announcements"
@@ -40,6 +45,11 @@ def _get_client() -> bigquery.Client:
                 # Guard: with_quota_project is not on all credential types (e.g. WIF).
                 if hasattr(credentials, "with_quota_project"):
                     credentials = credentials.with_quota_project(project)
+                else:
+                    logger.warning(
+                        "Credentials lack with_quota_project; quota project not overridden"
+                        " — may cause 403 on WIF deployments"
+                    )
                 _client = bigquery.Client(project=project, credentials=credentials)
     return _client
 
@@ -63,9 +73,11 @@ def create_table_if_not_exists() -> None:
     table_id = _table_ref(client)
     try:
         client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
     except NotFound:
         table = bigquery.Table(table_id, schema=_SCHEMA)
         client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
 
 
 def is_processed(url: str) -> bool:
@@ -116,7 +128,8 @@ def insert_announcement(
     job = client.query(query, job_config=job_config)
     result = job.result()
     if job.errors:
-        raise RuntimeError(f"insert_announcement failed: {job.errors}")
+        raise BigQueryError(f"insert_announcement failed: {job.errors}")
+    logger.debug("Inserted announcement_id=%s", ann_id)
     return ann_id
 
 
@@ -150,9 +163,9 @@ def save_analysis(
     job = client.query(query, job_config=job_config)
     job.result()
     if job.errors:
-        raise RuntimeError(f"save_analysis failed: {job.errors}")
+        raise BigQueryError(f"save_analysis failed: {job.errors}")
     if job.num_dml_affected_rows == 0:
-        raise RuntimeError(f"save_analysis: no row matched announcement_id={announcement_id!r}")
+        raise BigQueryError(f"save_analysis: no row matched announcement_id={announcement_id!r}")
 
 
 def get_processed_ids_since(cutoff: datetime) -> set[str]:

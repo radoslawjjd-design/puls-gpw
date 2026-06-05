@@ -9,6 +9,10 @@ class PipelineStageError(Exception):
     """Base class for all pipeline stage failures. Catch-all for pipeline errors."""
 
 
+class BigQueryError(PipelineStageError):
+    """Raised when a BigQuery operation (query, insert, update) fails."""
+
+
 class ScraperError(PipelineStageError):
     """Raised when the scraper fails to fetch or parse announcements from Bankier.pl."""
 

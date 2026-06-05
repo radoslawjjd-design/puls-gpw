@@ -23,7 +23,7 @@ def main():
             logger.info("Pipeline completed: 0 new announcements")
             return
         for ann in new:
-            insert_announcement(ann.bankier_url, ann.published_at, ann.title, None, None)
+            insert_announcement(ann.bankier_url, ann.published_at, ann.title, None, None)  # company/ticker: scope S-02
         logger.info("Pipeline completed: %d new announcements inserted", len(new))
     except Exception as exc:
         logger.exception("Pipeline failed")

@@ -71,7 +71,7 @@ def scrape_new_announcements() -> list[Announcement]:
             except ValueError:
                 continue
 
-            item_dt = naive_dt.replace(tzinfo=_WARSAW)
+            item_dt = naive_dt.replace(tzinfo=_WARSAW)  # replace() safe outside DST fold; ambiguity accepted for 15-min window
 
             if page_min_dt is None or item_dt < page_min_dt:
                 page_min_dt = item_dt
@@ -111,7 +111,10 @@ def scrape_new_announcements() -> list[Announcement]:
             )
             known_ids.add(ann_id)
 
-        if page_min_dt is None or page_min_dt < cutoff:
+        if page_min_dt is None:
+            logger.warning("Bankier page %d: no parseable dates — stopping pagination", page)
+            break
+        if page_min_dt < cutoff:
             break
 
     logger.info(
