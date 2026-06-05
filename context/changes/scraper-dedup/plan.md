@@ -341,23 +341,23 @@ Brak migracji schematu BQ — `ticker` i `company` są już NULLABLE w F-02. Wie
 
 #### Automated
 
-- [x] 2.1 `python -c "from src.http_client import get"` — brak ImportError
-- [x] 2.2 `python -c "from src.scraper import scrape_new_announcements, Announcement"` — brak ImportError
+- [x] 2.1 `python -c "from src.http_client import get"` — brak ImportError — d70a52c
+- [x] 2.2 `python -c "from src.scraper import scrape_new_announcements, Announcement"` — brak ImportError — d70a52c
 
 #### Manual
 
-- [x] 2.3 Smoke test: `scrape_new_announcements()` działa bez wyjątku z prawdziwym Bankier.pl
-- [x] 2.4 Structured log `"Scraper: N new / M seen / P pages"` widoczny w terminalu
+- [x] 2.3 Smoke test: `scrape_new_announcements()` działa bez wyjątku z prawdziwym Bankier.pl — d70a52c
+- [x] 2.4 Structured log `"Scraper: N new / M seen / P pages"` widoczny w terminalu — d70a52c
 
 ### Phase 3: main.py integration + unit tests
 
 #### Automated
 
-- [ ] 3.1 `uv run pytest tests/ -v` — wszystkie 6 testów przechodzi
-- [ ] 3.2 `python -m py_compile src/scraper.py src/http_client.py main.py` — brak błędów
+- [x] 3.1 `uv run pytest tests/ -v` — wszystkie 6 testów przechodzi
+- [x] 3.2 `python -m py_compile src/scraper.py src/http_client.py main.py` — brak błędów
 
 #### Manual
 
-- [ ] 3.3 `python main.py` kończy bez wyjątku; log `"Pipeline completed: N new announcements inserted"`
-- [ ] 3.4 Drugi run w ciągu minuty → log `"0 new announcements"` (dedup działa)
-- [ ] 3.5 BQ Console: wiersze z `ticker=NULL`, `company=NULL`, `published_at` w ostatnich 15 min
+- [x] 3.3 `python main.py` kończy bez wyjątku; log `"Pipeline completed: N new announcements inserted"`
+- [x] 3.4 Drugi run w ciągu minuty → log `"0 new announcements"` (dedup działa)
+- [x] 3.5 BQ Console: wiersze z `ticker=NULL`, `company=NULL`, `published_at` w ostatnich 15 min
