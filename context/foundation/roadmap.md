@@ -3,7 +3,7 @@ project: ESPI/EBI Analyzer
 version: 1
 status: draft
 created: 2026-05-25
-updated: 2026-06-05
+updated: 2026-06-06
 prd_version: 1
 main_goal: quality
 top_blocker: decisions
@@ -33,7 +33,7 @@ Komunikaty ESPI/EBI spółek notowanych na GPW i NewConnect są publikowane dzie
 | F-02 | bigquery-schema         | (foundation) tabela `announcements` w BQ, klient Python skonfigurowany        | —             | FR-002, FR-007                         | done     |
 | F-03 | observability-baseline  | (foundation) structured logging i email alert na błąd pipeline'u              | —             | NFR (failure alerting), FR-008         | done     |
 | S-01 | scraper-dedup           | pobrać listę nowych (nie-duplikat) komunikatów ESPI/EBI z Bankier.pl          | F-01, F-02    | FR-001, FR-002, FR-003, US-01          | done     |
-| S-02 | content-parser          | wyciągnąć treść tekstową z komunikatu (PDF lub HTML fallback)                 | F-01, S-01    | FR-004, FR-005, US-01                  | proposed |
+| S-02 | content-parser          | wyciągnąć treść tekstową z komunikatu (PDF lub HTML fallback)                 | F-01, S-01    | FR-004, FR-005, US-01                  | done     |
 | S-03 | ai-analysis-supervisor  | wygenerować zatwierdzony przez supervisora X-style post                       | F-02, S-02    | FR-006, FR-007, FR-008, FR-009, US-01  | proposed |
 | S-04 | email-orchestration     | automatycznie otrzymać X-style email z analizą nowego komunikatu ESPI/EBI     | F-03, S-03    | FR-010, FR-011, US-01                  | proposed |
 
@@ -125,7 +125,7 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** jeśli F-01 wykaże że PDFy są skanami — potrzebna biblioteka OCR (np. pytesseract lub zewnętrzny serwis); czas implementacji może wzrosnąć; właściciel ma referencyjne implementacje parserów
-- **Status:** proposed
+- **Status:** done
 
 ### S-03: Analiza AI i supervisor gate
 
@@ -191,3 +191,4 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 - **F-02: (foundation) tabela `announcements` w BQ, klient Python skonfigurowany** — Archived 2026-06-04 → `context/archive/2026-06-02-bigquery-schema/`. Lesson: GCP client init — load_dotenv + ADC quota project.
 - **F-03: (foundation) structured logging i email alert na błąd pipeline'u** — Archived 2026-06-04 → `context/archive/2026-06-04-observability-baseline/`. Lesson: —.
 - **S-01: pipeline może pobrać listę nowych (nie-duplikat) komunikatów ESPI/EBI z Bankier.pl** — Archived 2026-06-05 → `context/archive/2026-06-05-scraper-dedup/`. Lesson: —.
+- **S-02: pipeline może wyciągnąć treść tekstową z komunikatu ESPI/EBI — z załączonego PDF-u (primary) lub z treści HTML strony komunikatu (fallback gdy brak PDF)** — Archived 2026-06-06 → `context/archive/2026-06-06-content-parser/`. Lesson: —.

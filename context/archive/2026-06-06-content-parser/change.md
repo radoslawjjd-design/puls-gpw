@@ -1,9 +1,10 @@
 ---
 id: content-parser
 title: "S-02: Content Parser (PDF + HTML)"
-status: impl_reviewed
+status: archived
 created: 2026-06-06
 updated: 2026-06-06
+archived_at: 2026-06-05T23:44:42Z
 roadmap_id: S-02
 tracking:
   linear: PUL-9
