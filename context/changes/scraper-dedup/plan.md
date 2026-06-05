@@ -137,6 +137,8 @@ Stałe konfiguracyjne jako module-level constants z `os.environ.get` defaults:
 - `_TIMEOUT = 30`
 - `_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; puls-gpw/1.0)"}`
 
+HTTP client: module-level singleton `httpx.Client` (analogiczny do wzorca `_get_client()` z `db/bigquery.py` i `_get_session()` z `oldProjectData/base.py`) — reuse TCP/TLS połączeń między requestami. Użyj `_get_http_client()` z double-checked locking, zwracającego `httpx.Client(headers=_HEADERS, timeout=_TIMEOUT, follow_redirects=True)`.
+
 Backoff: `time.sleep(_REQUEST_DELAY * attempt)` między próbami (attempt 1→0.5s, 2→1.0s).
 
 #### 2. `src/scraper.py` — `Announcement` dataclass + `scrape_new_announcements()`
@@ -173,11 +175,11 @@ Env vars używane przez scraper:
 for page in 1..MAX_PAGES:
     items = fetch_and_parse(page)
     if not items: break
-    page_min_dt = min(item.dt for item in items if item.dt parseable)
+    page_min_dt = min(item.dt for item in items if item.dt parseable) or None
     for item in items:
         if item.dt >= cutoff and item.ann_id not in known_ids:
             add to result; known_ids.add(ann_id)
-    if page_min_dt < cutoff: break  # kolejne strony będą jeszcze starsze
+    if page_min_dt is None or page_min_dt < cutoff: break  # None = brak dat = stop
 ```
 
 Diagnostics log na końcu: `logger.info("Scraper: %d new / %d seen / %d pages", new, seen, pages)`.
@@ -240,18 +242,20 @@ Zastąpienie stub w `main.py` pełnym pipeline S-01 (scrape → insert). Dodanie
 
 **File**: `tests/test_scraper.py` (nowy)
 
-**Intent**: Pokryć 6 przypadków testowych używając `respx` do mockowania httpx i `unittest.mock.patch` do mockowania `get_processed_ids_since`.
+**Intent**: Pokryć 6 przypadków testowych używając `respx` do mockowania httpx i `unittest.mock.patch` do mockowania `get_processed_ids_since` i `datetime`.
+
+**Datetime mocking**: `src/scraper.py` musi importować datetime jako moduł (`import datetime`, nie `from datetime import datetime`) — dzięki temu `unittest.mock.patch("src.scraper.datetime")` chwyta wywołania `datetime.now()` wewnątrz modułu. Każdy test operujący na datach ustawia `mock_dt.now.return_value = fixed_now` gdzie `fixed_now` to timezone-aware datetime Europe/Warsaw.
 
 **Test cases**:
 
-| Test | Co weryfikuje |
-|---|---|
-| `test_parse_item_fields` | Poprawny parse tytułu, espi_code, URL, datetime, source z fixture HTML |
-| `test_dedup_filter` | Item z known_ids jest pominięty; nowy item trafia do wyniku |
-| `test_stop_condition_on_page` | Gdy min_dt strony < cutoff → brak requestu page 2 |
-| `test_pagination_continues` | Gdy wszystkie itemy w oknie → request page 2 wysłany |
-| `test_max_pages_safeguard` | Przy MAX_PAGES_BANKIER=2 i 3 dostępnych stronach → max 2 requesty |
-| `test_empty_page_stops` | Strona bez `.m-quotes-announcements-item` → pętla kończy, brak wyjątku |
+| Test | Co weryfikuje | Datetime mock |
+|---|---|---|
+| `test_parse_item_fields` | Poprawny parse tytułu, espi_code, URL, datetime, source z fixture HTML | tak — fixed_now |
+| `test_dedup_filter` | Item z known_ids jest pominięty; nowy item trafia do wyniku | tak — fixed_now |
+| `test_stop_condition_on_page` | Gdy min_dt strony < cutoff → brak requestu page 2 | tak — fixed_now |
+| `test_pagination_continues` | Gdy wszystkie itemy w oknie → request page 2 wysłany | tak — fixed_now |
+| `test_max_pages_safeguard` | Przy MAX_PAGES_BANKIER=2 i 3 dostępnych stronach → max 2 requesty | tak — fixed_now |
+| `test_empty_page_stops` | Strona bez `.m-quotes-announcements-item` → pętla kończy, brak wyjątku | tak — fixed_now |
 
 ### Success Criteria
 
@@ -325,25 +329,25 @@ Brak migracji schematu BQ — `ticker` i `company` są już NULLABLE w F-02. Wie
 
 #### Automated
 
-- [x] 1.1 `uv sync` kończy bez błędów po dodaniu pytest + respx
-- [x] 1.2 `python -c "from db.bigquery import announcement_id_for_url, get_processed_ids_since"` — brak ImportError
-- [x] 1.3 Istniejące wywołania `_announcement_id` w module nadal działają
+- [x] 1.1 `uv sync` kończy bez błędów po dodaniu pytest + respx — c69ed01
+- [x] 1.2 `python -c "from db.bigquery import announcement_id_for_url, get_processed_ids_since"` — brak ImportError — c69ed01
+- [x] 1.3 Istniejące wywołania `_announcement_id` w module nadal działają — c69ed01
 
 #### Manual
 
-- [x] 1.4 `announcement_id_for_url(url)` zwraca ten sam hash co stare `_announcement_id(url)`
+- [x] 1.4 `announcement_id_for_url(url)` zwraca ten sam hash co stare `_announcement_id(url)` — c69ed01
 
 ### Phase 2: HTTP client + scraper module
 
 #### Automated
 
-- [ ] 2.1 `python -c "from src.http_client import get"` — brak ImportError
-- [ ] 2.2 `python -c "from src.scraper import scrape_new_announcements, Announcement"` — brak ImportError
+- [x] 2.1 `python -c "from src.http_client import get"` — brak ImportError
+- [x] 2.2 `python -c "from src.scraper import scrape_new_announcements, Announcement"` — brak ImportError
 
 #### Manual
 
-- [ ] 2.3 Smoke test: `scrape_new_announcements()` działa bez wyjątku z prawdziwym Bankier.pl
-- [ ] 2.4 Structured log `"Scraper: N new / M seen / P pages"` widoczny w terminalu
+- [x] 2.3 Smoke test: `scrape_new_announcements()` działa bez wyjątku z prawdziwym Bankier.pl
+- [x] 2.4 Structured log `"Scraper: N new / M seen / P pages"` widoczny w terminalu
 
 ### Phase 3: main.py integration + unit tests
 
