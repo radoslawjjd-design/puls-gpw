@@ -19,5 +19,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pip-audit>=2.10.0",
+    "pytest>=8.0",
+    "respx>=0.21",
 ]
 

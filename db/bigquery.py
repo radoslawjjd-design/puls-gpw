@@ -48,8 +48,13 @@ def _table_ref(client: bigquery.Client) -> str:
     return f"{client.project}.{_DATASET}.{_TABLE_NAME}"
 
 
-def _announcement_id(url: str) -> str:
+def announcement_id_for_url(url: str) -> str:
+    """SHA256 hex digest of the announcement URL — stable dedup key."""
     return hashlib.sha256(url.encode()).hexdigest()
+
+
+def _announcement_id(url: str) -> str:
+    return announcement_id_for_url(url)
 
 
 def create_table_if_not_exists() -> None:
@@ -148,3 +153,18 @@ def save_analysis(
         raise RuntimeError(f"save_analysis failed: {job.errors}")
     if job.num_dml_affected_rows == 0:
         raise RuntimeError(f"save_analysis: no row matched announcement_id={announcement_id!r}")
+
+
+def get_processed_ids_since(cutoff: datetime) -> set[str]:
+    """Return set of announcement_ids where published_at >= cutoff.
+
+    Caller should pass cutoff = now - 2× scrape_window for a safety margin.
+    Raises RuntimeError if the BQ query fails.
+    """
+    client = _get_client()
+    query = f"SELECT announcement_id FROM `{_table_ref(client)}` WHERE published_at >= @cutoff"
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("cutoff", "TIMESTAMP", cutoff)]
+    )
+    rows = list(client.query(query, job_config=job_config).result())
+    return {row.announcement_id for row in rows}
