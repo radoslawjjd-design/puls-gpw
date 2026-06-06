@@ -34,7 +34,7 @@ Po wdrożeniu S-03, po każdym 15-minutowym loopie:
 ```
 SELECT announcement_id, analysis_approved, analysis_score, event_type
 FROM `<project>.espi_ebi.announcements`
-WHERE DATE(processed_at) = CURRENT_DATE()
+WHERE analysis_score IS NOT NULL
 ORDER BY analysis_score DESC
 LIMIT 10
 ```
@@ -546,12 +546,12 @@ automatycznie. Nie wymaga ręcznej ingerencji w BQ.
 
 #### Automated
 
-- [x] 2.1 `uv run python -c "import main"` — brak błędów importu
+- [x] 2.1 `uv run python -c "import main"` — brak błędów importu — 58a2afa
 
 #### Manual
 
-- [ ] 2.2 Pełny `uv run python main.py` → logi Analyzer dla każdego ogłoszenia
-- [ ] 2.3 BQ: nowe ogłoszenia mają `analysis_score` i `event_type` wypełnione
+- [x] 2.2 Pełny `uv run python main.py` → logi Analyzer dla każdego ogłoszenia — 58a2afa
+- [x] 2.3 BQ: nowe ogłoszenia mają `analysis_score` i `event_type` wypełnione — 58a2afa
 
 ### Phase 3: Unit tests
 
