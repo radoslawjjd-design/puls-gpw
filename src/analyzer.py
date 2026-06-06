@@ -3,11 +3,11 @@ import json
 import logging
 
 import json5
-import os
-import threading
 from dataclasses import dataclass
 
 import google.genai as genai
+
+from src.gemini_client import get_client as _get_client, GEMINI_MODEL as _GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -74,26 +74,6 @@ Zwróć JSON:
 lub
 {"approved": false, "reason": "krótkie wyjaśnienie co jest niezgodne"}\
 """
-
-_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
-
-_genai_client: genai.Client | None = None
-_genai_lock = threading.Lock()
-
-
-def _get_client() -> genai.Client:
-    global _genai_client
-    if _genai_client is None:
-        with _genai_lock:
-            if _genai_client is None:
-                _genai_client = genai.Client(
-                    vertexai=True,
-                    project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-                    location=os.environ.get("GOOGLE_CLOUD_REGION", "europe-central2"),
-                )
-                logger.info("Gemini client initialized, model: %s", _GEMINI_MODEL)
-    return _genai_client
-
 
 @dataclass
 class AnalysisResult:
