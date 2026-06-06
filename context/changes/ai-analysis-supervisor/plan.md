@@ -47,9 +47,9 @@ LIMIT 10
   badge priorytetu to osobny element z klasą `-priority`: `.a-quotes-badge.-priority`
 - `db/bigquery.py:198` — wzorzec `update_parsed_content()`: UPDATE z parametryzowanym DML —
   `save_analysis_result()` będzie analogiczne
-- `lessons.md` — `load_dotenv()` musi być pierwszym importem; Gemini client (inny niż BQ)
-  nie używa ADC — inicjalizuje się przez `GEMINI_API_KEY`, więc guard `with_quota_project`
-  nie dotyczy, ale singleton + lock obowiązują
+- `lessons.md` — `load_dotenv()` musi być pierwszym importem; Gemini client używa Vertex AI
+  (`vertexai=True`) — ADC/service account, analogicznie jak BQ; guard `with_quota_project`
+  stosuje się tak samo jak w `bigquery.py`; singleton + lock obowiązują
 
 ## What We're NOT Doing
 
@@ -228,7 +228,7 @@ genai.Client(
     location=os.environ.get("GOOGLE_CLOUD_REGION", "europe-central2"),
 )
 ```
-Model: `os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")`. Używaj `threading.Lock()`.
+Model: `os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")`. Używaj `threading.Lock()`.
 
 #### 6. _call_analysis() — Gemini analiza treści
 
@@ -559,3 +559,7 @@ automatycznie. Nie wymaga ręcznej ingerencji w BQ.
 
 - [ ] 3.1 `uv run pytest tests/test_analyzer.py -v` — 14/14 passed
 - [ ] 3.2 `uv run pytest tests/ -v` — cały suite zielony
+
+#### Manual
+
+- [ ] 3.3 Żaden test nie wykonuje realnego HTTP — brak wywołań sieciowych
