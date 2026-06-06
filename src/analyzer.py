@@ -1,6 +1,8 @@
 """Gemini-powered analysis pipeline for ESPI/EBI announcements."""
 import json
 import logging
+
+import json5
 import os
 import threading
 from dataclasses import dataclass
@@ -114,7 +116,7 @@ def _call_analysis(parsed_content: str) -> dict | None:
                 response_mime_type="application/json",
             ),
         )
-        return json.loads(response.text)
+        return json5.loads(response.text)
     except Exception:
         logger.warning("Gemini analysis call failed", exc_info=True)
         return None
@@ -132,7 +134,7 @@ def _call_gate(parsed_content: str, structured_analysis: str) -> tuple[bool | No
                 response_mime_type="application/json",
             ),
         )
-        data = json.loads(response.text)
+        data = json5.loads(response.text)
         return bool(data["approved"]), data.get("reason")
     except Exception:
         logger.warning("Gemini gate call failed", exc_info=True)

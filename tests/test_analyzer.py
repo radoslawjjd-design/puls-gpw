@@ -156,3 +156,27 @@ def test_compute_score_wyniki_finansowe():
 def test_compute_score_upadlosc():
     # event_score = 95; no tier; no priority
     assert _compute_score("upadlosc", None, None) == 95.0
+
+
+# ── Trailing comma regression (json5) ────────────────────────────────────────
+
+def test_trailing_comma_json_handled():
+    analysis_resp = MagicMock()
+    analysis_resp.text = (
+        '{"company": "PKO Bank Polski", "ticker": "PKO",'
+        ' "event_type": "wyniki_finansowe",'
+        ' "key_numbers": ["120,1 mln PLN",],'
+        ' "sentiment": "positive",'
+        ' "summary_pl": "Dobry wynik Q1 2026.",}'
+    )
+    gate_resp = MagicMock()
+    gate_resp.text = '{"approved": true, "reason": null,}'
+
+    with patch("src.analyzer._get_client") as mock_get:
+        client = MagicMock()
+        client.models.generate_content.side_effect = [analysis_resp, gate_resp]
+        mock_get.return_value = client
+        result = analyze_announcement(_ANN_ID, _PARSED_CONTENT, "PKO", None)
+
+    assert result.structured_analysis is not None
+    assert result.analysis_approved is True

@@ -548,12 +548,12 @@ gcloud scheduler jobs create http puls-gpw-post-wieczor \
 
 #### Automated
 
-- [ ] 0.1 All tests pass including trailing comma regression test
-- [ ] 0.2 json5 import smoke-test exits 0
+- [x] 0.1 All tests pass including trailing comma regression test
+- [x] 0.2 json5 import smoke-test exits 0
 
 #### Manual
 
-- [ ] 0.3 Code review: json.loads gone from _call_analysis and _call_gate
+- [x] 0.3 Code review: json.loads gone from _call_analysis and _call_gate
 
 ### Phase 1: BQ Aggregation Layer
 

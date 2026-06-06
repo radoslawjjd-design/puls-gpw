@@ -16,6 +16,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "python-json-logger>=3.2",
     "tzdata>=2024.1",
+    "json5>=0.9",
 ]
 
 [dependency-groups]
