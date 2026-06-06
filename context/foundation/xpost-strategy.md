@@ -1,6 +1,6 @@
 ---
 created: 2026-06-07
-updated: 2026-06-07
+updated: 2026-06-08
 source: Grok conversation (Radek) + X algorithm research 2026
 applies_to: S-04 xpost-generation
 ---
@@ -89,8 +89,11 @@ Która spółka najbardziej Was interesuje? Komentuj 👇
 - Daj **kontekst wpływu** — czy to dobra czy zła wiadomość, jaki potencjalny wpływ na kurs.
 - **Hashtagi max:** `#GPW #ESPI` (2 wystarczą; więcej = kara).
 - Linki do pełnych raportów → **wyłącznie w pierwszym reply**, nigdy w głównym poście.
-- **Czas publikacji:** 16:30–18:00 po sesji (wieczorne podsumowanie) lub 7:30–9:00 przed sesją (poranne przeglądy).
-- Opcjonalnie seria: codziennie o stałej godzinie „Daily ESPI Finansowe" — buduje nawyk followersów.
+- **Harmonogram publikacji (S-04 Cloud Scheduler):**
+  - **8:30** — nitka poranna (obejmuje ogłoszenia poprzedniego dnia 17:31 → dziś 8:29)
+  - **13:00** — nitka południowa TYLKO jeśli ≥2 zatwierdzone ogłoszenia (8:30 → 12:59); inaczej no-op
+  - **17:30** — nitka wieczorna (13:00 → 17:29) — najwyższy potencjał zasięgu
+- **Max 2 pełne nitki dziennie + 1 opcjonalna (13:00)** — 3 pełne nitki codziennie = ryzyko "author diversity penalty".
 
 ---
 
@@ -98,8 +101,10 @@ Która spółka najbardziej Was interesuje? Komentuj 👇
 
 Spółki do posta wybierać na podstawie `analysis_score` z BQ (pole już dostępne po S-03):
 - Preferuj `analysis_approved = TRUE` + najwyższy score.
+- **Top-N = 4** (stałe) — thread: hook (tweet 1) + 4 tweety per spółka + summary (tweet 6) = 6 tweetów, sweet spot algorytmu (3–7).
+- Minimalne N: jeśli mniej niż 2 zatwierdzone ogłoszenia w oknie → no-op (nie generuj posta).
 - Podawaj `event_type` jako kontekst kategorii ogłoszenia.
-- Ticket i `company` dostępne bezpośrednio z BQ.
+- Ticker i `company` dostępne bezpośrednio z BQ.
 
 ---
 
