@@ -68,7 +68,7 @@ def test_gemini_api_error_analysis(caplog):
 
     assert result.structured_analysis is None
     assert result.analysis_score is None
-    assert "analysis" in caplog.text.lower()
+    assert "analysis call failed" in caplog.text
 
 
 def test_gemini_api_error_gate():

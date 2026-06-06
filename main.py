@@ -48,14 +48,17 @@ def main():
                 parsed = parse_announcement(ann, ann_id)
                 update_parsed_content(ann_id, parsed.parsed_content, parsed.ticker, parsed.company)
                 result = analyze_announcement(ann_id, parsed.parsed_content, parsed.ticker, ann.priority)
-                save_analysis_result(
-                    ann_id,
-                    result.structured_analysis,
-                    result.analysis_approved,
-                    result.analysis_reject_reason,
-                    result.event_type,
-                    result.analysis_score,
-                )
+                try:
+                    save_analysis_result(
+                        ann_id,
+                        result.structured_analysis,
+                        result.analysis_approved,
+                        result.analysis_reject_reason,
+                        result.event_type,
+                        result.analysis_score,
+                    )
+                except BigQueryError:
+                    logger.warning("BQ save_analysis failed for %s — skipping", ann_id)
             except BigQueryError:
                 raise  # propagate to outer except → send_alert
             except Exception:

@@ -73,6 +73,8 @@ lub
 {"approved": false, "reason": "krótkie wyjaśnienie co jest niezgodne"}\
 """
 
+_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+
 _genai_client: genai.Client | None = None
 _genai_lock = threading.Lock()
 
@@ -87,6 +89,7 @@ def _get_client() -> genai.Client:
                     project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
                     location=os.environ.get("GOOGLE_CLOUD_REGION", "europe-central2"),
                 )
+                logger.info("Gemini client initialized, model: %s", _GEMINI_MODEL)
     return _genai_client
 
 
@@ -101,11 +104,10 @@ class AnalysisResult:
 
 
 def _call_analysis(parsed_content: str) -> dict | None:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     try:
         client = _get_client()
         response = client.models.generate_content(
-            model=model,
+            model=_GEMINI_MODEL,
             contents=parsed_content,
             config=genai.types.GenerateContentConfig(
                 system_instruction=_ANALYSIS_SYSTEM_PROMPT,
@@ -119,12 +121,11 @@ def _call_analysis(parsed_content: str) -> dict | None:
 
 
 def _call_gate(parsed_content: str, structured_analysis: str) -> tuple[bool | None, str | None]:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     user_message = f"TREŚĆ KOMUNIKATU:\n{parsed_content}\n\nANALIZA:\n{structured_analysis}"
     try:
         client = _get_client()
         response = client.models.generate_content(
-            model=model,
+            model=_GEMINI_MODEL,
             contents=user_message,
             config=genai.types.GenerateContentConfig(
                 system_instruction=_GATE_SYSTEM_PROMPT,
