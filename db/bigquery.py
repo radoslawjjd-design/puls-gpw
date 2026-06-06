@@ -286,6 +286,90 @@ def save_analysis_result(
     logger.debug("Saved analysis result for announcement_id=%s", announcement_id)
 
 
+def fetch_top_n_for_window(
+    window_start: datetime,
+    window_end: datetime,
+    n: int = 4,
+) -> list[dict]:
+    """Return top-N approved announcements for a time window, ordered by score DESC.
+
+    Returns list of dicts with keys: announcement_id, ticker, company, title,
+    structured_analysis, event_type, analysis_score, url.
+    Empty list if none found. Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT
+            announcement_id, ticker, company, title,
+            structured_analysis, event_type, analysis_score, url
+        FROM `{_table_ref(client)}`
+        WHERE analysis_approved = TRUE
+          AND published_at BETWEEN @window_start AND @window_end
+        ORDER BY analysis_score DESC
+        LIMIT @n
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("window_start", "TIMESTAMP", window_start),
+            bigquery.ScalarQueryParameter("window_end", "TIMESTAMP", window_end),
+            bigquery.ScalarQueryParameter("n", "INT64", n),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"fetch_top_n_for_window failed: {exc}") from exc
+    return [
+        {
+            "announcement_id": row.announcement_id,
+            "ticker": row.ticker,
+            "company": row.company,
+            "title": row.title,
+            "structured_analysis": row.structured_analysis,
+            "event_type": row.event_type,
+            "analysis_score": row.analysis_score,
+            "url": row.url,
+        }
+        for row in rows
+    ]
+
+
+def save_post_text(
+    announcement_ids: list[str],
+    post_text: str | None,
+    supervisor_attempts: int,
+) -> None:
+    """Batch-update post_text, processed_at, supervisor_attempts for all contributing rows.
+
+    post_text=None records a failed generation attempt (BQ stores NULL).
+    Raises BigQueryError on failure.
+    """
+    client = _get_client()
+    query = f"""
+        UPDATE `{_table_ref(client)}`
+        SET
+            post_text = @post_text,
+            supervisor_attempts = @supervisor_attempts,
+            processed_at = CURRENT_TIMESTAMP()
+        WHERE announcement_id IN UNNEST(@ids)
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("post_text", "STRING", post_text),
+            bigquery.ScalarQueryParameter("supervisor_attempts", "INTEGER", supervisor_attempts),
+            bigquery.ArrayQueryParameter("ids", "STRING", announcement_ids),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"save_post_text failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"save_post_text failed: {job.errors}")
+    logger.debug("save_post_text: updated %d rows, attempts=%d", len(announcement_ids), supervisor_attempts)
+
+
 def get_processed_ids_since(cutoff: datetime) -> set[str]:
     """Return set of announcement_ids where published_at >= cutoff.
 

@@ -548,24 +548,24 @@ gcloud scheduler jobs create http puls-gpw-post-wieczor \
 
 #### Automated
 
-- [x] 0.1 All tests pass including trailing comma regression test
-- [x] 0.2 json5 import smoke-test exits 0
+- [x] 0.1 All tests pass including trailing comma regression test — a5e6e69
+- [x] 0.2 json5 import smoke-test exits 0 — a5e6e69
 
 #### Manual
 
-- [x] 0.3 Code review: json.loads gone from _call_analysis and _call_gate
+- [x] 0.3 Code review: json.loads gone from _call_analysis and _call_gate — a5e6e69
 
 ### Phase 1: BQ Aggregation Layer
 
 #### Automated
 
-- [ ] 1.1 test_bigquery.py tests for fetch_top_n_for_window pass
-- [ ] 1.2 test_bigquery.py tests for save_post_text pass
-- [ ] 1.3 Full test suite green
+- [x] 1.1 test_bigquery.py tests for fetch_top_n_for_window pass
+- [x] 1.2 test_bigquery.py tests for save_post_text pass
+- [x] 1.3 Full test suite green
 
 #### Manual
 
-- [ ] 1.4 fetch_top_n_for_window spot-checked against production BQ
+- [x] 1.4 fetch_top_n_for_window spot-checked against production BQ
 
 ### Phase 2: Post Generator + Supervisor
 
