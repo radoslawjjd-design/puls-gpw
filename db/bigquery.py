@@ -27,6 +27,11 @@ _SCHEMA = [
     bigquery.SchemaField("analysis_type", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("parsed_content", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("priority", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("structured_analysis", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("analysis_approved", "BOOL", mode="NULLABLE"),
+    bigquery.SchemaField("analysis_reject_reason", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("event_type", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("analysis_score", "FLOAT64", mode="NULLABLE"),
 ]
 
 _client: bigquery.Client | None = None
@@ -235,6 +240,50 @@ def update_parsed_content(
             f"update_parsed_content: no row matched announcement_id={announcement_id!r}"
         )
     logger.debug("Updated parsed_content for announcement_id=%s", announcement_id)
+
+
+def save_analysis_result(
+    announcement_id: str,
+    structured_analysis: str | None,
+    analysis_approved: bool | None,
+    analysis_reject_reason: str | None,
+    event_type: str | None,
+    analysis_score: float | None,
+) -> None:
+    """Update an announcement row with S-03 analysis results.
+
+    Raises BigQueryError if the UPDATE fails or matches 0 rows.
+    """
+    client = _get_client()
+    query = f"""
+        UPDATE `{_table_ref(client)}`
+        SET
+            structured_analysis = @structured_analysis,
+            analysis_approved = @analysis_approved,
+            analysis_reject_reason = @analysis_reject_reason,
+            event_type = @event_type,
+            analysis_score = @analysis_score
+        WHERE announcement_id = @id
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("structured_analysis", "STRING", structured_analysis),
+            bigquery.ScalarQueryParameter("analysis_approved", "BOOL", analysis_approved),
+            bigquery.ScalarQueryParameter("analysis_reject_reason", "STRING", analysis_reject_reason),
+            bigquery.ScalarQueryParameter("event_type", "STRING", event_type),
+            bigquery.ScalarQueryParameter("analysis_score", "FLOAT64", analysis_score),
+            bigquery.ScalarQueryParameter("id", "STRING", announcement_id),
+        ]
+    )
+    job = client.query(query, job_config=job_config)
+    job.result()
+    if job.errors:
+        raise BigQueryError(f"save_analysis_result failed: {job.errors}")
+    if job.num_dml_affected_rows == 0:
+        raise BigQueryError(
+            f"save_analysis_result: no row matched announcement_id={announcement_id!r}"
+        )
+    logger.debug("Saved analysis result for announcement_id=%s", announcement_id)
 
 
 def get_processed_ids_since(cutoff: datetime) -> set[str]:

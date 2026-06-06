@@ -3,7 +3,7 @@ id: ai-analysis-supervisor
 title: "S-03: Analiza AI + scoring komunikatów ESPI/EBI"
 status: implementing
 created: 2026-06-06
-updated: 2026-06-06
+updated: 2026-06-07
 roadmap_id: S-03
 tracking:
   linear: PUL-15

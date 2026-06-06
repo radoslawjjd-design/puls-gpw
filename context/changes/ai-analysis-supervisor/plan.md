@@ -522,25 +522,25 @@ automatycznie. Nie wymaga ręcznej ingerencji w BQ.
 
 #### Automated
 
-- [x] 0.1 Import Announcement — pole priority widoczne w `__dataclass_fields__`
-- [x] 0.2 `uv run pytest tests/test_scraper.py -v` — wszystkie testy zielone
-- [x] 0.3 `uv run python -c "import main"` — brak błędów importu
+- [x] 0.1 Import Announcement — pole priority widoczne w `__dataclass_fields__` — 0b1b27f
+- [x] 0.2 `uv run pytest tests/test_scraper.py -v` — wszystkie testy zielone — 0b1b27f
+- [x] 0.3 `uv run python -c "import main"` — brak błędów importu — 0b1b27f
 
 #### Manual
 
-- [x] 0.4 BQ ma kolumnę `priority STRING`; ogłoszenia z badge mają wartość, reszta NULL
+- [x] 0.4 BQ ma kolumnę `priority STRING`; ogłoszenia z badge mają wartość, reszta NULL — 0b1b27f
 
 ### Phase 1: src/analyzer.py + BQ schema
 
 #### Automated
 
-- [ ] 1.1 `uv run python -c "from src.analyzer import analyze_announcement; print('OK')"`
-- [ ] 1.2 `uv run python -c "from db.bigquery import ensure_schema_current; ensure_schema_current()"` — 5 nowych kolumn w BQ
+- [x] 1.1 `uv run python -c "from src.analyzer import analyze_announcement; print('OK')"`
+- [x] 1.2 `uv run python -c "from db.bigquery import ensure_schema_current; ensure_schema_current()"` — 5 nowych kolumn w BQ
 
 #### Manual
 
-- [ ] 1.3 Ręczne wywołanie `analyze_announcement()` z prawdziwym `parsed_content` → `AnalysisResult` z wypełnionymi polami
-- [ ] 1.4 `analysis_score > 0` dla spółki T1/T2 z `event_type=wyniki_finansowe`
+- [x] 1.3 Ręczne wywołanie `analyze_announcement()` z prawdziwym `parsed_content` → `AnalysisResult` z wypełnionymi polami
+- [x] 1.4 `analysis_score > 0` dla spółki T1/T2 z `event_type=wyniki_finansowe`
 
 ### Phase 2: main.py integration
 
