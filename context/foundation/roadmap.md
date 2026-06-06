@@ -94,7 +94,7 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 - **Outcome:** (foundation) structured logging (JSON) skonfigurowany we wszystkich modułach pipeline'u, email alert wysyłany do właściciela przy każdym nieobsłużonym wyjątku lub błędzie etapu, logi widoczne w Cloud Logging
 - **Change ID:** `observability-baseline`
 - **PRD refs:** NFR (failure alerting — "cicha awaria jest niedopuszczalna"), FR-008 (po 3 failed próbach supervisora → alert do właściciela zamiast wysłania posta)
-- **Unlocks:** S-04 (email-orchestration może bezpiecznie failować z alertem, nie milcząco); weryfikacja każdego etapu pipeline'u w Cloud Logging
+- **Unlocks:** S-05 (email-orchestration może bezpiecznie failować z alertem, nie milcząco); weryfikacja każdego etapu pipeline'u w Cloud Logging
 - **Prerequisites:** —
 - **Parallel with:** F-01, F-02
 - **Blockers:** —
