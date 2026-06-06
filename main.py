@@ -1,3 +1,4 @@
+import argparse
 import logging
 import sys
 
@@ -25,10 +26,19 @@ from src.scraper import scrape_new_announcements
 
 
 def main():
+    parser = argparse.ArgumentParser(description="ESPI/EBI announcement pipeline")
+    parser.add_argument("--hours", type=int, default=None, metavar="N",
+                        help="Scrape window in hours (overrides SCRAPE_WINDOW_MINUTES)")
+    parser.add_argument("--max-pages", type=int, default=None, metavar="N",
+                        help="Max Bankier pages (overrides MAX_PAGES_BANKIER)")
+    args = parser.parse_args()
+
+    window_minutes = args.hours * 60 if args.hours else None
+
     try:
         create_table_if_not_exists()
         ensure_schema_current()
-        new = scrape_new_announcements()
+        new = scrape_new_announcements(window_minutes=window_minutes, max_pages=args.max_pages)
         if not new:
             logger.info("Pipeline completed: 0 new announcements")
             return

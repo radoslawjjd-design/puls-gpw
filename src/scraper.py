@@ -24,14 +24,19 @@ class Announcement:
     priority: str | None = None
 
 
-def scrape_new_announcements() -> list[Announcement]:
-    """Pobierz nowe (nie-duplikat) ogłoszenia z okna 15 min.
+def scrape_new_announcements(
+    window_minutes: int | None = None,
+    max_pages: int | None = None,
+) -> list[Announcement]:
+    """Pobierz nowe (nie-duplikat) ogłoszenia z zadanego okna czasowego.
 
     Raises ScraperError jeśli HTTP fail po retry.
     Zwraca [] gdy brak nowych (normalne — INFO log, caller nie rzuca alertu).
     """
-    window_minutes = int(os.environ.get("SCRAPE_WINDOW_MINUTES", "15"))
-    max_pages = int(os.environ.get("MAX_PAGES_BANKIER", "5"))
+    if window_minutes is None:
+        window_minutes = int(os.environ.get("SCRAPE_WINDOW_MINUTES", "15"))
+    if max_pages is None:
+        max_pages = int(os.environ.get("MAX_PAGES_BANKIER", "5"))
     listing_url = os.environ.get(
         "BANKIER_LISTING_URL",
         "https://www.bankier.pl/gielda/wiadomosci/komunikaty-spolek/{page}",

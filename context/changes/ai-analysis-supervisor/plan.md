@@ -557,9 +557,9 @@ automatycznie. Nie wymaga ręcznej ingerencji w BQ.
 
 #### Automated
 
-- [ ] 3.1 `uv run pytest tests/test_analyzer.py -v` — 14/14 passed
-- [ ] 3.2 `uv run pytest tests/ -v` — cały suite zielony
+- [x] 3.1 `uv run pytest tests/test_analyzer.py -v` — 14/14 passed
+- [x] 3.2 `uv run pytest tests/ -v` — cały suite zielony
 
 #### Manual
 
-- [ ] 3.3 Żaden test nie wykonuje realnego HTTP — brak wywołań sieciowych
+- [x] 3.3 Żaden test nie wykonuje realnego HTTP — brak wywołań sieciowych

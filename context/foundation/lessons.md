@@ -19,3 +19,18 @@
   import przed jakimkolwiek modułem czytającym env vars
 
 **Applies to**: Każdy change z nowym klientem GCP lub nowym entry pointem pipeline'u
+
+## Gemini JSON output — trailing comma
+
+**Context**: `src/analyzer.py` — `_call_analysis()` z `response_mime_type="application/json"`
+
+**Problem**: Gemini Flash (`gemini-2.5-flash-lite`) pomimo `response_mime_type="application/json"`
+zwraca czasem JSON z trailing comma (np. `{"a": 1,}`), którego Python `json.loads` nie akceptuje
+→ `JSONDecodeError`. Failure rate ~14% (3/22) w teście produkcyjnym 2026-06-07.
+
+**Rule**: Przy każdym `json.loads(response.text)` z Gemini — użyj parsera tolerującego trailing
+commas zamiast stdlib `json`. Opcje (w kolejności preferencji):
+1. `import json5; json5.loads(response.text)` — dodać `json5` do `pyproject.toml`
+2. Regex strip przed parsowaniem: `re.sub(r",\s*([}\]])", r"\1", response.text)`
+
+**Applies to**: Każdy call Gemini z `response_mime_type="application/json"` w tym projekcie
