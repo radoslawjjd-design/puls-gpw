@@ -34,8 +34,9 @@ Komunikaty ESPI/EBI spółek notowanych na GPW i NewConnect są publikowane dzie
 | F-03 | observability-baseline  | (foundation) structured logging i email alert na błąd pipeline'u              | —             | NFR (failure alerting), FR-008         | done     |
 | S-01 | scraper-dedup           | pobrać listę nowych (nie-duplikat) komunikatów ESPI/EBI z Bankier.pl          | F-01, F-02    | FR-001, FR-002, FR-003, US-01          | done     |
 | S-02 | content-parser          | wyciągnąć treść tekstową z komunikatu (PDF lub HTML fallback)                 | F-01, S-01    | FR-004, FR-005, US-01                  | done     |
-| S-03 | ai-analysis-supervisor  | wygenerować zatwierdzony przez supervisora X-style post                       | F-02, S-02    | FR-006, FR-007, FR-008, FR-009, US-01  | proposed |
-| S-04 | email-orchestration     | automatycznie otrzymać X-style email z analizą nowego komunikatu ESPI/EBI     | F-03, S-03    | FR-010, FR-011, US-01                  | proposed |
+| S-03 | ai-analysis-supervisor  | przeanalizować komunikat Gemini, ocenić halucynacje i nadać score każdemu ogłoszeniu | F-02, S-02 | FR-006, FR-007, FR-008, US-01 | proposed |
+| S-04 | xpost-generation        | wygenerować zatwierdzony X-style post (nitka) z top-N analiz okna czasowego         | S-03       | FR-009, US-01                 | proposed |
+| S-05 | email-orchestration     | automatycznie otrzymać X-style email z postem                                        | F-03, S-04 | FR-010, FR-011, US-01         | proposed |
 
 ## Streams
 
@@ -44,7 +45,7 @@ Tabela nawigacyjna — grupuje elementy o wspólnym łańcuchu zależności. Kan
 | Stream | Temat                        | Łańcuch                              | Uwaga                                                                              |
 | ------ | ---------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------- |
 | A      | Badania → Scraper → Parser   | `F-01` → `S-01` → `S-02`            | Krytyczna ścieżka do gwiazdy przewodniej; tu zaczynamy                             |
-| B      | Dane → Analiza → Dystrybucja | `F-02` → `S-03` → `S-04`            | Równolegle z A; S-03 czeka też na S-02 z A; S-04 czeka też na F-03 z C            |
+| B      | Dane → Analiza → Post → Email | `F-02` → `S-03` → `S-04` → `S-05`  | S-03 czeka też na S-02 z A; S-05 czeka też na F-03 z C                             |
 | C      | Observability                | `F-03` → łączy się z B przy `S-04`  | Równolegle z A i B; NFR "cicha awaria jest niedopuszczalna" wymaga tego przed live |
 
 ## Baseline
@@ -127,26 +128,69 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 - **Risk:** jeśli F-01 wykaże że PDFy są skanami — potrzebna biblioteka OCR (np. pytesseract lub zewnętrzny serwis); czas implementacji może wzrosnąć; właściciel ma referencyjne implementacje parserów
 - **Status:** done
 
-### S-03: Analiza AI i supervisor gate
+### S-03: Analiza AI + scoring komunikatów
 
-- **Outcome:** pipeline może wygenerować X-style post z komunikatu ESPI/EBI, zwalidowany przez supervisora (max 3 próby; po 3 failed — komunikat odkładany, alert do właściciela)
+- **Outcome:** pipeline może przeanalizować każde nowe ogłoszenie Gemini Flash, zweryfikować halucynacje i nadać score — wynik zapisany do BQ gotowy do agregacji przez S-04
 - **Change ID:** `ai-analysis-supervisor`
-- **PRD refs:** FR-006 (analiza Gemini — treść komunikatu → ustrukturyzowana analiza), FR-007 (zapis analizy i posta do BQ), FR-008 (supervisor gate — obiektywne kryteria: spółka+ticker, liczby, hashtagi, długość, brak urwanych zdań, zgodność ze źródłem), FR-009 (X-style post — dwa tryby: finansowy pigułka liczbowa / korporacyjny zdarzenie), US-01
-- **Prerequisites:** F-02 (BQ klient gotowy do zapisu analizy), S-02 (tekst komunikatu gotowy do analizy)
+- **PRD refs:** FR-006 (analiza Gemini — treść komunikatu → ustrukturyzowana analiza), FR-007 (zapis analizy do BQ), FR-008 (hallucination gate), US-01
+- **Prerequisites:** F-02 (BQ klient gotowy), S-02 (parsed_content gotowy do analizy)
+- **Parallel with:** —
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Gemini może źle klasyfikować event_type dla niestandardowych ogłoszeń — mitygacja: iteracyjna kalibracja promptów; scoring można ręcznie korygować przez aktualizację tier listy lub wag event_type bez zmiany kodu
+- **Status:** proposed
+
+#### Kluczowe decyzje architektoniczne (ustalone 2026-06-06)
+
+**Phase 0 — Scraper enhancement:** dodanie `priority` badge (`a-quotes-badge -orange-500 -priority`) do `Announcement` dataclass i BQ.
+
+**Phase 1 — Gemini structured analysis:** `parsed_content` → JSON `{company, ticker, event_type, key_numbers, sentiment, summary_pl}`.
+
+**Phase 2 — Hallucination gate (Gemini-as-judge):** drugie wywołanie Gemini porównuje `parsed_content` vs `structured_analysis`. BQ: `analysis_approved BOOL`, `analysis_reject_reason STRING`.
+
+**Phase 3 — Scoring:** `final_score = tier_bonus + event_type_score + priority_bonus`
+
+Tier bonuses: T1 portfel (DGN ELT SNT TOA VOT XTB PAS KRU LBW APT) = +40 · T2 WIG20 (PKO KGH PKN PGE PZU CDR KTY LPP DNP ZAB PEO ASB CBF DVL CRI DEK) = +25 · T3 mid-caps (MDV ALR TPE MBK ALE PCO BDX) = +10 · T4 = +0
+
+Event type scores: wyniki=100 · upadłość=95 · przejęcie/fuzja=90 · dywidenda=85 · emisja=80 · kontrakt_znaczący=75 · insider=65 · sprzedaż_operacyjna=60 · skup=55 · zarząd=50 · inne=20
+
+Priority badge bonus: `"Ważny"` = +20 · reszta = +0
+
+BQ nowe kolumny: `priority STRING`, `structured_analysis STRING`, `analysis_approved BOOL`, `analysis_reject_reason STRING`, `event_type STRING`, `analysis_score FLOAT64`
+
+### S-04: X-post generation + post supervisor
+
+- **Outcome:** pipeline może wygenerować zatwierdzony X-style post (nitka: hook + per-spółka + summary) z top-N (4–5) najwyżej scorowanych ogłoszeń z danego okna czasowego
+- **Change ID:** `xpost-generation`
+- **PRD refs:** FR-009 (X-style post — nitka, format ustabilizowany na przykładach), US-01
+- **Prerequisites:** S-03 (scoring gotowy, BQ ma `analysis_score` i `analysis_approved`)
 - **Parallel with:** —
 - **Blockers:** —
 - **Unknowns:**
-  - Czy właściciel ma gotowy prompt dla Gemini z poprzedniego projektu? — Owner: właściciel. Block: no (można zacząć od zera, ale gotowy prompt skróci iteracje supervisora).
-  - Jaki jest docelowy przedział długości X posta (w znakach)? — Owner: właściciel. Block: no (default 150–600 znaków z PRD wystarczy; kalibracja przy pierwszych próbkach generacji).
-- **Risk:** LLM-as-judge bias w supervisorze — mitygacja per PRD: obiektywne kryteria (obecność liczb, format, długość, brak urwanych zdań), nie ocena semantyczna; prompt engineering to iteracyjna praca, zakładamy kilka rund kalibracji
+  - Dokładny prompt dla generacji nitki X — do ustalenia przed `/10x-plan xpost-generation`; wymaga przykładów postów jako few-shot.
+- **Risk:** Post supervisor może być zbyt restrykcyjny → pętla bez końca; mitygacja: max 3 próby, potem zapis z flagą `post_supervisor_failed`
 - **Status:** proposed
 
-### S-04: Email i orchestracja
+#### Kluczowe decyzje architektoniczne (ustalone 2026-06-06)
 
-- **Outcome:** właściciel może automatycznie otrzymać X-style email z analizą nowego komunikatu ESPI/EBI, wyzwolony przez Cloud Scheduler co 15 minut w godzinach sesji giełdowej, bez ręcznej ingerencji
+**Okna czasowe:** 00:01–8:30 (pre-market) · 8:31–12:00 (poranek) · 12:01–15:00 (południe) · 15:01–17:00 (popołudnie)
+
+**Format nitki:** tweet 1 (hook: top 2–3 spółki + emoji + cashtag + pytanie + 🧵) → tweety 2–N (per spółka: emoji + $TICKER + 3 bullety z liczbami) → tweet ostatni (summary: lista wszystkich, nazwa okna, #GPW, disclaimer)
+
+**Post supervisor sprawdza:** długość per tweet (≤280 znaków), obecność cashtag $TICKER, obecność #GPW, brak uciętych zdań, obecność disclaimer w ostatnim tweecie.
+
+**Cashtag format:** `$TICKER` (nie `#TICKER`)
+
+**Osobny Cloud Run trigger:** S-04 nie jest częścią 15-min loop; wyzwalany o 8:30, 12:00, 15:00, 17:00.
+
+---
+
+### S-05: Email i orchestracja
+
+- **Outcome:** właściciel może automatycznie otrzymać X-style email z zatwierdzonym postem (nitką), wyzwolony przez Cloud Scheduler przy końcu każdego okna czasowego, bez ręcznej ingerencji
 - **Change ID:** `email-orchestration`
 - **PRD refs:** FR-010 (email do właściciela — X-style post jako treść), FR-011 (automatyczny scheduler — Cloud Run Job + Cloud Scheduler), US-01
-- **Prerequisites:** F-03 (observability — alerty przy błędach przed live), S-03 (zatwierdzony X-style post dostępny do wysłania)
+- **Prerequisites:** F-03 (observability — alerty przy błędach przed live), S-04 (zatwierdzony X-style post dostępny do wysłania)
 - **Parallel with:** —
 - **Blockers:** —
 - **Unknowns:**
@@ -163,8 +207,9 @@ Foundations poniżej zakładają, że warstwy oznaczone jako `present` już istn
 | F-03       | observability-baseline  | Structured logging + email alert na błąd pipeline'u        | yes                   | Równolegle z F-01, F-02; `/10x-plan observability-baseline` |
 | S-01       | scraper-dedup           | Scraper Bankier.pl + dedup check BigQuery                   | no                    | Czeka na F-01 + F-02                                    |
 | S-02       | content-parser          | Parser PDF (+ OCR fallback) i HTML                          | no                    | Czeka na F-01 + S-01                                    |
-| S-03       | ai-analysis-supervisor  | Analiza Gemini + supervisor gate (max 3 próby)              | no                    | Czeka na F-02 + S-02                                    |
-| S-04       | email-orchestration     | Email notifier + orchestracja Cloud Run Job / Scheduler     | no                    | Czeka na F-03 + S-03                                    |
+| S-03       | ai-analysis-supervisor  | Gemini analysis + hallucination gate + scoring per ogłoszenie | no                  | Czeka na F-02 + S-02                                    |
+| S-04       | xpost-generation        | Top-N aggregation + X-post nitka + post supervisor            | no                  | Czeka na S-03                                           |
+| S-05       | email-orchestration     | Email notifier + orchestracja Cloud Run Job / Scheduler       | no                  | Czeka na F-03 + S-04                                    |
 
 ## Open Roadmap Questions
 
