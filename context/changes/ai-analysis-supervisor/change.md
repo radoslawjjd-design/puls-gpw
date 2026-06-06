@@ -113,6 +113,14 @@ Nowe kolumny BQ: `event_type STRING`, `analysis_score FLOAT64`
 - Rate limiting Gemini API (30-50 ogłoszeń × 2 wywołania = 60-100 calls per run)
 - Koszt Gemini Flash na run (szacunkowy)
 
+## Architektura jobów (ustalone 2026-06-06)
+
+- **Job 1** (istniejący, 15-min loop): scrape → parse → analyze → score (S-01 + S-02 + S-03)
+- **Job 2** (nowy, dedykowany X-post): generacja nitki + post supervisor (S-04), trigger: 8:30/12:00/15:00/17:00
+- **Job 3** (nowy lub połączony z Job 2): email delivery (S-05)
+
+Czy S-04+S-05 to jeden job czy dwa — otwarte, do ustalenia przy `/10x-plan xpost-generation`.
+
 ## Następny krok
 
 ```

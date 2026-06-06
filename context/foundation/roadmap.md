@@ -181,7 +181,7 @@ BQ nowe kolumny: `priority STRING`, `structured_analysis STRING`, `analysis_appr
 
 **Cashtag format:** `$TICKER` (nie `#TICKER`)
 
-**Osobny Cloud Run trigger:** S-04 nie jest częścią 15-min loop; wyzwalany o 8:30, 12:00, 15:00, 17:00.
+**Deployment:** S-04 to osobny Cloud Run Job — niezależny od 15-min scraper job. Wyzwalany przez Cloud Scheduler o 8:30, 12:00, 15:00, 17:00. S-05 (email) może być częścią tego samego joba lub osobnym — do ustalenia przy `/10x-plan xpost-generation`.
 
 ---
 
