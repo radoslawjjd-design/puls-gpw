@@ -534,19 +534,19 @@ automatycznie. Nie wymaga ręcznej ingerencji w BQ.
 
 #### Automated
 
-- [x] 1.1 `uv run python -c "from src.analyzer import analyze_announcement; print('OK')"`
-- [x] 1.2 `uv run python -c "from db.bigquery import ensure_schema_current; ensure_schema_current()"` — 5 nowych kolumn w BQ
+- [x] 1.1 `uv run python -c "from src.analyzer import analyze_announcement; print('OK')"` — b6ccaaa
+- [x] 1.2 `uv run python -c "from db.bigquery import ensure_schema_current; ensure_schema_current()"` — 5 nowych kolumn w BQ — b6ccaaa
 
 #### Manual
 
-- [x] 1.3 Ręczne wywołanie `analyze_announcement()` z prawdziwym `parsed_content` → `AnalysisResult` z wypełnionymi polami
-- [x] 1.4 `analysis_score > 0` dla spółki T1/T2 z `event_type=wyniki_finansowe`
+- [x] 1.3 Ręczne wywołanie `analyze_announcement()` z prawdziwym `parsed_content` → `AnalysisResult` z wypełnionymi polami — b6ccaaa
+- [x] 1.4 `analysis_score > 0` dla spółki T1/T2 z `event_type=wyniki_finansowe` — b6ccaaa
 
 ### Phase 2: main.py integration
 
 #### Automated
 
-- [ ] 2.1 `uv run python -c "import main"` — brak błędów importu
+- [x] 2.1 `uv run python -c "import main"` — brak błędów importu
 
 #### Manual
 

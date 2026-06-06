@@ -15,8 +15,10 @@ from db.bigquery import (
     create_table_if_not_exists,
     ensure_schema_current,
     insert_announcement,
+    save_analysis_result,
     update_parsed_content,
 )
+from src.analyzer import analyze_announcement
 from src.notifier import send_alert
 from src.parser import parse_announcement
 from src.scraper import scrape_new_announcements
@@ -35,11 +37,20 @@ def main():
                 ann_id = insert_announcement(ann.bankier_url, ann.published_at, ann.title, None, None, ann.priority)
                 parsed = parse_announcement(ann, ann_id)
                 update_parsed_content(ann_id, parsed.parsed_content, parsed.ticker, parsed.company)
+                result = analyze_announcement(ann_id, parsed.parsed_content, parsed.ticker, ann.priority)
+                save_analysis_result(
+                    ann_id,
+                    result.structured_analysis,
+                    result.analysis_approved,
+                    result.analysis_reject_reason,
+                    result.event_type,
+                    result.analysis_score,
+                )
             except BigQueryError:
                 raise  # propagate to outer except → send_alert
             except Exception:
                 logger.exception("Unexpected error processing %s — skipping", ann.bankier_url)
-        logger.info("Pipeline completed: %d announcements scraped and parsed", len(new))
+        logger.info("Pipeline completed: %d announcements scraped, parsed, and analysed", len(new))
     except Exception as exc:
         logger.exception("Pipeline failed")
         try:
