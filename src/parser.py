@@ -175,6 +175,8 @@ def _extract_html_fallback(soup: BeautifulSoup) -> str | None:
 def _extract_ticker_company(soup: BeautifulSoup, base_url: str) -> tuple[str | None, str | None]:
     link = soup.find("a", href=lambda h: h and "profile/quote.html" in h)
     if not link:
+        link = soup.select_one("a.m-quote-list__anchor")
+    if not link:
         return None, None
     profile_url = link["href"]
     if not profile_url.startswith("http"):
