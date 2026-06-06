@@ -26,6 +26,7 @@ _SCHEMA = [
     bigquery.SchemaField("supervisor_attempts", "INTEGER", mode="NULLABLE"),
     bigquery.SchemaField("analysis_type", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("parsed_content", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("priority", "STRING", mode="NULLABLE"),
 ]
 
 _client: bigquery.Client | None = None
@@ -125,6 +126,7 @@ def insert_announcement(
     title: str,
     company: str | None,
     ticker: str | None,
+    priority: str | None = None,
 ) -> str:
     """Insert a new announcement row and return its announcement_id.
 
@@ -137,10 +139,10 @@ def insert_announcement(
     query = f"""
         INSERT INTO `{_table_ref(client)}`
             (announcement_id, url, published_at, title, company, ticker,
-             post_text, processed_at, supervisor_attempts, analysis_type)
+             post_text, processed_at, supervisor_attempts, analysis_type, priority)
         VALUES
             (@id, @url, @published_at, @title, @company, @ticker,
-             NULL, NULL, NULL, NULL)
+             NULL, NULL, NULL, NULL, @priority)
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
@@ -150,6 +152,7 @@ def insert_announcement(
             bigquery.ScalarQueryParameter("title", "STRING", title),
             bigquery.ScalarQueryParameter("company", "STRING", company),
             bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
+            bigquery.ScalarQueryParameter("priority", "STRING", priority),
         ]
     )
     job = client.query(query, job_config=job_config)

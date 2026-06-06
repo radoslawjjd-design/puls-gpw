@@ -21,6 +21,7 @@ class Announcement:
     bankier_url: str
     published_at: datetime.datetime
     source: str
+    priority: str | None = None
 
 
 def scrape_new_announcements() -> list[Announcement]:
@@ -95,6 +96,9 @@ def scrape_new_announcements() -> list[Announcement]:
             source_el = item.select_one(".a-quotes-badge .value")
             source = source_el.get_text(strip=True).lower() if source_el else "espi"
 
+            priority_el = item.select_one(".a-quotes-badge.-priority")
+            priority = priority_el.get_text(strip=True) if priority_el else None
+
             ann_id = announcement_id_for_url(href)
             seen += 1
             if ann_id in known_ids:
@@ -107,6 +111,7 @@ def scrape_new_announcements() -> list[Announcement]:
                     bankier_url=href,
                     published_at=item_dt,
                     source=source,
+                    priority=priority,
                 )
             )
             known_ids.add(ann_id)

@@ -32,7 +32,7 @@ def main():
             return
         for ann in new:
             try:
-                ann_id = insert_announcement(ann.bankier_url, ann.published_at, ann.title, None, None)
+                ann_id = insert_announcement(ann.bankier_url, ann.published_at, ann.title, None, None, ann.priority)
                 parsed = parse_announcement(ann, ann_id)
                 update_parsed_content(ann_id, parsed.parsed_content, parsed.ticker, parsed.company)
             except BigQueryError:
