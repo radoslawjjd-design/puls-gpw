@@ -1,7 +1,7 @@
 ---
 id: ai-analysis-supervisor
 title: "S-03: Analiza AI + scoring komunikatów ESPI/EBI"
-status: implementing
+status: implemented
 created: 2026-06-06
 updated: 2026-06-07
 roadmap_id: S-03
