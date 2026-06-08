@@ -1,7 +1,7 @@
 ---
 change_id: xpost-generation
 title: X-post generation + email delivery
-status: implementing
+status: implemented
 created: 2026-06-08
 updated: 2026-06-08
 tracking:

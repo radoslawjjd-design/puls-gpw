@@ -600,5 +600,5 @@ gcloud scheduler jobs create http puls-gpw-post-wieczor \
 
 #### Manual
 
-- [ ] 4.2 puls-gpw-post Cloud Run Job manually created and executed successfully
-- [ ] 4.3 All 3 Cloud Scheduler triggers activated and verified end-to-end
+- [x] 4.2 puls-gpw-post Cloud Run Job manually created and executed successfully
+- [x] 4.3 All 3 Cloud Scheduler triggers activated and verified end-to-end
