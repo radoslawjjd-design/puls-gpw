@@ -11,6 +11,12 @@ from src.gemini_client import get_client, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
+_HOOK_PHRASES = {
+    "ranek": "zerknij przed sesją:",
+    "poludnie": "zerknij w trakcie sesji:",
+    "wieczor": "zerknij po sesji:",
+}
+
 _SYSTEM_PROMPT = """\
 Jesteś analitykiem finansowym piszącym wątki o komunikatach ESPI/EBI na platformie X.
 Piszesz jak człowiek z własną opinią — nie jak bot, nie jak PR. Twój styl: konkretny,
@@ -32,8 +38,8 @@ Dla 1 spółki = 3 tweetów. Dla 3 spółek = 5 tweetów. Dla 4 spółek = 6 twe
 Trzymaj się tej liczby ściśle — użytkownik poda dokładną liczbę w wiadomości.
 
 --- Tweet 1: HOOK ---
-Zacznij od 🚨, potem "N ważne/ważnych ESPI z GPW – zerknij przed sesją:", potem lista spółek
-z bulletami •, zakończ pytaniem.
+Zacznij od 🚨, potem "N ważne/ważnych ESPI z GPW – [FRAZA OKNA]:", potem lista spółek
+z bulletami •, zakończ pytaniem. FRAZA OKNA jest podana w wiadomości użytkownika (klucz "fraza_hooka").
 
 Przykład dla 1 spółki (DOKŁADNIE 3 tweety łącznie):
 🚨 1 ważne ESPI z GPW – zerknij przed sesją:
@@ -100,10 +106,11 @@ class GeneratedPost:
     tweets: list[str]
 
 
-def generate_post(announcements: list[dict]) -> GeneratedPost | None:
+def generate_post(announcements: list[dict], window: str | None = None) -> GeneratedPost | None:
     """Generate an X thread from a list of announcement dicts.
 
     Tweet count: 1 hook + 1 per company + 1 closing.
+    window: "ranek" | "poludnie" | "wieczor" — controls hook phrase.
     Returns None on any failure — caller handles retry logic.
     """
     seen_tickers: set[str] = set()
@@ -137,7 +144,9 @@ def generate_post(announcements: list[dict]) -> GeneratedPost | None:
 
     n_companies = len(enriched)
     expected_tweets = n_companies + 2
+    hook_phrase = _HOOK_PHRASES.get(window or "", _HOOK_PHRASES["ranek"])
     user_message = (
+        f"fraza_hooka: \"{hook_phrase}\"\n\n"
         f"Dane: {json.dumps(enriched, ensure_ascii=False)}\n\n"
         f"Wygeneruj wątek: DOKŁADNIE {expected_tweets} tweetów "
         f"(1 hook + {n_companies} spółek + 1 closing)."

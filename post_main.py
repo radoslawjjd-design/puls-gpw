@@ -95,7 +95,7 @@ def main() -> None:
 
         post = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
-            post = generate_post(announcements)
+            post = generate_post(announcements, window=window)
             if post is None:
                 logger.warning("post_main: generate_post returned None on attempt %d", attempt)
                 continue

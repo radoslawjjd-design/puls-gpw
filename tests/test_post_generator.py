@@ -98,6 +98,23 @@ def test_trailing_comma_json_still_parses():
     assert len(result.tweets) == 6
 
 
+# ── window hook phrase ───────────────────────────────────────────────────────
+
+def test_window_hook_phrase_injected():
+    payload = json.dumps({"tweets": _SIX_TWEETS}, ensure_ascii=False)
+    cases = [
+        ("ranek",   "zerknij przed sesją:"),
+        ("poludnie", "zerknij w trakcie sesji:"),
+        ("wieczor",  "zerknij po sesji:"),
+        (None,       "zerknij przed sesją:"),  # default
+    ]
+    for window, expected_phrase in cases:
+        with patch("src.post_generator.get_client", return_value=_mock_client(payload)) as mock_get:
+            generate_post(_ANNOUNCEMENTS, window=window)
+        call_contents = mock_get.return_value.models.generate_content.call_args[1]["contents"]
+        assert expected_phrase in call_contents, f"window={window!r}: expected {expected_phrase!r} in contents"
+
+
 # ── structured_analysis parse failure ────────────────────────────────────────
 
 def test_bad_structured_analysis_still_calls_gemini():
