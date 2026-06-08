@@ -596,7 +596,7 @@ gcloud scheduler jobs create http puls-gpw-post-wieczor \
 
 #### Automated
 
-- [x] 4.1 GitHub Actions: both gcloud run jobs update steps succeed
+- [x] 4.1 GitHub Actions: both gcloud run jobs update steps succeed — f962c15
 
 #### Manual
 
