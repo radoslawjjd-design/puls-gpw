@@ -109,9 +109,11 @@ The inline Python script logic (to implement in the `run:` block):
 QUERY = """{ issues(filter: { team: { key: { eq: "PUL" } } }, first: 100) {
   nodes { identifier state { type } attachments { nodes { url } } } } }"""
 
+After fetching: if len(nodes) == 100: print("WARNING: results may be truncated — add pagination")
+
 For each issue node:
   - find attachment URL matching pattern: "github.com" + "/issues/" in URL
-  - extract issue_number = URL.rstrip("/").split("/")[-1]
+  - extract issue_number = re.search(r'/issues/(\d+)', URL).group(1)
   - GET https://api.github.com/repos/{REPO}/issues/{issue_number}
       Header: Authorization: Bearer {GH_TOKEN}, Accept: application/vnd.github+json
   - desired_state = "closed" if state.type in {"completed", "cancelled"} else "open"
@@ -133,13 +135,13 @@ Error handling:
 
 #### Automated Verification
 
-- [ ] 1.1 `uv run pytest --tb=short` passes (deploy.yml already runs this — no regression)
-- [ ] 1.2 `act` dry-run or GitHub Actions YAML lint passes (or manual YAML syntax check)
+- 1.1 `uv run pytest --tb=short` passes (deploy.yml already runs this — no regression)
+- 1.2 `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/sync-linear-to-github.yml'))"` exits 0
 
 #### Manual Verification
 
-- [ ] 1.3 Workflow file present at `.github/workflows/sync-linear-to-github.yml`
-- [ ] 1.4 `workflow_dispatch` trigger visible in GitHub Actions UI after push
+- 1.3 Workflow file present at `.github/workflows/sync-linear-to-github.yml`
+- 1.4 `workflow_dispatch` trigger visible in GitHub Actions UI after push
 
 ---
 
@@ -165,15 +167,15 @@ Linear → Settings → API → Personal API keys → Create key.
 
 #### Automated Verification
 
-- [ ] 2.1 Workflow run triggered via `workflow_dispatch` with `dry_run: true` exits 0
-- [ ] 2.2 Dry-run log shows expected output: `[DRY RUN] would close #...` or `already closed, skip` for known Done issues
-- [ ] 2.3 After disabling dry_run: first scheduled run (or manual dispatch) exits 0 and logs sync activity
+- 2.1 Workflow run triggered via `workflow_dispatch` with `dry_run: true` exits 0
+- 2.2 Dry-run log shows expected output: `[DRY RUN] would close #...` or `already closed, skip` for known Done issues
+- 2.3 After disabling dry_run: first scheduled run (or manual dispatch) exits 0 and logs sync activity
 
 #### Manual Verification
 
-- [ ] 2.4 Verify in GitHub that a Done-in-Linear issue is now closed after a non-dry run
-- [ ] 2.5 Confirm no unintended reopens (open GH issues that should remain open stay open)
-- [ ] 2.6 After 10 minutes: check Actions tab → sync runs appear every ~5 minutes with green status
+- 2.4 Verify in GitHub that a Done-in-Linear issue is now closed after a non-dry run
+- 2.5 Confirm no unintended reopens (open GH issues that should remain open stay open)
+- 2.6 After 10 minutes: check Actions tab → sync runs appear every ~5 minutes with green status
 
 ---
 
@@ -203,7 +205,7 @@ Linear → Settings → API → Personal API keys → Create key.
 #### Automated
 
 - [ ] 1.1 `uv run pytest --tb=short` passes (no regression)
-- [ ] 1.2 YAML syntax valid (lint or manual check)
+- [ ] 1.2 `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/sync-linear-to-github.yml'))"` exits 0
 
 #### Manual
 

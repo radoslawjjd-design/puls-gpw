@@ -1,7 +1,7 @@
 ---
 change_id: github-linear-sync
 title: GitHub Issues sync with Linear
-status: planned
+status: plan_reviewed
 created: 2026-06-08
 updated: 2026-06-08
 archived_at: null
