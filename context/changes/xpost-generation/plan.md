@@ -584,19 +584,19 @@ gcloud scheduler jobs create http puls-gpw-post-wieczor \
 
 #### Automated
 
-- [x] 3.1 Full test suite green
-- [x] 3.2 python post_main.py --help exits 0
+- [x] 3.1 Full test suite green — e4cf6f4
+- [x] 3.2 python post_main.py --help exits 0 — e4cf6f4
 
 #### Manual
 
-- [x] 3.3 End-to-end local run: BQ post_text updated, email received with numbered tweets
-- [x] 3.4 13:00 no-op verified when poludnie has < 2 results
+- [x] 3.3 End-to-end local run: BQ post_text updated, email received with numbered tweets — e4cf6f4
+- [x] 3.4 13:00 no-op verified when poludnie has < 2 results — e4cf6f4
 
 ### Phase 4: Deployment
 
 #### Automated
 
-- [ ] 4.1 GitHub Actions: both gcloud run jobs update steps succeed
+- [x] 4.1 GitHub Actions: both gcloud run jobs update steps succeed
 
 #### Manual
 
