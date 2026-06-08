@@ -36,7 +36,7 @@ Komunikaty ESPI/EBI spółek notowanych na GPW i NewConnect są publikowane dzie
 | S-02 | content-parser          | wyciągnąć treść tekstową z komunikatu (PDF lub HTML fallback)                 | F-01, S-01    | FR-004, FR-005, US-01                  | done     |
 | S-03 | ai-analysis-supervisor  | przeanalizować komunikat Gemini, ocenić halucynacje i nadać score każdemu ogłoszeniu | F-02, S-02 | FR-006, FR-007, FR-008, US-01 | done     |
 | S-04 | xpost-generation        | wygenerować zatwierdzony X-style post (nitka) z top-N analiz okna czasowego         | S-03       | FR-009, US-01                 | done     |
-| S-05 | email-orchestration     | automatycznie otrzymać X-style email z postem                                        | F-03, S-04 | FR-010, FR-011, US-01         | proposed |
+| S-05 | email-orchestration     | automatycznie otrzymać X-style email z postem                                        | F-03, S-04 | FR-010, FR-011, US-01         | done     |
 
 ## Streams
 
@@ -196,7 +196,7 @@ BQ nowe kolumny: `priority STRING`, `structured_analysis STRING`, `analysis_appr
 - **Unknowns:**
   - Czy używamy wbudowanego `smtplib` czy zewnętrznego dostawcy SMTP? — Owner: właściciel. Block: no (dane SMTP już w Secret Manager — `smtplib` wystarczy na MVP).
 - **Risk:** first production run musi być widoczna — dlatego F-03 jest prerequisitem; Cloud Scheduler już skonfigurowany (wstrzymany), wymagana aktywacja i ewentualne dostrojenie harmonogramu po testach integracyjnych
-- **Status:** proposed
+- **Status:** done
 
 ## Backlog Handoff
 
@@ -239,3 +239,4 @@ BQ nowe kolumny: `priority STRING`, `structured_analysis STRING`, `analysis_appr
 - **S-02: pipeline może wyciągnąć treść tekstową z komunikatu ESPI/EBI — z załączonego PDF-u (primary) lub z treści HTML strony komunikatu (fallback gdy brak PDF)** — Archived 2026-06-06 → `context/archive/2026-06-06-content-parser/`. Lesson: —.
 - **S-03: pipeline może przeanalizować każde nowe ogłoszenie Gemini Flash, zweryfikować halucynacje i nadać score — wynik zapisany do BQ gotowy do agregacji przez S-04** — Archived 2026-06-07 → `context/archive/2026-06-06-ai-analysis-supervisor/`. Lesson: Gemini trailing-comma JSON fix.
 - **S-04: pipeline może wygenerować zatwierdzony X-style post (nitka) z top-N analiz okna czasowego** — Archived 2026-06-08 → `context/archive/2026-06-08-xpost-generation/`. Lesson: —.
+- **S-05: właściciel może automatycznie otrzymać X-style email z zatwierdzonym postem (nitką), wyzwolony przez Cloud Scheduler** — Delivered as part of S-04 (smtplib + Secret Manager + Cloud Scheduler 08:30/13:00/17:30). No separate change needed.
