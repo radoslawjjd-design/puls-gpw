@@ -45,4 +45,5 @@ jobs:
           gcloud run jobs update puls-gpw-post \
             --image="${{ env.IMAGE }}:${{ github.sha }}" \
             --region=${{ env.REGION }} \
-            --project=${{ env.PROJECT_ID }}
+            --project=${{ env.PROJECT_ID }} \
+          || echo "puls-gpw-post not yet created — skipping (create it manually first)"
