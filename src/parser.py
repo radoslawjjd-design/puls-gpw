@@ -173,9 +173,11 @@ def _extract_html_fallback(soup: BeautifulSoup) -> str | None:
 
 
 def _extract_ticker_company(soup: BeautifulSoup, base_url: str) -> tuple[str | None, str | None]:
-    link = soup.find("a", href=lambda h: h and "profile/quote.html" in h)
+    # Use -stock anchor first: sidebar indices also have profile/quote.html links and appear
+    # earlier in the DOM, so the generic href search would pick up GIK/WIG instead of the company.
+    link = soup.select_one("a.m-quote-list__anchor.-stock")
     if not link:
-        link = soup.select_one("a.m-quote-list__anchor")
+        link = soup.find("a", href=lambda h: h and "profile/quote.html" in h)
     if not link:
         return None, None
     profile_url = link["href"]
