@@ -24,6 +24,14 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Run tests
+        run: uv run pytest --tb=short
+
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker europe-central2-docker.pkg.dev --quiet
 
