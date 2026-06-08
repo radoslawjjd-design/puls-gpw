@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-from db.bigquery import fetch_top_n_for_window, save_analysis_result, save_post_text
+import pytest
+
+from db.bigquery import delete_announcement, fetch_top_n_for_window, save_analysis_result, save_post_text
 
 
 def _mock_bq_client(affected_rows: int = 1) -> MagicMock:
@@ -123,3 +125,23 @@ def test_save_post_text_none_records_failure():
         )
 
     assert client.query.called
+
+
+# ── delete_announcement ───────────────────────────────────────────────────────
+
+def test_delete_announcement_calls_delete_query():
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client(affected_rows=1)) as mock_get:
+        client = mock_get.return_value
+        delete_announcement("abc123")
+
+    assert client.query.called
+    query_str = client.query.call_args[0][0]
+    assert "DELETE FROM" in query_str
+    assert "announcement_id = @id" in query_str
+
+
+def test_delete_announcement_raises_on_no_match():
+    from src.exceptions import BigQueryError
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client(affected_rows=0)):
+        with pytest.raises(BigQueryError, match="no row matched"):
+            delete_announcement("nonexistent-id")

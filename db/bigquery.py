@@ -372,6 +372,25 @@ def save_post_text(
     logger.debug("save_post_text: updated %d rows, attempts=%d", len(announcement_ids), supervisor_attempts)
 
 
+def delete_announcement(announcement_id: str) -> None:
+    """Delete a single announcement row by its ID.
+
+    Raises BigQueryError if the DELETE fails or no row was matched.
+    """
+    client = _get_client()
+    query = f"DELETE FROM `{_table_ref(client)}` WHERE announcement_id = @id"
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", announcement_id)]
+    )
+    job = client.query(query, job_config=job_config)
+    job.result()
+    if job.errors:
+        raise BigQueryError(f"delete_announcement failed: {job.errors}")
+    if job.num_dml_affected_rows == 0:
+        raise BigQueryError(f"delete_announcement: no row matched announcement_id={announcement_id!r}")
+    logger.debug("Deleted announcement_id=%s", announcement_id)
+
+
 def get_processed_ids_since(cutoff: datetime) -> set[str]:
     """Return set of announcement_ids where published_at >= cutoff.
 
