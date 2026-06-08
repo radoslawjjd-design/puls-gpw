@@ -98,7 +98,10 @@ def generate_post(announcements: list[dict]) -> GeneratedPost | None:
     enriched = []
     for row in announcements:
         ticker = row.get("ticker") or ""
-        if ticker and ticker in seen_tickers:
+        if not ticker:
+            logger.info("post_generator: skipping no-ticker row %s", row.get("announcement_id"))
+            continue
+        if ticker in seen_tickers:
             logger.info("post_generator: skipping duplicate ticker %s", ticker)
             continue
         seen_tickers.add(ticker)

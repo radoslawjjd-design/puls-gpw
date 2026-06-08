@@ -80,14 +80,14 @@ def main() -> None:
         window_start, window_end = _window_bounds(window, now_warsaw)
         announcements = fetch_top_n_for_window(window_start, window_end, n=4)
 
-        if len(announcements) < 2:
-            logger.info("post_main: only %d approved announcement(s) for %s — skipping", len(announcements), window)
+        ann_ids = [a["announcement_id"] for a in announcements]
+        tickers = list(dict.fromkeys(a["ticker"] for a in announcements if a.get("ticker")))
+
+        if len(tickers) < 2:
+            logger.info("post_main: only %d unique-ticker announcement(s) for %s — skipping", len(tickers), window)
             if window != "poludnie":
                 send_no_post_email(window_name, date_str, "Brak zatwierdzonych ogłoszeń w oknie.")
             return
-
-        ann_ids = [a["announcement_id"] for a in announcements]
-        tickers = list(dict.fromkeys(a["ticker"] for a in announcements if a.get("ticker")))
         expected_tweets = len(tickers) + 2
 
         post = None
