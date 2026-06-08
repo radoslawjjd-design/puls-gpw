@@ -204,24 +204,24 @@ Linear → Settings → API → Personal API keys → Create key.
 
 #### Automated
 
-- [x] 1.1 `uv run pytest --tb=short` passes (no regression)
-- [x] 1.2 `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/sync-linear-to-github.yml'))"` exits 0
+- [x] 1.1 `uv run pytest --tb=short` passes (no regression) — c5fa157
+- [x] 1.2 `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/sync-linear-to-github.yml'))"` exits 0 — c5fa157
 
 #### Manual
 
-- [x] 1.3 Workflow file present at `.github/workflows/sync-linear-to-github.yml`
-- [x] 1.4 `workflow_dispatch` trigger visible in GitHub Actions UI after push
+- [x] 1.3 Workflow file present at `.github/workflows/sync-linear-to-github.yml` — c5fa157
+- [x] 1.4 `workflow_dispatch` trigger visible in GitHub Actions UI after push — c5fa157
 
 ### Phase 2: Secret + live verification
 
 #### Automated
 
-- [ ] 2.1 Dry-run dispatch exits 0
-- [ ] 2.2 Dry-run log shows expected output for known Done issues
-- [ ] 2.3 Real run (no dry_run) exits 0 and logs sync activity
+- [x] 2.1 Dry-run dispatch exits 0
+- [x] 2.2 Dry-run log shows expected output for known Done issues
+- [x] 2.3 Real run (no dry_run) exits 0 and logs sync activity
 
 #### Manual
 
-- [ ] 2.4 Done-in-Linear issue is closed on GitHub after real run
-- [ ] 2.5 No unintended reopens
+- [x] 2.4 Done-in-Linear issue is closed on GitHub after real run
+- [x] 2.5 No unintended reopens
 - [ ] 2.6 Scheduled runs appear every ~5 min in Actions tab
