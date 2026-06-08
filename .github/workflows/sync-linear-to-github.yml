@@ -13,6 +13,10 @@ on:
 permissions:
   issues: write
 
+concurrency:
+  group: linear-github-sync
+  cancel-in-progress: true
+
 jobs:
   sync:
     name: Linear → GitHub
@@ -71,18 +75,24 @@ jobs:
 
           try:
               result = linear_fetch()
+          except urllib.error.HTTPError as exc:
+              if exc.code in (401, 403):
+                  raise RuntimeError(f"Linear auth failed ({exc.code}) — check LINEAR_API_TOKEN") from exc
+              print(f"::warning::Linear HTTP {exc.code} — sync skipped: {exc}", file=sys.stderr)
+              sys.exit(0)
           except Exception as exc:
-              print(f"WARNING: Linear API failed: {exc}", file=sys.stderr)
+              print(f"::warning::Linear API failed — sync skipped: {exc}", file=sys.stderr)
               sys.exit(0)
 
           if "errors" in result:
-              print(f"WARNING: Linear errors: {result['errors']}", file=sys.stderr)
+              print(f"::warning::Linear errors — sync skipped: {result['errors']}", file=sys.stderr)
               sys.exit(0)
 
           nodes = result.get("data", {}).get("issues", {}).get("nodes", [])
           if len(nodes) == 100:
-              print("WARNING: results may be truncated — add pagination")
+              print("::warning::Linear results truncated at 100 — add pagination", file=sys.stderr)
 
+          reopen_count = 0
           for issue in nodes:
               ident      = issue.get("identifier", "?")
               state_type = issue.get("state", {}).get("type", "")
@@ -107,6 +117,10 @@ jobs:
                       gh("PATCH", gh_num, {"state": desired})
                       verb = "closed" if desired == "closed" else "reopened"
                       print(f"{ident} #{gh_num}: {verb} (state: {state_type})")
+                      if desired == "open":
+                          reopen_count += 1
               except Exception as exc:
                   print(f"WARNING: {ident} #{gh_num}: {exc}", file=sys.stderr)
+          if reopen_count > 2:
+              print(f"::warning::{reopen_count} issues reopened in one run — verify Linear state is correct", file=sys.stderr)
           PYEOF
