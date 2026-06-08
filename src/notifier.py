@@ -8,12 +8,17 @@ from email.mime.text import MIMEText
 
 
 def _smtp_creds() -> tuple[str, int, str, str, str]:
+    def _clean(key: str) -> str:
+        # Secret Manager can inject BOM (﻿) and CRLF when secrets are
+        # created from files with Windows line endings or UTF-8-BOM encoding.
+        return os.environ[key].strip().lstrip("﻿")
+
     return (
-        os.environ["SMTP_HOST"],
-        int(os.environ["SMTP_PORT"]),
-        os.environ["SMTP_USER"],
-        os.environ["SMTP_PASSWORD"],
-        os.environ["OWNER_EMAIL"],
+        _clean("SMTP_HOST"),
+        int(_clean("SMTP_PORT")),
+        _clean("SMTP_USER"),
+        _clean("SMTP_PASSWORD"),
+        _clean("OWNER_EMAIL"),
     )
 
 
