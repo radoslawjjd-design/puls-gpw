@@ -83,8 +83,8 @@ def main() -> None:
         ann_ids = [a["announcement_id"] for a in announcements]
         tickers = list(dict.fromkeys(a["ticker"] for a in announcements if a.get("ticker")))
 
-        if len(tickers) < 2:
-            logger.info("post_main: only %d unique-ticker announcement(s) for %s — skipping", len(tickers), window)
+        if not tickers:
+            logger.info("post_main: no valid-ticker announcements for %s — skipping", window)
             if window != "poludnie":
                 send_no_post_email(window_name, date_str, "Brak zatwierdzonych ogłoszeń w oknie.")
             return

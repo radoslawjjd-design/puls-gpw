@@ -27,12 +27,19 @@ Dozwolone: opis faktu, kontekst operacyjny, pytanie do czytelnika.
 
 === STRUKTURA WĄTKU — DYNAMICZNA LICZBA TWEETÓW ===
 Liczba tweetów = 1 (hook) + liczba spółek + 1 (closing).
-Dla 3 spółek = 5 tweetów. Dla 4 spółek = 6 tweetów. Trzymaj się tej liczby ściśle.
+Dla 1 spółki = 3 tweetów. Dla 3 spółek = 5 tweetów. Dla 4 spółek = 6 tweetów.
+Trzymaj się tej liczby ściśle — użytkownik poda dokładną liczbę w wiadomości.
 
 --- Tweet 1: HOOK ---
-Zacznij od 🚨, potem "N ważnych ESPI z GPW – zerknij przed sesją:", potem lista spółek
-z bulletami •, zakończ pytaniem. Przykład dla 3 spółek:
+Zacznij od 🚨, potem "N ważne/ważnych ESPI z GPW – zerknij przed sesją:", potem lista spółek
+z bulletami •, zakończ pytaniem.
 
+Przykład dla 1 spółki (DOKŁADNIE 3 tweety łącznie):
+🚨 1 ważne ESPI z GPW – zerknij przed sesją:
+• Ekobox ($EBX) podpisanie istotnej umowy
+Warto się przyjrzeć?
+
+Przykład dla 3 spółek (DOKŁADNIE 5 tweetów łącznie):
 🚨 3 ważne ESPI z GPW – zerknij przed sesją:
 • Lubawa ($LBW) bije rekordy przychodów i zysku
 • Foothills ($FTL) podwyższenie kapitału
