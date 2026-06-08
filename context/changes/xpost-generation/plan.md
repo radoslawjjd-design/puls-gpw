@@ -571,26 +571,26 @@ gcloud scheduler jobs create http puls-gpw-post-wieczor \
 
 #### Automated
 
-- [x] 2.1 test_post_generator.py — happy path and failure cases pass
-- [x] 2.2 test_post_supervisor.py — all 6 validation checks pass
-- [x] 2.3 Full test suite green
-- [x] 2.5 src/gemini_client.py exists; analyzer.py imports from it; full suite green
+- [x] 2.1 test_post_generator.py — happy path and failure cases pass — 5fe1b03
+- [x] 2.2 test_post_supervisor.py — all 6 validation checks pass — 5fe1b03
+- [x] 2.3 Full test suite green — 5fe1b03
+- [x] 2.5 src/gemini_client.py exists; analyzer.py imports from it; full suite green — 5fe1b03
 
 #### Manual
 
-- [x] 2.4 generate_post run manually with real announcements — thread structure verified
+- [x] 2.4 generate_post run manually with real announcements — thread structure verified — 5fe1b03
 
 ### Phase 3: Post Pipeline Entrypoint + Email
 
 #### Automated
 
-- [ ] 3.1 Full test suite green
-- [ ] 3.2 python post_main.py --help exits 0
+- [x] 3.1 Full test suite green
+- [x] 3.2 python post_main.py --help exits 0
 
 #### Manual
 
-- [ ] 3.3 End-to-end local run: BQ post_text updated, email received with numbered tweets
-- [ ] 3.4 13:00 no-op verified when poludnie has < 2 results
+- [x] 3.3 End-to-end local run: BQ post_text updated, email received with numbered tweets
+- [x] 3.4 13:00 no-op verified when poludnie has < 2 results
 
 ### Phase 4: Deployment
 
