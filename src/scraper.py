@@ -34,7 +34,8 @@ def scrape_new_announcements(
     Zwraca [] gdy brak nowych (normalne — INFO log, caller nie rzuca alertu).
     """
     if window_minutes is None:
-        window_minutes = int(os.environ.get("SCRAPE_WINDOW_MINUTES", "15"))
+        # 60 min covers Bankier's typical ~15-30 min display lag; dedup prevents re-processing
+        window_minutes = int(os.environ.get("SCRAPE_WINDOW_MINUTES", "60"))
     if max_pages is None:
         max_pages = int(os.environ.get("MAX_PAGES_BANKIER", "5"))
     listing_url = os.environ.get(
