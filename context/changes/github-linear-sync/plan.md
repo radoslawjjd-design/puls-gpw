@@ -204,13 +204,13 @@ Linear → Settings → API → Personal API keys → Create key.
 
 #### Automated
 
-- [ ] 1.1 `uv run pytest --tb=short` passes (no regression)
-- [ ] 1.2 `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/sync-linear-to-github.yml'))"` exits 0
+- [x] 1.1 `uv run pytest --tb=short` passes (no regression)
+- [x] 1.2 `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/sync-linear-to-github.yml'))"` exits 0
 
 #### Manual
 
-- [ ] 1.3 Workflow file present at `.github/workflows/sync-linear-to-github.yml`
-- [ ] 1.4 `workflow_dispatch` trigger visible in GitHub Actions UI after push
+- [x] 1.3 Workflow file present at `.github/workflows/sync-linear-to-github.yml`
+- [x] 1.4 `workflow_dispatch` trigger visible in GitHub Actions UI after push
 
 ### Phase 2: Secret + live verification
 

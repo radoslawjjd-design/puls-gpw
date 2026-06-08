@@ -1,0 +1,112 @@
+name: Sync Linear → GitHub
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Log changes without applying them"
+        type: boolean
+        default: false
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    name: Linear → GitHub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync
+        env:
+          LINEAR_API_TOKEN: ${{ secrets.LINEAR_API_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - << 'PYEOF'
+          import json, os, re, sys
+          import urllib.error, urllib.request
+
+          LINEAR_TOKEN = os.environ.get("LINEAR_API_TOKEN", "")
+          GH_TOKEN     = os.environ.get("GH_TOKEN", "")
+          DRY_RUN      = os.environ.get("DRY_RUN", "false") == "true"
+          REPO         = os.environ.get("REPO", "")
+
+          if not LINEAR_TOKEN:
+              raise RuntimeError("LINEAR_API_TOKEN secret is not set")
+
+          QUERY = (
+              '{ issues(filter: { team: { key: { eq: "PUL" } } }, first: 100)'
+              ' { nodes { identifier state { type } attachments { nodes { url } } } } }'
+          )
+
+          def linear_fetch():
+              body = json.dumps({"query": QUERY}).encode()
+              req = urllib.request.Request(
+                  "https://api.linear.app/graphql",
+                  data=body,
+                  headers={"Content-Type": "application/json", "Authorization": LINEAR_TOKEN},
+                  method="POST",
+              )
+              with urllib.request.urlopen(req) as r:
+                  return json.loads(r.read())
+
+          def gh(method, issue_num, body=None):
+              url = f"https://api.github.com/repos/{REPO}/issues/{issue_num}"
+              data = json.dumps(body).encode() if body else None
+              req = urllib.request.Request(
+                  url, data=data,
+                  headers={
+                      "Authorization": f"Bearer {GH_TOKEN}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "Content-Type": "application/json",
+                  },
+                  method=method,
+              )
+              with urllib.request.urlopen(req) as r:
+                  return json.loads(r.read())
+
+          try:
+              result = linear_fetch()
+          except Exception as exc:
+              print(f"WARNING: Linear API failed: {exc}", file=sys.stderr)
+              sys.exit(0)
+
+          if "errors" in result:
+              print(f"WARNING: Linear errors: {result['errors']}", file=sys.stderr)
+              sys.exit(0)
+
+          nodes = result.get("data", {}).get("issues", {}).get("nodes", [])
+          if len(nodes) == 100:
+              print("WARNING: results may be truncated — add pagination")
+
+          for issue in nodes:
+              ident      = issue.get("identifier", "?")
+              state_type = issue.get("state", {}).get("type", "")
+              urls       = [a.get("url", "") for a in issue.get("attachments", {}).get("nodes", [])]
+              gh_url     = next((u for u in urls if "github.com" in u and "/issues/" in u), None)
+              if not gh_url:
+                  continue
+              m = re.search(r"/issues/(\d+)", gh_url)
+              if not m:
+                  print(f"WARNING: {ident}: bad attachment URL {gh_url}", file=sys.stderr)
+                  continue
+              gh_num  = m.group(1)
+              desired = "closed" if state_type in ("completed", "cancelled") else "open"
+              try:
+                  current_state = gh("GET", gh_num).get("state", "")
+                  if current_state == desired:
+                      print(f"{ident} #{gh_num}: already {desired}, skip")
+                  elif DRY_RUN:
+                      verb = "close" if desired == "closed" else "reopen"
+                      print(f"[DRY RUN] {ident} #{gh_num}: would {verb} (state: {state_type})")
+                  else:
+                      gh("PATCH", gh_num, {"state": desired})
+                      verb = "closed" if desired == "closed" else "reopened"
+                      print(f"{ident} #{gh_num}: {verb} (state: {state_type})")
+              except Exception as exc:
+                  print(f"WARNING: {ident} #{gh_num}: {exc}", file=sys.stderr)
+          PYEOF
