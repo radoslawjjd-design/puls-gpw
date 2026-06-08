@@ -216,12 +216,12 @@ Linear → Settings → API → Personal API keys → Create key.
 
 #### Automated
 
-- [x] 2.1 Dry-run dispatch exits 0
-- [x] 2.2 Dry-run log shows expected output for known Done issues
-- [x] 2.3 Real run (no dry_run) exits 0 and logs sync activity
+- [x] 2.1 Dry-run dispatch exits 0 — 9f02466
+- [x] 2.2 Dry-run log shows expected output for known Done issues — 9f02466
+- [x] 2.3 Real run (no dry_run) exits 0 and logs sync activity — 9f02466
 
 #### Manual
 
-- [x] 2.4 Done-in-Linear issue is closed on GitHub after real run
-- [x] 2.5 No unintended reopens
+- [x] 2.4 Done-in-Linear issue is closed on GitHub after real run — 9f02466
+- [x] 2.5 No unintended reopens — 9f02466
 - [ ] 2.6 Scheduled runs appear every ~5 min in Actions tab
