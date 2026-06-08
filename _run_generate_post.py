@@ -27,50 +27,6 @@ _WINDOW_COLORS = {
     "test":     ("#374151", "🧪", "Test"),
 }
 
-# ── BQ fetch ──────────────────────────────────────────────────────────────────
-
-end = datetime.now(tz=timezone.utc)
-start = end - timedelta(days=7)
-date_str = datetime.now().strftime("%d.%m.%Y")
-
-print(f"Window: {start.isoformat()} to {end.isoformat()}")
-
-announcements = fetch_top_n_for_window(start, end, n=4)
-print(f"Fetched {len(announcements)} announcement(s):")
-for a in announcements:
-    print(f"  [{a['ticker']}] {a['company']} | score={a['analysis_score']} | {a['event_type']}")
-
-if len(announcements) < 2:
-    print("Less than 2 approved announcements — cannot generate post.")
-    sys.exit(0)
-
-# ── Generate + validate ───────────────────────────────────────────────────────
-
-print("\nCalling generate_post …")
-post = generate_post(announcements)
-
-if post is None:
-    print("generate_post returned None.")
-    sys.exit(1)
-
-# Deduplicate tickers the same way generate_post does, for expected count
-unique_tickers = list(dict.fromkeys(a["ticker"] for a in announcements if a.get("ticker")))
-tickers = unique_tickers
-expected_tweets = len(unique_tickers) + 2
-validation = validate_post(post, tickers, expected_tweets=expected_tweets)
-
-print(f"Supervisor: approved={validation.approved}")
-for issue in validation.issues:
-    print(f"  - {issue}")
-
-# ── Console preview ───────────────────────────────────────────────────────────
-
-print()
-for i, tweet in enumerate(post.tweets, 1):
-    print(f"--- Tweet {i}/{len(post.tweets)} ({len(tweet)} chars) ---")
-    print(tweet)
-    print()
-
 # ── HTML helpers ──────────────────────────────────────────────────────────────
 
 def _format_tweet_html(text: str) -> str:
@@ -130,7 +86,6 @@ def build_html(
     </div>"""
 
     # Tier stats
-    tickers_in_post = [a["ticker"] for a in announcements if a.get("ticker")]
     scores_row = " &nbsp;|&nbsp; ".join(
         f'<strong style="color:{color}">{a["ticker"]}</strong> '
         f'<span style="color:#6b7280">{a["analysis_score"]:.0f}pkt</span>'
@@ -192,29 +147,74 @@ def build_html(
   </div>
 </body></html>"""
 
-# ── Send email ────────────────────────────────────────────────────────────────
 
-html_body = build_html(post.tweets, announcements, validation, window_key="wieczor", date_str=date_str)
+if __name__ == "__main__":
+    from zoneinfo import ZoneInfo
 
-host = os.environ["SMTP_HOST"]
-port = int(os.environ["SMTP_PORT"])
-user = os.environ["SMTP_USER"]
-password = os.environ["SMTP_PASSWORD"]
-owner = os.environ["OWNER_EMAIL"]
+    # ── BQ fetch ──────────────────────────────────────────────────────────────────
 
-sup_icon = "✅" if validation.approved else "❌"
-subject = f"[puls-gpw] 𝕏 🌆 Wieczór 🧵{len(post.tweets)} {sup_icon} | {date_str}"
+    end = datetime.now(tz=timezone.utc)
+    start = end - timedelta(days=7)
+    date_str = datetime.now(ZoneInfo("Europe/Warsaw")).strftime("%d.%m.%Y")
 
-msg = MIMEMultipart("alternative")
-msg["Subject"] = subject
-msg["From"] = user
-msg["To"] = owner
-msg.attach(MIMEText(html_body, "html", "utf-8"))
+    print(f"Window: {start.isoformat()} to {end.isoformat()}")
 
-with smtplib.SMTP(host, port, timeout=10) as smtp:
-    smtp.starttls(context=ssl.create_default_context())
-    smtp.login(user, password)
-    smtp.send_message(msg)
+    announcements = fetch_top_n_for_window(start, end, n=4)
+    print(f"Fetched {len(announcements)} announcement(s):")
+    for a in announcements:
+        print(f"  [{a['ticker']}] {a['company']} | score={a['analysis_score']} | {a['event_type']}")
 
-print(f"\nEmail sent to {owner}")
-print(f"Subject: {subject}")
+    if len(announcements) < 2:
+        print("Less than 2 approved announcements — cannot generate post.")
+        sys.exit(0)
+
+    # ── Generate + validate ───────────────────────────────────────────────────────
+
+    print("\nCalling generate_post …")
+    post = generate_post(announcements)
+
+    if post is None:
+        print("generate_post returned None.")
+        sys.exit(1)
+
+    # Deduplicate tickers the same way generate_post does, for expected count
+    unique_tickers = list(dict.fromkeys(a["ticker"] for a in announcements if a.get("ticker")))
+    tickers = unique_tickers
+    expected_tweets = len(unique_tickers) + 2
+    validation = validate_post(post, tickers, expected_tweets=expected_tweets)
+
+    print(f"Supervisor: approved={validation.approved}")
+    for issue in validation.issues:
+        print(f"  - {issue}")
+
+    # ── Console preview ───────────────────────────────────────────────────────────
+
+    print()
+    for i, tweet in enumerate(post.tweets, 1):
+        print(f"--- Tweet {i}/{len(post.tweets)} ({len(tweet)} chars) ---")
+        print(tweet)
+        print()
+
+    # ── Send email ────────────────────────────────────────────────────────────────
+
+    from src.notifier import _smtp_creds
+    smtp_host, smtp_port, smtp_user, smtp_password, owner = _smtp_creds()
+
+    html_body = build_html(post.tweets, announcements, validation, window_key="wieczor", date_str=date_str)
+
+    sup_icon = "✅" if validation.approved else "❌"
+    subject = f"[puls-gpw] 𝕏 🌆 Wieczór 🧵{len(post.tweets)} {sup_icon} | {date_str}"
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = smtp_user
+    msg["To"] = owner
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as smtp:
+        smtp.starttls(context=ssl.create_default_context())
+        smtp.login(smtp_user, smtp_password)
+        smtp.send_message(msg)
+
+    print(f"\nEmail sent to {owner}")
+    print(f"Subject: {subject}")

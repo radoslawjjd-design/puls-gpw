@@ -1,9 +1,10 @@
 ---
 change_id: xpost-generation
 title: X-post generation + email delivery
-status: implemented
+status: impl_reviewed
 created: 2026-06-08
 updated: 2026-06-08
+impl_reviewed: 2026-06-08
 tracking:
   linear: null
   github: null

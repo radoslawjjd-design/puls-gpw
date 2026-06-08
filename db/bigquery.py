@@ -367,6 +367,8 @@ def save_post_text(
         raise BigQueryError(f"save_post_text failed: {exc}") from exc
     if job.errors:
         raise BigQueryError(f"save_post_text failed: {job.errors}")
+    if job.num_dml_affected_rows == 0:
+        raise BigQueryError(f"save_post_text: 0 rows updated for ids={announcement_ids!r}")
     logger.debug("save_post_text: updated %d rows, attempts=%d", len(announcement_ids), supervisor_attempts)
 
 

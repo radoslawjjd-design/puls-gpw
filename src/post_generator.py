@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import json5
 import google.genai as genai
+from pydantic import BaseModel, ValidationError
 
 from src.gemini_client import get_client, GEMINI_MODEL
 
@@ -90,6 +91,10 @@ Liczba elementów = 1 + liczba spółek + 1.
 """
 
 
+class _PostResponse(BaseModel):
+    tweets: list[str]
+
+
 @dataclass
 class GeneratedPost:
     tweets: list[str]
@@ -149,11 +154,14 @@ def generate_post(announcements: list[dict]) -> GeneratedPost | None:
             ),
         )
         data = json5.loads(response.text)
-        tweets = data.get("tweets")
-        if not isinstance(tweets, list) or len(tweets) == 0:
-            logger.warning("post_generator: response missing 'tweets' list")
+        parsed = _PostResponse.model_validate(data)
+        if len(parsed.tweets) == 0:
+            logger.warning("post_generator: empty tweets list in response")
             return None
-        return GeneratedPost(tweets=tweets)
+        return GeneratedPost(tweets=parsed.tweets)
+    except ValidationError:
+        logger.warning("post_generator: response schema invalid", exc_info=True)
+        return None
     except Exception:
         logger.warning("post_generator: Gemini call failed", exc_info=True)
         return None

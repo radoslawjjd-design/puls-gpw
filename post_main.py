@@ -20,6 +20,7 @@ from src.post_generator import generate_post
 from src.post_supervisor import validate_post
 
 WARSAW = ZoneInfo("Europe/Warsaw")
+_MAX_ATTEMPTS = 3
 
 _WINDOW_NAMES = {
     "ranek": "Ranek",
@@ -81,8 +82,10 @@ def main() -> None:
         announcements = fetch_top_n_for_window(window_start, window_end, n=4)
 
         ann_ids = [a["announcement_id"] for a in announcements]
+        # Dedup tickers here for supervisor; generate_post deduplicates independently internally
         tickers = list(dict.fromkeys(a["ticker"] for a in announcements if a.get("ticker")))
 
+        # Guard on tickers (not len(announcements)) — rows without a ticker can't form a post
         if not tickers:
             logger.info("post_main: no valid-ticker announcements for %s — skipping", window)
             if window != "poludnie":
@@ -91,7 +94,7 @@ def main() -> None:
         expected_tweets = len(tickers) + 2
 
         post = None
-        for attempt in range(1, 4):
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
             post = generate_post(announcements)
             if post is None:
                 logger.warning("post_main: generate_post returned None on attempt %d", attempt)
@@ -104,8 +107,8 @@ def main() -> None:
                 return
             logger.warning("post_main: attempt %d rejected: %s", attempt, result.issues)
 
-        save_post_text(ann_ids, None, 3)
-        logger.warning("post_main: all 3 supervisor attempts failed for window %s", window)
+        save_post_text(ann_ids, None, _MAX_ATTEMPTS)
+        logger.warning("post_main: all %d supervisor attempts failed for window %s", _MAX_ATTEMPTS, window)
         send_no_post_email(window_name, date_str, "Supervisor odrzucił wszystkie 3 próby.")
 
     except Exception as exc:

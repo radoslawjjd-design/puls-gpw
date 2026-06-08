@@ -58,7 +58,7 @@ def test_parse_item_fields():
         patch("src.scraper.datetime") as mock_dt,
     ):
         _setup_dt(mock_dt)
-        result = scrape_new_announcements()
+        result = scrape_new_announcements(window_minutes=15)
 
     assert len(result) == 2
     ann = result[0]
@@ -78,7 +78,7 @@ def test_dedup_filter():
         patch("src.scraper.datetime") as mock_dt,
     ):
         _setup_dt(mock_dt)
-        result = scrape_new_announcements()
+        result = scrape_new_announcements(window_minutes=15)
 
     assert len(result) == 1
     assert result[0].bankier_url == _ITEM2_URL
@@ -91,7 +91,7 @@ def test_stop_condition_on_page():
         patch("src.scraper.datetime") as mock_dt,
     ):
         _setup_dt(mock_dt)
-        scrape_new_announcements()
+        scrape_new_announcements(window_minutes=15)
 
     mock_get.assert_called_once()
 
