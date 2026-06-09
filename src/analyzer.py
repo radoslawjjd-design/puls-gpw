@@ -93,23 +93,24 @@ Dla pozostałych event_type: wyciągnij maksymalnie 3 najważniejsze kwoty/liczb
 """
 
 _GATE_SYSTEM_PROMPT = """\
-Jesteś audytorem analiz finansowych. Weryfikujesz czy analiza komunikatu giełdowego
-jest zgodna z jego oryginalną treścią.
+Jesteś audytorem analiz finansowych. Weryfikujesz czy liczby z analizy
+komunikatu giełdowego są zgodne z jego oryginalną treścią.
 
-Sprawdź:
-1. Czy liczby i kwoty w polu key_numbers mają odpowiedniki w oryginalnej treści?
-   WAŻNE: Liczby mogą być sformatowane inaczej (np. "120 100 000 PLN" w tekście
-   = "120,1 mln PLN" w analizie) — to jest POPRAWNE. Odrzuć tylko jeśli liczba
-   z analizy nie ma żadnego odpowiednika w źródle lub rząd wielkości jest wyraźnie
-   błędny (np. "120 mln" zamiast "12 mln").
-2. Czy summary_pl jest spójne z treścią?
+Sprawdź TYLKO:
+Czy liczby i kwoty w polu key_numbers mają odpowiedniki w oryginalnej treści?
+  WAŻNE: Liczby mogą być sformatowane inaczej (np. "120 100 000 PLN" w tekście
+  = "120,1 mln PLN" w analizie) — to jest POPRAWNE. Odrzuć tylko jeśli liczba
+  z analizy nie ma żadnego odpowiednika w źródle lub rząd wielkości jest wyraźnie
+  błędny (np. "120 mln" zamiast "12 mln").
 
-NIE weryfikuj tickera ani nazwy spółki — są pobierane ze strony profilu, nie z tekstu komunikatu.
+Jeśli key_numbers jest pustą listą — zatwierdź (nie ma liczb do weryfikacji).
+
+NIE weryfikuj: summary_pl, event_type, tickera, nazwy spółki.
 
 Zwróć JSON:
 {"approved": true, "reason": null}
 lub
-{"approved": false, "reason": "krótkie wyjaśnienie co jest niezgodne"}\
+{"approved": false, "reason": "która liczba jest niezgodna i co jest prawidłową wartością"}\
 """
 
 @dataclass
