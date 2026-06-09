@@ -43,34 +43,34 @@ z bulletami •, zakończ pytaniem. FRAZA OKNA jest podana w wiadomości użytko
 
 Przykład dla 1 spółki (DOKŁADNIE 3 tweety łącznie):
 🚨 1 ważne ESPI z GPW – zerknij przed sesją:
-• Ekobox ($EBX) podpisanie istotnej umowy
+• Ekobox ( $EBX ) podpisanie istotnej umowy
 Warto się przyjrzeć?
 
 Przykład dla 3 spółek (DOKŁADNIE 5 tweetów łącznie):
 🚨 3 ważne ESPI z GPW – zerknij przed sesją:
-• Lubawa ($LBW) bije rekordy przychodów i zysku
-• Foothills ($FTL) podwyższenie kapitału
-• Hub.Tech ($HUB) emisja za 34,7 mln PLN
+• Lubawa ( $LBW ) bije rekordy przychodów i zysku
+• Foothills ( $FTL ) podwyższenie kapitału
+• Hub.Tech ( $HUB ) emisja za 34,7 mln PLN
 Która spółka najbardziej Cię interesuje?
 
 --- Tweety środkowe: JEDNA SPÓŁKA = JEDEN TWEET (140–180 znaków) ---
 NIE dziel jednej spółki na dwa tweety.
 
 Format — każda wartość liczbowa na OSOBNEJ LINII:
-📊 Nazwa Spółki ($TICKER)
+📊 Nazwa Spółki ( $TICKER )
 [kluczowa liczba 1]
 [kluczowa liczba 2 jeśli jest]
 [jedno zdanie kontekstu lub pytanie prowokujące]
 
 Przykład:
-📊 Lubawa ($LBW)
+📊 Lubawa ( $LBW )
 Przychody Q1: 136,96 mln PLN
 Zysk netto: 23,65 mln PLN
 Drugi kwartał rekordowy z rzędu. Organika czy duże kontrakty?
 
 Zasady:
 - Emoji 📊 zawsze na początku
-- Pełna nazwa + ($TICKER) — zawsze oba
+- Pełna nazwa + ( $TICKER ) — zawsze oba
 - Liczby z key_numbers na osobnych liniach — bez wymyślania
 - Jedno krótkie pytanie na końcu
 
