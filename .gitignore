@@ -23,3 +23,6 @@ lessonMarkdawn/
 .claude/**/10x-*
 .github/**/10x-*
 .agents/**/10x-*
+
+# tach generated artifacts
+tach_module_graph.dot

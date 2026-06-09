@@ -2,6 +2,8 @@
 
 puls-gpw is a scheduled Python pipeline that fetches ESPI/EBI regulatory announcements from GPW and NewConnect, analyses them with a Gemini AI agent and a supervisor, and delivers X-style email summaries to the owner. Stack: Python 3.13 + FastAPI + Pydantic + uv, deployed as Google Cloud Run Jobs.
 
+<!-- MAINTAINER: Hard Rules = things that cost us real money or data when violated.
+     Supervisor gate and dedup check are the two most critical invariants in the pipeline. -->
 ## Hard Rules
 
 - Never write to `context/archive/` — that directory is immutable. Open new work with the appropriate workflow skill instead.
@@ -55,6 +57,10 @@ Use `null` only when no corresponding issue exists. When `/10x-implement` comple
 
 No commit history exists yet. Use Conventional Commits prefixes (`feat:`, `fix:`, `chore:`, `refactor:`) from the first commit. Non-conforming messages will be flagged in PR review.
 
+<!-- MAINTAINER: Module dependency map (tach.toml):
+     main/post_main → src → db
+     KNOWN SMELL: db.bigquery imports BigQueryError from src.exceptions (should be in db/exceptions.py).
+     Run 'tach check' to verify no new violations were introduced. -->
 ## Architecture
 
 See @context/foundation/prd.md for the full pipeline design: scheduler → scraper → PDF/HTML parser → Gemini analysis → supervisor (max 3 retries) → email delivery. See @context/foundation/tech-stack.md for stack decisions.

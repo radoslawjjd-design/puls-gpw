@@ -1,0 +1,32 @@
+source_roots = ["."]
+exclude = [".venv", "oldProjectData", "__pycache__"]
+
+# Desired architecture: db has no upward dependencies.
+# KNOWN VIOLATION: db.bigquery imports BigQueryError from src.exceptions.
+# Fix: move BigQueryError to db/exceptions.py (future change).
+
+[[modules]]
+path = "main"
+depends_on = [
+    { path = "src" },
+    { path = "db" },
+]
+
+[[modules]]
+path = "post_main"
+depends_on = [
+    { path = "src" },
+    { path = "db" },
+]
+
+[[modules]]
+path = "src"
+depends_on = [
+    { path = "db" },
+]
+
+[[modules]]
+path = "db"
+depends_on = [
+    { path = "src" },  # SMELL: db imports BigQueryError from src.exceptions
+]
