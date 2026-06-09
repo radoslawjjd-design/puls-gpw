@@ -39,9 +39,9 @@ _ANALYSIS_SYSTEM_PROMPT = """\
 Jesteś analitykiem komunikatów ESPI/EBI spółek notowanych na GPW i NewConnect.
 Twoim zadaniem jest wyciągnięcie kluczowych informacji z komunikatu giełdowego.
 
+Ticker i nazwa spółki są już znane — NIE wyciągaj ich z tekstu.
+
 Zwróć JSON z polami:
-- company: pełna nazwa spółki (string)
-- ticker: symbol giełdowy (string, np. "PKO", "CDR")
 - event_type: typ zdarzenia (string, jedna z wartości z listy poniżej)
 - key_numbers: lista kluczowych liczb/kwot (array of strings) — patrz zasady poniżej
 - sentiment: ocena wydźwięku (string: "positive", "negative", "neutral")
@@ -102,12 +102,9 @@ Sprawdź:
    = "120,1 mln PLN" w analizie) — to jest POPRAWNE. Odrzuć tylko jeśli liczba
    z analizy nie ma żadnego odpowiednika w źródle lub rząd wielkości jest wyraźnie
    błędny (np. "120 mln" zamiast "12 mln").
-2. Czy ticker w analizie jest poprawny?
-   WAŻNE: Komunikaty ESPI/EBI rzadko zawierają symbol tickera wprost. Jeśli w wiadomości
-   podano "Znany ticker spółki (ze scrapera)", użyj go jako punktu odniesienia —
-   ticker w analizie powinien być zgodny z tym tickerem, nie z literalną treścią komunikatu.
-3. Czy company jest zgodna z treścią komunikatu?
-4. Czy summary_pl jest spójne z treścią?
+2. Czy summary_pl jest spójne z treścią?
+
+NIE weryfikuj tickera ani nazwy spółki — są pobierane ze strony profilu, nie z tekstu komunikatu.
 
 Zwróć JSON:
 {"approved": true, "reason": null}
@@ -125,14 +122,12 @@ class AnalysisResult:
     analysis_score: float | None
 
 
-def _call_analysis(parsed_content: str, ticker: str | None) -> dict | None:
-    # Inject known ticker so Gemini doesn't have to guess from text (ESPI docs rarely contain ticker symbols)
-    prefix = f"Ticker tej spółki to: {ticker}\n\n" if ticker else ""
+def _call_analysis(parsed_content: str) -> dict | None:
     try:
         client = _get_client()
         response = client.models.generate_content(
             model=_GEMINI_MODEL,
-            contents=f"{prefix}{parsed_content}",
+            contents=parsed_content,
             config=genai.types.GenerateContentConfig(
                 system_instruction=_ANALYSIS_SYSTEM_PROMPT,
                 response_mime_type="application/json",
@@ -144,9 +139,8 @@ def _call_analysis(parsed_content: str, ticker: str | None) -> dict | None:
         return None
 
 
-def _call_gate(parsed_content: str, structured_analysis: str, ticker: str | None) -> tuple[bool | None, str | None]:
-    ticker_hint = f"Znany ticker spółki (ze scrapera): {ticker}\n\n" if ticker else ""
-    user_message = f"{ticker_hint}TREŚĆ KOMUNIKATU:\n{parsed_content}\n\nANALIZA:\n{structured_analysis}"
+def _call_gate(parsed_content: str, structured_analysis: str) -> tuple[bool | None, str | None]:
+    user_message = f"TREŚĆ KOMUNIKATU:\n{parsed_content}\n\nANALIZA:\n{structured_analysis}"
     try:
         client = _get_client()
         response = client.models.generate_content(
@@ -198,7 +192,7 @@ def analyze_announcement(
         logger.info("Analyzer: skip %s — no parsed_content", announcement_id)
         return null_result
 
-    analysis_dict = _call_analysis(parsed_content, ticker)
+    analysis_dict = _call_analysis(parsed_content)
     if analysis_dict is None:
         logger.warning("Analyzer: analysis call failed for %s — skipping", announcement_id)
         return null_result
@@ -208,7 +202,7 @@ def analyze_announcement(
 
     structured_analysis = json.dumps(analysis_dict, ensure_ascii=False)
 
-    approved, reason = _call_gate(parsed_content, structured_analysis, ticker)
+    approved, reason = _call_gate(parsed_content, structured_analysis)
     if approved is None:
         logger.warning("Analyzer: gate call failed for %s — partial result", announcement_id)
         return AnalysisResult(
