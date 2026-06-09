@@ -1,7 +1,7 @@
 ---
 change_id: prompt-review
 title: Prompt review — analysis, gate, post generator, and supervisor
-status: implementing
+status: implemented
 created: 2026-06-09
 updated: 2026-06-09
 archived_at: null

@@ -321,11 +321,11 @@ if not ticker:
 
 #### Automated
 
-- [x] 3.1 `uv run python -m pytest tests/ -x` — brak regresji
-- [x] 3.2 `_AnalysisResponse` importuje się i waliduje poprawnie (quick smoke test)
-- [x] 3.3 `grep "AnalysisResponse" src/analyzer.py` — definicja + użycie obecne
+- [x] 3.1 `uv run python -m pytest tests/ -x` — brak regresji — 7071507
+- [x] 3.2 `_AnalysisResponse` importuje się i waliduje poprawnie (quick smoke test) — 7071507
+- [x] 3.3 `grep "AnalysisResponse" src/analyzer.py` — definicja + użycie obecne — 7071507
 
 #### Manual
 
-- [x] 3.4 NULL ticker ogłoszenie → skip log w Cloud Run + NULL w BQ
-- [x] 3.5 Unknown event_type → WARNING log widoczny
+- [x] 3.4 NULL ticker ogłoszenie → skip log w Cloud Run + NULL w BQ — 7071507
+- [x] 3.5 Unknown event_type → WARNING log widoczny — 7071507
