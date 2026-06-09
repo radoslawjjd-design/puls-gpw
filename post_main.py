@@ -84,6 +84,14 @@ def main() -> None:
         ann_ids = [a["announcement_id"] for a in announcements]
         # Dedup tickers here for supervisor; generate_post deduplicates independently internally
         tickers = list(dict.fromkeys(a["ticker"] for a in announcements if a.get("ticker")))
+        # Build scores in the same dedup order as generate_post (first occurrence per ticker)
+        _seen_t: set[str] = set()
+        company_scores: list[float | None] = []
+        for _a in announcements:
+            _t = _a.get("ticker") or ""
+            if _t and _t not in _seen_t:
+                _seen_t.add(_t)
+                company_scores.append(_a.get("analysis_score"))
 
         # Guard on tickers (not len(announcements)) — rows without a ticker can't form a post
         if not tickers:
@@ -102,7 +110,7 @@ def main() -> None:
             result = validate_post(post, tickers, expected_tweets=expected_tweets)
             if result.approved:
                 save_post_text(ann_ids, "\n\n".join(post.tweets), attempt)
-                send_post_email(window_name, date_str, post.tweets)
+                send_post_email(window_name, date_str, post.tweets, company_scores)
                 logger.info("post_main: post approved on attempt %d for window %s", attempt, window)
                 return
             logger.warning("post_main: attempt %d rejected: %s", attempt, result.issues)

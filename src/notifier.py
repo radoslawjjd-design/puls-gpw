@@ -38,7 +38,12 @@ def _format_tweet_html(tweet: str) -> str:
     return tweet
 
 
-def _post_email_html(window_name: str, date_str: str, tweets: list[str]) -> str:
+def _post_email_html(
+    window_name: str,
+    date_str: str,
+    tweets: list[str],
+    scores: list[float | None] | None = None,
+) -> str:
     meta = _WINDOW_META.get(window_name, {"color": "#374151", "emoji": "📋"})
     color = meta["color"]
     emoji = meta["emoji"]
@@ -52,10 +57,15 @@ def _post_email_html(window_name: str, date_str: str, tweets: list[str]) -> str:
 
     blocks = ""
     for i, (tweet, label) in enumerate(zip(tweets, tweet_labels)):
+        score_badge = ""
+        if scores and 1 <= i <= n - 2:
+            s = scores[i - 1]
+            if s is not None:
+                score_badge = f' &nbsp;·&nbsp; <span style="color:#059669;font-weight:700;">score {s:.0f}</span>'
         blocks += f"""
 <div style="background:#ffffff;border-left:4px solid {color};padding:14px 18px;margin-top:2px;">
   <div style="font-size:11px;color:#6b7280;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">
-    𝕏 Post &nbsp;·&nbsp; Tweet {i + 1}/{n} &nbsp;·&nbsp; {label}
+    𝕏 Post &nbsp;·&nbsp; Tweet {i + 1}/{n} &nbsp;·&nbsp; {label}{score_badge}
   </div>
   <div style="font-size:15px;line-height:1.6;color:#111827;">{_format_tweet_html(tweet)}</div>
 </div>"""
@@ -93,11 +103,16 @@ def _send(subject: str, body: str, html: bool = False) -> None:
         smtp.send_message(msg)
 
 
-def send_post_email(window_name: str, date_str: str, tweets: list[str]) -> None:
+def send_post_email(
+    window_name: str,
+    date_str: str,
+    tweets: list[str],
+    scores: list[float | None] | None = None,
+) -> None:
     """Email the approved X thread to the owner as an HTML poster."""
     meta = _WINDOW_META.get(window_name, {"emoji": "📋"})
     subject = f"{meta['emoji']} {window_name} 🧵{len(tweets)} | {date_str}"
-    _send(subject, _post_email_html(window_name, date_str, tweets), html=True)
+    _send(subject, _post_email_html(window_name, date_str, tweets, scores), html=True)
 
 
 def send_no_post_email(window_name: str, date_str: str, reason: str) -> None:
