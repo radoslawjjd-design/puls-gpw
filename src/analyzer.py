@@ -43,7 +43,7 @@ Zwróć JSON z polami:
 - company: pełna nazwa spółki (string)
 - ticker: symbol giełdowy (string, np. "PKO", "CDR")
 - event_type: typ zdarzenia (string, jedna z wartości z listy poniżej)
-- key_numbers: lista kluczowych liczb/kwot z komunikatu, sformatowanych czytelnie (array of strings)
+- key_numbers: lista kluczowych liczb/kwot (array of strings) — patrz zasady poniżej
 - sentiment: ocena wydźwięku (string: "positive", "negative", "neutral")
 - summary_pl: krótkie podsumowanie komunikatu po polsku, max 2 zdania (string)
 
@@ -53,7 +53,43 @@ dywidenda, emisja_akcji, kontrakt_znaczacy, transakcja_insiderow,
 wyniki_sprzedazowe, skup_akcji, zmiana_zarzadu, compliance, inne
 
 Jeśli nie możesz określić event_type — użyj "inne".
-Liczby formatuj czytelnie: zamiast "120 100 000 PLN" pisz "120,1 mln PLN".\
+Liczby formatuj czytelnie: zamiast "120 100 000 PLN" pisz "120,1 mln PLN".
+
+=== ZASADY key_numbers — PRIORYTET KWOT ===
+
+Zawsze wyciągaj liczby które mają REALNY WPŁYW NA WYCENĘ spółki. Puste pozycje
+lepsze niż zmyślone. Jeśli zmiana r/r jest dostępna — ZAWSZE ją dołącz.
+
+wyniki_finansowe:
+  Priorytet 1: Przychody ze sprzedaży + zmiana r/r (np. "Przychody: 136,9 mln PLN (+18% r/r)")
+  Priorytet 2: Zysk netto + zmiana r/r
+  Priorytet 3: EBITDA lub zysk operacyjny + zmiana r/r (jeśli podane)
+  Priorytet 4: Marża netto lub EBITDA (jeśli podana)
+
+wyniki_sprzedazowe:
+  Priorytet 1: Wolumen sprzedaży lub przychody + zmiana r/r
+  Priorytet 2: Kluczowy segment/produkt z kwotą i zmianą r/r
+
+dywidenda:
+  Priorytet 1: Dywidenda na akcję (DPS) w PLN
+  Priorytet 2: Łączna kwota dywidendy
+  Priorytet 3: Stopa dywidendy (% ceny akcji) — jeśli podana
+  Priorytet 4: Jaki % zysku netto stanowi (payout ratio) — jeśli wynika z komunikatu
+
+kontrakt_znaczacy / przejecie / fuzja / wezwanie:
+  Priorytet 1: Wartość transakcji/kontraktu
+  Priorytet 2: Okres obowiązywania lub harmonogram płatności (jeśli istotny)
+
+emisja_akcji / skup_akcji:
+  Priorytet 1: Liczba akcji i cena emisji/skupu
+  Priorytet 2: Łączna wartość emisji/skupu
+  Priorytet 3: % rozwodnienia lub % kapitału (jeśli podany)
+
+transakcja_insiderow:
+  Priorytet 1: Kwota transakcji
+  Priorytet 2: Liczba akcji i cena jednostkowa
+
+Dla pozostałych event_type: wyciągnij maksymalnie 3 najważniejsze kwoty/liczby.\
 """
 
 _GATE_SYSTEM_PROMPT = """\
