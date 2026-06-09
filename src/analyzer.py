@@ -6,6 +6,7 @@ import json5
 from dataclasses import dataclass
 
 import google.genai as genai
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from src.gemini_client import get_client as _get_client, GEMINI_MODEL as _GEMINI_MODEL
 
@@ -34,6 +35,13 @@ _EVENT_TYPE_SCORES = {
     "transakcja_insiderow": 65, "wyniki_sprzedazowe": 60, "skup_akcji": 55,
     "zmiana_zarzadu": 50, "compliance": 20, "inne": 20,
 }
+
+class _AnalysisResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    event_type: str
+    key_numbers: list[str]
+    summary_pl: str
+
 
 _ANALYSIS_SYSTEM_PROMPT = """\
 Jesteś analitykiem komunikatów ESPI/EBI spółek notowanych na GPW i NewConnect.
@@ -145,7 +153,11 @@ def _call_analysis(parsed_content: str) -> dict | None:
                 response_mime_type="application/json",
             ),
         )
-        return json5.loads(response.text)
+        data = json5.loads(response.text)
+        return _AnalysisResponse.model_validate(data).model_dump()
+    except ValidationError as exc:
+        logger.warning("Gemini analysis schema invalid: %s", exc)
+        return None
     except Exception:
         logger.warning("Gemini analysis call failed", exc_info=True)
         return None
@@ -204,12 +216,21 @@ def analyze_announcement(
         logger.info("Analyzer: skip %s — no parsed_content", announcement_id)
         return null_result
 
+    if not ticker:
+        logger.info("Analyzer: skip %s — no ticker", announcement_id)
+        return null_result
+
     analysis_dict = _call_analysis(parsed_content)
     if analysis_dict is None:
         logger.warning("Analyzer: analysis call failed for %s — skipping", announcement_id)
         return null_result
 
     raw_event_type = analysis_dict.get("event_type")
+    if raw_event_type not in _VALID_EVENT_TYPES:
+        logger.warning(
+            "Analyzer: unknown event_type %r for %s — falling back to 'inne'",
+            raw_event_type, announcement_id,
+        )
     event_type = raw_event_type if raw_event_type in _VALID_EVENT_TYPES else "inne"
 
     structured_analysis = json.dumps(analysis_dict, ensure_ascii=False)

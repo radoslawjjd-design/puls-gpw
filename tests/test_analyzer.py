@@ -64,7 +64,7 @@ def test_gemini_api_error_analysis(caplog):
             client = MagicMock()
             client.models.generate_content.side_effect = Exception("API error")
             mock_get.return_value = client
-            result = analyze_announcement(_ANN_ID, _PARSED_CONTENT, None, None)
+            result = analyze_announcement(_ANN_ID, _PARSED_CONTENT, "PKO", None)
 
     assert result.structured_analysis is None
     assert result.analysis_score is None
@@ -116,7 +116,7 @@ def test_unknown_event_type_maps_to_inne():
     unknown_dict = {**_ANALYSIS_DICT, "event_type": "nieznany_typ"}
     with patch("src.analyzer._get_client") as mock_get:
         mock_get.return_value = _mock_client(unknown_dict, _GATE_APPROVED)
-        result = analyze_announcement(_ANN_ID, _PARSED_CONTENT, None, None)
+        result = analyze_announcement(_ANN_ID, _PARSED_CONTENT, "PKO", None)
 
     assert result.event_type == "inne"
 

@@ -307,25 +307,25 @@ if not ticker:
 
 #### Automated
 
-- [x] 2.1 `uv run python -m pytest tests/ -x` — brak regresji
-- [x] 2.2 `grep "sentiment" src/analyzer.py` nie zwraca linii z _ANALYSIS_SYSTEM_PROMPT
+- [x] 2.1 `uv run python -m pytest tests/ -x` — brak regresji — 189a834
+- [x] 2.2 `grep "sentiment" src/analyzer.py` nie zwraca linii z _ANALYSIS_SYSTEM_PROMPT — 189a834
 
 #### Manual
 
-- [x] 2.3 Ogłoszenie o zmianie w RN klasyfikuje się jako "inne", nie "zmiana_zarzadu"
-- [x] 2.4 Nowe analizy w BQ nie mają pola `sentiment` w structured_analysis JSON
-- [x] 2.5 Ogłoszenie wezwania: `key_numbers` zawiera cenę za akcję, nie harmonogram płatności
-- [x] 2.6 Ogłoszenie zmiana_zarzadu bez kwot finansowych: `key_numbers = []`
+- [x] 2.3 Ogłoszenie o zmianie w RN klasyfikuje się jako "inne", nie "zmiana_zarzadu" — 189a834
+- [x] 2.4 Nowe analizy w BQ nie mają pola `sentiment` w structured_analysis JSON — 189a834
+- [x] 2.5 Ogłoszenie wezwania: `key_numbers` zawiera cenę za akcję, nie harmonogram płatności — 189a834
+- [x] 2.6 Ogłoszenie zmiana_zarzadu bez kwot finansowych: `key_numbers = []` — 189a834
 
 ### Phase 3: Code Quality — Pydantic, Logging, Ticker Filter
 
 #### Automated
 
-- [ ] 3.1 `uv run python -m pytest tests/ -x` — brak regresji
-- [ ] 3.2 `_AnalysisResponse` importuje się i waliduje poprawnie (quick smoke test)
-- [ ] 3.3 `grep "AnalysisResponse" src/analyzer.py` — definicja + użycie obecne
+- [x] 3.1 `uv run python -m pytest tests/ -x` — brak regresji
+- [x] 3.2 `_AnalysisResponse` importuje się i waliduje poprawnie (quick smoke test)
+- [x] 3.3 `grep "AnalysisResponse" src/analyzer.py` — definicja + użycie obecne
 
 #### Manual
 
-- [ ] 3.4 NULL ticker ogłoszenie → skip log w Cloud Run + NULL w BQ
-- [ ] 3.5 Unknown event_type → WARNING log widoczny
+- [x] 3.4 NULL ticker ogłoszenie → skip log w Cloud Run + NULL w BQ
+- [x] 3.5 Unknown event_type → WARNING log widoczny
