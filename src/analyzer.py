@@ -44,8 +44,9 @@ Ticker i nazwa spółki są już znane — NIE wyciągaj ich z tekstu.
 Zwróć JSON z polami:
 - event_type: typ zdarzenia (string, jedna z wartości z listy poniżej)
 - key_numbers: lista kluczowych liczb/kwot (array of strings) — patrz zasady poniżej
-- sentiment: ocena wydźwięku (string: "positive", "negative", "neutral")
-- summary_pl: krótkie podsumowanie komunikatu po polsku, max 2 zdania (string)
+- summary_pl: krótkie podsumowanie komunikatu po polsku, max 2 zdania (string).
+  WAŻNE: opieraj się WYŁĄCZNIE na treści komunikatu — nie dodawaj kontekstu
+  ani ocen których nie ma w tekście.
 
 Dozwolone wartości event_type:
 wyniki_finansowe, upadlosc, restrukturyzacja, przejecie, fuzja, wezwanie,
@@ -53,6 +54,8 @@ dywidenda, emisja_akcji, kontrakt_znaczacy, transakcja_insiderow,
 wyniki_sprzedazowe, skup_akcji, zmiana_zarzadu, compliance, inne
 
 Jeśli nie możesz określić event_type — użyj "inne".
+UWAGA zmiana_zarzadu: dotyczy WYŁĄCZNIE zmian w Zarządzie (Management Board).
+Zmiany w Radzie Nadzorczej (Supervisory Board) → użyj "inne".
 Liczby formatuj czytelnie: zamiast "120 100 000 PLN" pisz "120,1 mln PLN".
 
 === ZASADY key_numbers — PRIORYTET KWOT ===
@@ -76,9 +79,13 @@ dywidenda:
   Priorytet 3: Stopa dywidendy (% ceny akcji) — jeśli podana
   Priorytet 4: Jaki % zysku netto stanowi (payout ratio) — jeśli wynika z komunikatu
 
-kontrakt_znaczacy / przejecie / fuzja / wezwanie:
+kontrakt_znaczacy / przejecie / fuzja:
   Priorytet 1: Wartość transakcji/kontraktu
   Priorytet 2: Okres obowiązywania lub harmonogram płatności (jeśli istotny)
+
+wezwanie:
+  Priorytet 1: Cena za akcję w wezwaniu
+  Priorytet 2: Łączna wartość wezwania lub % pakietu docelowego
 
 emisja_akcji / skup_akcji:
   Priorytet 1: Liczba akcji i cena emisji/skupu
@@ -88,6 +95,10 @@ emisja_akcji / skup_akcji:
 transakcja_insiderow:
   Priorytet 1: Kwota transakcji
   Priorytet 2: Liczba akcji i cena jednostkowa
+
+zmiana_zarzadu / compliance:
+  key_numbers = [] — te komunikaty rzadko zawierają istotne liczby finansowe.
+  Wyjątek: wymierne kwoty explicite podane w tekście (np. odprawa, kara regulacyjna).
 
 Dla pozostałych event_type: wyciągnij maksymalnie 3 najważniejsze kwoty/liczby.\
 """

@@ -297,25 +297,25 @@ if not ticker:
 
 #### Automated
 
-- [x] 1.1 `uv run python -m pytest tests/ -x` — brak regresji
+- [x] 1.1 `uv run python -m pytest tests/ -x` — brak regresji — 3f861d3
 
 #### Manual
 
-- [x] 1.2 Odrzucenia z powodu "summary" zniknęły z nowych analiz w BQ
+- [x] 1.2 Odrzucenia z powodu "summary" zniknęły z nowych analiz w BQ — 3f861d3
 
 ### Phase 2: Analysis Prompt — Zmiana_Zarzadu + Usuń Sentiment + Anti-Halucynacja
 
 #### Automated
 
-- [ ] 2.1 `uv run python -m pytest tests/ -x` — brak regresji
-- [ ] 2.2 `grep "sentiment" src/analyzer.py` nie zwraca linii z _ANALYSIS_SYSTEM_PROMPT
+- [x] 2.1 `uv run python -m pytest tests/ -x` — brak regresji
+- [x] 2.2 `grep "sentiment" src/analyzer.py` nie zwraca linii z _ANALYSIS_SYSTEM_PROMPT
 
 #### Manual
 
-- [ ] 2.3 Ogłoszenie o zmianie w RN klasyfikuje się jako "inne", nie "zmiana_zarzadu"
-- [ ] 2.4 Nowe analizy w BQ nie mają pola `sentiment` w structured_analysis JSON
-- [ ] 2.5 Ogłoszenie wezwania: `key_numbers` zawiera cenę za akcję, nie harmonogram płatności
-- [ ] 2.6 Ogłoszenie zmiana_zarzadu bez kwot finansowych: `key_numbers = []`
+- [x] 2.3 Ogłoszenie o zmianie w RN klasyfikuje się jako "inne", nie "zmiana_zarzadu"
+- [x] 2.4 Nowe analizy w BQ nie mają pola `sentiment` w structured_analysis JSON
+- [x] 2.5 Ogłoszenie wezwania: `key_numbers` zawiera cenę za akcję, nie harmonogram płatności
+- [x] 2.6 Ogłoszenie zmiana_zarzadu bez kwot finansowych: `key_numbers = []`
 
 ### Phase 3: Code Quality — Pydantic, Logging, Ticker Filter
 
