@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import json5
 import google.genai as genai
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from src.gemini_client import get_client, GEMINI_MODEL
 
@@ -98,6 +98,7 @@ Liczba elementów = 1 + liczba spółek + 1.
 
 
 class _PostResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     tweets: list[str]
 
 

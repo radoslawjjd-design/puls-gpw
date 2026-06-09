@@ -11,11 +11,8 @@ _PARSED_CONTENT = (
 )
 
 _ANALYSIS_DICT = {
-    "company": "PKO Bank Polski",
-    "ticker": "PKO",
     "event_type": "wyniki_finansowe",
     "key_numbers": ["120,1 mln PLN", "45 mln PLN"],
-    "sentiment": "positive",
     "summary_pl": "Dobry wynik Q1 2026.",
 }
 
@@ -180,3 +177,52 @@ def test_trailing_comma_json_handled():
 
     assert result.structured_analysis is not None
     assert result.analysis_approved is True
+
+
+# ── _AnalysisResponse validation ─────────────────────────────────────────────
+
+def test_analysis_response_validation():
+    import pytest
+    from pydantic import ValidationError
+    from src.analyzer import _AnalysisResponse
+
+    valid = _AnalysisResponse(event_type="inne", key_numbers=[], summary_pl="x")
+    assert valid.event_type == "inne"
+
+    # extra fields ignored (e.g. sentiment still returned by model during transition)
+    r = _AnalysisResponse.model_validate(
+        {"event_type": "inne", "key_numbers": [], "summary_pl": "x", "sentiment": "positive"}
+    )
+    assert not hasattr(r, "sentiment")
+
+    # missing required field raises
+    with pytest.raises(ValidationError):
+        _AnalysisResponse(event_type="inne", key_numbers=[])
+
+
+def test_event_type_fallback_logs_warning(caplog):
+    unknown_dict = {**_ANALYSIS_DICT, "event_type": "nieznany_typ"}
+    with caplog.at_level(logging.WARNING, logger="src.analyzer"):
+        with patch("src.analyzer._get_client") as mock_get:
+            mock_get.return_value = _mock_client(unknown_dict, _GATE_APPROVED)
+            result = analyze_announcement(_ANN_ID, _PARSED_CONTENT, "PKO", None)
+
+    assert result.event_type == "inne"
+    assert "unknown event_type" in caplog.text
+
+
+def test_skip_no_ticker():
+    with patch("src.analyzer._get_client") as mock_get:
+        client = MagicMock()
+        mock_get.return_value = client
+        result = analyze_announcement(_ANN_ID, _PARSED_CONTENT, None, None)
+
+    client.models.generate_content.assert_not_called()
+    assert result == AnalysisResult(
+        announcement_id=_ANN_ID,
+        structured_analysis=None,
+        analysis_approved=None,
+        analysis_reject_reason=None,
+        event_type=None,
+        analysis_score=None,
+    )

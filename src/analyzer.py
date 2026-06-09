@@ -155,8 +155,8 @@ def _call_analysis(parsed_content: str) -> dict | None:
         )
         data = json5.loads(response.text)
         return _AnalysisResponse.model_validate(data).model_dump()
-    except ValidationError as exc:
-        logger.warning("Gemini analysis schema invalid: %s", exc)
+    except ValidationError:
+        logger.warning("Gemini analysis schema invalid", exc_info=True)
         return None
     except Exception:
         logger.warning("Gemini analysis call failed", exc_info=True)
