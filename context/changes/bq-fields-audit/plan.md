@@ -312,9 +312,9 @@ Faza 2 musi nastąpić po deployu Fazy 1 (nowy kod musi być aktywny, `ensure_sc
 
 #### Manual
 
-- [ ] 2.1 `ensure_schema_current()` dodała `posted_at` i `analyzed_at` — zweryfikowane `bq show --schema`
-- [ ] 2.2 Historyczne dane zmigrowane: `processed_at IS NOT NULL AND posted_at IS NULL` = 0 wierszy
-- [ ] 2.3 Legacy kolumny usunięte: schema BQ nie zawiera `analysis_type` ani `processed_at`
+- [x] 2.1 `ensure_schema_current()` dodała `posted_at` i `analyzed_at` — zweryfikowane `bq show --schema`
+- [x] 2.2 Historyczne dane zmigrowane: `processed_at IS NOT NULL AND posted_at IS NULL` = 0 wierszy (53 wiersze przepisane)
+- [x] 2.3 Legacy kolumny usunięte: schema BQ nie zawiera `analysis_type` ani `processed_at`
 
 ### Phase 3: Tests
 
