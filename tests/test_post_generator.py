@@ -1,7 +1,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from src.post_generator import GeneratedPost, generate_post
+from src.post_generator import GeneratedPost, generate_post, _build_tickers_str, _HOOK_VARIANTS, _CLOSING_QUESTIONS
 
 _ANNOUNCEMENTS = [
     {
@@ -103,16 +103,47 @@ def test_trailing_comma_json_still_parses():
 def test_window_hook_phrase_injected():
     payload = json.dumps({"tweets": _SIX_TWEETS}, ensure_ascii=False)
     cases = [
-        ("ranek",   "zerknij przed sesją:"),
-        ("poludnie", "zerknij w trakcie sesji:"),
-        ("wieczor",  "zerknij po sesji:"),
-        (None,       "zerknij przed sesją:"),  # default
+        ("ranek",    "ranek"),
+        ("poludnie", "poludnie"),
+        ("wieczor",  "wieczor"),
+        (None,       "ranek"),   # default falls back to ranek
     ]
-    for window, expected_phrase in cases:
+    for window, expected_key in cases:
         with patch("src.post_generator.get_client", return_value=_mock_client(payload)) as mock_get:
             generate_post(_ANNOUNCEMENTS, window=window)
         call_contents = mock_get.return_value.models.generate_content.call_args[1]["contents"]
-        assert expected_phrase in call_contents, f"window={window!r}: expected {expected_phrase!r} in contents"
+        assert any(
+            phrase in call_contents for phrase in _HOOK_VARIANTS[expected_key]
+        ), f"window={window!r}: no variant from {expected_key!r} pool found in contents"
+
+
+def test_closing_question_injected():
+    payload = json.dumps({"tweets": _SIX_TWEETS}, ensure_ascii=False)
+    with patch("src.post_generator.get_client", return_value=_mock_client(payload)) as mock_get:
+        generate_post(_ANNOUNCEMENTS)
+    call_contents = mock_get.return_value.models.generate_content.call_args[1]["contents"]
+    assert "fraza_closing:" in call_contents
+    assert "$PKO" in call_contents or "$XTB" in call_contents
+
+
+def test_no_valid_announcements_returns_none():
+    no_ticker = [{**_ANNOUNCEMENTS[0], "ticker": None}]
+    result = generate_post(no_ticker)
+    assert result is None
+
+
+# ── _build_tickers_str ───────────────────────────────────────────────────────
+
+def test_build_tickers_str_single():
+    assert _build_tickers_str(["PKO"]) == "$PKO"
+
+
+def test_build_tickers_str_two():
+    assert _build_tickers_str(["PKO", "XTB"]) == "$PKO czy $XTB"
+
+
+def test_build_tickers_str_three():
+    assert _build_tickers_str(["PKO", "XTB", "LBW"]) == "$PKO, $XTB czy $LBW"
 
 
 # ── structured_analysis parse failure ────────────────────────────────────────

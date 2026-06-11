@@ -1,4 +1,6 @@
 """Gemini-powered X thread generator for ESPI/EBI announcements."""
+import datetime
+import hashlib
 import json
 import logging
 from dataclasses import dataclass
@@ -11,11 +13,49 @@ from src.gemini_client import get_client, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
-_HOOK_PHRASES = {
-    "ranek": "zerknij przed sesją:",
-    "poludnie": "zerknij w trakcie sesji:",
-    "wieczor": "zerknij po sesji:",
+_HOOK_VARIANTS: dict[str, list[str]] = {
+    "ranek": [
+        "zerknij przed sesją:",
+        "to może ruszyć kurs dziś:",
+        "zanim zadzwoni dzwonek na GPW:",
+        "co mieć na radarze przed otwarciem:",
+        "małe spółki, duże ruchy — sprawdź zanim sesja ruszy:",
+        "pilne z parkietu — dziś rano:",
+        "3 komunikaty które mogą zrobić ruch dziś:",
+        "zanim otworzysz platformę — te spółki warto mieć na oku:",
+    ],
+    "poludnie": [
+        "zerknij w trakcie sesji:",
+        "kurs już reaguje? sprawdź:",
+        "w środku dnia coś się dzieje na GPW:",
+        "gorące ESPI — w trakcie handlu:",
+        "parkiet reaguje — sprawdź dlaczego:",
+        "co porusza small caps w południe:",
+        "świeże z taśmy — dziś w trakcie sesji:",
+        "masz jeszcze czas zanim sesja się skończy:",
+    ],
+    "wieczor": [
+        "zerknij po sesji:",
+        "co wpłynie na jutrzejszy kurs:",
+        "po zamknięciu parkietu — to wejdzie w cenę jutro:",
+        "co przegapiłeś dziś na GPW:",
+        "wieczorny przegląd ważnych ESPI:",
+        "jutro może być ciekawie — sprawdź dlaczego:",
+        "po sesji — 3 komunikaty do analizy na noc:",
+        "rynek już śpi, ale te spółki jeszcze nie:",
+    ],
 }
+
+_CLOSING_QUESTIONS = [
+    "{tickers} — który ruch robi na Tobie największe wrażenie?",
+    "Która z tych spółek zaskoczyła Cię dziś najbardziej — {tickers}?",
+    "{tickers} — który komunikat zmienia obraz spółki najbardziej?",
+    "Gdybyś miał dziś sprawdzić tylko jedną — {tickers}?",
+    "{tickers} — który temat wróci jutro na tapetę?",
+    "{tickers} — co byś dziś obserwował uważniej?",
+    "Który ruch czujesz że rynek jeszcze nie wycenił — {tickers}?",
+    "{tickers} — który z tych komunikatów ma dla Ciebie największe znaczenie?",
+]
 
 _SYSTEM_PROMPT = """\
 Jesteś analitykiem finansowym piszącym wątki o komunikatach ESPI/EBI na platformie X.
@@ -60,7 +100,7 @@ Format — każda wartość liczbowa na OSOBNEJ LINII:
 📊 Nazwa Spółki ( $TICKER )
 [kluczowa liczba 1]
 [kluczowa liczba 2 jeśli jest]
-[jedno zdanie kontekstu lub pytanie prowokujące]
+[jedno zdanie zakończenia — patrz zasady poniżej]
 
 Przykład:
 📊 Lubawa ( $LBW )
@@ -73,16 +113,20 @@ Zasady:
 - Pełna nazwa + ( $TICKER ) — zawsze oba
 - Liczby z key_numbers na osobnych liniach — bez wymyślania
 - Jeśli key_numbers jest pustą listą: napisz jedno krótkie zdanie kontekstu z summary_pl zamiast linii z liczbami — nie kopiuj metadanych dokumentu (typ raportu, waluta, itp.)
-- Jedno krótkie pytanie na końcu
+- Zakończ tweet spółki JEDNYM z poniższych stylów (dobierz do treści komunikatu):
+  • obserwacja: jedno konkretne zdanie co to oznacza operacyjnie
+  • pytanie: prowokujące, otwarte, bez odpowiedzi
+  • kontrast: co to zmienia vs poprzedni okres lub vs sektor
+  • forward: co może się wydarzyć dalej (bez rekomendacji inwestycyjnych)
+  NIE używaj tego samego stylu dla dwóch spółek w jednej nitce.
 
 --- Tweet ostatni: CLOSING — JEDEN TWEET, NIE DWA ---
 KRYTYCZNE: pytanie + bookmark + disclaimer — JEDEN element tablicy JSON, max 280 znaków.
 
-Format:
-"[pytanie z wszystkimi $TICKER] Napisz w komentarzu!\n\n💾 Zapisz na później\nNie jest to rekomendacja inwestycyjna. #GPW #ESPI #SmallCaps"
+Użyj dokładnie tego formatu (fraza_closing jest podana w wiadomości użytkownika):
+"[fraza_closing] Napisz w komentarzu!\n\n💾 Zapisz na później\nNie jest to rekomendacja inwestycyjna. #GPW #ESPI #SmallCaps"
 
-Przykład dla $LBW, $FTL, $HUB:
-"$LBW, $FTL czy $HUB — który ruch robi na Tobie największe wrażenie? Napisz w komentarzu!\n\n💾 Zapisz na później\nNie jest to rekomendacja inwestycyjna. #GPW #ESPI #SmallCaps"
+Nie zmieniaj fraza_closing — wstaw ją dosłownie przed "Napisz w komentarzu!".
 
 === CZEGO UNIKAĆ ===
 - Powtarzanie tej samej spółki w dwóch osobnych tweetach
@@ -106,6 +150,19 @@ class _PostResponse(BaseModel):
 @dataclass
 class GeneratedPost:
     tweets: list[str]
+
+
+def _pick_variant(variants: list[str], salt: str = "") -> str:
+    day = datetime.date.today().isoformat()
+    idx = int(hashlib.md5(f"{day}{salt}".encode()).hexdigest(), 16)
+    return variants[idx % len(variants)]
+
+
+def _build_tickers_str(tickers: list[str]) -> str:
+    tagged = [f"${t}" for t in tickers]
+    if len(tagged) == 1:
+        return tagged[0]
+    return ", ".join(tagged[:-1]) + f" czy {tagged[-1]}"
 
 
 def generate_post(announcements: list[dict], window: str | None = None) -> GeneratedPost | None:
@@ -144,11 +201,25 @@ def generate_post(announcements: list[dict], window: str | None = None) -> Gener
             "summary_pl": structured.get("summary_pl", ""),
         })
 
+    if not enriched:
+        logger.warning("post_generator: no valid announcements to generate post from")
+        return None
+
     n_companies = len(enriched)
     expected_tweets = n_companies + 2
-    hook_phrase = _HOOK_PHRASES.get(window or "", _HOOK_PHRASES["ranek"])
+
+    window_key = window or "ranek"
+    hook_phrase = _pick_variant(
+        _HOOK_VARIANTS.get(window_key, _HOOK_VARIANTS["ranek"]),
+        salt=f"hook-{window_key}",
+    )
+
+    tickers_str = _build_tickers_str([row["ticker"] for row in enriched])
+    closing_q = _pick_variant(_CLOSING_QUESTIONS, salt="closing").replace("{tickers}", tickers_str)
+
     user_message = (
-        f"fraza_hooka: \"{hook_phrase}\"\n\n"
+        f"fraza_hooka: \"{hook_phrase}\"\n"
+        f"fraza_closing: \"{closing_q}\"\n\n"
         f"Dane: {json.dumps(enriched, ensure_ascii=False)}\n\n"
         f"Wygeneruj wątek: DOKŁADNIE {expected_tweets} tweetów "
         f"(1 hook + {n_companies} spółek + 1 closing)."
