@@ -372,12 +372,15 @@ def get_processed_ids_since(cutoff: datetime) -> set[str]:
     """Return set of announcement_ids where published_at >= cutoff.
 
     Caller should pass cutoff = now - 2× scrape_window for a safety margin.
-    Raises RuntimeError if the BQ query fails.
+    Raises BigQueryError if the BQ query fails.
     """
     client = _get_client()
     query = f"SELECT announcement_id FROM `{_table_ref(client)}` WHERE published_at >= @cutoff"
     job_config = bigquery.QueryJobConfig(
         query_parameters=[bigquery.ScalarQueryParameter("cutoff", "TIMESTAMP", cutoff)]
     )
-    rows = list(client.query(query, job_config=job_config).result())
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_processed_ids_since failed: {exc}") from exc
     return {row.announcement_id for row in rows}

@@ -81,13 +81,16 @@ def main() -> None:
         )
     finally:
         # Step 6 — cleanup (runs even on error to avoid orphaned test records)
-        client.query(
-            f"DELETE FROM `{table}` WHERE announcement_id = @id",
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", ann_id)]
-            ),
-        ).result()
-        print("[6] Cleanup: test record deleted")
+        try:
+            client.query(
+                f"DELETE FROM `{table}` WHERE announcement_id = @id",
+                job_config=bigquery.QueryJobConfig(
+                    query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", ann_id)]
+                ),
+            ).result()
+            print("[6] Cleanup: test record deleted")
+        except Exception as exc:
+            print(f"[6] WARNING: cleanup failed ({exc}) — delete test record manually: {ann_id}")
 
     print("\nAll steps passed.")
 

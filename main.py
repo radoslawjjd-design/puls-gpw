@@ -62,6 +62,8 @@ def main():
                             "Analyzer: rejected %s — %s", ann_id, result.analysis_reject_reason
                         )
                 except BigQueryError:
+                    # best-effort: analysis save failure doesn't block the run;
+                    # the row stays with analyzed_at=NULL and won't enter the post window.
                     logger.warning("BQ save_analysis_result failed for %s — skipping", ann_id)
             except BigQueryError:
                 raise  # propagate to outer except → send_alert

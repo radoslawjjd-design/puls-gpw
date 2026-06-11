@@ -1,7 +1,7 @@
 ---
 change_id: bq-fields-audit
 title: BigQuery fields audit
-status: implementing
+status: impl_reviewed
 created: 2026-06-11
 updated: 2026-06-11
 archived_at: null
