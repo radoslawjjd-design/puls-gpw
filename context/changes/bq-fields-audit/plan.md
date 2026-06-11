@@ -320,9 +320,9 @@ Faza 2 musi nastąpić po deployu Fazy 1 (nowy kod musi być aktywny, `ensure_sc
 
 #### Automated
 
-- [x] 3.1 `uv run pytest tests/test_bigquery.py -v` — 4 nowe testy widoczne i przechodzą
-- [x] 3.2 `uv run pytest` — cały suite bez regresji
+- [x] 3.1 `uv run pytest tests/test_bigquery.py -v` — 4 nowe testy widoczne i przechodzą — 6785315
+- [x] 3.2 `uv run pytest` — cały suite bez regresji — 6785315
 
 #### Manual
 
-- [x] 3.3 Każdy nowy test weryfikuje inny krok pipeline (INSERT / parsed / analysis / post) — brak duplikacji pokrycia
+- [x] 3.3 Każdy nowy test weryfikuje inny krok pipeline (INSERT / parsed / analysis / post) — brak duplikacji pokrycia — 6785315
