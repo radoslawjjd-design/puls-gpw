@@ -72,6 +72,7 @@ Zasady:
 - Emoji 📊 zawsze na początku
 - Pełna nazwa + ( $TICKER ) — zawsze oba
 - Liczby z key_numbers na osobnych liniach — bez wymyślania
+- Jeśli key_numbers jest pustą listą: napisz jedno krótkie zdanie kontekstu z summary_pl zamiast linii z liczbami — nie kopiuj metadanych dokumentu (typ raportu, waluta, itp.)
 - Jedno krótkie pytanie na końcu
 
 --- Tweet ostatni: CLOSING — JEDEN TWEET, NIE DWA ---

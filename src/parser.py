@@ -139,7 +139,7 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
             return len(re.findall(r"\b\d+[.,]?\d*\b", text))
 
         scores = [_num_score(t) for t in page_texts]
-        context_indices = list(range(2))
+        context_indices = list(range(5))
         table_indices = [i for i, s in enumerate(scores) if s >= _TABLE_SCORE_MIN]
         selected = sorted(set(context_indices + table_indices))
 

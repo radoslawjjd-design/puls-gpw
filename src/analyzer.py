@@ -56,6 +56,8 @@ Zwróć JSON z polami:
   WAŻNE: opieraj się WYŁĄCZNIE na treści komunikatu — nie dodawaj kontekstu
   ani ocen których nie ma w tekście.
 
+Język: wszystkie pola (key_numbers i summary_pl) pisz po polsku — jeśli komunikat jest po angielsku lub innym języku, przetłumacz.
+
 Dozwolone wartości event_type:
 wyniki_finansowe, upadlosc, restrukturyzacja, przejecie, fuzja, wezwanie,
 dywidenda, emisja_akcji, kontrakt_znaczacy, transakcja_insiderow,
