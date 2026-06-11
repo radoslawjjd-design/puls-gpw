@@ -298,15 +298,15 @@ Faza 2 musi nastąpić po deployu Fazy 1 (nowy kod musi być aktywny, `ensure_sc
 
 #### Automated
 
-- [x] 1.1 Testy przechodzą: `uv run pytest tests/test_bigquery.py -v`
-- [x] 1.2 Brak referencji `save_analysis\b` w `.py`: `grep -rn "save_analysis\b" . --include="*.py"`
-- [x] 1.3 Brak `processed_at` i `analysis_type` w `.py`: `grep -rn "processed_at\|analysis_type" . --include="*.py"`
-- [x] 1.4 Type check: mypy nie zainstalowane w projekcie; `python -c "import db.bigquery; import main"` OK
+- [x] 1.1 Testy przechodzą: `uv run pytest tests/test_bigquery.py -v` — e0e2e65
+- [x] 1.2 Brak referencji `save_analysis\b` w `.py`: `grep -rn "save_analysis\b" . --include="*.py"` — e0e2e65
+- [x] 1.3 Brak `processed_at` i `analysis_type` w `.py`: `grep -rn "processed_at\|analysis_type" . --include="*.py"` — e0e2e65
+- [x] 1.4 Type check: mypy nie zainstalowane w projekcie; `python -c "import db.bigquery; import main"` OK — e0e2e65
 
 #### Manual
 
-- [x] 1.5 `insert_announcement` bez `company`/`ticker` — TypeError przy próbie przekazania
-- [x] 1.6 `_SCHEMA` zawiera `posted_at` i `analyzed_at`, nie zawiera `processed_at` ani `analysis_type`
+- [x] 1.5 `insert_announcement` bez `company`/`ticker` — TypeError przy próbie przekazania — e0e2e65
+- [x] 1.6 `_SCHEMA` zawiera `posted_at` i `analyzed_at`, nie zawiera `processed_at` ani `analysis_type` — e0e2e65
 
 ### Phase 2: BQ migration (human-only)
 
@@ -320,5 +320,9 @@ Faza 2 musi nastąpić po deployu Fazy 1 (nowy kod musi być aktywny, `ensure_sc
 
 #### Automated
 
-- [ ] 3.1 `uv run pytest tests/test_bigquery.py -v` — 4 nowe testy widoczne i przechodzą
-- [ ] 3.2 `uv run pytest` — cały suite bez regresji
+- [x] 3.1 `uv run pytest tests/test_bigquery.py -v` — 4 nowe testy widoczne i przechodzą
+- [x] 3.2 `uv run pytest` — cały suite bez regresji
+
+#### Manual
+
+- [x] 3.3 Każdy nowy test weryfikuje inny krok pipeline (INSERT / parsed / analysis / post) — brak duplikacji pokrycia
