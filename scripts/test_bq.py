@@ -24,7 +24,7 @@ from db.bigquery import (
     create_table_if_not_exists,
     insert_announcement,
     is_processed,
-    save_analysis,
+    save_analysis_result,
 )
 
 TEST_URL = "https://www.bankier.pl/gielda/wiadomosci/komunikaty-spolek/test-bq-integration-F02"
@@ -42,8 +42,6 @@ def main() -> None:
         url=TEST_URL,
         published_at=datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
         title="Test announcement F-02",
-        company="Test Spółka S.A.",
-        ticker="TST",
     )
     print(f"[2] Inserted announcement_id: {ann_id}")
 
@@ -53,14 +51,16 @@ def main() -> None:
         assert processed, "is_processed should return True after insert"
         print(f"[3] is_processed: {processed}")
 
-        # Step 4 — save analysis
-        save_analysis(
+        # Step 4 — save analysis result
+        save_analysis_result(
             announcement_id=ann_id,
-            post_text="Test post #TST wyniki finansowe.",
-            analysis_type="FINANCIAL",
-            supervisor_attempts=1,
+            structured_analysis='{"company": "Test SA", "ticker": "TST", "event_type": "wyniki_finansowe", "key_numbers": [], "sentiment": "pozytywny", "summary_pl": "Test."}',
+            analysis_approved=True,
+            analysis_reject_reason=None,
+            event_type="wyniki_finansowe",
+            analysis_score=125.0,
         )
-        print("[4] save_analysis: OK")
+        print("[4] save_analysis_result: OK")
 
         # Step 5 — read back and display
         job_config = bigquery.QueryJobConfig(
@@ -76,8 +76,8 @@ def main() -> None:
         row = rows[0]
         print(
             f"[5] Record: url={row.url!r} title={row.title!r} "
-            f"analysis_type={row.analysis_type!r} post_text={row.post_text!r} "
-            f"supervisor_attempts={row.supervisor_attempts}"
+            f"analysis_approved={row.analysis_approved!r} event_type={row.event_type!r} "
+            f"analysis_score={row.analysis_score!r} analyzed_at={row.analyzed_at!r}"
         )
     finally:
         # Step 6 — cleanup (runs even on error to avoid orphaned test records)

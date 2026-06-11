@@ -44,7 +44,7 @@ def main():
             return
         for ann in new:
             try:
-                ann_id = insert_announcement(ann.bankier_url, ann.published_at, ann.title, None, None, ann.priority)
+                ann_id = insert_announcement(ann.bankier_url, ann.published_at, ann.title, ann.priority)
                 parsed = parse_announcement(ann, ann_id)
                 update_parsed_content(ann_id, parsed.parsed_content, parsed.ticker, parsed.company)
                 result = analyze_announcement(ann_id, parsed.parsed_content, parsed.ticker, ann.priority)
@@ -57,8 +57,12 @@ def main():
                         result.event_type,
                         result.analysis_score,
                     )
+                    if result.analysis_approved is False:
+                        logger.warning(
+                            "Analyzer: rejected %s — %s", ann_id, result.analysis_reject_reason
+                        )
                 except BigQueryError:
-                    logger.warning("BQ save_analysis failed for %s — skipping", ann_id)
+                    logger.warning("BQ save_analysis_result failed for %s — skipping", ann_id)
             except BigQueryError:
                 raise  # propagate to outer except → send_alert
             except Exception:

@@ -1,4 +1,19 @@
-"""BigQuery client, schema definition, and CRUD wrappers for the announcements table."""
+"""BigQuery client, schema definition, and CRUD wrappers for the announcements table.
+
+Nullable field semantics (NULL = step not yet reached or failed):
+  company, ticker        — set by parser (update_parsed_content); NULL if parse failed
+  parsed_content         — set by parser; NULL if parse failed; analyzer skips if NULL
+  analyzed_at            — set by save_analysis_result; NULL if analyzer skipped/failed
+  structured_analysis    — set by save_analysis_result; NULL if analyzer skipped/failed
+  analysis_approved      — set by save_analysis_result; NULL if analyzer skipped/failed
+  analysis_reject_reason — set only when analysis_approved=FALSE; NULL otherwise
+  event_type             — set by save_analysis_result; NULL if analyzer skipped/failed
+  analysis_score         — set by save_analysis_result; NULL if analyzer skipped/failed
+  post_text              — set by save_post_text; NULL if generation failed (3 attempts)
+  posted_at              — set by save_post_text; NULL until post generation attempted
+  supervisor_attempts    — set by save_post_text; counts post supervisor retries (1-3)
+  priority               — set by scraper (HTML badge); NULL if no priority badge
+"""
 import hashlib
 import logging
 import os
@@ -22,9 +37,9 @@ _SCHEMA = [
     bigquery.SchemaField("company", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("ticker", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("post_text", "STRING", mode="NULLABLE"),
-    bigquery.SchemaField("processed_at", "TIMESTAMP", mode="NULLABLE"),
+    bigquery.SchemaField("posted_at", "TIMESTAMP", mode="NULLABLE"),
+    bigquery.SchemaField("analyzed_at", "TIMESTAMP", mode="NULLABLE"),
     bigquery.SchemaField("supervisor_attempts", "INTEGER", mode="NULLABLE"),
-    bigquery.SchemaField("analysis_type", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("parsed_content", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("priority", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("structured_analysis", "STRING", mode="NULLABLE"),
@@ -129,25 +144,23 @@ def insert_announcement(
     url: str,
     published_at: datetime,
     title: str,
-    company: str | None,
-    ticker: str | None,
     priority: str | None = None,
 ) -> str:
     """Insert a new announcement row and return its announcement_id.
 
     Uses DML INSERT (not streaming) so subsequent UPDATE/DELETE in the same
     session are not blocked by the streaming buffer.
-    Raises RuntimeError if the query job fails.
+    Raises BigQueryError if the query job fails.
+    company and ticker are not set here — the parser populates them via
+    update_parsed_content() after a second HTTP hop to the company profile page.
     """
     client = _get_client()
     ann_id = _announcement_id(url)
     query = f"""
         INSERT INTO `{_table_ref(client)}`
-            (announcement_id, url, published_at, title, company, ticker,
-             post_text, processed_at, supervisor_attempts, analysis_type, priority)
+            (announcement_id, url, published_at, title, priority)
         VALUES
-            (@id, @url, @published_at, @title, @company, @ticker,
-             NULL, NULL, NULL, NULL, @priority)
+            (@id, @url, @published_at, @title, @priority)
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
@@ -155,52 +168,15 @@ def insert_announcement(
             bigquery.ScalarQueryParameter("url", "STRING", url),
             bigquery.ScalarQueryParameter("published_at", "TIMESTAMP", published_at),
             bigquery.ScalarQueryParameter("title", "STRING", title),
-            bigquery.ScalarQueryParameter("company", "STRING", company),
-            bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
             bigquery.ScalarQueryParameter("priority", "STRING", priority),
-        ]
-    )
-    job = client.query(query, job_config=job_config)
-    result = job.result()
-    if job.errors:
-        raise BigQueryError(f"insert_announcement failed: {job.errors}")
-    logger.debug("Inserted announcement_id=%s", ann_id)
-    return ann_id
-
-
-def save_analysis(
-    announcement_id: str,
-    post_text: str,
-    analysis_type: str,
-    supervisor_attempts: int,
-) -> None:
-    """Update a row with analysis results. analysis_type must be FINANCIAL or CORPORATE."""
-    if analysis_type not in ("FINANCIAL", "CORPORATE"):
-        raise ValueError(f"analysis_type must be FINANCIAL or CORPORATE, got: {analysis_type!r}")
-    client = _get_client()
-    query = f"""
-        UPDATE `{_table_ref(client)}`
-        SET
-            post_text = @post_text,
-            analysis_type = @analysis_type,
-            supervisor_attempts = @supervisor_attempts,
-            processed_at = CURRENT_TIMESTAMP()
-        WHERE announcement_id = @id
-    """
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("post_text", "STRING", post_text),
-            bigquery.ScalarQueryParameter("analysis_type", "STRING", analysis_type),
-            bigquery.ScalarQueryParameter("supervisor_attempts", "INTEGER", supervisor_attempts),
-            bigquery.ScalarQueryParameter("id", "STRING", announcement_id),
         ]
     )
     job = client.query(query, job_config=job_config)
     job.result()
     if job.errors:
-        raise BigQueryError(f"save_analysis failed: {job.errors}")
-    if job.num_dml_affected_rows == 0:
-        raise BigQueryError(f"save_analysis: no row matched announcement_id={announcement_id!r}")
+        raise BigQueryError(f"insert_announcement failed: {job.errors}")
+    logger.debug("Inserted announcement_id=%s", ann_id)
+    return ann_id
 
 
 def update_parsed_content(
@@ -262,7 +238,8 @@ def save_analysis_result(
             analysis_approved = @analysis_approved,
             analysis_reject_reason = @analysis_reject_reason,
             event_type = @event_type,
-            analysis_score = @analysis_score
+            analysis_score = @analysis_score,
+            analyzed_at = CURRENT_TIMESTAMP()
         WHERE announcement_id = @id
     """
     job_config = bigquery.QueryJobConfig(
@@ -339,7 +316,7 @@ def save_post_text(
     post_text: str | None,
     supervisor_attempts: int,
 ) -> None:
-    """Batch-update post_text, processed_at, supervisor_attempts for all contributing rows.
+    """Batch-update post_text, posted_at, supervisor_attempts for all contributing rows.
 
     post_text=None records a failed generation attempt (BQ stores NULL).
     Raises BigQueryError on failure.
@@ -350,7 +327,7 @@ def save_post_text(
         SET
             post_text = @post_text,
             supervisor_attempts = @supervisor_attempts,
-            processed_at = CURRENT_TIMESTAMP()
+            posted_at = CURRENT_TIMESTAMP()
         WHERE announcement_id IN UNNEST(@ids)
     """
     job_config = bigquery.QueryJobConfig(
