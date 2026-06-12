@@ -1,0 +1,130 @@
+import os
+import pathlib
+from datetime import datetime
+from typing import Literal
+
+import json5
+from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi.responses import HTMLResponse
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel, ConfigDict
+
+from db.bigquery import BigQueryError  # type: ignore[attr-defined]
+from db.bigquery import delete_announcement, list_announcements_admin, list_announcements_user
+
+_API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+Role = Literal["admin", "user"]
+
+
+def _get_role(key: str | None = Security(_API_KEY_HEADER)) -> Role:
+    if key == os.environ.get("ADMIN_API_KEY"):
+        return "admin"
+    if key == os.environ.get("USER_API_KEY"):
+        return "user"
+    raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+def _require_admin(role: Role = Depends(_get_role)) -> Role:
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return role
+
+
+def _parse_structured_analysis(raw: str | None) -> dict | None:
+    if raw is None:
+        return None
+    try:
+        return json5.loads(raw)
+    except Exception:
+        return None
+
+
+class AnnouncementAdmin(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    announcement_id: str | None = None
+    url: str | None = None
+    published_at: datetime | None = None
+    title: str | None = None
+    company: str | None = None
+    ticker: str | None = None
+    post_text: str | None = None
+    posted_at: datetime | None = None
+    analyzed_at: datetime | None = None
+    supervisor_attempts: int | None = None
+    parsed_content: str | None = None
+    priority: str | None = None
+    structured_analysis: str | None = None
+    analysis_approved: bool | None = None
+    analysis_reject_reason: str | None = None
+    event_type: str | None = None
+    analysis_score: float | None = None
+
+
+class AnnouncementUser(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    company: str | None = None
+    ticker: str | None = None
+    event_type: str | None = None
+    structured_analysis: dict | None = None
+    analysis_score: float | None = None
+    published_at: datetime | None = None
+
+
+def create_app() -> FastAPI:
+    ui_html = pathlib.Path("static/index.html").read_text(encoding="utf-8")
+
+    app = FastAPI()
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    @app.get("/", response_class=HTMLResponse)
+    async def ui():
+        return ui_html
+
+    @app.get("/auth/role")
+    async def auth_role(role: Role = Depends(_get_role)):
+        return {"role": role}
+
+    @app.get("/announcements")
+    async def announcements(
+        limit: int = 20,
+        ticker: str | None = None,
+        company: str | None = None,
+        event_type: str | None = None,
+        from_dt: datetime | None = None,
+        to_dt: datetime | None = None,
+        role: Role = Depends(_get_role),
+    ):
+        try:
+            if role == "admin":
+                rows = list_announcements_admin(
+                    limit=limit, ticker=ticker, company=company,
+                    event_type=event_type, from_dt=from_dt, to_dt=to_dt,
+                )
+                return [AnnouncementAdmin(**r).model_dump() for r in rows]
+            else:
+                rows = list_announcements_user(
+                    limit=limit, ticker=ticker, company=company,
+                    event_type=event_type, from_dt=from_dt, to_dt=to_dt,
+                )
+                return [
+                    AnnouncementUser(
+                        **{**r, "structured_analysis": _parse_structured_analysis(r.get("structured_analysis"))}
+                    ).model_dump()
+                    for r in rows
+                ]
+        except BigQueryError as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.delete("/announcements/{announcement_id}", status_code=204)
+    async def delete(announcement_id: str, role: Role = Depends(_require_admin)):
+        try:
+            delete_announcement(announcement_id)
+        except BigQueryError as exc:
+            if "no row matched" in str(exc):
+                raise HTTPException(status_code=404, detail="Not found")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    return app

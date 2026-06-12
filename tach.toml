@@ -20,6 +20,13 @@ depends_on = [
 ]
 
 [[modules]]
+path = "api_main"
+depends_on = [
+    { path = "src" },
+    { path = "db" },
+]
+
+[[modules]]
 path = "src"
 depends_on = [
     { path = "db" },

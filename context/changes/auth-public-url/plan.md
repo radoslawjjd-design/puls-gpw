@@ -588,21 +588,21 @@ uruchomieniu, aktualizuje obraz przy kolejnych.
 
 #### Automated
 
-- [x] 1.1 `uv run pytest tests/test_bigquery.py -v` — nowe testy zielone
-- [x] 1.2 `uv run tach check` — brak naruszeń
+- [x] 1.1 `uv run pytest tests/test_bigquery.py -v` — nowe testy zielone — 0de0bc6
+- [x] 1.2 `uv run tach check` — brak naruszeń — 0de0bc6
 
 ### Phase 2: FastAPI Application
 
 #### Automated
 
-- [ ] 2.1 `uv run pytest tests/ -v` — suite zielony (brak regresji)
-- [ ] 2.2 `uv run tach check` — brak naruszeń po dodaniu api_main
-- [ ] 2.3 Import smoke test: `uv run python -c "from src.api import create_app; create_app()"`
+- [x] 2.1 `uv run pytest tests/ -v` — suite zielony (brak regresji)
+- [x] 2.2 `uv run tach check` — brak naruszeń po dodaniu api_main
+- [x] 2.3 Import smoke test: `uv run python -c "from src.api import create_app; create_app()"`
 
 #### Manual
 
-- [ ] 2.4 `curl localhost:8080/health` → `{"status": "ok"}`
-- [ ] 2.5 Auth role check — admin key, user key, zły klucz
+- [x] 2.4 `curl localhost:8080/health` → `{"status": "ok"}`
+- [x] 2.5 Auth role check — admin key, user key, zły klucz
 
 ### Phase 3: Frontend
 
