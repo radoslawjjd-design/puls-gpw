@@ -1,9 +1,10 @@
 ---
 change_id: auth-public-url
 title: Auth public url
-status: implemented
+status: impl_reviewed
 created: 2026-06-11
 updated: 2026-06-12
+
 
 archived_at: null
 tracking:

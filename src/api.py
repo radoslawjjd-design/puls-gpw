@@ -1,10 +1,13 @@
+import logging
 import os
 import pathlib
 from datetime import datetime
 from typing import Literal
 
+logger = logging.getLogger(__name__)
+
 import json5
-from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi import Depends, FastAPI, HTTPException, Query, Security
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ConfigDict
@@ -89,12 +92,12 @@ def create_app() -> FastAPI:
 
     @app.get("/announcements")
     async def announcements(
-        limit: int = 20,
+        limit: int = Query(20, ge=1, le=100),
         ticker: str | None = None,
         company: str | None = None,
         event_type: str | None = None,
-        from_dt: datetime | None = None,
-        to_dt: datetime | None = None,
+        from_dt: datetime | None = Query(None, alias="from"),
+        to_dt: datetime | None = Query(None, alias="to"),
         role: Role = Depends(_get_role),
     ):
         try:
@@ -121,6 +124,7 @@ def create_app() -> FastAPI:
                     for r in rows
                 ]
         except BigQueryError as exc:
+            logger.error("BQ error in /announcements: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
 
     @app.delete("/announcements/{announcement_id}", status_code=204)
@@ -130,6 +134,7 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             if "no row matched" in str(exc):
                 raise HTTPException(status_code=404, detail="Not found")
+            logger.error("BQ error in DELETE /announcements/%s: %s", announcement_id, exc)
             raise HTTPException(status_code=500, detail=str(exc))
 
     return app
