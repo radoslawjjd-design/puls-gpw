@@ -40,7 +40,7 @@ def test_announcements_admin_returns_list():
                   "company": "C", "url": "u", "published_at": "2024-01-01T00:00:00",
                   "post_text": None, "posted_at": None, "analyzed_at": None,
                   "supervisor_attempts": None, "parsed_content": None,
-                  "priority": None, "structured_analysis": None,
+                  "priority": None, "structured_analysis": '{"summary_pl": "test"}',
                   "analysis_approved": True, "analysis_reject_reason": None,
                   "event_type": "ESPI", "analysis_score": 0.9}]
     with patch("src.api.list_announcements_admin", return_value=mock_rows):
@@ -48,6 +48,8 @@ def test_announcements_admin_returns_list():
     assert r.status_code == 200
     data = r.json()
     assert len(data) == 1 and data[0]["ticker"] == "PKO"
+    assert isinstance(data[0]["structured_analysis"], dict)
+    assert data[0]["structured_analysis"]["summary_pl"] == "test"
 
 
 def test_announcements_user_parses_structured_analysis():

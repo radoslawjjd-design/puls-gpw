@@ -53,7 +53,7 @@ class AnnouncementAdmin(BaseModel):
     supervisor_attempts: int | None = None
     parsed_content: str | None = None
     priority: str | None = None
-    structured_analysis: str | None = None
+    structured_analysis: dict | None = None
     analysis_approved: bool | None = None
     analysis_reject_reason: str | None = None
     event_type: str | None = None
@@ -103,7 +103,12 @@ def create_app() -> FastAPI:
                     limit=limit, ticker=ticker, company=company,
                     event_type=event_type, from_dt=from_dt, to_dt=to_dt,
                 )
-                return [AnnouncementAdmin(**r).model_dump() for r in rows]
+                return [
+                    AnnouncementAdmin(
+                        **{**r, "structured_analysis": _parse_structured_analysis(r.get("structured_analysis"))}
+                    ).model_dump()
+                    for r in rows
+                ]
             else:
                 rows = list_announcements_user(
                     limit=limit, ticker=ticker, company=company,

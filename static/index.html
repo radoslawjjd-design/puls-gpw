@@ -192,7 +192,7 @@ function showDashboard(r) {
 // ── table headers ──────────────────────────────────────────────────────
 function renderHeaders(r) {
   const cols = r === 'admin'
-    ? ['Data', 'Spółka', 'Ticker', 'Typ', 'Score', 'URL', '']
+    ? ['Data', 'Spółka', 'Ticker', 'Typ', 'Score', 'Analiza', 'URL', '']
     : ['Data', 'Spółka', 'Ticker', 'Typ', 'Score', 'Analiza'];
   $('table-head').innerHTML =
     '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
@@ -235,12 +235,16 @@ function renderTable(data, r) {
     const sc    = row.analysis_score >= 0.7 ? 'high' : row.analysis_score >= 0.4 ? 'mid' : 'low';
 
     if (r === 'admin') {
+      const summary = row.structured_analysis && row.structured_analysis.summary_pl
+        ? esc(row.structured_analysis.summary_pl)
+        : '—';
       return `<tr>
         <td>${date}</td>
         <td>${esc(row.company || '—')}</td>
         <td>${esc(row.ticker || '—')}</td>
         <td>${esc(row.event_type || '—')}</td>
         <td><span class="score ${sc}">${score}</span></td>
+        <td class="analysis-summary">${summary}</td>
         <td>${row.url ? `<a href="${esc(row.url)}" target="_blank">link</a>` : '—'}</td>
         <td><button class="btn-del" data-id="${esc(row.announcement_id)}">Usuń</button></td>
       </tr>`;
