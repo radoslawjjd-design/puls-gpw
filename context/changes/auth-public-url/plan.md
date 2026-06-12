@@ -608,25 +608,25 @@ uruchomieniu, aktualizuje obraz przy kolejnych.
 
 #### Automated
 
-- [x] 3.1 `uv run python api_main.py` startuje bez błędów (static/index.html istnieje)
-- [x] 3.2 `curl localhost:8080/` → HTTP 200, `text/html`
+- [x] 3.1 `uv run python api_main.py` startuje bez błędów (static/index.html istnieje) — b9cbdfc
+- [x] 3.2 `curl localhost:8080/` → HTTP 200, `text/html` — b9cbdfc
 
 #### Manual
 
-- [x] 3.3 Otwórz `localhost:8080/` w przeglądarce → widać formularz logowania
-- [x] 3.4 Login flow — admin key → dashboard z [Usuń]
-- [x] 3.5 Login flow — user key → dashboard bez [Usuń], summary_pl w tabeli
-- [x] 3.6 Błędny klucz → komunikat błędu
-- [x] 3.7 Filtry działają (ticker, company, typ, daty)
-- [x] 3.8 Wylogowanie → ekran logowania, sessionStorage wyczyszczone
-- [x] 3.9 Odświeżenie strony → sesja zachowana
+- [x] 3.3 Otwórz `localhost:8080/` w przeglądarce → widać formularz logowania — b9cbdfc
+- [x] 3.4 Login flow — admin key → dashboard z [Usuń] — b9cbdfc
+- [x] 3.5 Login flow — user key → dashboard bez [Usuń], summary_pl w tabeli — b9cbdfc
+- [x] 3.6 Błędny klucz → komunikat błędu — b9cbdfc
+- [x] 3.7 Filtry działają (ticker, company, typ, daty) — b9cbdfc
+- [x] 3.8 Wylogowanie → ekran logowania, sessionStorage wyczyszczone — b9cbdfc
+- [x] 3.9 Odświeżenie strony → sesja zachowana — b9cbdfc
 
 ### Phase 4: Tests
 
 #### Automated
 
-- [ ] 4.1 `uv run pytest tests/test_api.py -v` — wszystkie testy zielone
-- [ ] 4.2 `uv run pytest --tb=short` — cały suite zielony
+- [x] 4.1 `uv run pytest tests/test_api.py -v` — wszystkie testy zielone
+- [x] 4.2 `uv run pytest --tb=short` — cały suite zielony
 
 ### Phase 5: CI/CD & Secrets
 
