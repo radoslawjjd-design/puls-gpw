@@ -248,24 +248,24 @@ Install `pytest-playwright`, add a minimal test server fixture, and write E2E te
 
 #### Automated
 
-- [x] 1.1 Tests pass: uv run pytest tests/test_bigquery.py -v
-- [x] 1.2 Full suite: uv run pytest
+- [x] 1.1 Tests pass: uv run pytest tests/test_bigquery.py -v — c5b1d52
+- [x] 1.2 Full suite: uv run pytest — c5b1d52
 
 #### Manual
 
-- [x] 1.3 Code review: both list functions use LIMIT @page_size OFFSET @offset; limit param is gone
+- [x] 1.3 Code review: both list functions use LIMIT @page_size OFFSET @offset; limit param is gone — c5b1d52
 
 ### Phase 2: API Layer — page/page_size in GET /announcements
 
 #### Automated
 
-- [ ] 2.1 Tests pass: uv run pytest tests/test_api.py -v
-- [ ] 2.2 Full suite: uv run pytest
+- [x] 2.1 Tests pass: uv run pytest tests/test_api.py -v
+- [x] 2.2 Full suite: uv run pytest
 
 #### Manual
 
-- [ ] 2.3 GET /announcements?page=1&page_size=20 with admin key returns 200
-- [ ] 2.4 GET /announcements?limit=10 returns 422 (param removed)
+- [x] 2.3 GET /announcements?page=1&page_size=20 with admin key returns 200
+- [x] 2.4 GET /announcements?limit=10 returns 422 (param removed)
 
 ### Phase 3: Frontend — Prev/Next + page_size select
 

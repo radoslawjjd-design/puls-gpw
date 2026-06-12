@@ -7,7 +7,7 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 import json5
-from fastapi import Depends, FastAPI, HTTPException, Query, Security
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ConfigDict
@@ -92,7 +92,9 @@ def create_app() -> FastAPI:
 
     @app.get("/announcements")
     async def announcements(
-        limit: int = Query(20, ge=1, le=100),
+        request: Request,
+        page: int = Query(1, ge=1),
+        page_size: int = Query(20, ge=1, le=100),
         ticker: str | None = None,
         company: str | None = None,
         event_type: str | None = None,
@@ -100,10 +102,12 @@ def create_app() -> FastAPI:
         to_dt: datetime | None = Query(None, alias="to"),
         role: Role = Depends(_get_role),
     ):
+        if "limit" in request.query_params:
+            raise HTTPException(status_code=422, detail="'limit' is removed; use 'page' and 'page_size'")
         try:
             if role == "admin":
                 rows = list_announcements_admin(
-                    limit=limit, ticker=ticker, company=company,
+                    page=page, page_size=page_size, ticker=ticker, company=company,
                     event_type=event_type, from_dt=from_dt, to_dt=to_dt,
                 )
                 return [
@@ -114,7 +118,7 @@ def create_app() -> FastAPI:
                 ]
             else:
                 rows = list_announcements_user(
-                    limit=limit, ticker=ticker, company=company,
+                    page=page, page_size=page_size, ticker=ticker, company=company,
                     event_type=event_type, from_dt=from_dt, to_dt=to_dt,
                 )
                 return [

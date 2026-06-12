@@ -139,3 +139,21 @@ def test_delete_bq_error_returns_500():
                side_effect=BigQueryError("connection failed")):
         r = client.delete("/announcements/x", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 500
+
+
+def test_announcements_page_and_page_size_passed_to_bq():
+    with patch("src.api.list_announcements_admin", return_value=[]) as mock_fn:
+        client.get("/announcements?page=2&page_size=50", headers={"X-API-Key": _ADMIN_KEY})
+    mock_fn.assert_called_once()
+    assert mock_fn.call_args.kwargs.get("page") == 2
+    assert mock_fn.call_args.kwargs.get("page_size") == 50
+
+
+def test_announcements_page_size_out_of_range_returns_422():
+    r = client.get("/announcements?page_size=200", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 422
+
+
+def test_announcements_limit_param_removed_returns_422():
+    r = client.get("/announcements?limit=10", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 422
