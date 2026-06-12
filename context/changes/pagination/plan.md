@@ -259,27 +259,27 @@ Install `pytest-playwright`, add a minimal test server fixture, and write E2E te
 
 #### Automated
 
-- [x] 2.1 Tests pass: uv run pytest tests/test_api.py -v
-- [x] 2.2 Full suite: uv run pytest
+- [x] 2.1 Tests pass: uv run pytest tests/test_api.py -v — 8317c9d
+- [x] 2.2 Full suite: uv run pytest — 8317c9d
 
 #### Manual
 
-- [x] 2.3 GET /announcements?page=1&page_size=20 with admin key returns 200
-- [x] 2.4 GET /announcements?limit=10 returns 422 (param removed)
+- [x] 2.3 GET /announcements?page=1&page_size=20 with admin key returns 200 — 8317c9d
+- [x] 2.4 GET /announcements?limit=10 returns 422 (param removed) — 8317c9d
 
 ### Phase 3: Frontend — Prev/Next + page_size select
 
 #### Automated
 
-- [ ] 3.1 Full suite: uv run pytest
+- [x] 3.1 Full suite: uv run pytest
 
 #### Manual
 
-- [ ] 3.2 Panel shows page_size select (20/50/100) instead of limit input
-- [ ] 3.3 Next/Prev buttons visible; Prev disabled on page 1
-- [ ] 3.4 Changing page_size resets to page 1 and refetches
-- [ ] 3.5 Applying filter resets to page 1
-- [ ] 3.6 Next disabled when returned rows < page_size (last page signal)
+- [x] 3.2 Panel shows page_size select (20/50/100) instead of limit input
+- [x] 3.3 Next/Prev buttons visible; Prev disabled on page 1
+- [x] 3.4 Changing page_size resets to page 1 and refetches
+- [x] 3.5 Applying filter resets to page 1
+- [x] 3.6 Next disabled when returned rows < page_size (last page signal)
 
 ### Phase 4: E2E — Playwright setup + pagination tests
 

@@ -85,6 +85,20 @@
   .btn-del:hover { background: #fecaca; }
   .empty { text-align: center; color: #9ca3af; padding: 2rem; }
   .analysis-summary { max-width: 320px; font-size: .83rem; color: #374151; }
+
+  /* Pagination */
+  #pagination-bar {
+    display: flex; align-items: center; justify-content: center; gap: 1rem;
+    padding: .75rem; background: #fff; border-top: 1px solid #e5e7eb;
+    border-radius: 0 0 8px 8px;
+  }
+  #pagination-bar button {
+    padding: .4rem 1rem; background: #e5e7eb; border: none;
+    border-radius: 5px; cursor: pointer; font-size: .9rem;
+  }
+  #pagination-bar button:hover:not(:disabled) { background: #d1d5db; }
+  #pagination-bar button:disabled { opacity: .4; cursor: default; }
+  #pagination-bar span { font-size: .9rem; }
 </style>
 </head>
 <body>
@@ -116,7 +130,7 @@
     <input type="text"   id="f-event-type" placeholder="Typ (ESPI/EBI)">
     <input type="datetime-local" id="f-from" title="Od">
     <input type="datetime-local" id="f-to"   title="Do">
-    <input type="number" id="f-limit"      placeholder="Limit" value="20" min="1" max="100" style="max-width:80px">
+    <select id="f-page-size"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
     <button type="submit">Filtruj</button>
   </form>
 
@@ -125,6 +139,11 @@
       <thead id="table-head"></thead>
       <tbody id="table-body"></tbody>
     </table>
+    <div id="pagination-bar">
+      <button id="btn-prev" disabled>&#8249; Poprzednia</button>
+      <span id="page-label">Strona 1</span>
+      <button id="btn-next">Następna &#8250;</button>
+    </div>
   </div>
 </div>
 
@@ -132,8 +151,9 @@
 const $ = id => document.getElementById(id);
 
 // ── state ──────────────────────────────────────────────────────────────
-let apiKey = sessionStorage.getItem('apiKey');
-let role   = sessionStorage.getItem('role');
+let apiKey      = sessionStorage.getItem('apiKey');
+let role        = sessionStorage.getItem('role');
+let currentPage = 1;
 
 // ── init ───────────────────────────────────────────────────────────────
 if (apiKey && role) showDashboard(role);
@@ -165,8 +185,33 @@ $('logout-btn').addEventListener('click', () => {
   showLogin();
 });
 
+window.addEventListener('popstate', e => {
+  if (!apiKey) return;
+  if (e.state && e.state.page) {
+    currentPage = e.state.page;
+    const ps = $('f-page-size');
+    if (ps && e.state.page_size) ps.value = String(e.state.page_size);
+    fetchAnnouncements(false);
+  }
+});
+
 $('filter-form').addEventListener('submit', e => {
   e.preventDefault();
+  currentPage = 1;
+  fetchAnnouncements();
+});
+
+$('f-page-size').addEventListener('change', () => {
+  currentPage = 1;
+  fetchAnnouncements();
+});
+
+$('btn-prev').addEventListener('click', () => {
+  if (currentPage > 1) { currentPage--; fetchAnnouncements(); }
+});
+
+$('btn-next').addEventListener('click', () => {
+  currentPage++;
   fetchAnnouncements();
 });
 
@@ -186,7 +231,7 @@ function showDashboard(r) {
   $('dashboard-screen').style.display = 'block';
   $('role-badge').textContent = r === 'admin' ? '👤 admin' : '👤 user';
   renderHeaders(r);
-  fetchAnnouncements();
+  fetchAnnouncements(false);
 }
 
 // ── table headers ──────────────────────────────────────────────────────
@@ -199,7 +244,7 @@ function renderHeaders(r) {
 }
 
 // ── fetch ──────────────────────────────────────────────────────────────
-async function fetchAnnouncements() {
+async function fetchAnnouncements(push = true) {
   const params = new URLSearchParams();
   const v = id => $(`f-${id}`) && $(`f-${id}`).value.trim();
   if (v('ticker'))     params.set('ticker',     v('ticker'));
@@ -207,7 +252,9 @@ async function fetchAnnouncements() {
   if (v('event-type')) params.set('event_type', v('event-type'));
   if (v('from'))       params.set('from',       new Date($('f-from').value).toISOString());
   if (v('to'))         params.set('to',         new Date($('f-to').value).toISOString());
-  params.set('limit', $('f-limit').value || '20');
+  const pageSize = $('f-page-size').value || '20';
+  params.set('page',      currentPage);
+  params.set('page_size', pageSize);
 
   try {
     const r = await fetch('/announcements?' + params, {
@@ -215,7 +262,14 @@ async function fetchAnnouncements() {
     });
     if (r.status === 401) { sessionStorage.clear(); showLogin(); return; }
     const data = await r.json();
+    $('page-label').textContent = 'Strona ' + currentPage;
+    $('btn-prev').disabled = currentPage === 1;
+    $('btn-next').disabled = data.length < Number(pageSize);
     renderTable(data, role);
+    const histState = { page: currentPage, page_size: Number(pageSize) };
+    const histUrl   = '?page=' + currentPage + '&page_size=' + pageSize;
+    if (push) history.pushState(histState, '', histUrl);
+    else      history.replaceState(histState, '', histUrl);
   } catch (e) {
     $('table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
   }
