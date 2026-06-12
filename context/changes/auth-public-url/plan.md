@@ -595,31 +595,31 @@ uruchomieniu, aktualizuje obraz przy kolejnych.
 
 #### Automated
 
-- [x] 2.1 `uv run pytest tests/ -v` — suite zielony (brak regresji)
-- [x] 2.2 `uv run tach check` — brak naruszeń po dodaniu api_main
-- [x] 2.3 Import smoke test: `uv run python -c "from src.api import create_app; create_app()"`
+- [x] 2.1 `uv run pytest tests/ -v` — suite zielony (brak regresji) — 26bdb38
+- [x] 2.2 `uv run tach check` — brak naruszeń po dodaniu api_main — 26bdb38
+- [x] 2.3 Import smoke test: `uv run python -c "from src.api import create_app; create_app()"` — 26bdb38
 
 #### Manual
 
-- [x] 2.4 `curl localhost:8080/health` → `{"status": "ok"}`
-- [x] 2.5 Auth role check — admin key, user key, zły klucz
+- [x] 2.4 `curl localhost:8080/health` → `{"status": "ok"}` — 26bdb38
+- [x] 2.5 Auth role check — admin key, user key, zły klucz — 26bdb38
 
 ### Phase 3: Frontend
 
 #### Automated
 
-- [ ] 3.1 `uv run python api_main.py` startuje bez błędów (static/index.html istnieje)
-- [ ] 3.2 `curl localhost:8080/` → HTTP 200, `text/html`
+- [x] 3.1 `uv run python api_main.py` startuje bez błędów (static/index.html istnieje)
+- [x] 3.2 `curl localhost:8080/` → HTTP 200, `text/html`
 
 #### Manual
 
-- [ ] 3.3 Otwórz `localhost:8080/` w przeglądarce → widać formularz logowania
-- [ ] 3.4 Login flow — admin key → dashboard z [Usuń]
-- [ ] 3.5 Login flow — user key → dashboard bez [Usuń], summary_pl w tabeli
-- [ ] 3.6 Błędny klucz → komunikat błędu
-- [ ] 3.7 Filtry działają (ticker, company, typ, daty)
-- [ ] 3.8 Wylogowanie → ekran logowania, sessionStorage wyczyszczone
-- [ ] 3.9 Odświeżenie strony → sesja zachowana
+- [x] 3.3 Otwórz `localhost:8080/` w przeglądarce → widać formularz logowania
+- [x] 3.4 Login flow — admin key → dashboard z [Usuń]
+- [x] 3.5 Login flow — user key → dashboard bez [Usuń], summary_pl w tabeli
+- [x] 3.6 Błędny klucz → komunikat błędu
+- [x] 3.7 Filtry działają (ticker, company, typ, daty)
+- [x] 3.8 Wylogowanie → ekran logowania, sessionStorage wyczyszczone
+- [x] 3.9 Odświeżenie strony → sesja zachowana
 
 ### Phase 4: Tests
 

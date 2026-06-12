@@ -1,1 +1,289 @@
-<!-- placeholder — replaced in Phase 3 -->
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>puls-gpw — panel</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f4f6f8; color: #1a1a1a; }
+
+  /* Login */
+  #login-screen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh;
+  }
+  .login-box {
+    background: #fff; border-radius: 8px; padding: 2rem;
+    box-shadow: 0 2px 12px rgba(0,0,0,.1); width: 100%; max-width: 360px;
+  }
+  .login-box h1 { font-size: 1.3rem; margin-bottom: 1.5rem; }
+  .login-box label { display: block; font-size: .85rem; margin-bottom: .3rem; color: #555; }
+  .login-box input {
+    width: 100%; padding: .55rem .75rem; border: 1px solid #ccc;
+    border-radius: 5px; font-size: 1rem; margin-bottom: 1rem;
+  }
+  .login-box button {
+    width: 100%; padding: .6rem; background: #2563eb; color: #fff;
+    border: none; border-radius: 5px; font-size: 1rem; cursor: pointer;
+  }
+  .login-box button:hover { background: #1d4ed8; }
+  #login-error { color: #dc2626; font-size: .85rem; margin-top: .5rem; display: none; }
+
+  /* Dashboard */
+  #dashboard-screen { display: none; padding: 1.5rem; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+  .topbar h1 { font-size: 1.2rem; }
+  .topbar span { font-size: .85rem; color: #555; margin-right: 1rem; }
+  .topbar button {
+    padding: .4rem .9rem; background: #e5e7eb; border: none;
+    border-radius: 5px; cursor: pointer; font-size: .9rem;
+  }
+  .topbar button:hover { background: #d1d5db; }
+
+  /* Filters */
+  .filters {
+    display: flex; flex-wrap: wrap; gap: .6rem;
+    background: #fff; padding: 1rem; border-radius: 8px;
+    margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  .filters input, .filters select {
+    padding: .4rem .65rem; border: 1px solid #ccc; border-radius: 5px;
+    font-size: .9rem; min-width: 120px;
+  }
+  .filters button {
+    padding: .4rem 1rem; background: #2563eb; color: #fff;
+    border: none; border-radius: 5px; cursor: pointer; font-size: .9rem;
+  }
+  .filters button:hover { background: #1d4ed8; }
+
+  /* Table */
+  .table-wrap {
+    background: #fff; border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06); overflow-x: auto;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th {
+    background: #f9fafb; text-align: left; padding: .6rem .8rem;
+    border-bottom: 2px solid #e5e7eb; white-space: nowrap;
+  }
+  td { padding: .55rem .8rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f9fafb; }
+  .score { font-weight: 600; }
+  .score.high { color: #16a34a; }
+  .score.mid  { color: #d97706; }
+  .score.low  { color: #dc2626; }
+  .btn-del {
+    padding: .25rem .6rem; background: #fee2e2; color: #dc2626;
+    border: 1px solid #fca5a5; border-radius: 4px; cursor: pointer;
+    font-size: .8rem;
+  }
+  .btn-del:hover { background: #fecaca; }
+  .empty { text-align: center; color: #9ca3af; padding: 2rem; }
+  .analysis-summary { max-width: 320px; font-size: .83rem; color: #374151; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>puls-gpw</h1>
+    <label for="api-key-input">Klucz API</label>
+    <input type="password" id="api-key-input" placeholder="Wpisz klucz API" autocomplete="current-password">
+    <button id="login-btn">Zaloguj się</button>
+    <div id="login-error">Nieprawidłowy klucz API</div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard-screen">
+  <div class="topbar">
+    <h1>puls-gpw</h1>
+    <div>
+      <span id="role-badge"></span>
+      <button id="logout-btn">Wyloguj</button>
+    </div>
+  </div>
+
+  <form class="filters" id="filter-form">
+    <input type="text"   id="f-ticker"     placeholder="Ticker (np. PKO)">
+    <input type="text"   id="f-company"    placeholder="Spółka">
+    <input type="text"   id="f-event-type" placeholder="Typ (ESPI/EBI)">
+    <input type="datetime-local" id="f-from" title="Od">
+    <input type="datetime-local" id="f-to"   title="Do">
+    <input type="number" id="f-limit"      placeholder="Limit" value="20" min="1" max="100" style="max-width:80px">
+    <button type="submit">Filtruj</button>
+  </form>
+
+  <div class="table-wrap">
+    <table id="data-table">
+      <thead id="table-head"></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ── state ──────────────────────────────────────────────────────────────
+let apiKey = sessionStorage.getItem('apiKey');
+let role   = sessionStorage.getItem('role');
+
+// ── init ───────────────────────────────────────────────────────────────
+if (apiKey && role) showDashboard(role);
+else               showLogin();
+
+// ── auth ───────────────────────────────────────────────────────────────
+$('login-btn').addEventListener('click', async () => {
+  const key = $('api-key-input').value.trim();
+  if (!key) return;
+  $('login-error').style.display = 'none';
+  try {
+    const r = await fetch('/auth/role', { headers: { 'X-API-Key': key } });
+    if (!r.ok) { showLoginError(); return; }
+    const data = await r.json();
+    sessionStorage.setItem('apiKey', key);
+    sessionStorage.setItem('role', data.role);
+    apiKey = key; role = data.role;
+    showDashboard(role);
+  } catch { showLoginError(); }
+});
+
+$('api-key-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') $('login-btn').click();
+});
+
+$('logout-btn').addEventListener('click', () => {
+  sessionStorage.clear();
+  apiKey = null; role = null;
+  showLogin();
+});
+
+$('filter-form').addEventListener('submit', e => {
+  e.preventDefault();
+  fetchAnnouncements();
+});
+
+// ── views ──────────────────────────────────────────────────────────────
+function showLogin() {
+  $('login-screen').style.display    = 'flex';
+  $('dashboard-screen').style.display = 'none';
+  $('api-key-input').value = '';
+}
+
+function showLoginError() {
+  $('login-error').style.display = 'block';
+}
+
+function showDashboard(r) {
+  $('login-screen').style.display    = 'none';
+  $('dashboard-screen').style.display = 'block';
+  $('role-badge').textContent = r === 'admin' ? '👤 admin' : '👤 user';
+  renderHeaders(r);
+  fetchAnnouncements();
+}
+
+// ── table headers ──────────────────────────────────────────────────────
+function renderHeaders(r) {
+  const cols = r === 'admin'
+    ? ['Data', 'Spółka', 'Ticker', 'Typ', 'Score', 'URL', '']
+    : ['Data', 'Spółka', 'Ticker', 'Typ', 'Score', 'Analiza'];
+  $('table-head').innerHTML =
+    '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+}
+
+// ── fetch ──────────────────────────────────────────────────────────────
+async function fetchAnnouncements() {
+  const params = new URLSearchParams();
+  const v = id => $(`f-${id}`) && $(`f-${id}`).value.trim();
+  if (v('ticker'))     params.set('ticker',     v('ticker'));
+  if (v('company'))    params.set('company',    v('company'));
+  if (v('event-type')) params.set('event_type', v('event-type'));
+  if (v('from'))       params.set('from',       new Date($('f-from').value).toISOString());
+  if (v('to'))         params.set('to',         new Date($('f-to').value).toISOString());
+  params.set('limit', $('f-limit').value || '20');
+
+  try {
+    const r = await fetch('/announcements?' + params, {
+      headers: { 'X-API-Key': apiKey }
+    });
+    if (r.status === 401) { sessionStorage.clear(); showLogin(); return; }
+    const data = await r.json();
+    renderTable(data, role);
+  } catch (e) {
+    $('table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
+  }
+}
+
+// ── render ─────────────────────────────────────────────────────────────
+function renderTable(data, r) {
+  const tbody = $('table-body');
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">Brak wyników</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.map(row => {
+    const date  = row.published_at ? row.published_at.slice(0, 16).replace('T', ' ') : '—';
+    const score = row.analysis_score != null ? row.analysis_score.toFixed(2) : '—';
+    const sc    = row.analysis_score >= 0.7 ? 'high' : row.analysis_score >= 0.4 ? 'mid' : 'low';
+
+    if (r === 'admin') {
+      return `<tr>
+        <td>${date}</td>
+        <td>${esc(row.company || '—')}</td>
+        <td>${esc(row.ticker || '—')}</td>
+        <td>${esc(row.event_type || '—')}</td>
+        <td><span class="score ${sc}">${score}</span></td>
+        <td>${row.url ? `<a href="${esc(row.url)}" target="_blank">link</a>` : '—'}</td>
+        <td><button class="btn-del" data-id="${esc(row.announcement_id)}">Usuń</button></td>
+      </tr>`;
+    } else {
+      const summary = row.structured_analysis && row.structured_analysis.summary_pl
+        ? esc(row.structured_analysis.summary_pl)
+        : '—';
+      return `<tr>
+        <td>${date}</td>
+        <td>${esc(row.company || '—')}</td>
+        <td>${esc(row.ticker || '—')}</td>
+        <td>${esc(row.event_type || '—')}</td>
+        <td><span class="score ${sc}">${score}</span></td>
+        <td class="analysis-summary">${summary}</td>
+      </tr>`;
+    }
+  }).join('');
+
+  // delete handlers (admin only)
+  tbody.querySelectorAll('.btn-del').forEach(btn => {
+    btn.addEventListener('click', () => deleteRow(btn.dataset.id, btn.closest('tr')));
+  });
+}
+
+// ── delete ─────────────────────────────────────────────────────────────
+async function deleteRow(id, tr) {
+  if (!confirm('Usunąć ogłoszenie?')) return;
+  try {
+    const r = await fetch(`/announcements/${encodeURIComponent(id)}`, {
+      method: 'DELETE', headers: { 'X-API-Key': apiKey }
+    });
+    if (r.status === 204)      tr.remove();
+    else if (r.status === 404) alert('Nie znaleziono ogłoszenia.');
+    else                       alert('Błąd usuwania.');
+  } catch { alert('Błąd połączenia.'); }
+}
+
+// ── util ───────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
