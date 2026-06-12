@@ -55,3 +55,21 @@ jobs:
             --image="${{ env.IMAGE }}:${{ github.sha }}" \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }}
+
+      - name: Deploy Cloud Run Service (api)
+        run: |
+          gcloud run deploy puls-gpw-api \
+            --image="${{ env.IMAGE }}:${{ github.sha }}" \
+            --command=uv --args="run,python,api_main.py" \
+            --port=8080 \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            --service-account=puls-gpw-runner@puls-gpw.iam.gserviceaccount.com \
+            --set-secrets="ADMIN_API_KEY=admin-api-key:latest,USER_API_KEY=user-api-key:latest" \
+            --set-env-vars="GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},BIGQUERY_DATASET=espi_ebi" \
+            --allow-unauthenticated \
+            --cpu=1 \
+            --memory=512Mi \
+            --min-instances=0 \
+            --max-instances=2 \
+            --timeout=60

@@ -625,8 +625,8 @@ uruchomieniu, aktualizuje obraz przy kolejnych.
 
 #### Automated
 
-- [x] 4.1 `uv run pytest tests/test_api.py -v` — wszystkie testy zielone
-- [x] 4.2 `uv run pytest --tb=short` — cały suite zielony
+- [x] 4.1 `uv run pytest tests/test_api.py -v` — wszystkie testy zielone — 6d6834d
+- [x] 4.2 `uv run pytest --tb=short` — cały suite zielony — 6d6834d
 
 ### Phase 5: CI/CD & Secrets
 
@@ -640,3 +640,8 @@ uruchomieniu, aktualizuje obraz przy kolejnych.
 - [ ] 5.3 `curl <SERVICE_URL>/health` → `{"status": "ok"}`
 - [ ] 5.4 Panel HTML dostępny pod publicznym URL
 - [ ] 5.5 Login admin + user na produkcji — obie role działają
+
+#### Prerequisite status
+
+- [x] Secret `user-api-key` version 1 utworzony w Secret Manager
+- [ ] `puls-gpw-runner` SA — `roles/run.admin` do nadania manualnie przed pushem
