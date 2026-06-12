@@ -638,8 +638,8 @@ uruchomieniu, aktualizuje obraz przy kolejnych.
 #### Manual
 
 - [x] 5.3 `curl <SERVICE_URL>/health` → `{"status": "ok"}` — c5238a7
-- [ ] 5.4 Panel HTML dostępny pod publicznym URL
-- [ ] 5.5 Login admin + user na produkcji — obie role działają
+- [x] 5.4 Panel HTML dostępny pod publicznym URL — b2c39fe
+- [x] 5.5 Login admin + user na produkcji — obie role działają — b2c39fe
 
 #### Prerequisite status
 
