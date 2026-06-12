@@ -311,6 +311,147 @@ def fetch_top_n_for_window(
     ]
 
 
+def _build_filter_clauses(
+    approved_only: bool = False,
+    ticker: str | None = None,
+    company: str | None = None,
+    event_type: str | None = None,
+    from_dt: datetime | None = None,
+    to_dt: datetime | None = None,
+) -> tuple[str, list[bigquery.ScalarQueryParameter]]:
+    clauses, params = [], []
+    if approved_only:
+        clauses.append("analysis_approved = TRUE")
+    if ticker:
+        clauses.append("ticker = @ticker")
+        params.append(bigquery.ScalarQueryParameter("ticker", "STRING", ticker))
+    if company:
+        clauses.append("LOWER(company) LIKE LOWER(@company)")
+        params.append(bigquery.ScalarQueryParameter("company", "STRING", f"%{company}%"))
+    if event_type:
+        clauses.append("event_type = @event_type")
+        params.append(bigquery.ScalarQueryParameter("event_type", "STRING", event_type))
+    if from_dt:
+        clauses.append("published_at >= @from_dt")
+        params.append(bigquery.ScalarQueryParameter("from_dt", "TIMESTAMP", from_dt))
+    if to_dt:
+        clauses.append("published_at <= @to_dt")
+        params.append(bigquery.ScalarQueryParameter("to_dt", "TIMESTAMP", to_dt))
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    return where, params
+
+
+def list_announcements_admin(
+    limit: int = 20,
+    ticker: str | None = None,
+    company: str | None = None,
+    event_type: str | None = None,
+    from_dt: datetime | None = None,
+    to_dt: datetime | None = None,
+) -> list[dict]:
+    client = _get_client()
+    where, filter_params = _build_filter_clauses(
+        approved_only=False,
+        ticker=ticker,
+        company=company,
+        event_type=event_type,
+        from_dt=from_dt,
+        to_dt=to_dt,
+    )
+    query = f"""
+        SELECT
+            announcement_id, url, published_at, title, company, ticker,
+            post_text, posted_at, analyzed_at, supervisor_attempts,
+            parsed_content, priority, structured_analysis, analysis_approved,
+            analysis_reject_reason, event_type, analysis_score
+        FROM `{_table_ref(client)}`
+        {where}
+        ORDER BY published_at DESC
+        LIMIT @limit
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("limit", "INT64", limit),
+            *filter_params,
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_announcements_admin failed: {exc}") from exc
+    return [
+        {
+            "announcement_id": row.announcement_id,
+            "url": row.url,
+            "published_at": row.published_at,
+            "title": row.title,
+            "company": row.company,
+            "ticker": row.ticker,
+            "post_text": row.post_text,
+            "posted_at": row.posted_at,
+            "analyzed_at": row.analyzed_at,
+            "supervisor_attempts": row.supervisor_attempts,
+            "parsed_content": row.parsed_content,
+            "priority": row.priority,
+            "structured_analysis": row.structured_analysis,
+            "analysis_approved": row.analysis_approved,
+            "analysis_reject_reason": row.analysis_reject_reason,
+            "event_type": row.event_type,
+            "analysis_score": row.analysis_score,
+        }
+        for row in rows
+    ]
+
+
+def list_announcements_user(
+    limit: int = 20,
+    ticker: str | None = None,
+    company: str | None = None,
+    event_type: str | None = None,
+    from_dt: datetime | None = None,
+    to_dt: datetime | None = None,
+) -> list[dict]:
+    client = _get_client()
+    where, filter_params = _build_filter_clauses(
+        approved_only=True,
+        ticker=ticker,
+        company=company,
+        event_type=event_type,
+        from_dt=from_dt,
+        to_dt=to_dt,
+    )
+    query = f"""
+        SELECT
+            company, ticker, event_type, structured_analysis,
+            analysis_score, published_at
+        FROM `{_table_ref(client)}`
+        {where}
+        ORDER BY published_at DESC
+        LIMIT @limit
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("limit", "INT64", limit),
+            *filter_params,
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_announcements_user failed: {exc}") from exc
+    return [
+        {
+            "company": row.company,
+            "ticker": row.ticker,
+            "event_type": row.event_type,
+            "structured_analysis": row.structured_analysis,
+            "analysis_score": row.analysis_score,
+            "published_at": row.published_at,
+        }
+        for row in rows
+    ]
+
+
 def save_post_text(
     announcement_ids: list[str],
     post_text: str | None,

@@ -4,9 +4,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from db.bigquery import (
+    _build_filter_clauses,
     delete_announcement,
     fetch_top_n_for_window,
     insert_announcement,
+    list_announcements_admin,
+    list_announcements_user,
     save_analysis_result,
     save_post_text,
     update_parsed_content,
@@ -223,3 +226,56 @@ def test_save_post_text_stamps_posted_at():
     query_str = client.query.call_args[0][0]
     assert "posted_at = CURRENT_TIMESTAMP()" in query_str
     assert "processed_at" not in query_str
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — BQ Data Layer (auth-public-url)
+# ---------------------------------------------------------------------------
+
+
+def test_build_filter_clauses_no_filters_returns_empty():
+    where, params = _build_filter_clauses()
+    assert where == ""
+    assert params == []
+
+
+def test_build_filter_clauses_ticker_adds_param():
+    where, params = _build_filter_clauses(ticker="PKO")
+    assert "ticker = @ticker" in where
+    assert any(p.name == "ticker" and p.value == "PKO" for p in params)
+
+
+def test_list_announcements_admin_no_filters_selects_all():
+    mock = _mock_bq_client_with_rows([{"announcement_id": "x", "ticker": "PKO"}])
+    with patch("db.bigquery._get_client", return_value=mock):
+        rows = list_announcements_admin(limit=10)
+    query_str = mock.query.call_args[0][0]
+    assert "ORDER BY published_at DESC" in query_str
+    assert len(rows) == 1 and rows[0]["ticker"] == "PKO"
+
+
+def test_list_announcements_admin_ticker_filter_passes_param():
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        list_announcements_admin(limit=5, ticker="CDR")
+    job_config = mock.query.call_args[1]["job_config"]
+    names = [p.name for p in job_config.query_parameters]
+    assert "ticker" in names
+
+
+def test_list_announcements_user_only_approved():
+    mock = _mock_bq_client_with_rows([{"ticker": "PKO", "company": "PKO Bank"}])
+    with patch("db.bigquery._get_client", return_value=mock):
+        rows = list_announcements_user(limit=10)
+    query_str = mock.query.call_args[0][0]
+    assert "analysis_approved = TRUE" in query_str
+    assert len(rows) == 1
+
+
+def test_list_announcements_user_ticker_filter_passes_param():
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        list_announcements_user(limit=5, ticker="CDR")
+    job_config = mock.query.call_args[1]["job_config"]
+    names = [p.name for p in job_config.query_parameters]
+    assert "ticker" in names
