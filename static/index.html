@@ -59,13 +59,6 @@
     border: none; border-radius: 5px; cursor: pointer; font-size: .9rem;
   }
   .filters button:hover { background: #1d4ed8; }
-  .filter-date-wrap {
-    display: flex; flex-direction: column; gap: .15rem;
-  }
-  .filter-date-wrap span {
-    font-size: .75rem; color: #6b7280; font-weight: 500; padding-left: .1rem;
-  }
-  .filter-date-wrap input { min-width: 160px; }
 
   /* Table */
   .table-wrap {
@@ -137,8 +130,7 @@
     .topbar h1 { flex: 1 1 100%; }
 
     .filters { gap: .4rem; }
-    .filters input, .filters select, .filter-date-wrap { flex: 1 1 calc(50% - .2rem); min-width: 0; }
-    .filter-date-wrap input { min-width: 0; width: 100%; }
+    .filters input, .filters select { flex: 1 1 calc(50% - .2rem); min-width: 0; }
     .filters button { width: 100%; }
 
     /* Mobile: chowamy Score i Analizę — zostaje Data/Spółka/Ticker/Typ + Usuń (admin) */
@@ -189,8 +181,8 @@
     <input type="text"   id="f-ticker"     placeholder="Ticker (np. PKO)">
     <input type="text"   id="f-company"    placeholder="Spółka">
     <input type="text"   id="f-event-type" placeholder="Typ (ESPI/EBI)">
-    <label class="filter-date-wrap"><span>Od:</span><input type="datetime-local" id="f-from"></label>
-    <label class="filter-date-wrap"><span>Do:</span><input type="datetime-local" id="f-to"></label>
+    <input type="datetime-local" id="f-from" placeholder="Ogłoszenia od">
+    <input type="datetime-local" id="f-to"   placeholder="Ogłoszenia do">
     <select id="f-page-size"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
     <button type="submit">Filtruj</button>
   </form>
@@ -442,8 +434,8 @@ function openModal(d) {
   $('modal-title').textContent = (d.company || '—') + ticker;
   $('modal-meta').textContent  = [d.date, d.event].filter(Boolean).join(' · ');
   let body = d.analysis && d.analysis !== '—' ? d.analysis : 'Brak analizy.';
-  if (d.score && d.score !== '—') body += `\n\nScore: ${d.score}`;
-  if (d.url)  body += `\n\n🔗 ${d.url}`;
+  if (role === 'admin' && d.score && d.score !== '—') body += `\n\nScore: ${d.score}`;
+  if (role === 'admin' && d.url) body += `\n\n🔗 ${d.url}`;
   $('modal-body').textContent = body;
   $('modal-overlay').style.display = 'flex';
   document.body.style.overflow = 'hidden';
