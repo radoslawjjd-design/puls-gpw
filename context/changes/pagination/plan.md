@@ -285,9 +285,9 @@ Install `pytest-playwright`, add a minimal test server fixture, and write E2E te
 
 #### Automated
 
-- [x] 4.1 Playwright tests pass: uv run pytest tests/e2e/ -v
-- [x] 4.2 Full suite: uv run pytest
+- [x] 4.1 Playwright tests pass: uv run pytest tests/e2e/ -v — 524cf7e
+- [x] 4.2 Full suite: uv run pytest — 524cf7e
 
 #### Manual
 
-- [x] 4.3 All 4 E2E scenarios pass in headed mode: uv run pytest tests/e2e/ --headed
+- [x] 4.3 All 4 E2E scenarios pass in headed mode: uv run pytest tests/e2e/ --headed — 524cf7e
