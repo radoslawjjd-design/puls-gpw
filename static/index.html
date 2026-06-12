@@ -265,8 +265,9 @@ window.addEventListener('popstate', e => {
 });
 
 document.querySelectorAll('.date-toggle').forEach(el => {
-  el.addEventListener('focus', () => { el.type = 'datetime-local'; });
-  el.addEventListener('blur',  () => { if (!el.value) el.type = 'text'; });
+  el.addEventListener('focus',  () => { el.type = 'datetime-local'; });
+  el.addEventListener('blur',   () => { if (!el.value) el.type = 'text'; });
+  el.addEventListener('change', () => { if (!el.value) el.blur(); });
 });
 
 $('filter-form').addEventListener('submit', e => {
