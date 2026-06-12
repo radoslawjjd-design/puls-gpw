@@ -1,12 +1,12 @@
 ---
 change_id: auth-public-url
 title: Auth public url
-status: impl_reviewed
+status: archived
 created: 2026-06-11
 updated: 2026-06-12
 
 
-archived_at: null
+archived_at: 2026-06-12T10:45:00Z
 tracking:
   linear: PUL-17
   github: 13
