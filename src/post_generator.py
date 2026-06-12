@@ -165,11 +165,16 @@ def _build_tickers_str(tickers: list[str]) -> str:
     return ", ".join(tagged[:-1]) + f" czy {tagged[-1]}"
 
 
-def generate_post(announcements: list[dict], window: str | None = None) -> GeneratedPost | None:
+def generate_post(
+    announcements: list[dict],
+    window: str | None = None,
+    previous_issues: list[str] | None = None,
+) -> GeneratedPost | None:
     """Generate an X thread from a list of announcement dicts.
 
     Tweet count: 1 hook + 1 per company + 1 closing.
     window: "ranek" | "poludnie" | "wieczor" — controls hook phrase.
+    previous_issues: supervisor errors from the prior attempt — appended to the prompt.
     Returns None on any failure — caller handles retry logic.
     """
     seen_tickers: set[str] = set()
@@ -217,12 +222,22 @@ def generate_post(announcements: list[dict], window: str | None = None) -> Gener
     tickers_str = _build_tickers_str([row["ticker"] for row in enriched])
     closing_q = _pick_variant(_CLOSING_QUESTIONS, salt="closing").replace("{tickers}", tickers_str)
 
+    feedback_block = ""
+    if previous_issues:
+        issues_str = "\n".join(f"- {issue}" for issue in previous_issues)
+        feedback_block = (
+            f"\n\n⚠️ POPRZEDNIA PRÓBA ODRZUCONA — popraw WSZYSTKIE poniższe błędy:\n"
+            f"{issues_str}\n"
+            f"Każdy tweet musi mieć ≤280 znaków. Skróć hook jeśli lista spółek jest długa."
+        )
+
     user_message = (
         f"fraza_hooka: \"{hook_phrase}\"\n"
         f"fraza_closing: \"{closing_q}\"\n\n"
         f"Dane: {json.dumps(enriched, ensure_ascii=False)}\n\n"
         f"Wygeneruj wątek: DOKŁADNIE {expected_tweets} tweetów "
         f"(1 hook + {n_companies} spółek + 1 closing)."
+        f"{feedback_block}"
     )
 
     try:

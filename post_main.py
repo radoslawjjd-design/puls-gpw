@@ -102,8 +102,9 @@ def main() -> None:
         expected_tweets = len(tickers) + 2
 
         post = None
+        previous_issues: list[str] | None = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
-            post = generate_post(announcements, window=window)
+            post = generate_post(announcements, window=window, previous_issues=previous_issues)
             if post is None:
                 logger.warning("post_main: generate_post returned None on attempt %d", attempt)
                 continue
@@ -114,6 +115,7 @@ def main() -> None:
                 logger.info("post_main: post approved on attempt %d for window %s", attempt, window)
                 return
             logger.warning("post_main: attempt %d rejected: %s", attempt, result.issues)
+            previous_issues = result.issues
 
         save_post_text(ann_ids, None, _MAX_ATTEMPTS)
         logger.warning("post_main: all %d supervisor attempts failed for window %s", _MAX_ATTEMPTS, window)
