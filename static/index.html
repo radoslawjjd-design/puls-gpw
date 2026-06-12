@@ -86,6 +86,33 @@
   .empty { text-align: center; color: #9ca3af; padding: 2rem; }
   .analysis-summary { max-width: 320px; font-size: .83rem; color: #374151; }
 
+  /* ── Responsive ────────────────────────────────────────────────── */
+  @media (max-width: 640px) {
+    #dashboard-screen { padding: .75rem; }
+
+    .topbar { flex-wrap: wrap; gap: .4rem; }
+    .topbar h1 { flex: 1 1 100%; }
+
+    .filters { gap: .4rem; }
+    .filters input, .filters select { flex: 1 1 calc(50% - .2rem); min-width: 0; }
+    .filters button { width: 100%; }
+
+    /* Ukryj Typ (kol 4) na każdym widoku */
+    #data-table th:nth-child(4),
+    #data-table td:nth-child(4) { display: none; }
+
+    /* Ukryj URL (kol 7) w widoku admina */
+    #data-table.admin-table th:nth-child(7),
+    #data-table.admin-table td:nth-child(7) { display: none; }
+
+    th, td { padding: .45rem .5rem; font-size: .82rem; }
+    .analysis-summary {
+      max-width: 160px; font-size: .78rem;
+      overflow: hidden; display: -webkit-box;
+      -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    }
+  }
+
   /* Pagination */
   #pagination-bar {
     display: flex; align-items: center; justify-content: center; gap: 1rem;
@@ -230,6 +257,7 @@ function showDashboard(r) {
   $('login-screen').style.display    = 'none';
   $('dashboard-screen').style.display = 'block';
   $('role-badge').textContent = r === 'admin' ? '👤 admin' : '👤 user';
+  $('data-table').classList.toggle('admin-table', r === 'admin');
   renderHeaders(r);
   fetchAnnouncements(false);
 }
