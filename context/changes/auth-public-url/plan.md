@@ -644,4 +644,4 @@ uruchomieniu, aktualizuje obraz przy kolejnych.
 #### Prerequisite status
 
 - [x] Secret `user-api-key` version 1 utworzony w Secret Manager
-- [ ] `puls-gpw-runner` SA — `roles/run.admin` do nadania manualnie przed pushem
+- [x] `puls-gpw-runner` SA — `roles/run.admin` nadane
