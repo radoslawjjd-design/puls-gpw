@@ -1,7 +1,7 @@
 ---
 change_id: auth-public-url
 title: Auth public url
-status: implementing
+status: implemented
 created: 2026-06-11
 updated: 2026-06-12
 

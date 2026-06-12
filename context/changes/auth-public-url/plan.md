@@ -632,8 +632,8 @@ uruchomieniu, aktualizuje obraz przy kolejnych.
 
 #### Automated
 
-- [ ] 5.1 Push na master → GitHub Actions zielony (testy + build + 3 deploy steps)
-- [ ] 5.2 `gcloud run services describe puls-gpw-api` → status ACTIVE
+- [ ] 5.1 Push na master → GitHub Actions zielony (testy + build + 3 deploy steps) — 166279c
+- [ ] 5.2 `gcloud run services describe puls-gpw-api` → status ACTIVE — 166279c
 
 #### Manual
 
