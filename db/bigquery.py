@@ -350,6 +350,8 @@ def list_announcements_admin(
     from_dt: datetime | None = None,
     to_dt: datetime | None = None,
 ) -> list[dict]:
+    if page < 1:
+        raise ValueError(f"page must be >= 1, got {page}")
     client = _get_client()
     offset = (page - 1) * page_size
     where, filter_params = _build_filter_clauses(
@@ -415,6 +417,8 @@ def list_announcements_user(
     from_dt: datetime | None = None,
     to_dt: datetime | None = None,
 ) -> list[dict]:
+    if page < 1:
+        raise ValueError(f"page must be >= 1, got {page}")
     client = _get_client()
     offset = (page - 1) * page_size
     where, filter_params = _build_filter_clauses(

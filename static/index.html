@@ -245,6 +245,8 @@ function renderHeaders(r) {
 
 // ── fetch ──────────────────────────────────────────────────────────────
 async function fetchAnnouncements(push = true) {
+  $('btn-prev').disabled = true;
+  $('btn-next').disabled = true;
   const params = new URLSearchParams();
   const v = id => $(`f-${id}`) && $(`f-${id}`).value.trim();
   if (v('ticker'))     params.set('ticker',     v('ticker'));
@@ -261,17 +263,20 @@ async function fetchAnnouncements(push = true) {
       headers: { 'X-API-Key': apiKey }
     });
     if (r.status === 401) { sessionStorage.clear(); showLogin(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     $('page-label').textContent = 'Strona ' + currentPage;
+    renderTable(data, role);
     $('btn-prev').disabled = currentPage === 1;
     $('btn-next').disabled = data.length < Number(pageSize);
-    renderTable(data, role);
     const histState = { page: currentPage, page_size: Number(pageSize) };
     const histUrl   = '?page=' + currentPage + '&page_size=' + pageSize;
     if (push) history.pushState(histState, '', histUrl);
     else      history.replaceState(histState, '', histUrl);
   } catch (e) {
     $('table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
+    $('btn-prev').disabled = currentPage === 1;
+    $('btn-next').disabled = false;
   }
 }
 
@@ -299,7 +304,7 @@ function renderTable(data, r) {
         <td>${esc(row.event_type || '—')}</td>
         <td><span class="score ${sc}">${score}</span></td>
         <td class="analysis-summary">${summary}</td>
-        <td>${row.url ? `<a href="${esc(row.url)}" target="_blank">link</a>` : '—'}</td>
+        <td>${(row.url && /^https?:\/\//.test(row.url)) ? `<a href="${esc(row.url)}" target="_blank">link</a>` : (row.url ? esc(row.url) : '—')}</td>
         <td><button class="btn-del" data-id="${esc(row.announcement_id)}">Usuń</button></td>
       </tr>`;
     } else {
@@ -340,7 +345,7 @@ async function deleteRow(id, tr) {
 function esc(s) {
   return String(s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 </script>
 </body>

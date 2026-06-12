@@ -38,18 +38,17 @@ def live_server_url():
         patch("src.api.list_announcements_user", return_value=[]),
     ):
         server = uvicorn.Server(
-            uvicorn.Config(create_app(), host="127.0.0.1", port=18099, log_level="error")
+            uvicorn.Config(create_app(), host="127.0.0.1", port=0, log_level="error")
         )
         thread = threading.Thread(target=server.run, daemon=True)
         thread.start()
 
         deadline = time.time() + 5
-        while time.time() < deadline:
-            try:
-                httpx.get("http://127.0.0.1:18099/health", timeout=1)
-                break
-            except Exception:
-                time.sleep(0.1)
+        while not server.started and time.time() < deadline:
+            time.sleep(0.05)
+        port = server.servers[0].sockets[0].getsockname()[1]
+        base_url = f"http://127.0.0.1:{port}"
 
-        yield "http://127.0.0.1:18099"
+        yield base_url
         server.should_exit = True
+        thread.join(timeout=3)
