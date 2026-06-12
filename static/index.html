@@ -61,7 +61,7 @@
   .filters button:hover { background: #1d4ed8; }
   /* Datetime hint — wrapper jest flex itemem, hint chowany gdy input aktywny/wypełniony */
   .date-input-wrap { position: relative; min-width: 120px; }
-  .date-input-wrap input { width: 100%; }
+  .date-input-wrap input { width: 100%; min-width: 0; box-sizing: border-box; }
   .date-input-wrap input:not(.has-value):not(:focus) { color: transparent; }
   .date-hint {
     position: absolute; inset: 0;
