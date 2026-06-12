@@ -632,12 +632,12 @@ uruchomieniu, aktualizuje obraz przy kolejnych.
 
 #### Automated
 
-- [ ] 5.1 Push na master → GitHub Actions zielony (testy + build + 3 deploy steps) — 166279c
-- [ ] 5.2 `gcloud run services describe puls-gpw-api` → status ACTIVE — 166279c
+- [x] 5.1 Push na master → GitHub Actions zielony (testy + build + 3 deploy steps) — 166279c
+- [x] 5.2 `gcloud run services describe puls-gpw-api` → status ACTIVE — c5238a7
 
 #### Manual
 
-- [ ] 5.3 `curl <SERVICE_URL>/health` → `{"status": "ok"}`
+- [x] 5.3 `curl <SERVICE_URL>/health` → `{"status": "ok"}` — c5238a7
 - [ ] 5.4 Panel HTML dostępny pod publicznym URL
 - [ ] 5.5 Login admin + user na produkcji — obie role działają
 
