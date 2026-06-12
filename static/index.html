@@ -59,6 +59,13 @@
     border: none; border-radius: 5px; cursor: pointer; font-size: .9rem;
   }
   .filters button:hover { background: #1d4ed8; }
+  .filter-date-wrap {
+    display: flex; flex-direction: column; gap: .15rem;
+  }
+  .filter-date-wrap span {
+    font-size: .75rem; color: #6b7280; font-weight: 500; padding-left: .1rem;
+  }
+  .filter-date-wrap input { min-width: 160px; }
 
   /* Table */
   .table-wrap {
@@ -73,6 +80,42 @@
   td { padding: .55rem .8rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #f9fafb; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:active td { background: #eff6ff; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: flex; align-items: flex-end; justify-content: center;
+    z-index: 1000; padding: 0;
+  }
+  .modal-box {
+    background: #fff; border-radius: 16px 16px 0 0;
+    width: 100%; max-width: 640px; max-height: 85vh;
+    display: flex; flex-direction: column;
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 1.25rem .75rem; border-bottom: 1px solid #e5e7eb;
+    flex-shrink: 0;
+  }
+  .modal-header strong { font-size: 1rem; }
+  .modal-close {
+    background: #f3f4f6; border: none; border-radius: 50%;
+    width: 32px; height: 32px; font-size: 1rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .modal-meta {
+    padding: .6rem 1.25rem; font-size: .8rem; color: #6b7280;
+    border-bottom: 1px solid #f0f0f0; flex-shrink: 0;
+  }
+  .modal-body {
+    padding: 1rem 1.25rem 1.5rem; overflow-y: auto;
+    font-size: .9rem; line-height: 1.6; color: #1f2937;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .score { font-weight: 600; }
   .score.high { color: #16a34a; }
   .score.mid  { color: #d97706; }
@@ -94,23 +137,14 @@
     .topbar h1 { flex: 1 1 100%; }
 
     .filters { gap: .4rem; }
-    .filters input, .filters select { flex: 1 1 calc(50% - .2rem); min-width: 0; }
+    .filters input, .filters select, .filter-date-wrap { flex: 1 1 calc(50% - .2rem); min-width: 0; }
+    .filter-date-wrap input { min-width: 0; width: 100%; }
     .filters button { width: 100%; }
 
-    /* Ukryj Typ (kol 4) na każdym widoku */
-    #data-table th:nth-child(4),
-    #data-table td:nth-child(4) { display: none; }
-
-    /* Ukryj URL (kol 7) w widoku admina */
-    #data-table.admin-table th:nth-child(7),
-    #data-table.admin-table td:nth-child(7) { display: none; }
+    /* Mobile: chowamy Score i Analizę — zostaje Data/Spółka/Ticker/Typ + Usuń (admin) */
+    .col-score, .col-analysis, .col-url { display: none; }
 
     th, td { padding: .45rem .5rem; font-size: .82rem; }
-    .analysis-summary {
-      max-width: 160px; font-size: .78rem;
-      overflow: hidden; display: -webkit-box;
-      -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-    }
   }
 
   /* Pagination */
@@ -155,8 +189,8 @@
     <input type="text"   id="f-ticker"     placeholder="Ticker (np. PKO)">
     <input type="text"   id="f-company"    placeholder="Spółka">
     <input type="text"   id="f-event-type" placeholder="Typ (ESPI/EBI)">
-    <input type="datetime-local" id="f-from" title="Od">
-    <input type="datetime-local" id="f-to"   title="Do">
+    <label class="filter-date-wrap"><span>Od:</span><input type="datetime-local" id="f-from"></label>
+    <label class="filter-date-wrap"><span>Do:</span><input type="datetime-local" id="f-to"></label>
     <select id="f-page-size"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
     <button type="submit">Filtruj</button>
   </form>
@@ -171,6 +205,18 @@
       <span id="page-label">Strona 1</span>
       <button id="btn-next">Następna &#8250;</button>
     </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <strong id="modal-title"></strong>
+      <button class="modal-close" id="modal-close" aria-label="Zamknij">✕</button>
+    </div>
+    <div class="modal-meta" id="modal-meta"></div>
+    <div class="modal-body" id="modal-body"></div>
   </div>
 </div>
 
@@ -263,12 +309,28 @@ function showDashboard(r) {
 }
 
 // ── table headers ──────────────────────────────────────────────────────
+const _ADMIN_COLS = [
+  { label: 'Data',    cls: '' },
+  { label: 'Spółka',  cls: '' },
+  { label: 'Ticker',  cls: '' },
+  { label: 'Typ',     cls: '' },
+  { label: 'Score',   cls: 'col-score' },
+  { label: 'Analiza', cls: 'col-analysis' },
+  { label: 'URL',     cls: 'col-url' },
+  { label: '',        cls: '' },
+];
+const _USER_COLS = [
+  { label: 'Data',    cls: '' },
+  { label: 'Spółka',  cls: '' },
+  { label: 'Ticker',  cls: '' },
+  { label: 'Typ',     cls: '' },
+  { label: 'Analiza', cls: 'col-analysis' },
+];
+
 function renderHeaders(r) {
-  const cols = r === 'admin'
-    ? ['Data', 'Spółka', 'Ticker', 'Typ', 'Score', 'Analiza', 'URL', '']
-    : ['Data', 'Spółka', 'Ticker', 'Typ', 'Score', 'Analiza'];
+  const cols = r === 'admin' ? _ADMIN_COLS : _USER_COLS;
   $('table-head').innerHTML =
-    '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+    '<tr>' + cols.map(c => `<th class="${c.cls}">${c.label}</th>`).join('') + '</tr>';
 }
 
 // ── fetch ──────────────────────────────────────────────────────────────
@@ -312,47 +374,52 @@ async function fetchAnnouncements(push = true) {
 function renderTable(data, r) {
   const tbody = $('table-body');
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty">Brak wyników</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">Brak wyników</td></tr>`;
     return;
   }
 
   tbody.innerHTML = data.map(row => {
-    const date  = row.published_at ? row.published_at.slice(0, 16).replace('T', ' ') : '—';
-    const score = row.analysis_score != null ? row.analysis_score.toFixed(2) : '—';
-    const sc    = row.analysis_score >= 0.7 ? 'high' : row.analysis_score >= 0.4 ? 'mid' : 'low';
+    const date    = row.published_at ? row.published_at.slice(0, 16).replace('T', ' ') : '—';
+    const score   = row.analysis_score != null ? row.analysis_score.toFixed(2) : '—';
+    const sc      = row.analysis_score >= 0.7 ? 'high' : row.analysis_score >= 0.4 ? 'mid' : 'low';
+    const summary = row.structured_analysis?.summary_pl || '';
+    const summaryEsc = esc(summary || '—');
+
+    const modalAttrs = `data-company="${esc(row.company||'')}" data-ticker="${esc(row.ticker||'')}" `
+      + `data-date="${esc(date)}" data-event="${esc(row.event_type||'')}" `
+      + `data-score="${esc(score)}" data-sc="${sc}" data-analysis="${summaryEsc}" `
+      + (r === 'admin' && row.url ? `data-url="${esc(row.url)}"` : '');
 
     if (r === 'admin') {
-      const summary = row.structured_analysis && row.structured_analysis.summary_pl
-        ? esc(row.structured_analysis.summary_pl)
-        : '—';
-      return `<tr>
+      return `<tr class="clickable" ${modalAttrs}>
         <td>${date}</td>
         <td>${esc(row.company || '—')}</td>
         <td>${esc(row.ticker || '—')}</td>
         <td>${esc(row.event_type || '—')}</td>
-        <td><span class="score ${sc}">${score}</span></td>
-        <td class="analysis-summary">${summary}</td>
-        <td>${(row.url && /^https?:\/\//.test(row.url)) ? `<a href="${esc(row.url)}" target="_blank">link</a>` : (row.url ? esc(row.url) : '—')}</td>
+        <td class="col-score"><span class="score ${sc}">${score}</span></td>
+        <td class="col-analysis analysis-summary">${summaryEsc}</td>
+        <td class="col-url">${(row.url && /^https?:\/\//.test(row.url)) ? `<a href="${esc(row.url)}" target="_blank">link</a>` : (row.url ? esc(row.url) : '—')}</td>
         <td><button class="btn-del" data-id="${esc(row.announcement_id)}">Usuń</button></td>
       </tr>`;
     } else {
-      const summary = row.structured_analysis && row.structured_analysis.summary_pl
-        ? esc(row.structured_analysis.summary_pl)
-        : '—';
-      return `<tr>
+      return `<tr class="clickable" ${modalAttrs}>
         <td>${date}</td>
         <td>${esc(row.company || '—')}</td>
         <td>${esc(row.ticker || '—')}</td>
         <td>${esc(row.event_type || '—')}</td>
-        <td><span class="score ${sc}">${score}</span></td>
-        <td class="analysis-summary">${summary}</td>
+        <td class="col-analysis analysis-summary">${summaryEsc}</td>
       </tr>`;
     }
   }).join('');
 
   // delete handlers (admin only)
   tbody.querySelectorAll('.btn-del').forEach(btn => {
-    btn.addEventListener('click', () => deleteRow(btn.dataset.id, btn.closest('tr')));
+    btn.addEventListener('click', e => { e.stopPropagation(); deleteRow(btn.dataset.id, btn.closest('tr')); });
+  });
+
+  // row click → modal
+  tbody.querySelectorAll('tr.clickable').forEach(tr => {
+    tr.addEventListener('click', () => openModal(tr.dataset));
   });
 }
 
@@ -368,6 +435,26 @@ async function deleteRow(id, tr) {
     else                       alert('Błąd usuwania.');
   } catch { alert('Błąd połączenia.'); }
 }
+
+// ── modal ──────────────────────────────────────────────────────────────
+function openModal(d) {
+  const ticker = d.ticker ? ` ($${d.ticker})` : '';
+  $('modal-title').textContent = (d.company || '—') + ticker;
+  $('modal-meta').textContent  = [d.date, d.event].filter(Boolean).join(' · ');
+  let body = d.analysis && d.analysis !== '—' ? d.analysis : 'Brak analizy.';
+  if (d.score && d.score !== '—') body += `\n\nScore: ${d.score}`;
+  if (d.url)  body += `\n\n🔗 ${d.url}`;
+  $('modal-body').textContent = body;
+  $('modal-overlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  $('modal-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+$('modal-close').addEventListener('click', closeModal);
+$('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 // ── util ───────────────────────────────────────────────────────────────
 function esc(s) {
