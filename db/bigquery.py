@@ -342,7 +342,8 @@ def _build_filter_clauses(
 
 
 def list_announcements_admin(
-    limit: int = 20,
+    page: int = 1,
+    page_size: int = 20,
     ticker: str | None = None,
     company: str | None = None,
     event_type: str | None = None,
@@ -350,6 +351,7 @@ def list_announcements_admin(
     to_dt: datetime | None = None,
 ) -> list[dict]:
     client = _get_client()
+    offset = (page - 1) * page_size
     where, filter_params = _build_filter_clauses(
         approved_only=False,
         ticker=ticker,
@@ -367,11 +369,12 @@ def list_announcements_admin(
         FROM `{_table_ref(client)}`
         {where}
         ORDER BY published_at DESC
-        LIMIT @limit
+        LIMIT @page_size OFFSET @offset
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            bigquery.ScalarQueryParameter("limit", "INT64", limit),
+            bigquery.ScalarQueryParameter("page_size", "INT64", page_size),
+            bigquery.ScalarQueryParameter("offset", "INT64", offset),
             *filter_params,
         ]
     )
@@ -404,7 +407,8 @@ def list_announcements_admin(
 
 
 def list_announcements_user(
-    limit: int = 20,
+    page: int = 1,
+    page_size: int = 20,
     ticker: str | None = None,
     company: str | None = None,
     event_type: str | None = None,
@@ -412,6 +416,7 @@ def list_announcements_user(
     to_dt: datetime | None = None,
 ) -> list[dict]:
     client = _get_client()
+    offset = (page - 1) * page_size
     where, filter_params = _build_filter_clauses(
         approved_only=True,
         ticker=ticker,
@@ -427,11 +432,12 @@ def list_announcements_user(
         FROM `{_table_ref(client)}`
         {where}
         ORDER BY published_at DESC
-        LIMIT @limit
+        LIMIT @page_size OFFSET @offset
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            bigquery.ScalarQueryParameter("limit", "INT64", limit),
+            bigquery.ScalarQueryParameter("page_size", "INT64", page_size),
+            bigquery.ScalarQueryParameter("offset", "INT64", offset),
             *filter_params,
         ]
     )

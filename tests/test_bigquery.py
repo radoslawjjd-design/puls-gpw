@@ -248,7 +248,7 @@ def test_build_filter_clauses_ticker_adds_param():
 def test_list_announcements_admin_no_filters_selects_all():
     mock = _mock_bq_client_with_rows([{"announcement_id": "x", "ticker": "PKO"}])
     with patch("db.bigquery._get_client", return_value=mock):
-        rows = list_announcements_admin(limit=10)
+        rows = list_announcements_admin(page=1, page_size=10)
     query_str = mock.query.call_args[0][0]
     assert "ORDER BY published_at DESC" in query_str
     assert len(rows) == 1 and rows[0]["ticker"] == "PKO"
@@ -257,7 +257,7 @@ def test_list_announcements_admin_no_filters_selects_all():
 def test_list_announcements_admin_ticker_filter_passes_param():
     mock = _mock_bq_client_with_rows([])
     with patch("db.bigquery._get_client", return_value=mock):
-        list_announcements_admin(limit=5, ticker="CDR")
+        list_announcements_admin(page=1, page_size=5, ticker="CDR")
     job_config = mock.query.call_args[1]["job_config"]
     names = [p.name for p in job_config.query_parameters]
     assert "ticker" in names
@@ -266,7 +266,7 @@ def test_list_announcements_admin_ticker_filter_passes_param():
 def test_list_announcements_user_only_approved():
     mock = _mock_bq_client_with_rows([{"ticker": "PKO", "company": "PKO Bank"}])
     with patch("db.bigquery._get_client", return_value=mock):
-        rows = list_announcements_user(limit=10)
+        rows = list_announcements_user(page=1, page_size=10)
     query_str = mock.query.call_args[0][0]
     assert "analysis_approved = TRUE" in query_str
     assert len(rows) == 1
@@ -275,7 +275,29 @@ def test_list_announcements_user_only_approved():
 def test_list_announcements_user_ticker_filter_passes_param():
     mock = _mock_bq_client_with_rows([])
     with patch("db.bigquery._get_client", return_value=mock):
-        list_announcements_user(limit=5, ticker="CDR")
+        list_announcements_user(page=1, page_size=5, ticker="CDR")
     job_config = mock.query.call_args[1]["job_config"]
     names = [p.name for p in job_config.query_parameters]
     assert "ticker" in names
+
+
+def test_list_announcements_admin_offset_math():
+    """page=2, page_size=1 must produce OFFSET 1 in the BQ query parameters."""
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        list_announcements_admin(page=2, page_size=1)
+    job_config = mock.query.call_args[1]["job_config"]
+    params_by_name = {p.name: p.value for p in job_config.query_parameters}
+    assert params_by_name["page_size"] == 1
+    assert params_by_name["offset"] == 1
+
+
+def test_list_announcements_user_offset_math():
+    """page=3, page_size=20 must produce OFFSET 40 in the BQ query parameters."""
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        list_announcements_user(page=3, page_size=20)
+    job_config = mock.query.call_args[1]["job_config"]
+    params_by_name = {p.name: p.value for p in job_config.query_parameters}
+    assert params_by_name["page_size"] == 20
+    assert params_by_name["offset"] == 40
