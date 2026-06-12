@@ -24,5 +24,9 @@ dev = [
     "pip-audit>=2.10.0",
     "pytest>=8.0",
     "respx>=0.21",
+    "pytest-playwright>=0.6",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
 

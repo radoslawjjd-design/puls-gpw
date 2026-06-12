@@ -271,23 +271,23 @@ Install `pytest-playwright`, add a minimal test server fixture, and write E2E te
 
 #### Automated
 
-- [x] 3.1 Full suite: uv run pytest
+- [x] 3.1 Full suite: uv run pytest — b4703ec
 
 #### Manual
 
-- [x] 3.2 Panel shows page_size select (20/50/100) instead of limit input
-- [x] 3.3 Next/Prev buttons visible; Prev disabled on page 1
-- [x] 3.4 Changing page_size resets to page 1 and refetches
-- [x] 3.5 Applying filter resets to page 1
-- [x] 3.6 Next disabled when returned rows < page_size (last page signal)
+- [x] 3.2 Panel shows page_size select (20/50/100) instead of limit input — b4703ec
+- [x] 3.3 Next/Prev buttons visible; Prev disabled on page 1 — b4703ec
+- [x] 3.4 Changing page_size resets to page 1 and refetches — b4703ec
+- [x] 3.5 Applying filter resets to page 1 — b4703ec
+- [x] 3.6 Next disabled when returned rows < page_size (last page signal) — b4703ec
 
 ### Phase 4: E2E — Playwright setup + pagination tests
 
 #### Automated
 
-- [ ] 4.1 Playwright tests pass: uv run pytest tests/e2e/ -v
-- [ ] 4.2 Full suite: uv run pytest
+- [x] 4.1 Playwright tests pass: uv run pytest tests/e2e/ -v
+- [x] 4.2 Full suite: uv run pytest
 
 #### Manual
 
-- [ ] 4.3 All 4 E2E scenarios pass in headed mode: uv run pytest tests/e2e/ --headed
+- [x] 4.3 All 4 E2E scenarios pass in headed mode: uv run pytest tests/e2e/ --headed
