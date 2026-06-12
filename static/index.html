@@ -59,17 +59,6 @@
     border: none; border-radius: 5px; cursor: pointer; font-size: .9rem;
   }
   .filters button:hover { background: #1d4ed8; }
-  /* Datetime hint — wrapper jest flex itemem, hint chowany gdy input aktywny/wypełniony */
-  .date-input-wrap { position: relative; min-width: 120px; }
-  .date-input-wrap input { width: 100%; min-width: 0; box-sizing: border-box; }
-  .date-input-wrap input:not(.has-value):not(:focus) { color: transparent; }
-  .date-hint {
-    position: absolute; inset: 0;
-    display: flex; align-items: center; padding-left: .65rem;
-    font-size: .9rem; color: #9ca3af; pointer-events: none;
-  }
-  .date-input-wrap input.has-value ~ .date-hint,
-  .date-input-wrap input:focus ~ .date-hint { display: none; }
 
   /* Table */
   .table-wrap {
@@ -90,13 +79,17 @@
   /* Modal */
   .modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,.45);
-    display: flex; align-items: flex-end; justify-content: center;
-    z-index: 1000; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; padding: 1.5rem;
   }
   .modal-box {
-    background: #fff; border-radius: 16px 16px 0 0;
-    width: 100%; max-width: 640px; max-height: 85vh;
+    background: #fff; border-radius: 12px;
+    width: 100%; max-width: 560px; max-height: 85vh;
     display: flex; flex-direction: column;
+  }
+  @media (max-width: 640px) {
+    .modal-overlay { align-items: flex-end; padding: 0; }
+    .modal-box { border-radius: 16px 16px 0 0; max-width: 100%; }
   }
   .modal-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -141,8 +134,7 @@
     .topbar h1 { flex: 1 1 100%; }
 
     .filters { gap: .4rem; }
-    .filters input, .filters select, .date-input-wrap { flex: 1 1 calc(50% - .2rem); min-width: 0; }
-    .date-input-wrap input { min-width: 0; }
+    .filters input, .filters select { flex: 1 1 calc(50% - .2rem); min-width: 0; }
     .filters button { width: 100%; }
 
     /* Mobile: chowamy Score i Analizę — zostaje Data/Spółka/Ticker/Typ + Usuń (admin) */
@@ -193,14 +185,8 @@
     <input type="text"   id="f-ticker"     placeholder="Ticker (np. PKO)">
     <input type="text"   id="f-company"    placeholder="Spółka">
     <input type="text"   id="f-event-type" placeholder="Typ (ESPI/EBI)">
-    <div class="date-input-wrap">
-      <input type="datetime-local" id="f-from">
-      <span class="date-hint">Analizy od</span>
-    </div>
-    <div class="date-input-wrap">
-      <input type="datetime-local" id="f-to">
-      <span class="date-hint">Analizy do</span>
-    </div>
+    <input type="text" id="f-from" placeholder="Analizy od" class="date-toggle">
+    <input type="text" id="f-to"   placeholder="Analizy do" class="date-toggle">
     <select id="f-page-size"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
     <button type="submit">Filtruj</button>
   </form>
@@ -278,9 +264,9 @@ window.addEventListener('popstate', e => {
   }
 });
 
-['f-from','f-to'].forEach(id => {
-  const el = $(id);
-  el.addEventListener('change', () => el.classList.toggle('has-value', !!el.value));
+document.querySelectorAll('.date-toggle').forEach(el => {
+  el.addEventListener('focus', () => { el.type = 'datetime-local'; });
+  el.addEventListener('blur',  () => { if (!el.value) el.type = 'text'; });
 });
 
 $('filter-form').addEventListener('submit', e => {
