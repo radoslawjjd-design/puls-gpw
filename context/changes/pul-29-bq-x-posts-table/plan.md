@@ -319,13 +319,13 @@ historically; admin JOIN falls back to them via `COALESCE`).
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py`
-- [ ] 1.2 Full suite passes: `uv run pytest`
-- [ ] 1.3 No lingering `save_post_text` references in db/ src/ tests/
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py`
+- [x] 1.2 Full suite passes: `uv run pytest`
+- [x] 1.3 No lingering `save_post_text` references in db/ src/ tests/
 
 #### Manual
 
-- [ ] 1.4 `save_x_post` signature and `x_posts` schema match the PUL-29 spec
+- [x] 1.4 `save_x_post` signature and `x_posts` schema match the PUL-29 spec
 
 ### Phase 2: Pipeline wiring, API model & real-BQ verification
 

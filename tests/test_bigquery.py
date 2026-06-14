@@ -5,13 +5,14 @@ import pytest
 
 from db.bigquery import (
     _build_filter_clauses,
+    create_x_posts_table_if_not_exists,
     delete_announcement,
     fetch_top_n_for_window,
     insert_announcement,
     list_announcements_admin,
     list_announcements_user,
     save_analysis_result,
-    save_post_text,
+    save_x_post,
     update_parsed_content,
 )
 
@@ -109,32 +110,77 @@ def test_fetch_top_n_for_window_empty():
     assert result == []
 
 
-# ── save_post_text ────────────────────────────────────────────────────────────
+# ── x_posts table + save_x_post (PUL-29) ──────────────────────────────────────
 
-def test_save_post_text_calls_query_with_unnest():
+def test_create_x_posts_table_creates_on_not_found():
+    """create_x_posts_table_if_not_exists must create the table when get_table raises NotFound."""
+    from google.cloud.exceptions import NotFound
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.side_effect = NotFound("missing")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_x_posts_table_if_not_exists()
+
+    assert client.create_table.called
+    created_table = client.create_table.call_args[0][0]
+    assert "x_posts" in str(created_table.reference) or "x_posts" in str(created_table)
+
+
+def test_save_x_post_inserts_xpost_and_links_announcements():
+    """save_x_post must INSERT one x_posts row (posted_at server-side) and UPDATE x_post_id."""
     with patch("db.bigquery._get_client", return_value=_mock_bq_client(affected_rows=2)) as mock_get:
         client = mock_get.return_value
-        save_post_text(
+        x_post_id = save_x_post(
             announcement_ids=["id1", "id2"],
             post_text="tweet 1\n\ntweet 2",
+            window="poludnie",
             supervisor_attempts=1,
         )
 
-    assert client.query.called
-    query_str = client.query.call_args[0][0]
-    assert "UNNEST(@ids)" in query_str
+    assert isinstance(x_post_id, str) and x_post_id
+    queries = [call.args[0] for call in client.query.call_args_list]
+    assert len(queries) == 2
+    insert_q = next(q for q in queries if "INSERT" in q and "x_posts" in q)
+    update_q = next(q for q in queries if "UPDATE" in q)
+    assert "posted_at" in insert_q and "CURRENT_TIMESTAMP()" in insert_q
+    assert "x_post_id" in update_q
+    assert "IN UNNEST(@ids)" in update_q
 
 
-def test_save_post_text_none_records_failure():
-    with patch("db.bigquery._get_client", return_value=_mock_bq_client(affected_rows=1)) as mock_get:
+def test_save_x_post_raises_on_no_announcements_updated():
+    """save_x_post must raise BigQueryError when the announcements UPDATE matches 0 rows."""
+    from src.exceptions import BigQueryError
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client(affected_rows=0)):
+        with pytest.raises(BigQueryError):
+            save_x_post(
+                announcement_ids=["missing"],
+                post_text="t",
+                window="ranek",
+                supervisor_attempts=2,
+            )
+
+
+def test_list_announcements_admin_joins_x_posts_and_exposes_x_post_id():
+    """Admin list must LEFT JOIN x_posts (so new posts' text shows) and return x_post_id."""
+    row = {
+        "announcement_id": "id1", "url": "http://x/1", "published_at": None,
+        "title": "T", "company": "C", "ticker": "PKO", "post_text": "tweet",
+        "posted_at": None, "analyzed_at": None, "supervisor_attempts": 1,
+        "parsed_content": None, "priority": None, "structured_analysis": None,
+        "analysis_approved": True, "analysis_reject_reason": None,
+        "event_type": "wyniki_finansowe", "analysis_score": 1.0, "x_post_id": "abc",
+    }
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([row])) as mock_get:
         client = mock_get.return_value
-        save_post_text(
-            announcement_ids=["id1"],
-            post_text=None,
-            supervisor_attempts=3,
-        )
+        result = list_announcements_admin(page=1, page_size=20)
 
-    assert client.query.called
+    query_str = client.query.call_args[0][0]
+    assert "LEFT JOIN" in query_str
+    assert "x_posts" in query_str
+    assert result[0]["x_post_id"] == "abc"
 
 
 # ── delete_announcement ───────────────────────────────────────────────────────
@@ -213,21 +259,6 @@ def test_save_analysis_result_stamps_analyzed_at():
     assert "analyzed_at = CURRENT_TIMESTAMP()" in query_str
 
 
-def test_save_post_text_stamps_posted_at():
-    """save_post_text must set posted_at = CURRENT_TIMESTAMP(), not processed_at."""
-    with patch("db.bigquery._get_client", return_value=_mock_bq_client(affected_rows=1)) as mock_get:
-        client = mock_get.return_value
-        save_post_text(
-            announcement_ids=["id1"],
-            post_text="Tweet 1\n\nTweet 2",
-            supervisor_attempts=1,
-        )
-
-    query_str = client.query.call_args[0][0]
-    assert "posted_at = CURRENT_TIMESTAMP()" in query_str
-    assert "processed_at" not in query_str
-
-
 # ---------------------------------------------------------------------------
 # Phase 1 — BQ Data Layer (auth-public-url)
 # ---------------------------------------------------------------------------
@@ -250,7 +281,7 @@ def test_list_announcements_admin_no_filters_selects_all():
     with patch("db.bigquery._get_client", return_value=mock):
         rows = list_announcements_admin(page=1, page_size=10)
     query_str = mock.query.call_args[0][0]
-    assert "ORDER BY published_at DESC" in query_str
+    assert "ORDER BY a.published_at DESC" in query_str
     assert len(rows) == 1 and rows[0]["ticker"] == "PKO"
 
 

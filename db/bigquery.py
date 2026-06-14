@@ -9,15 +9,20 @@ Nullable field semantics (NULL = step not yet reached or failed):
   analysis_reject_reason — set only when analysis_approved=FALSE; NULL otherwise
   event_type             — set by save_analysis_result; NULL if analyzer skipped/failed
   analysis_score         — set by save_analysis_result; NULL if analyzer skipped/failed
-  post_text              — set by save_post_text; NULL if generation failed (3 attempts)
-  posted_at              — set by save_post_text; NULL until post generation attempted
-  supervisor_attempts    — set by save_post_text; counts post supervisor retries (1-3)
+  post_text              — DEPRECATED (moved to x_posts); no longer written by the pipeline
+  posted_at              — DEPRECATED (moved to x_posts); no longer written by the pipeline
+  supervisor_attempts    — DEPRECATED (moved to x_posts); no longer written by the pipeline
   priority               — set by scraper (HTML badge); NULL if no priority badge
+  x_post_id              — set by save_x_post; FK to x_posts.x_post_id; NULL until posted
+
+x_posts table (one row per generated post; see _X_POSTS_SCHEMA):
+  x_post_id, window, post_text, tweet_ids (PUL-27), posted_at, supervisor_attempts
 """
 import hashlib
 import logging
 import os
 import threading
+import uuid
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -47,6 +52,18 @@ _SCHEMA = [
     bigquery.SchemaField("analysis_reject_reason", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("event_type", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("analysis_score", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("x_post_id", "STRING", mode="NULLABLE"),
+]
+
+_X_POSTS_TABLE_NAME = "x_posts"
+
+_X_POSTS_SCHEMA = [
+    bigquery.SchemaField("x_post_id", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("window", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("post_text", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("tweet_ids", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("posted_at", "TIMESTAMP", mode="REQUIRED"),
+    bigquery.SchemaField("supervisor_attempts", "INTEGER", mode="NULLABLE"),
 ]
 
 _client: bigquery.Client | None = None
@@ -76,8 +93,8 @@ def _get_client() -> bigquery.Client:
     return _client
 
 
-def _table_ref(client: bigquery.Client) -> str:
-    return f"{client.project}.{_DATASET}.{_TABLE_NAME}"
+def _table_ref(client: bigquery.Client, table: str = _TABLE_NAME) -> str:
+    return f"{client.project}.{_DATASET}.{table}"
 
 
 def announcement_id_for_url(url: str) -> str:
@@ -98,6 +115,19 @@ def create_table_if_not_exists() -> None:
         logger.info("BQ table already exists: %s", table_id)
     except NotFound:
         table = bigquery.Table(table_id, schema=_SCHEMA)
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def create_x_posts_table_if_not_exists() -> None:
+    """Create the x_posts table in BigQuery if it does not already exist."""
+    client = _get_client()
+    table_id = _table_ref(client, _X_POSTS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_X_POSTS_SCHEMA)
         client.create_table(table)
         logger.info("BQ table created: %s", table_id)
 
@@ -362,15 +392,24 @@ def list_announcements_admin(
         from_dt=from_dt,
         to_dt=to_dt,
     )
+    # LEFT JOIN x_posts so posts written after PUL-29 (post_text lives in x_posts, not
+    # announcements) still surface; COALESCE falls back to the deprecated announcements
+    # columns for rows posted before the cutover. Filter columns from _build_filter_clauses
+    # are announcements-only and have no x_posts namesake, so they stay unambiguous.
     query = f"""
         SELECT
-            announcement_id, url, published_at, title, company, ticker,
-            post_text, posted_at, analyzed_at, supervisor_attempts,
-            parsed_content, priority, structured_analysis, analysis_approved,
-            analysis_reject_reason, event_type, analysis_score
-        FROM `{_table_ref(client)}`
+            a.announcement_id, a.url, a.published_at, a.title, a.company, a.ticker,
+            COALESCE(x.post_text, a.post_text) AS post_text,
+            COALESCE(x.posted_at, a.posted_at) AS posted_at,
+            a.analyzed_at,
+            COALESCE(x.supervisor_attempts, a.supervisor_attempts) AS supervisor_attempts,
+            a.parsed_content, a.priority, a.structured_analysis, a.analysis_approved,
+            a.analysis_reject_reason, a.event_type, a.analysis_score, a.x_post_id
+        FROM `{_table_ref(client)}` AS a
+        LEFT JOIN `{_table_ref(client, _X_POSTS_TABLE_NAME)}` AS x
+            ON a.x_post_id = x.x_post_id
         {where}
-        ORDER BY published_at DESC
+        ORDER BY a.published_at DESC
         LIMIT @page_size OFFSET @offset
     """
     job_config = bigquery.QueryJobConfig(
@@ -396,6 +435,7 @@ def list_announcements_admin(
             "posted_at": row.posted_at,
             "analyzed_at": row.analyzed_at,
             "supervisor_attempts": row.supervisor_attempts,
+            "x_post_id": row.x_post_id,
             "parsed_content": row.parsed_content,
             "priority": row.priority,
             "structured_analysis": row.structured_analysis,
@@ -462,42 +502,72 @@ def list_announcements_user(
     ]
 
 
-def save_post_text(
+def save_x_post(
     announcement_ids: list[str],
     post_text: str | None,
+    window: str,
     supervisor_attempts: int,
-) -> None:
-    """Batch-update post_text, posted_at, supervisor_attempts for all contributing rows.
+) -> str:
+    """Insert one x_posts row and link it onto the contributing announcements.
 
+    Generates the x_post_id (UUID), INSERTs a single x_posts row (posted_at stamped
+    server-side), then stamps x_post_id onto every contributing announcement row.
     post_text=None records a failed generation attempt (BQ stores NULL).
-    Raises BigQueryError on failure.
+
+    Not atomic by design: the INSERT runs first; if the UPDATE fails or matches 0 rows
+    a BigQueryError is raised and the x_posts row remains as a harmless orphan
+    (posted_at still records that the post was attempted). Returns the new x_post_id.
     """
     client = _get_client()
-    query = f"""
-        UPDATE `{_table_ref(client)}`
-        SET
-            post_text = @post_text,
-            supervisor_attempts = @supervisor_attempts,
-            posted_at = CURRENT_TIMESTAMP()
-        WHERE announcement_id IN UNNEST(@ids)
+    x_post_id = uuid.uuid4().hex
+
+    insert_query = f"""
+        INSERT INTO `{_table_ref(client, _X_POSTS_TABLE_NAME)}`
+            (x_post_id, window, post_text, supervisor_attempts, posted_at)
+        VALUES
+            (@x_post_id, @window, @post_text, @supervisor_attempts, CURRENT_TIMESTAMP())
     """
-    job_config = bigquery.QueryJobConfig(
+    insert_config = bigquery.QueryJobConfig(
         query_parameters=[
+            bigquery.ScalarQueryParameter("x_post_id", "STRING", x_post_id),
+            bigquery.ScalarQueryParameter("window", "STRING", window),
             bigquery.ScalarQueryParameter("post_text", "STRING", post_text),
             bigquery.ScalarQueryParameter("supervisor_attempts", "INTEGER", supervisor_attempts),
+        ]
+    )
+    try:
+        insert_job = client.query(insert_query, job_config=insert_config)
+        insert_job.result()
+    except Exception as exc:
+        raise BigQueryError(f"save_x_post insert failed: {exc}") from exc
+    if insert_job.errors:
+        raise BigQueryError(f"save_x_post insert failed: {insert_job.errors}")
+
+    update_query = f"""
+        UPDATE `{_table_ref(client)}`
+        SET x_post_id = @x_post_id
+        WHERE announcement_id IN UNNEST(@ids)
+    """
+    update_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("x_post_id", "STRING", x_post_id),
             bigquery.ArrayQueryParameter("ids", "STRING", announcement_ids),
         ]
     )
     try:
-        job = client.query(query, job_config=job_config)
-        job.result()
+        update_job = client.query(update_query, job_config=update_config)
+        update_job.result()
     except Exception as exc:
-        raise BigQueryError(f"save_post_text failed: {exc}") from exc
-    if job.errors:
-        raise BigQueryError(f"save_post_text failed: {job.errors}")
-    if job.num_dml_affected_rows == 0:
-        raise BigQueryError(f"save_post_text: 0 rows updated for ids={announcement_ids!r}")
-    logger.debug("save_post_text: updated %d rows, attempts=%d", len(announcement_ids), supervisor_attempts)
+        raise BigQueryError(f"save_x_post update failed: {exc}") from exc
+    if update_job.errors:
+        raise BigQueryError(f"save_x_post update failed: {update_job.errors}")
+    if update_job.num_dml_affected_rows == 0:
+        raise BigQueryError(f"save_x_post: 0 announcements updated for ids={announcement_ids!r}")
+    logger.debug(
+        "save_x_post: x_post_id=%s linked to %d announcements, attempts=%d",
+        x_post_id, len(announcement_ids), supervisor_attempts,
+    )
+    return x_post_id
 
 
 def delete_announcement(announcement_id: str) -> None:
