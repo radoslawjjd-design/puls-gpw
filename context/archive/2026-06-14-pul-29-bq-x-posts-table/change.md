@@ -1,10 +1,10 @@
 ---
 change_id: pul-29-bq-x-posts-table
 title: Extract x_posts table from announcements, remove post_text duplication
-status: impl_reviewed
+status: archived
 created: 2026-06-14
 updated: 2026-06-14
-archived_at: null
+archived_at: 2026-06-14T08:11:33Z
 tracking:
   linear: PUL-29
   github: 25
