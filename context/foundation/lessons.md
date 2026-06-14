@@ -205,3 +205,31 @@ Prompt: identyfikuj przeciekające zależności → kryterium sukcesu: `grep po 
 **Ekspert domenowy z LLM**: traktuj jak generator hipotez, nie źródło prawdy. Cross-check: dokumentacja źródłowa + dwa różne modele + konfrontacja z własnym kodem (plik:linia).
 
 **Applies to**: Projekt post-MVP wymagający głębszego dopasowania kodu do domeny biznesowej
+
+---
+
+## BigQuery — kolumny o nazwach reserved keywords + limity mockowanych testów
+
+**Context**: `db/bigquery.py` — każdy ręcznie sklejany SQL (INSERT/UPDATE/SELECT) odwołujący
+się do kolumny, której nazwa koliduje ze słowem zarezerwowanym BQ (`window`, `range`, `rows`,
+`hash`, `groups`, `partition`, itp.)
+
+**Problem** (PUL-29, 2026-06-14): kolumna `x_posts.window` w INSERT bez backticków
+(`(x_post_id, window, ...)`) → `400 Syntax error: Unexpected keyword WINDOW`. `WINDOW` jest
+słowem zarezerwowanym (funkcje okienkowe). Wszystkie testy jednostkowe `save_x_post`
+przeszły na zielono, bo mockują klienta BQ — string SQL nigdy nie trafił do parsera. Bug
+wyszedł dopiero w round-tripie na realnym BigQuery (`scripts/test_bq.py`).
+
+**Rule**:
+1. Każdą nazwę kolumny będącą reserved keyword **backtickuj** w treści SQL:
+   `` `window` `` (parametr `@window` jest OK — nazwy parametrów nie kolidują).
+   Pełna lista: https://cloud.google.com/bigquery/docs/reference/standard-sql/lexical#reserved_keywords
+2. Mockowane testy BQ **nie weryfikują składni SQL** — traktuj round-trip na realnym BQ
+   (`scripts/test_bq.py`) jako obowiązkowy krok manualnej weryfikacji każdego change'a, który
+   dodaje/zmienia ręcznie sklejany SQL. Dodaj też tani test regresyjny na sam string zapytania
+   (`assert "`window`" in insert_q`).
+3. Skrypt round-trip musi wołać `ensure_schema_current()` (nie tylko
+   `create_table_if_not_exists()`) — na istniejącej tabeli `create_*` jest no-opem i nie
+   dołoży nowej kolumny; migrację kolumn robi wyłącznie `ensure_schema_current()`.
+
+**Applies to**: Każdy change dotykający ręcznie pisanego SQL w `db/bigquery.py`
