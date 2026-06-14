@@ -331,11 +331,11 @@ historically; admin JOIN falls back to them via `COALESCE`).
 
 #### Automated
 
-- [x] 2.1 Full suite passes: `uv run pytest`
-- [x] 2.2 No lingering `save_post_text` references (excluding context/)
+- [x] 2.1 Full suite passes: `uv run pytest` — 3e42548
+- [x] 2.2 No lingering `save_post_text` references (excluding context/) — 3e42548
 
 #### Manual
 
-- [x] 2.3 `uv run python scripts/test_bq.py` round-trips `x_posts` against real BigQuery
-- [x] 2.4 Admin `GET /announcements` returns `x_post_id` and non-null `post_text` via JOIN
-- [x] 2.5 `x_posts` table visible in BigQuery with the correct schema
+- [x] 2.3 `uv run python scripts/test_bq.py` round-trips `x_posts` against real BigQuery — 3e42548
+- [x] 2.4 Admin `GET /announcements` returns `x_post_id` and non-null `post_text` via JOIN — 3e42548
+- [x] 2.5 `x_posts` table visible in BigQuery with the correct schema — 3e42548
