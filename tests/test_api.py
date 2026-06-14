@@ -40,7 +40,8 @@ def test_auth_role_invalid_key_returns_401(api_client):
 def test_announcements_admin_returns_list(api_client):
     mock_rows = [{"announcement_id": "abc", "ticker": "PKO", "title": "T",
                   "company": "C", "url": "u", "published_at": "2024-01-01T00:00:00",
-                  "post_text": None, "posted_at": None, "analyzed_at": None,
+                  "post_text": None, "posted_at": None, "x_post_id": None,
+                  "analyzed_at": None,
                   "supervisor_attempts": None, "parsed_content": None,
                   "priority": None, "structured_analysis": '{"summary_pl": "test"}',
                   "analysis_approved": True, "analysis_reject_reason": None,

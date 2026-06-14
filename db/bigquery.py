@@ -523,7 +523,7 @@ def save_x_post(
 
     insert_query = f"""
         INSERT INTO `{_table_ref(client, _X_POSTS_TABLE_NAME)}`
-            (x_post_id, window, post_text, supervisor_attempts, posted_at)
+            (x_post_id, `window`, post_text, supervisor_attempts, posted_at)
         VALUES
             (@x_post_id, @window, @post_text, @supervisor_attempts, CURRENT_TIMESTAMP())
     """

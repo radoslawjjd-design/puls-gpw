@@ -19,7 +19,7 @@ _FAKE_ADMIN_ROWS = [
         "announcement_id": f"id{i}", "url": f"http://example.com/{i}",
         "published_at": datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
         "title": f"Ann {i}", "company": "PKO SA", "ticker": "PKO",
-        "post_text": None, "posted_at": None, "analyzed_at": None,
+        "post_text": None, "posted_at": None, "x_post_id": None, "analyzed_at": None,
         "supervisor_attempts": None, "parsed_content": None, "priority": None,
         "structured_analysis": None, "analysis_approved": True,
         "analysis_reject_reason": None, "event_type": "ESPI", "analysis_score": 0.8,

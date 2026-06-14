@@ -319,23 +319,23 @@ historically; admin JOIN falls back to them via `COALESCE`).
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py`
-- [x] 1.2 Full suite passes: `uv run pytest`
-- [x] 1.3 No lingering `save_post_text` references in db/ src/ tests/
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py` — 6c38f5f
+- [x] 1.2 Full suite passes: `uv run pytest` — 6c38f5f
+- [x] 1.3 No lingering `save_post_text` references in db/ src/ tests/ — 6c38f5f
 
 #### Manual
 
-- [x] 1.4 `save_x_post` signature and `x_posts` schema match the PUL-29 spec
+- [x] 1.4 `save_x_post` signature and `x_posts` schema match the PUL-29 spec — 6c38f5f
 
 ### Phase 2: Pipeline wiring, API model & real-BQ verification
 
 #### Automated
 
-- [ ] 2.1 Full suite passes: `uv run pytest`
-- [ ] 2.2 No lingering `save_post_text` references (excluding context/)
+- [x] 2.1 Full suite passes: `uv run pytest`
+- [x] 2.2 No lingering `save_post_text` references (excluding context/)
 
 #### Manual
 
-- [ ] 2.3 `uv run python scripts/test_bq.py` round-trips `x_posts` against real BigQuery
-- [ ] 2.4 Admin `GET /announcements` returns `x_post_id` and non-null `post_text` via JOIN
-- [ ] 2.5 `x_posts` table visible in BigQuery with the correct schema
+- [x] 2.3 `uv run python scripts/test_bq.py` round-trips `x_posts` against real BigQuery
+- [x] 2.4 Admin `GET /announcements` returns `x_post_id` and non-null `post_text` via JOIN
+- [x] 2.5 `x_posts` table visible in BigQuery with the correct schema

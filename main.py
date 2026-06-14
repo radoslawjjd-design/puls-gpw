@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 from db.bigquery import (
     BigQueryError,
     create_table_if_not_exists,
+    create_x_posts_table_if_not_exists,
     ensure_schema_current,
     insert_announcement,
     save_analysis_result,
@@ -38,6 +39,7 @@ def main():
     try:
         create_table_if_not_exists()
         ensure_schema_current()
+        create_x_posts_table_if_not_exists()
         new = scrape_new_announcements(window_minutes=window_minutes, max_pages=args.max_pages)
         if not new:
             logger.info("Pipeline completed: 0 new announcements")

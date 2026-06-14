@@ -19,23 +19,30 @@ from datetime import datetime, timezone
 from google.cloud import bigquery
 
 from db.bigquery import (
+    _X_POSTS_TABLE_NAME,
     _get_client,
     _table_ref,
     create_table_if_not_exists,
+    create_x_posts_table_if_not_exists,
+    ensure_schema_current,
     insert_announcement,
     is_processed,
     save_analysis_result,
+    save_x_post,
 )
 
 TEST_URL = "https://www.bankier.pl/gielda/wiadomosci/komunikaty-spolek/test-bq-integration-F02"
 
 
 def main() -> None:
-    # Step 1 — ensure table exists
+    # Step 1 — ensure tables exist
     create_table_if_not_exists()
+    ensure_schema_current()  # migrates announcements.x_post_id onto the existing table
+    create_x_posts_table_if_not_exists()
     client = _get_client()
     table = _table_ref(client)
-    print(f"[1] Table ready: {table}")
+    x_posts_table = _table_ref(client, _X_POSTS_TABLE_NAME)
+    print(f"[1] Tables ready: {table}, {x_posts_table}")
 
     # Step 2 — insert test announcement
     ann_id = insert_announcement(
@@ -45,6 +52,7 @@ def main() -> None:
     )
     print(f"[2] Inserted announcement_id: {ann_id}")
 
+    x_post_id = None
     try:
         # Step 3 — dedup check
         processed = is_processed(TEST_URL)
@@ -79,8 +87,46 @@ def main() -> None:
             f"analysis_approved={row.analysis_approved!r} event_type={row.event_type!r} "
             f"analysis_score={row.analysis_score!r} analyzed_at={row.analyzed_at!r}"
         )
+
+        # Step 6 — save_x_post round-trip: insert x_posts row + link announcement
+        x_post_id = save_x_post([ann_id], "tweet1\n\ntweet2", "poludnie", 1)
+        print(f"[6] save_x_post returned x_post_id: {x_post_id}")
+
+        # Step 7 — read back the x_posts row
+        x_rows = list(
+            client.query(
+                f"SELECT * FROM `{x_posts_table}` WHERE x_post_id = @xid",
+                job_config=bigquery.QueryJobConfig(
+                    query_parameters=[bigquery.ScalarQueryParameter("xid", "STRING", x_post_id)]
+                ),
+            ).result()
+        )
+        assert x_rows, "Expected one x_posts row after save_x_post"
+        x_row = x_rows[0]
+        assert x_row.window == "poludnie", f"window mismatch: {x_row.window!r}"
+        assert x_row.post_text == "tweet1\n\ntweet2", f"post_text mismatch: {x_row.post_text!r}"
+        assert x_row.supervisor_attempts == 1, f"attempts mismatch: {x_row.supervisor_attempts!r}"
+        assert x_row.posted_at is not None, "posted_at should be stamped"
+        print(
+            f"[7] x_posts row: window={x_row.window!r} post_text={x_row.post_text!r} "
+            f"supervisor_attempts={x_row.supervisor_attempts!r} posted_at={x_row.posted_at!r}"
+        )
+
+        # Step 8 — confirm announcement was linked
+        link_rows = list(
+            client.query(
+                f"SELECT x_post_id FROM `{table}` WHERE announcement_id = @id",
+                job_config=bigquery.QueryJobConfig(
+                    query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", ann_id)]
+                ),
+            ).result()
+        )
+        assert link_rows and link_rows[0].x_post_id == x_post_id, (
+            f"announcement x_post_id not linked: {link_rows!r}"
+        )
+        print(f"[8] announcement linked: x_post_id={link_rows[0].x_post_id!r}")
     finally:
-        # Step 6 — cleanup (runs even on error to avoid orphaned test records)
+        # Step 9 — cleanup (runs even on error to avoid orphaned test records)
         try:
             client.query(
                 f"DELETE FROM `{table}` WHERE announcement_id = @id",
@@ -88,9 +134,20 @@ def main() -> None:
                     query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", ann_id)]
                 ),
             ).result()
-            print("[6] Cleanup: test record deleted")
+            print("[9] Cleanup: test announcement deleted")
         except Exception as exc:
-            print(f"[6] WARNING: cleanup failed ({exc}) — delete test record manually: {ann_id}")
+            print(f"[9] WARNING: cleanup failed ({exc}) — delete test record manually: {ann_id}")
+        if x_post_id is not None:
+            try:
+                client.query(
+                    f"DELETE FROM `{x_posts_table}` WHERE x_post_id = @xid",
+                    job_config=bigquery.QueryJobConfig(
+                        query_parameters=[bigquery.ScalarQueryParameter("xid", "STRING", x_post_id)]
+                    ),
+                ).result()
+                print("[9] Cleanup: test x_posts row deleted")
+            except Exception as exc:
+                print(f"[9] WARNING: x_posts cleanup failed ({exc}) — delete manually: {x_post_id}")
 
     print("\nAll steps passed.")
 

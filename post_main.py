@@ -14,7 +14,13 @@ from src.logging_setup import configure_logging
 configure_logging()
 logger = logging.getLogger(__name__)
 
-from db.bigquery import fetch_top_n_for_window, save_post_text
+from db.bigquery import (
+    create_table_if_not_exists,
+    create_x_posts_table_if_not_exists,
+    ensure_schema_current,
+    fetch_top_n_for_window,
+    save_x_post,
+)
 from src.notifier import send_alert, send_no_post_email, send_post_email
 from src.post_generator import generate_post
 from src.post_supervisor import validate_post
@@ -78,6 +84,13 @@ def main() -> None:
     logger.info("post_main: processing window=%s date=%s", window, date_str)
 
     try:
+        # Self-sufficient schema setup: the post job must guarantee both the x_posts
+        # table and the announcements.x_post_id column exist before the first write,
+        # independent of whether the scraper has run since deploy. All idempotent.
+        create_table_if_not_exists()
+        ensure_schema_current()
+        create_x_posts_table_if_not_exists()
+
         window_start, window_end = _window_bounds(window, now_warsaw)
         announcements = fetch_top_n_for_window(window_start, window_end, n=4)
 
@@ -110,14 +123,14 @@ def main() -> None:
                 continue
             result = validate_post(post, tickers, expected_tweets=expected_tweets)
             if result.approved:
-                save_post_text(ann_ids, "\n\n".join(post.tweets), attempt)
+                save_x_post(ann_ids, "\n\n".join(post.tweets), window, attempt)
                 send_post_email(window_name, date_str, post.tweets, company_scores)
                 logger.info("post_main: post approved on attempt %d for window %s", attempt, window)
                 return
             logger.warning("post_main: attempt %d rejected: %s", attempt, result.issues)
             previous_issues = result.issues
 
-        save_post_text(ann_ids, None, _MAX_ATTEMPTS)
+        save_x_post(ann_ids, None, window, _MAX_ATTEMPTS)
         logger.warning("post_main: all %d supervisor attempts failed for window %s", _MAX_ATTEMPTS, window)
         send_no_post_email(window_name, date_str, "Supervisor odrzucił wszystkie 3 próby.")
 

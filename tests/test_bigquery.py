@@ -145,6 +145,8 @@ def test_save_x_post_inserts_xpost_and_links_announcements():
     insert_q = next(q for q in queries if "INSERT" in q and "x_posts" in q)
     update_q = next(q for q in queries if "UPDATE" in q)
     assert "posted_at" in insert_q and "CURRENT_TIMESTAMP()" in insert_q
+    # `window` is a BQ reserved keyword — the column identifier must be backtick-quoted
+    assert "`window`" in insert_q
     assert "x_post_id" in update_q
     assert "IN UNNEST(@ids)" in update_q
 

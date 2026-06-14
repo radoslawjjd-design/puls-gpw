@@ -52,6 +52,7 @@ class AnnouncementAdmin(BaseModel):
     ticker: str | None = None
     post_text: str | None = None
     posted_at: datetime | None = None
+    x_post_id: str | None = None
     analyzed_at: datetime | None = None
     supervisor_attempts: int | None = None
     parsed_content: str | None = None
