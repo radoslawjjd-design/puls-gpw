@@ -40,6 +40,12 @@ def test_is_publishable_false_for_placeholder_marker():
     assert post_main.is_publishable(["hook 🧵", "$PKO brak posta", "closing"]) is False
 
 
+def test_is_publishable_true_for_brak_postepow_not_a_placeholder():
+    """Regression (F1): 'brak postępów' must NOT trip the 'brak posta' marker."""
+    thread = ["hook 🧵", "$PKO brak postępów w negocjacjach przejęcia ▼", "$PKO co dalej?"]
+    assert post_main.is_publishable(thread) is True
+
+
 # ── _publish_to_x orchestration ───────────────────────────────────────────────
 
 @pytest.fixture

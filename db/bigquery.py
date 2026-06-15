@@ -319,7 +319,7 @@ def fetch_top_n_for_window(
     window_start: datetime,
     window_end: datetime,
     n: int = 4,
-    min_score: float = 50,
+    min_score: float = 50,  # mirrors post_main.MIN_XPOST_SCORE (the tunable source of truth)
 ) -> list[dict]:
     """Return top-N approved announcements for a time window, ordered by score DESC.
 

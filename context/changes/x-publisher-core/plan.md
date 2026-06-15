@@ -513,20 +513,20 @@ as a publish `failed`/`partial` + alert, no retry storm.
 
 #### Automated
 
-- [x] 3.1 Unit tests pass: `uv run pytest tests/test_post_main.py tests/test_post_supervisor.py`
-- [x] 3.2 Full suite passes: `uv run pytest`
-- [x] 3.3 Linting passes
-- [x] 3.4 Flag-OFF path asserts no `publish_thread` call and status `skipped`
-- [x] 3.5 Empty/substance-less thread asserts no publish (hard-constraint regression)
-- [x] 3.6 `fetch_top_n_for_window` filters `analysis_score >= MIN_XPOST_SCORE` (query/unit assert)
+- [x] 3.1 Unit tests pass: `uv run pytest tests/test_post_main.py tests/test_post_supervisor.py` — 528d897
+- [x] 3.2 Full suite passes: `uv run pytest` — 528d897
+- [x] 3.3 Linting passes — 528d897
+- [x] 3.4 Flag-OFF path asserts no `publish_thread` call and status `skipped` — 528d897
+- [x] 3.5 Empty/substance-less thread asserts no publish (hard-constraint regression) — 528d897
+- [x] 3.6 `fetch_top_n_for_window` filters `analysis_score >= MIN_XPOST_SCORE` (query/unit assert) — 528d897
 
 #### Manual
 
-- [x] 3.7 Flag-unset local dry-run behaves as today (email only)
+- [x] 3.7 Flag-unset local dry-run behaves as today (email only) — 528d897
 - [ ] 3.8 Controlled live test: thread on X, ids + `published` in x_posts, email link
 - [ ] 3.9 Re-run same window does NOT double-post (idempotency)
-- [x] 3.10 Hook-only/empty thread is NOT published (status `skipped`)
-- [x] 3.11 Sub-threshold (`analysis_score < 50`) announcements absent from generated/emailed thread
+- [x] 3.10 Hook-only/empty thread is NOT published (status `skipped`) — 528d897
+- [x] 3.11 Sub-threshold (`analysis_score < 50`) announcements absent from generated/emailed thread — 528d897
 
 ### Phase 4: Deploy & secret wiring
 

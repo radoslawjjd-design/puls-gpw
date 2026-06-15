@@ -47,7 +47,9 @@ X_AUTO_PUBLISH = os.environ.get("X_AUTO_PUBLISH", "").lower() == "true"
 # A real company-analysis body tweet references a ticker as a $CASHTAG.
 _CASHTAG_RE = re.compile(r"\$[A-Z0-9]{1,10}")
 # Substance-less / placeholder markers that must never reach X (hard constraint).
-_PLACEHOLDER_MARKERS = ("brak posta", "brak post", "lorem ipsum", "placeholder", "[todo")
+# Keep these specific: substring-matched against the joined thread, so a loose
+# marker like "brak post" would wrongly trip on legit Polish "brak postępów".
+_PLACEHOLDER_MARKERS = ("brak posta", "lorem ipsum", "placeholder", "[todo")
 
 
 def is_publishable(tweets: list[str]) -> bool:
