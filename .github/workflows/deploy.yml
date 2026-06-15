@@ -56,6 +56,9 @@ jobs:
         run: |
           gcloud run jobs update puls-gpw-post \
             --image="${{ env.IMAGE }}:${{ github.sha }}" \
+            --command=uv --args="run,python,post_main.py" \
+            --update-secrets="X_API_KEY=x-api-key:latest,X_API_SECRET=x-api-secret:latest,X_ACCESS_TOKEN=x-access-token:latest,X_ACCESS_SECRET=x-access-secret:latest" \
+            --update-env-vars="X_AUTO_PUBLISH=false,GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},BIGQUERY_DATASET=espi_ebi" \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }}
 

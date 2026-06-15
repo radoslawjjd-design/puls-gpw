@@ -27,3 +27,26 @@ class AnalysisError(PipelineStageError):
 
 class NotificationError(PipelineStageError):
     """Raised when email delivery of the X-style post fails."""
+
+
+class XPublisherError(PipelineStageError):
+    """Raised when X publishing fails with nothing posted.
+
+    Covers missing OAuth credentials and a failure on the first tweet
+    (status `failed` — no half-thread is live on X).
+    """
+
+
+class XPublishPartialError(XPublisherError):
+    """Raised when a thread fails mid-publish with ≥1 tweet already live on X.
+
+    Carries the ids posted before the failure so the caller can record a
+    `partial` status. `published_ids` is non-empty by construction.
+    """
+
+    def __init__(self, published_ids: list[str], cause: Exception):
+        self.published_ids = published_ids
+        self.cause = cause
+        super().__init__(
+            f"X thread failed mid-publish after {len(published_ids)} tweet(s): {cause}"
+        )
