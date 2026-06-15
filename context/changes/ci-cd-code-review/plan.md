@@ -384,23 +384,23 @@ The only phase exercising the live PR flow. Add the first `pull_request` workflo
 
 #### Automated
 
-- [x] 3.1 `action.yml` parses (YAML lint)
-- [x] 3.2 `actionlint` passes (if available)
-- [x] 3.3 Third-party actions SHA-pinned (no floating `@v` tags)
+- [x] 3.1 `action.yml` parses (YAML lint) — c8607d0
+- [x] 3.2 `actionlint` passes (if available) — c8607d0
+- [x] 3.3 Third-party actions SHA-pinned (no floating `@v` tags) — c8607d0
 
 #### Manual
 
-- [x] 3.4 `using: composite`, every `run` step has explicit `shell: bash`
-- [x] 3.5 Action builds `dist/` at run time (no committed `dist/`)
-- [x] 3.6 Inputs cover title/body/diff-path/model; outputs cover verdict/min-score/result
+- [x] 3.4 `using: composite`, every `run` step has explicit `shell: bash` — c8607d0
+- [x] 3.5 Action builds `dist/` at run time (no committed `dist/`) — c8607d0
+- [x] 3.6 Inputs cover title/body/diff-path/model; outputs cover verdict/min-score/result — c8607d0
 
 ### Phase 4: Workflow, side-effects, and merge gate
 
 #### Automated
 
-- [ ] 4.1 `actionlint` passes on the workflow
-- [ ] 4.2 Third-party `uses:` SHA-pinned
-- [ ] 4.3 Workflow YAML parses cleanly
+- [x] 4.1 `actionlint` passes on the workflow
+- [x] 4.2 Third-party `uses:` SHA-pinned
+- [x] 4.3 Workflow YAML parses cleanly
 
 #### Manual
 
