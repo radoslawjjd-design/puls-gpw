@@ -1,10 +1,10 @@
 ---
 change_id: x-publisher-core
 title: X publisher core
-status: implemented
+status: archived
 created: 2026-06-15
 updated: 2026-06-15
-archived_at: null
+archived_at: 2026-06-15T22:39:17Z
 tracking:
   linear: PUL-26   # also delivers PUL-27 (wiring+deploy) — close BOTH at close-out
   github: 22       # also delivers #23 (PUL-27) — close BOTH at close-out

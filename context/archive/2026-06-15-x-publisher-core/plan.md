@@ -523,7 +523,7 @@ as a publish `failed`/`partial` + alert, no retry storm.
 #### Manual
 
 - [x] 3.7 Flag-unset local dry-run behaves as today (email only) — 528d897
-- [ ] 3.8 Controlled live test: thread on X, ids + `published` in x_posts, email link
+- [x] 3.8 Controlled live test: thread on X, ids + `published` in x_posts, email link — verified live 2026-06-16 (root tweet id 2066650772226355266)
 - [ ] 3.9 Re-run same window does NOT double-post (idempotency)
 - [x] 3.10 Hook-only/empty thread is NOT published (status `skipped`) — 528d897
 - [x] 3.11 Sub-threshold (`analysis_score < 50`) announcements absent from generated/emailed thread — 528d897
@@ -538,5 +538,5 @@ as a publish `failed`/`partial` + alert, no retry storm.
 #### Manual
 
 - [x] 4.3 Human creates 4 SM secrets + sets values; runner SA has `secretmanager.secretAccessor` — e6ae162
-- [ ] 4.4 Deployed `puls-gpw-post` runs `post_main.py` with 4 secrets + `X_AUTO_PUBLISH=false` bound
-- [ ] 4.5 Toggling `X_AUTO_PUBLISH` true/false (and pausing schedulers) behaves as expected
+- [x] 4.4 Deployed `puls-gpw-post` runs `post_main.py` with 4 secrets + `X_AUTO_PUBLISH` bound — verified 2026-06-16 (flag now `true`; secrets created in puls-gpw)
+- [x] 4.5 Toggling `X_AUTO_PUBLISH` true/false (and pausing schedulers) behaves as expected — verified 2026-06-16
