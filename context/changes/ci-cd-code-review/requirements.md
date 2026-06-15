@@ -8,7 +8,7 @@
 
 - GHA workflow runs for every new pull request to `master` (plus manual `workflow_dispatch` for testing).
 - A **composite action** wraps the review agent so the main workflow stays easy to reason about and reusable.
-- Agent built with **Vercel AI SDK 6**, model = **Gemini** (reuses the existing project Gemini API key — the same one that powers ESPI/EBI analysis). Model is swappable: Gemini Flash for routine diffs, Gemini Pro for harder ones.
+- Agent built with **Vercel AI SDK 6**, model = **Gemini via Vertex AI** (`@ai-sdk/google-vertex`). Auth reuses the **existing GCP service-account secret `puls_gpw_secret`** — the same credential `deploy.yml` already uses — NOT a Gemini API key (the project authenticates to Gemini through Vertex AI + ADC, `genai.Client(vertexai=True, …)`; `GEMINI_API_KEY` in `.env.example` is legacy/unused). No new vendor, no new secret. Model is swappable: Gemini Flash for routine diffs, Gemini Pro for harder ones.
 - Standalone Node/TS package living in the repo (puls-gpw is Python; this is a deliberately independent package).
 
 ## Input parameters (what the agent sees)
@@ -70,6 +70,7 @@ for the whole change + a short Markdown summary usable directly as a PR comment.
 
 ## Data-risk caveat
 
-The diff is our own repo code, sent read-only to Gemini. The Gemini key is already used for
-ESPI/EBI analysis in production → same trust boundary, no new data exposure. No production
-secrets or customer data flow to the agent.
+The diff is our own repo code, sent read-only to Gemini via Vertex AI. The same GCP
+service account (`puls_gpw_secret`) already backs ESPI/EBI analysis in production →
+same trust boundary, no new data exposure. No production secrets or customer data flow
+to the agent.
