@@ -26,3 +26,10 @@ lessonMarkdawn/
 
 # tach generated artifacts
 tach_module_graph.dot
+
+# Node / TS (tools/ai-code-reviewer) — dist/ already covered by the unanchored rule above
+tools/**/node_modules/
+tools/**/*.tsbuildinfo
+
+# Exported GCP service-account / Cloud Run credential dumps — never commit
+puls-gpw-api-*.json

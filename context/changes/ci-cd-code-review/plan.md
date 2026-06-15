@@ -354,10 +354,10 @@ The only phase exercising the live PR flow. Add the first `pull_request` workflo
 
 #### Automated
 
-- [ ] 1.1 Dependencies install (`npm ci`)
-- [ ] 1.2 Build passes (`npm run build`)
-- [ ] 1.3 Type checking passes (`tsc --noEmit`)
-- [ ] 1.4 No `node_modules/`/`dist/` tracked by git
+- [x] 1.1 Dependencies install (`npm ci`)
+- [x] 1.2 Build passes (`npm run build`)
+- [x] 1.3 Type checking passes (`tsc --noEmit`)
+- [x] 1.4 No `node_modules/`/`dist/` tracked by git
 
 #### Manual
 
