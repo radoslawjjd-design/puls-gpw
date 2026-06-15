@@ -44,7 +44,8 @@ MIN_XPOST_SCORE = 50
 # Auto-publish flag (default OFF). Only "true" (case-insensitive) enables publishing.
 X_AUTO_PUBLISH = os.environ.get("X_AUTO_PUBLISH", "").lower() == "true"
 
-# A real company-analysis body tweet references a ticker as a $CASHTAG.
+# A real company-analysis thread carries exactly one $CASHTAG (the top-score company,
+# in the hook). Its presence anywhere in the thread is the substance signal.
 _CASHTAG_RE = re.compile(r"\$[A-Z0-9]{1,10}")
 # Substance-less / placeholder markers that must never reach X (hard constraint).
 # Keep these specific: substring-matched against the joined thread, so a loose
@@ -57,9 +58,10 @@ def is_publishable(tweets: list[str]) -> bool:
 
     A thread is publishable only if it is a genuine, non-empty company-analysis
     thread: at least 3 tweets (hook + ≥1 company body + closing), non-blank joined
-    text, at least one body tweet (`tweets[1:-1]`) referencing a $TICKER cashtag,
-    and no placeholder/"brak posta" marker. The supervisor occasionally approves an
-    empty/degenerate thread; this guard is the independent stop before publish().
+    text, at least one $TICKER cashtag somewhere in the thread (the top-score company,
+    carried in the hook), and no placeholder/"brak posta" marker. The supervisor
+    occasionally approves an empty/degenerate thread; this guard is the independent
+    stop before publish().
     """
     if not tweets or len(tweets) < 3:
         return False
@@ -68,7 +70,7 @@ def is_publishable(tweets: list[str]) -> bool:
     body = tweets[1:-1]
     if not any(t and t.strip() for t in body):
         return False
-    if not any(_CASHTAG_RE.search(t) for t in body):
+    if not any(_CASHTAG_RE.search(t) for t in tweets):
         return False
     joined_lower = "\n".join(tweets).lower()
     if any(marker in joined_lower for marker in _PLACEHOLDER_MARKERS):

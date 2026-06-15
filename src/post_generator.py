@@ -3,6 +3,7 @@ import datetime
 import hashlib
 import json
 import logging
+import re
 from dataclasses import dataclass
 
 import json5
@@ -72,14 +73,17 @@ Zakaz obejmuje dosłowne i ukryte sugestie, w tym:
 - jakikolwiek wniosek co do niedowartościowania/przewartościowania
 Dozwolone: opis faktu, kontekst operacyjny, pytanie do czytelnika.
 
-=== ZASADA CASHTAG ($) vs HASHTAG (#) — KRYTYCZNE, X ODRZUCA NARUSZENIA ===
-X pozwala na MAKSYMALNIE JEDEN cashtag ($TICKER) w jednym tweecie. Tweet z dwoma lub
-więcej cashtagami jest odrzucany przez X (błąd 403). Dlatego BEZWZGLĘDNIE:
-- HOOK (tweet 1) i CLOSING (ostatni tweet): tickery spółek WYŁĄCZNIE jako hashtagi
-  (#TICKER) — NIGDY $TICKER. Tu może być wiele hashtagów, ale ZERO cashtagów.
-- Tweet środkowy (jedna spółka): DOKŁADNIE jeden cashtag $TICKER tej spółki i żadnego
-  innego cashtaga.
-Nie używaj $TICKER w żadnym tweecie poza tweetem danej spółki.
+=== ZASADA CASHTAG / HASHTAG / POGRUBIENIE — KRYTYCZNE ===
+X odrzuca posty z więcej niż jednym cashtagiem (błąd 403) i karze za nadmiar
+cashtagów/hashtagów. Dlatego w CAŁEJ nitce używamy DOKŁADNIE JEDNEGO cashtaga:
+- Cashtag $TICKER pojawia się TYLKO RAZ w całym wątku: w HOOKU, przy spółce wskazanej
+  w wiadomości użytkownika (klucz "cashtag_spolki" — spółka z najwyższym score). Wstaw
+  go DOKŁADNIE tak, jak podano.
+- WSZYSTKIE pozostałe tickery (inne spółki w hooku, KAŻDY tweet środkowy, closing):
+  zwykłym tekstem w nawiasie, np. (LBW) — BEZ $ i BEZ #.
+- Hashtagi: WYŁĄCZNIE #GPW #ESPI #SmallCaps na samym końcu closingu. Nigdzie indziej.
+- POGRUBIENIE: nazwę KAŻDEJ spółki owiń w podwójne gwiazdki, np. **Lubawa**. Pogrubiaj
+  TYLKO nazwę spółki — nie ticker, nie liczby, nie resztę zdania.
 
 === STRUKTURA WĄTKU — DYNAMICZNA LICZBA TWEETÓW ===
 Liczba tweetów = 1 (hook) + liczba spółek + 1 (closing).
@@ -90,38 +94,39 @@ Trzymaj się tej liczby ściśle — użytkownik poda dokładną liczbę w wiado
 Zacznij od 🚨, potem "N ważne/ważnych ESPI z GPW – [FRAZA OKNA]:", potem lista spółek
 z bulletami •, zakończ pytaniem. FRAZA OKNA jest podana w wiadomości użytkownika (klucz "fraza_hooka").
 
-Tickery w hooku jako HASHTAGI (#TICKER), nigdy $TICKER.
+Spółka z "cashtag_spolki" dostaje $TICKER; pozostałe spółki ticker zwykłym tekstem (TICKER).
+Nazwy spółek pogrubione (**Nazwa**).
 
-Przykład dla 1 spółki (DOKŁADNIE 3 tweety łącznie):
+Przykład dla 1 spółki (DOKŁADNIE 3 tweety łącznie, cashtag_spolki = $EBX):
 🚨 1 ważne ESPI z GPW – zerknij przed sesją:
-• Ekobox ( #EBX ) podpisanie istotnej umowy
+• **Ekobox** ( $EBX ) podpisanie istotnej umowy
 Warto się przyjrzeć?
 
-Przykład dla 3 spółek (DOKŁADNIE 5 tweetów łącznie):
+Przykład dla 3 spółek (DOKŁADNIE 5 tweetów łącznie, cashtag_spolki = $LBW):
 🚨 3 ważne ESPI z GPW – zerknij przed sesją:
-• Lubawa ( #LBW ) bije rekordy przychodów i zysku
-• Foothills ( #FTL ) podwyższenie kapitału
-• Hub.Tech ( #HUB ) emisja za 34,7 mln PLN
+• **Lubawa** ( $LBW ) bije rekordy przychodów i zysku
+• **Foothills** (FTL) podwyższenie kapitału
+• **Hub.Tech** (HUB) emisja za 34,7 mln PLN
 Która spółka najbardziej Cię interesuje?
 
 --- Tweety środkowe: JEDNA SPÓŁKA = JEDEN TWEET (140–180 znaków) ---
 NIE dziel jednej spółki na dwa tweety.
 
 Format — każda wartość liczbowa na OSOBNEJ LINII:
-📊 Nazwa Spółki ( $TICKER )
+📊 **Nazwa Spółki** (TICKER)
 [kluczowa liczba 1]
 [kluczowa liczba 2 jeśli jest]
 [jedno zdanie zakończenia — patrz zasady poniżej]
 
 Przykład:
-📊 Lubawa ( $LBW )
+📊 **Lubawa** (LBW)
 Przychody Q1: 136,96 mln PLN
 Zysk netto: 23,65 mln PLN
 Drugi kwartał rekordowy z rzędu. Organika czy duże kontrakty?
 
 Zasady:
 - Emoji 📊 zawsze na początku
-- Pełna nazwa + ( $TICKER ) — zawsze oba
+- Pełna nazwa pogrubiona **Nazwa** + (TICKER) tekstem — zawsze oba, BEZ cashtaga $
 - Liczby z key_numbers na osobnych liniach — bez wymyślania
 - Jeśli key_numbers jest pustą listą: napisz jedno krótkie zdanie kontekstu z summary_pl zamiast linii z liczbami — nie kopiuj metadanych dokumentu (typ raportu, waluta, itp.)
 - Zakończ tweet spółki JEDNYM z poniższych stylów (dobierz do treści komunikatu):
@@ -144,8 +149,9 @@ Nie zmieniaj fraza_closing — wstaw ją dosłownie przed "Napisz w komentarzu!"
 - Frazy AI-style: "warto obserwować", "to fascynujące", "potencjalny wpływ", "warto śledzić"
 - Placeholdery zamiast liczb
 - Linki w tweetach
-- Cashtag ($TICKER) gdziekolwiek poza tweetem danej spółki, lub >1 cashtag w jednym tweecie
-  (patrz zasada cashtag/hashtag — X odrzuca takie posty)
+- Więcej niż JEDEN cashtag w całej nitce, lub cashtag innej spółki niż wskazana w
+  "cashtag_spolki" (patrz zasada cashtag/hashtag — X odrzuca takie posty)
+- Pogrubianie czegokolwiek poza nazwą spółki
 - Sugestie inwestycyjne (patrz zakaz powyżej)
 
 === FORMAT ODPOWIEDZI ===
@@ -172,11 +178,37 @@ def _pick_variant(variants: list[str], salt: str = "") -> str:
 
 
 def _build_tickers_str(tickers: list[str]) -> str:
-    # Closing uses HASHTAGS (#TICKER), not cashtags — X rejects posts with >1 cashtag.
-    tagged = [f"#{t}" for t in tickers]
+    # Closing lists tickers as PLAIN TEXT — no $ cashtag, no # hashtag. The thread's
+    # single cashtag lives in the hook (top-score company); everything else is plain.
+    tagged = list(tickers)
     if len(tagged) == 1:
         return tagged[0]
     return ", ".join(tagged[:-1]) + f" czy {tagged[-1]}"
+
+
+# Markdown **bold** → Unicode sans-serif bold. X has no native bold; these code points
+# render bold in most clients. Polish diacritics (ł ż ó ś ą ę ć ń ź) have no bold variant
+# in the Mathematical block, so they pass through unchanged (mixed but acceptable).
+_BOLD_MARKER_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _to_bold(text: str) -> str:
+    out: list[str] = []
+    for ch in text:
+        if "A" <= ch <= "Z":
+            out.append(chr(ord(ch) - ord("A") + 0x1D5D4))  # 𝗔 sans-serif bold caps
+        elif "a" <= ch <= "z":
+            out.append(chr(ord(ch) - ord("a") + 0x1D5EE))  # 𝗮 sans-serif bold small
+        elif "0" <= ch <= "9":
+            out.append(chr(ord(ch) - ord("0") + 0x1D7EC))  # 𝟬 sans-serif bold digits
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _apply_bold(text: str) -> str:
+    """Replace every **marked** span with its Unicode-bold rendering."""
+    return _BOLD_MARKER_RE.sub(lambda m: _to_bold(m.group(1)), text)
 
 
 def generate_post(
@@ -245,9 +277,14 @@ def generate_post(
             f"Każdy tweet musi mieć ≤280 znaków. Skróć hook jeśli lista spółek jest długa."
         )
 
+    # The thread's single cashtag goes to the highest-score company. enriched preserves
+    # fetch_top_n_for_window's score-DESC order, so [0] is the top (tie → first listed).
+    cashtag_ticker = enriched[0]["ticker"]
+
     user_message = (
         f"fraza_hooka: \"{hook_phrase}\"\n"
-        f"fraza_closing: \"{closing_q}\"\n\n"
+        f"fraza_closing: \"{closing_q}\"\n"
+        f"cashtag_spolki: \"${cashtag_ticker}\"\n\n"
         f"Dane: {json.dumps(enriched, ensure_ascii=False)}\n\n"
         f"Wygeneruj wątek: DOKŁADNIE {expected_tweets} tweetów "
         f"(1 hook + {n_companies} spółek + 1 closing)."
@@ -269,7 +306,8 @@ def generate_post(
         if len(parsed.tweets) == 0:
             logger.warning("post_generator: empty tweets list in response")
             return None
-        return GeneratedPost(tweets=parsed.tweets)
+        tweets = [_apply_bold(t) for t in parsed.tweets]
+        return GeneratedPost(tweets=tweets)
     except ValidationError:
         logger.warning("post_generator: response schema invalid", exc_info=True)
         return None

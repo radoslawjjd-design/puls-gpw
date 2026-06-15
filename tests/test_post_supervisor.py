@@ -56,7 +56,7 @@ def test_missing_ticker_rejected():
     tweets[1] = "📊 PKO Bank\nZysk netto Q1: 120,1 mln PLN. Dobry trend."
     result = validate_post(_post(*tweets), _TICKERS, expected_tweets=5)
     assert result.approved is False
-    assert any("$PKO" in issue for issue in result.issues)
+    assert any("(PKO)" in issue for issue in result.issues)
 
 
 def test_missing_gpw_hashtag_rejected():
