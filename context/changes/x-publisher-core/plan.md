@@ -487,10 +487,10 @@ as a publish `failed`/`partial` + alert, no retry storm.
 
 #### Automated
 
-- [ ] 1.1 Dependency resolves: `uv lock` / `uv sync` succeed
-- [ ] 1.2 Unit tests pass: `uv run pytest tests/test_x_publisher.py`
-- [ ] 1.3 Linting passes
-- [ ] 1.4 Import does not require creds at import time (only at `get_x_publisher()`)
+- [x] 1.1 Dependency resolves: `uv lock` / `uv sync` succeed
+- [x] 1.2 Unit tests pass: `uv run pytest tests/test_x_publisher.py`
+- [x] 1.3 Linting passes
+- [x] 1.4 Import does not require creds at import time (only at `get_x_publisher()`)
 
 #### Manual
 
