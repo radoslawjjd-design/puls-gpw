@@ -381,7 +381,10 @@ function renderTable(data, r) {
   }
 
   tbody.innerHTML = data.map(row => {
-    const date    = row.published_at ? row.published_at.slice(0, 16).replace('T', ' ') : '—';
+    const date    = row.published_at ? new Date(row.published_at).toLocaleString('sv-SE', {
+      timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    }) : '—';
     const score   = row.analysis_score != null ? row.analysis_score.toFixed(2) : '—';
     const sc      = row.analysis_score >= 0.7 ? 'high' : row.analysis_score >= 0.4 ? 'mid' : 'low';
     const summary = row.structured_analysis?.summary_pl || '';
