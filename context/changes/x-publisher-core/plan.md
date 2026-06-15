@@ -133,8 +133,12 @@ exception it records the ids published so far and re-raises a typed error carryi
   `src/exceptions.py`) if creds are absent.
 - `XPublisher.publish_thread(tweets: list[str]) -> list[str]` — posts `tweets` in order, each replying
   to the prior; returns all published ids. A single-element list is a single tweet.
-- On failure mid-thread: raise `XPublishPartialError(published_ids: list[str], cause: Exception)`
-  (new). The caller decides persistence/alerting — the module never writes BQ or sends email.
+- On failure with **≥1 tweet already posted**: raise `XPublishPartialError(published_ids: list[str],
+  cause: Exception)` (new) — `published_ids` is non-empty by construction. On failure with **0 tweets
+  posted** (e.g. the first `create_tweet` fails): raise a plain `XPublisherError` — there is nothing
+  partial on X, so this is a full failure, not a partial. This keeps the status taxonomy honest:
+  `partial` ⇒ a half-thread is live; `failed` ⇒ nothing was posted. The caller decides
+  persistence/alerting — the module never writes BQ or sends email.
 - Env vars read: `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET`.
 - This module performs **no** compliance/non-empty checks and **no** flag reading — those live in the
   caller (Phase 3), keeping the publisher a thin transport.
@@ -193,12 +197,16 @@ for the publish result, and add an idempotency query. Round-trip on real BQ.
 
 **File**: `db/bigquery.py`
 
-**Intent**: `ensure_schema_current()` today migrates only the announcements `_SCHEMA`. Extend it (or add
-a sibling `ensure_x_posts_schema_current()` called alongside it) to additively add missing x_posts
-columns, so deploying the new column doesn't require a table rebuild.
+**Intent**: `ensure_schema_current()` today migrates only the announcements `_SCHEMA` against the
+announcements `_table_ref(client)` (`db/bigquery.py:142,148-149`). **Parameterize** the migration over
+`(table_ref, schema)` so the same additive-column mechanism serves both tables, and call it for x_posts
+too. The x_posts migration MUST be invoked at post-job startup: add the x_posts call to the existing
+setup block `post_main.py:90-92` (which already calls `ensure_schema_current()` for announcements) — a
+new column never lands in prod unless that startup path runs it.
 
-**Contract**: a schema-diff/`ALTER TABLE ADD COLUMN`-equivalent for x_posts mirroring the existing
-announcements migration mechanism; idempotent; no-op when the column already exists.
+**Contract**: an idempotent schema-diff (add missing `_X_POSTS_SCHEMA` fields to the existing x_posts
+table; no-op when current), reusing the announcements migration code path via parameterization rather
+than a duplicated function. Wire the x_posts invocation into `post_main.py:90-92`.
 
 #### 3. Persist publish result
 
@@ -220,8 +228,14 @@ path is untouched.)
 published today? Used to prevent double-posting on job re-run/retry.
 
 **Contract**: `x_post_already_published(window: str, day: date | None = None) -> bool` — SELECT over
-x_posts for a row in the given window within today's Warsaw day with `x_publish_status='published'`
-(or non-NULL `tweet_ids`). Backtick `` `window` ``.
+x_posts for a row matching `` `window` `` AND `x_publish_status='published'` where the **dedup key is
+`DATE(posted_at)` in the Warsaw timezone** (default `day` = today Warsaw). Key off `posted_at`'s Warsaw
+calendar day — **not** `_window_bounds` (those cross midnight for `ranek` and bound *announcement fetch*,
+not publish time; all three windows publish on their run day). Backtick `` `window` ``.
+
+Note (accepted risk): this is a check-then-act guard, not a lock — two concurrent invocations for the
+same window could both pass before either writes. Acceptable given one Cloud Scheduler trigger per
+window; not hardened against a double-fire race.
 
 #### 5. Tests
 
