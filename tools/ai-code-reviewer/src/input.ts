@@ -47,7 +47,7 @@ export function stripGeneratedHunks(diff: string): string {
   flush();
 
   const kept = sections.filter((section) => {
-    const header = section.slice(0, section.indexOf("\n") === -1 ? undefined : section.indexOf("\n"));
+    const header = section.split("\n", 1)[0];
     const match = header.match(/^diff --git a\/(.+?) b\/(.+)$/);
     if (match === null) {
       // Not a file section (e.g. a leading preamble) — keep it untouched.

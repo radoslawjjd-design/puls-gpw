@@ -1,4 +1,4 @@
-import { ToolLoopAgent, Output, stepCountIs } from "ai";
+import { ToolLoopAgent, Output, stepCountIs, NoObjectGeneratedError } from "ai";
 import { createVertex } from "@ai-sdk/google-vertex";
 import JSON5 from "json5";
 import { ReviewResultSchema, type ReviewResult } from "./schema.js";
@@ -46,23 +46,37 @@ export function createReviewAgent() {
 }
 
 /**
+ * Parse a raw model text payload into a validated `ReviewResult` using a
+ * trailing-comma-tolerant parser. This mirrors the app's `json5.loads`
+ * convention (`.claude/rules/gemini-ai.md`) and is the recovery path for
+ * Gemini's ~14% malformed-JSON rate. Pure and network-free — unit-tested.
+ */
+export function parseReviewResult(text: string): ReviewResult {
+  return ReviewResultSchema.parse(JSON5.parse(text));
+}
+
+/**
  * Run the review against Vertex Gemini and return the validated result.
  *
- * Defensive json5 fallback: structured output normally parses for us, but if the
- * provider hands back text the SDK can't parse (Gemini's ~14% malformed-JSON
- * rate), retry with a trailing-comma-tolerant parser before failing.
+ * Defensive json5 fallback: structured output normally parses for us, but when
+ * the model returns text the SDK can't parse, `generate()` throws
+ * `NoObjectGeneratedError` with the raw output on `.text`. Recover with the
+ * trailing-comma-tolerant parser before failing closed.
  */
 export async function runReview(prompt: string): Promise<ReviewResult> {
   const agent = createReviewAgent();
-  const result = await agent.generate({ prompt });
 
   try {
+    const result = await agent.generate({ prompt });
     return result.output;
   } catch (err) {
-    const text = result.text;
-    if (typeof text !== "string" || text.trim().length === 0) {
-      throw err;
+    if (
+      NoObjectGeneratedError.isInstance(err) &&
+      typeof err.text === "string" &&
+      err.text.trim().length > 0
+    ) {
+      return parseReviewResult(err.text);
     }
-    return ReviewResultSchema.parse(JSON5.parse(text));
+    throw err;
   }
 }

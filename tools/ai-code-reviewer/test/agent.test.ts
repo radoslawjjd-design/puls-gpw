@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { getModelId, DEFAULT_MODEL, STEP_CAP } from "../src/agent.js";
+import { getModelId, DEFAULT_MODEL, STEP_CAP, parseReviewResult } from "../src/agent.js";
 
 describe("agent wiring", () => {
   const original = process.env.GEMINI_MODEL;
@@ -25,5 +25,31 @@ describe("agent wiring", () => {
 
   it("bounds the agent loop with a hard step cap", () => {
     expect(STEP_CAP).toBe(8);
+  });
+});
+
+describe("parseReviewResult (malformed-JSON recovery path)", () => {
+  const body = `{
+    "scores": {
+      "correctness": 8,
+      "idiomaticity": 7,
+      "complexity": 9,
+      "testCoverageVsRisk": 6,
+      "security": 10,
+      "dataInfraSafety": 5,
+    },
+    "verdict": "pass",
+    "summary": "Trailing commas everywhere.",
+  }`;
+
+  it("recovers a ReviewResult from JSON with trailing commas (Gemini's ~14% failure mode)", () => {
+    const result = parseReviewResult(body);
+    expect(result.verdict).toBe("pass");
+    expect(result.scores.security).toBe(10);
+  });
+
+  it("still rejects a recovered payload that violates the schema", () => {
+    const outOfRange = body.replace('"correctness": 8', '"correctness": 99');
+    expect(() => parseReviewResult(outOfRange)).toThrow();
   });
 });
