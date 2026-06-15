@@ -123,7 +123,7 @@ def test_closing_question_injected():
         generate_post(_ANNOUNCEMENTS)
     call_contents = mock_get.return_value.models.generate_content.call_args[1]["contents"]
     assert "fraza_closing:" in call_contents
-    assert "$PKO" in call_contents or "$XTB" in call_contents
+    assert "#PKO" in call_contents or "#XTB" in call_contents
 
 
 def test_no_valid_announcements_returns_none():
@@ -135,15 +135,15 @@ def test_no_valid_announcements_returns_none():
 # ── _build_tickers_str ───────────────────────────────────────────────────────
 
 def test_build_tickers_str_single():
-    assert _build_tickers_str(["PKO"]) == "$PKO"
+    assert _build_tickers_str(["PKO"]) == "#PKO"
 
 
 def test_build_tickers_str_two():
-    assert _build_tickers_str(["PKO", "XTB"]) == "$PKO czy $XTB"
+    assert _build_tickers_str(["PKO", "XTB"]) == "#PKO czy #XTB"
 
 
 def test_build_tickers_str_three():
-    assert _build_tickers_str(["PKO", "XTB", "LBW"]) == "$PKO, $XTB czy $LBW"
+    assert _build_tickers_str(["PKO", "XTB", "LBW"]) == "#PKO, #XTB czy #LBW"
 
 
 # ── structured_analysis parse failure ────────────────────────────────────────
