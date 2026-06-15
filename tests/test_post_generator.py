@@ -5,8 +5,7 @@ from src.post_generator import (
     GeneratedPost,
     generate_post,
     _build_tickers_str,
-    _to_bold,
-    _apply_bold,
+    _normalize_ticker_spacing,
     _HOOK_VARIANTS,
     _CLOSING_QUESTIONS,
 )
@@ -155,42 +154,20 @@ def test_build_tickers_str_three():
     assert _build_tickers_str(["PKO", "XTB", "LBW"]) == "PKO, XTB czy LBW"
 
 
-# ── bold rendering ───────────────────────────────────────────────────────────
+# ── ticker spacing in parens ─────────────────────────────────────────────────
 
-def _bold_cap(ch: str) -> str:
-    return chr(0x1D5D4 + (ord(ch) - ord("A")))
-
-
-def _bold_small(ch: str) -> str:
-    return chr(0x1D5EE + (ord(ch) - ord("a")))
+def test_normalize_ticker_spacing_adds_spaces():
+    assert _normalize_ticker_spacing("📊 Lubawa (LBW)") == "📊 Lubawa ( LBW )"
+    assert _normalize_ticker_spacing("• Ekobox ($EBX) umowa") == "• Ekobox ( $EBX ) umowa"
 
 
-def test_to_bold_ascii():
-    assert _to_bold("Lubawa") == (
-        _bold_cap("L") + _bold_small("u") + _bold_small("b")
-        + _bold_small("a") + _bold_small("w") + _bold_small("a")
-    )
-    assert _to_bold("7") == chr(0x1D7EC + 7)
-    assert len(_to_bold("Hub.Tech")) == len("Hub.Tech")  # 1:1, "." untouched
+def test_normalize_ticker_spacing_idempotent():
+    assert _normalize_ticker_spacing("Lubawa ( $LBW )") == "Lubawa ( $LBW )"
 
 
-def test_to_bold_passes_polish_diacritics_through():
-    # ż has no Mathematical-Bold variant — must pass through unchanged.
-    out = _to_bold("Energomontaż")
-    assert out.endswith("ż")
-    assert _bold_small("a") in out  # the ASCII 'a' got bolded
-
-
-def test_apply_bold_only_marked_spans():
-    out = _apply_bold("📊 **Lubawa** (LBW)")
-    assert "**" not in out
-    assert "(LBW)" in out                 # ticker untouched
-    assert "📊 " in out
-    assert _bold_cap("L") in out          # 'L' bolded inside the marked span
-
-
-def test_apply_bold_noop_without_markers():
-    assert _apply_bold("plain text (LBW)") == "plain text (LBW)"
+def test_normalize_ticker_spacing_leaves_year_alone():
+    # Pure-number parens (e.g. a year) are not tickers — must stay untouched.
+    assert _normalize_ticker_spacing("zysk za rok (2025) rośnie") == "zysk za rok (2025) rośnie"
 
 
 def test_generate_post_injects_single_cashtag_for_first_company():
@@ -202,17 +179,18 @@ def test_generate_post_injects_single_cashtag_for_first_company():
     assert 'cashtag_spolki: "$PKO"' in call_contents
 
 
-def test_generate_post_applies_bold_to_returned_tweets():
-    bolded = json.dumps({"tweets": [
-        "🚨 1 ważne ESPI z GPW:\n• **Lubawa** ( $LBW )\nKtóra?",
-        "📊 **Lubawa** (LBW)\nZysk: 1 mln\nMocno.",
+def test_generate_post_normalizes_ticker_spacing_in_returned_tweets():
+    raw = json.dumps({"tweets": [
+        "🚨 1 ważne ESPI z GPW:\n• Lubawa ($LBW)\nKtóra?",
+        "📊 Lubawa (LBW)\nZysk: 1 mln\nMocno.",
         "Co sądzisz? #GPW #ESPI #SmallCaps",
     ]}, ensure_ascii=False)
-    with patch("src.post_generator.get_client", return_value=_mock_client(bolded)):
+    with patch("src.post_generator.get_client", return_value=_mock_client(raw)):
         result = generate_post(_ANNOUNCEMENTS[:1])
     assert result is not None
-    assert all("**" not in t for t in result.tweets)
-    assert _bold_cap("L") in result.tweets[0]  # bold 'L' present
+    assert "( $LBW )" in result.tweets[0]
+    assert "( LBW )" in result.tweets[1]
+    assert "($LBW)" not in "".join(result.tweets)
 
 
 # ── structured_analysis parse failure ────────────────────────────────────────
