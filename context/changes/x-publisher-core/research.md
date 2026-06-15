@@ -272,3 +272,13 @@ threads/day + 1 optional at 13:00. (Doc does **not** state a ≤1-cashtag rule �
    actually runs `post_main.py` (deploy.yml sets no `--command` for it).
 7. **Thread vs single & partial-publish handling** — posting is reply-chained; define behavior
    when tweet N of a thread fails (the old project returned partial IDs + alerted).
+
+## Hard Constraint (user, 2026-06-15)
+
+**Empty / "no post" xpost must NEVER auto-publish to X.** The user sometimes receives an empty
+xpost by email; such content must not reach X even with `X_AUTO_PUBLISH=on`. The plan MUST add a
+dedicated **non-empty/non-degenerate guard immediately before `publish()`** (belt-and-braces,
+independent of `post_supervisor`), even though publish already sits inside the `result.approved`
+branch (`post_main.py:125-129`) and the all-fail path (`send_no_post_email`) skips publishing.
+Empty/degenerate content ⇒ publish no-op + email only, as today. See memory
+`feedback-no-empty-xpost-autopublish`.
