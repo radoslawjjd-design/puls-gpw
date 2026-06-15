@@ -22,6 +22,28 @@ CI/CD (`.github/workflows/deploy.yml`) aktualizuje oba joby przy każdym push na
 - Sekrety (Secret Manager): `gemini-api-key`, `smtp-host`, `smtp-port`, `smtp-user`, `smtp-password`, `owner-email`
 - Env vars: `GOOGLE_CLOUD_PROJECT=puls-gpw`, `BIGQUERY_DATASET=espi_ebi`
 
+> **Komenda obu jobów jest ustawiana jawnie w `deploy.yml`** (`--command=uv --args=run,python,<entry>`),
+> a nie polegamy już na konfiguracji utrwalonej przy `gcloud run jobs create`. Sekrety/env post-joba są
+> dokładane **addytywnie** (`--update-secrets` / `--update-env-vars`), więc deploy nie kasuje istniejących
+> sekretów SMTP/Gemini.
+
+### Publikacja na X (`puls-gpw-post`)
+
+Job `puls-gpw-post` może publikować zatwierdzony wątek bezpośrednio na X (Twitter), gdy włączony jest flag.
+
+- **Sekrety (Secret Manager)** — OAuth 1.0a user-context, 4 osobne sekrety:
+  `x-api-key`, `x-api-secret`, `x-access-token`, `x-access-secret`
+  → wstrzykiwane jako env `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET`.
+- **Env var**: `X_AUTO_PUBLISH` — domyślnie `false` (deploy ustawia `false`). `true` = auto-publikacja.
+- **Wartości sekretów ustawia człowiek** (CLAUDE.md: tworzenie/rotacja sekretów = human-only); runner SA
+  `puls-gpw-runner@` musi mieć `secretmanager.secretAccessor`.
+
+**Dwuwarstwowe bezpieczeństwo (kill-switch):**
+1. `X_AUTO_PUBLISH=false` (domyślnie) → wątek tylko na maila, **nic nie idzie na X**. Przełączenie na
+   `true` to świadoma decyzja człowieka.
+2. Schedulery (`puls-gpw-post-*`) można **wstrzymać** (`gcloud scheduler jobs pause`) → job w ogóle się
+   nie odpala.
+
 ### Argumenty post-joba per okno (Cloud Scheduler override)
 
 Job `puls-gpw-post` akceptuje `--window {ranek,poludnie,wieczor}`. Bez flagi auto-wykrywa okno z aktualnego czasu warszawskiego.
