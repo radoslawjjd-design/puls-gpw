@@ -487,10 +487,10 @@ as a publish `failed`/`partial` + alert, no retry storm.
 
 #### Automated
 
-- [x] 1.1 Dependency resolves: `uv lock` / `uv sync` succeed
-- [x] 1.2 Unit tests pass: `uv run pytest tests/test_x_publisher.py`
-- [x] 1.3 Linting passes
-- [x] 1.4 Import does not require creds at import time (only at `get_x_publisher()`)
+- [x] 1.1 Dependency resolves: `uv lock` / `uv sync` succeed — c2594a5
+- [x] 1.2 Unit tests pass: `uv run pytest tests/test_x_publisher.py` — c2594a5
+- [x] 1.3 Linting passes — c2594a5
+- [x] 1.4 Import does not require creds at import time (only at `get_x_publisher()`) — c2594a5
 
 #### Manual
 
@@ -500,14 +500,14 @@ as a publish `failed`/`partial` + alert, no retry storm.
 
 #### Automated
 
-- [ ] 2.1 Unit tests pass: `uv run pytest tests/test_bigquery.py`
-- [ ] 2.2 Query-string regression asserts pass (status column + backticked `window`)
-- [ ] 2.3 Linting passes
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_bigquery.py`
+- [x] 2.2 Query-string regression asserts pass (status column + backticked `window`)
+- [x] 2.3 Linting passes
 
 #### Manual
 
-- [ ] 2.4 Real-BQ round-trip succeeds: `uv run python scripts/test_bq.py` (insert → migrate → update → read back), no syntax error
-- [ ] 2.5 `x_publish_status` visible on the x_posts table after migration
+- [x] 2.4 Real-BQ round-trip succeeds: `uv run python scripts/test_bq.py` (insert → migrate → update → read back), no syntax error
+- [x] 2.5 `x_publish_status` visible on the x_posts table after migration
 
 ### Phase 3: Wire publish into post_main.py
 

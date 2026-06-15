@@ -16,14 +16,16 @@ Nullable field semantics (NULL = step not yet reached or failed):
   x_post_id              — set by save_x_post; FK to x_posts.x_post_id; NULL until posted
 
 x_posts table (one row per generated post; see _X_POSTS_SCHEMA):
-  x_post_id, window, post_text, tweet_ids (PUL-27), posted_at, supervisor_attempts
+  x_post_id, window, post_text, tweet_ids (PUL-27), posted_at, supervisor_attempts,
+  x_publish_status (published|skipped|failed|partial; NULL for legacy/pre-publish rows)
 """
 import hashlib
 import logging
 import os
 import threading
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 from google.cloud import bigquery
@@ -64,6 +66,7 @@ _X_POSTS_SCHEMA = [
     bigquery.SchemaField("tweet_ids", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("posted_at", "TIMESTAMP", mode="REQUIRED"),
     bigquery.SchemaField("supervisor_attempts", "INTEGER", mode="NULLABLE"),
+    bigquery.SchemaField("x_publish_status", "STRING", mode="NULLABLE"),
 ]
 
 _client: bigquery.Client | None = None
@@ -132,30 +135,49 @@ def create_x_posts_table_if_not_exists() -> None:
         logger.info("BQ table created: %s", table_id)
 
 
-def ensure_schema_current() -> None:
-    """Add any missing columns from _SCHEMA to the existing BQ table.
+def ensure_schema_current(
+    table_name: str = _TABLE_NAME,
+    schema: list[bigquery.SchemaField] | None = None,
+) -> None:
+    """Add any missing columns from `schema` to the existing BQ table `table_name`.
 
-    Safe to call on every startup — no-op if schema is already current.
-    Raises BigQueryError if the schema update fails.
+    Defaults to the announcements table + `_SCHEMA`. Pass `_X_POSTS_TABLE_NAME` /
+    `_X_POSTS_SCHEMA` (via `ensure_x_posts_schema_current()`) to migrate the x_posts
+    table through the same additive-column mechanism. Safe to call on every startup —
+    no-op if the schema is already current. Raises BigQueryError if the update fails.
     """
+    schema = schema if schema is not None else _SCHEMA
     client = _get_client()
-    table_id = _table_ref(client)
+    table_id = _table_ref(client, table_name)
     try:
         table = client.get_table(table_id)
     except NotFound:
-        logger.info("BQ table not found — run create_table_if_not_exists() first")
+        logger.info("BQ table %s not found — run create_*_if_not_exists() first", table_name)
         return
     existing_names = {f.name for f in table.schema}
-    missing = [f for f in _SCHEMA if f.name not in existing_names]
+    missing = [f for f in schema if f.name not in existing_names]
     if not missing:
-        logger.info("BQ schema already current")
+        logger.info("BQ schema already current for %s", table_name)
         return
     table.schema = table.schema + missing
     try:
         client.update_table(table, ["schema"])
-        logger.info("BQ schema updated: added columns %s", [f.name for f in missing])
+        logger.info(
+            "BQ schema updated for %s: added columns %s",
+            table_name, [f.name for f in missing],
+        )
     except Exception as exc:
-        raise BigQueryError(f"ensure_schema_current failed: {exc}") from exc
+        raise BigQueryError(f"ensure_schema_current failed for {table_name}: {exc}") from exc
+
+
+def ensure_x_posts_schema_current() -> None:
+    """Migrate the x_posts table — add any missing `_X_POSTS_SCHEMA` columns.
+
+    Thin binding over `ensure_schema_current()` for the x_posts table/schema; idempotent
+    and safe to call on every post-job startup. A new x_posts column (e.g. PUL-26's
+    `x_publish_status`) never lands in prod unless this runs at startup.
+    """
+    ensure_schema_current(_X_POSTS_TABLE_NAME, _X_POSTS_SCHEMA)
 
 
 def is_processed(url: str) -> bool:
@@ -568,6 +590,86 @@ def save_x_post(
         x_post_id, len(announcement_ids), supervisor_attempts,
     )
     return x_post_id
+
+
+def update_x_post_publish_result(
+    x_post_id: str,
+    tweet_ids: list[str] | None,
+    status: str,
+) -> None:
+    """Write the publish outcome onto an existing x_posts row, keyed by x_post_id.
+
+    `tweet_ids` (if non-empty) are joined comma-separated into the STRING `tweet_ids`
+    column; None/empty stores NULL. `status` is one of: published | skipped | failed |
+    partial. Keeps the save_x_post INSERT path untouched — this is the publish write.
+    Raises BigQueryError on failure or if no row matched the x_post_id.
+    """
+    client = _get_client()
+    joined = ",".join(tweet_ids) if tweet_ids else None
+    # No reserved-keyword columns in the SET/WHERE here (x_post_id, tweet_ids,
+    # x_publish_status are all safe); kept parameterized regardless.
+    query = f"""
+        UPDATE `{_table_ref(client, _X_POSTS_TABLE_NAME)}`
+        SET tweet_ids = @tweet_ids, x_publish_status = @status
+        WHERE x_post_id = @x_post_id
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("tweet_ids", "STRING", joined),
+            bigquery.ScalarQueryParameter("status", "STRING", status),
+            bigquery.ScalarQueryParameter("x_post_id", "STRING", x_post_id),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"update_x_post_publish_result failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"update_x_post_publish_result failed: {job.errors}")
+    if job.num_dml_affected_rows == 0:
+        raise BigQueryError(
+            f"update_x_post_publish_result: no x_posts row for x_post_id={x_post_id!r}"
+        )
+    logger.debug(
+        "update_x_post_publish_result: x_post_id=%s status=%s tweet_ids=%s",
+        x_post_id, status, joined,
+    )
+
+
+def x_post_already_published(window: str, day: date | None = None) -> bool:
+    """True if a thread for `window` was already published on `day` (Warsaw calendar day).
+
+    The dedup key is `DATE(posted_at)` in Europe/Warsaw — NOT the announcement-fetch
+    window bounds (those cross midnight for `ranek` and bound fetch time, not publish
+    time; all three windows publish on their run day). `day` defaults to today (Warsaw).
+    Used before publishing to prevent double-posting on job re-run/retry.
+
+    Accepted risk: this is a check-then-act guard, not a lock — two concurrent
+    invocations for the same window could both pass before either writes. Acceptable
+    given one Cloud Scheduler trigger per window. Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    if day is None:
+        day = datetime.now(ZoneInfo("Europe/Warsaw")).date()
+    query = f"""
+        SELECT COUNT(*) AS cnt
+        FROM `{_table_ref(client, _X_POSTS_TABLE_NAME)}`
+        WHERE `window` = @window
+          AND x_publish_status = 'published'
+          AND DATE(posted_at, 'Europe/Warsaw') = @day
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("window", "STRING", window),
+            bigquery.ScalarQueryParameter("day", "DATE", day),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"x_post_already_published failed: {exc}") from exc
+    return rows[0].cnt > 0
 
 
 def delete_announcement(announcement_id: str) -> None:

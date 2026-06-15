@@ -25,10 +25,13 @@ from db.bigquery import (
     create_table_if_not_exists,
     create_x_posts_table_if_not_exists,
     ensure_schema_current,
+    ensure_x_posts_schema_current,
     insert_announcement,
     is_processed,
     save_analysis_result,
     save_x_post,
+    update_x_post_publish_result,
+    x_post_already_published,
 )
 
 TEST_URL = "https://www.bankier.pl/gielda/wiadomosci/komunikaty-spolek/test-bq-integration-F02"
@@ -39,6 +42,7 @@ def main() -> None:
     create_table_if_not_exists()
     ensure_schema_current()  # migrates announcements.x_post_id onto the existing table
     create_x_posts_table_if_not_exists()
+    ensure_x_posts_schema_current()  # migrates x_posts.x_publish_status onto the existing table
     client = _get_client()
     table = _table_ref(client)
     x_posts_table = _table_ref(client, _X_POSTS_TABLE_NAME)
@@ -125,6 +129,32 @@ def main() -> None:
             f"announcement x_post_id not linked: {link_rows!r}"
         )
         print(f"[8] announcement linked: x_post_id={link_rows[0].x_post_id!r}")
+
+        # Step 10 — publish-result write: tweet_ids + x_publish_status onto the row
+        update_x_post_publish_result(x_post_id, ["111111", "222222"], "published")
+        pub_rows = list(
+            client.query(
+                f"SELECT tweet_ids, x_publish_status FROM `{x_posts_table}` WHERE x_post_id = @xid",
+                job_config=bigquery.QueryJobConfig(
+                    query_parameters=[bigquery.ScalarQueryParameter("xid", "STRING", x_post_id)]
+                ),
+            ).result()
+        )
+        assert pub_rows, "Expected the x_posts row after update_x_post_publish_result"
+        pub_row = pub_rows[0]
+        assert pub_row.tweet_ids == "111111,222222", f"tweet_ids mismatch: {pub_row.tweet_ids!r}"
+        assert pub_row.x_publish_status == "published", (
+            f"x_publish_status mismatch: {pub_row.x_publish_status!r}"
+        )
+        print(
+            f"[10] publish result: tweet_ids={pub_row.tweet_ids!r} "
+            f"x_publish_status={pub_row.x_publish_status!r}"
+        )
+
+        # Step 11 — idempotency guard sees the just-published "poludnie" row today
+        already = x_post_already_published("poludnie")
+        assert already is True, "x_post_already_published should be True after publish"
+        print(f"[11] idempotency guard (poludnie, today): already_published={already}")
     finally:
         # Step 9 — cleanup (runs even on error to avoid orphaned test records)
         try:

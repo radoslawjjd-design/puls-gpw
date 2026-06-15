@@ -18,6 +18,7 @@ from db.bigquery import (
     create_table_if_not_exists,
     create_x_posts_table_if_not_exists,
     ensure_schema_current,
+    ensure_x_posts_schema_current,
     fetch_top_n_for_window,
     save_x_post,
 )
@@ -90,6 +91,7 @@ def main() -> None:
         create_table_if_not_exists()
         ensure_schema_current()
         create_x_posts_table_if_not_exists()
+        ensure_x_posts_schema_current()  # migrate x_publish_status onto existing x_posts
 
         window_start, window_end = _window_bounds(window, now_warsaw)
         announcements = fetch_top_n_for_window(window_start, window_end, n=4)
