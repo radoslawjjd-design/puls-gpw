@@ -36,6 +36,7 @@ and send an alert.
 | Status model | New `x_publish_status` column + write `tweet_ids` | Distinguish published / skipped / failed / partial in data | Plan |
 | Compliance gate | Non-empty/substance guard only (no cap rebuild) | Supervisor stays the quality gate; avoid duplicate logic | Plan |
 | Non-empty definition | Non-blank + ≥3 tweets + ≥1 company-ticker body tweet | Must contain a real company-analysis tweet, not just hook/closing | Plan (user) |
+| Quality gate | `MIN_XPOST_SCORE=50` filter in `fetch_top_n_for_window` (tunable) | Only post genuine value-relevant events; below 50 is the noise floor | PUL-27 |
 | Thread failure | Record `partial` + alert, no deletion | Matches prior art; no destructive API calls | Plan |
 | Idempotency | Guard on x_posts before publish | Prevent double-posting on job re-run/retry | Plan |
 | Library / auth | `tweepy` + OAuth 1.0a (4 user keys) | Proven, keys already in hand, simplest path | Plan |
@@ -48,7 +49,10 @@ and send an alert.
 - New `src/x_publisher.py` (tweepy OAuth-1.0a, singleton, thread reply-chain, partial handling)
 - `x_posts` status column + migration + publish-result update + idempotency query
 - `post_main.py` wiring: flag, non-empty/substance guard, idempotency guard, publish, persist, email
+- `MIN_XPOST_SCORE=50` quality gate in `fetch_top_n_for_window` (from PUL-27)
 - `deploy.yml` + `infra.md` secret/flag/command wiring
+
+> Tracking: delivers **PUL-26** (#22) + **PUL-27** (#23); duplicate PUL-35 canceled.
 
 **Out of scope:**
 - Compliance caps (≤1 cashtag, ≤2 hashtags, known-ticker membership) — deferred

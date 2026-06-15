@@ -276,7 +276,24 @@ without changing behavior when the flag is OFF.
 
 ### Changes Required:
 
-#### 1. Flag + non-empty/substance guard helpers
+#### 1. Pre-publish quality gate (MIN_XPOST_SCORE)
+
+**File**: `db/bigquery.py` (`fetch_top_n_for_window`) + `post_main.py` (constant / call site)
+
+**Intent**: Only let announcements with `analysis_score >= MIN_XPOST_SCORE` (start at 50) into a post.
+Add `AND analysis_score >= @min_score` to the `fetch_top_n_for_window` WHERE clause and define
+`MIN_XPOST_SCORE = 50` as a tunable constant. NOTE: this filters at **fetch time**, so it gates the
+WHOLE pipeline (generation + email), not just publish — an empty pool after filtering routes to the
+existing no-post-email path (`post_main.py:110-114`), never an empty thread. Rationale (from PUL-27):
+50 is the floor of a genuine named value-relevant event for an untiered company; below sits the noise
+floor. **Keep all event types** — the score floor alone filters low-signal `inne`/`compliance`; `inne`
+from a tiered/"Ważny" company still qualifies. Tunable: observe ~1 week, raise to 60–65 if needed.
+
+**Contract**: `MIN_XPOST_SCORE = 50` (tunable constant); `fetch_top_n_for_window(..., min_score: int =
+MIN_XPOST_SCORE)` adds a parameterized `AND analysis_score >= @min_score`. Empty result → existing
+no-post path (unchanged).
+
+#### 2. Flag + non-empty/substance guard helpers
 
 **File**: `post_main.py` (and/or a small helper in `src/`)
 
@@ -290,7 +307,7 @@ placeholder marker. This guard is independent of `post_supervisor` (which someti
 `is_publishable(tweets: list[str]) -> bool` implementing the substance rule above. Cashtag detection via
 a `$[A-Z0-9]{1,10}` regex over body tweets.
 
-#### 2. Publish orchestration in the approved branch
+#### 3. Publish orchestration in the approved branch
 
 **File**: `post_main.py` (the `if result.approved:` branch, currently lines 125-129)
 
@@ -307,7 +324,7 @@ branch (the email + job completion must still happen).
 `published | skipped | failed | partial`. Reuses `send_alert` (`post_main.py:137-144`) for failure
 alerts (no Sentry).
 
-#### 3. Email reports publish outcome
+#### 4. Email reports publish outcome
 
 **File**: `src/notifier.py` (`send_post_email`) + call site in `post_main.py`
 
@@ -319,7 +336,7 @@ alerts (no Sentry).
 backward-compatible default keeps today’s body when not provided. The non-approved / all-fail path
 (`send_no_post_email`) is unchanged and never publishes.
 
-#### 4. Tests
+#### 5. Tests
 
 **File**: `tests/test_post_main.py` (new) or extend existing post tests
 
@@ -327,7 +344,9 @@ backward-compatible default keeps today’s body when not provided. The non-appr
 `skipped`, email unchanged-ish; flag ON + publishable + not-yet-published → publish called, ids
 persisted, status `published`, email shows link; flag ON + empty/substance-less thread → no publish,
 status `skipped` (the empty-post hard constraint); flag ON + already published → no publish; partial
-error → status `partial` + alert; failure → status `failed` + alert.
+error → status `partial` + alert; failure → status `failed` + alert. Also: `fetch_top_n_for_window`
+filters out sub-`MIN_XPOST_SCORE` announcements (query/unit assert), and an all-below-threshold pool
+routes to the no-post path.
 
 **Contract**: pytest with monkeypatched `get_x_publisher`, `save_x_post`,
 `update_x_post_publish_result`, `x_post_already_published`, `send_post_email`, `send_alert`.
@@ -341,10 +360,12 @@ error → status `partial` + alert; failure → status `failed` + alert.
 - Linting passes
 - Flag-OFF path asserts no call to `publish_thread` and status `skipped`
 - Empty/substance-less thread asserts no publish (hard constraint regression test)
+- `fetch_top_n_for_window` filters `analysis_score >= MIN_XPOST_SCORE` (query/unit assert)
 
 #### Manual Verification:
 
 - Local dry-run with `X_AUTO_PUBLISH` unset behaves exactly as today (email only)
+- Sub-threshold announcements (`analysis_score < 50`) do not appear in the generated/emailed thread
 - Controlled live test (flag ON, test creds): a thread appears on the X account; `x_posts` row shows
   ids + `published`; the email shows the tweet link
 - Re-running the same window does NOT post a second thread (idempotency)
@@ -497,13 +518,15 @@ as a publish `failed`/`partial` + alert, no retry storm.
 - [ ] 3.3 Linting passes
 - [ ] 3.4 Flag-OFF path asserts no `publish_thread` call and status `skipped`
 - [ ] 3.5 Empty/substance-less thread asserts no publish (hard-constraint regression)
+- [ ] 3.6 `fetch_top_n_for_window` filters `analysis_score >= MIN_XPOST_SCORE` (query/unit assert)
 
 #### Manual
 
-- [ ] 3.6 Flag-unset local dry-run behaves as today (email only)
-- [ ] 3.7 Controlled live test: thread on X, ids + `published` in x_posts, email link
-- [ ] 3.8 Re-run same window does NOT double-post (idempotency)
-- [ ] 3.9 Hook-only/empty thread is NOT published (status `skipped`)
+- [ ] 3.7 Flag-unset local dry-run behaves as today (email only)
+- [ ] 3.8 Controlled live test: thread on X, ids + `published` in x_posts, email link
+- [ ] 3.9 Re-run same window does NOT double-post (idempotency)
+- [ ] 3.10 Hook-only/empty thread is NOT published (status `skipped`)
+- [ ] 3.11 Sub-threshold (`analysis_score < 50`) announcements absent from generated/emailed thread
 
 ### Phase 4: Deploy & secret wiring
 
