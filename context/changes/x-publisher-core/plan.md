@@ -500,33 +500,33 @@ as a publish `failed`/`partial` + alert, no retry storm.
 
 #### Automated
 
-- [x] 2.1 Unit tests pass: `uv run pytest tests/test_bigquery.py`
-- [x] 2.2 Query-string regression asserts pass (status column + backticked `window`)
-- [x] 2.3 Linting passes
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_bigquery.py` — a5b1f32
+- [x] 2.2 Query-string regression asserts pass (status column + backticked `window`) — a5b1f32
+- [x] 2.3 Linting passes — a5b1f32
 
 #### Manual
 
-- [x] 2.4 Real-BQ round-trip succeeds: `uv run python scripts/test_bq.py` (insert → migrate → update → read back), no syntax error
-- [x] 2.5 `x_publish_status` visible on the x_posts table after migration
+- [x] 2.4 Real-BQ round-trip succeeds: `uv run python scripts/test_bq.py` (insert → migrate → update → read back), no syntax error — a5b1f32
+- [x] 2.5 `x_publish_status` visible on the x_posts table after migration — a5b1f32
 
 ### Phase 3: Wire publish into post_main.py
 
 #### Automated
 
-- [ ] 3.1 Unit tests pass: `uv run pytest tests/test_post_main.py tests/test_post_supervisor.py`
-- [ ] 3.2 Full suite passes: `uv run pytest`
-- [ ] 3.3 Linting passes
-- [ ] 3.4 Flag-OFF path asserts no `publish_thread` call and status `skipped`
-- [ ] 3.5 Empty/substance-less thread asserts no publish (hard-constraint regression)
-- [ ] 3.6 `fetch_top_n_for_window` filters `analysis_score >= MIN_XPOST_SCORE` (query/unit assert)
+- [x] 3.1 Unit tests pass: `uv run pytest tests/test_post_main.py tests/test_post_supervisor.py`
+- [x] 3.2 Full suite passes: `uv run pytest`
+- [x] 3.3 Linting passes
+- [x] 3.4 Flag-OFF path asserts no `publish_thread` call and status `skipped`
+- [x] 3.5 Empty/substance-less thread asserts no publish (hard-constraint regression)
+- [x] 3.6 `fetch_top_n_for_window` filters `analysis_score >= MIN_XPOST_SCORE` (query/unit assert)
 
 #### Manual
 
-- [ ] 3.7 Flag-unset local dry-run behaves as today (email only)
+- [x] 3.7 Flag-unset local dry-run behaves as today (email only)
 - [ ] 3.8 Controlled live test: thread on X, ids + `published` in x_posts, email link
 - [ ] 3.9 Re-run same window does NOT double-post (idempotency)
-- [ ] 3.10 Hook-only/empty thread is NOT published (status `skipped`)
-- [ ] 3.11 Sub-threshold (`analysis_score < 50`) announcements absent from generated/emailed thread
+- [x] 3.10 Hook-only/empty thread is NOT published (status `skipped`)
+- [x] 3.11 Sub-threshold (`analysis_score < 50`) announcements absent from generated/emailed thread
 
 ### Phase 4: Deploy & secret wiring
 

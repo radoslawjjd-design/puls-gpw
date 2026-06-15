@@ -113,6 +113,21 @@ def test_fetch_top_n_for_window_empty():
     assert result == []
 
 
+def test_fetch_top_n_for_window_filters_by_min_score():
+    """PUL-27 quality gate: the query must filter analysis_score >= @min_score."""
+    start = datetime(2026, 6, 8, 6, 30, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 6, 8, 7, 29, 0, tzinfo=timezone.utc)
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        client = mock_get.return_value
+        fetch_top_n_for_window(start, end, n=4, min_score=50)
+
+    query_str = client.query.call_args[0][0]
+    assert "analysis_score >= @min_score" in query_str
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["min_score"] == 50
+
+
 # ── x_posts table + save_x_post (PUL-29) ──────────────────────────────────────
 
 def test_create_x_posts_table_creates_on_not_found():

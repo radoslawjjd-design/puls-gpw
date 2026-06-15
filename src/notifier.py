@@ -38,11 +38,49 @@ def _format_tweet_html(tweet: str) -> str:
     return tweet
 
 
+_TWEET_URL = "https://x.com/i/web/status/{tweet_id}"
+
+
+def _publish_banner_html(
+    publish_status: str | None,
+    tweet_ids: list[str] | None,
+) -> str:
+    """Render a status banner for the publish outcome, or "" when no result given.
+
+    Backward-compatible: with publish_status=None the email body is unchanged.
+    """
+    if publish_status is None:
+        return ""
+    first_url = _TWEET_URL.format(tweet_id=tweet_ids[0]) if tweet_ids else None
+    link = (
+        f' <a href="{first_url}" style="color:inherit;text-decoration:underline;">{first_url}</a>'
+        if first_url else ""
+    )
+    banners = {
+        "published": ("#dcfce7", "#166534", f"✅ Opublikowano na X:{link}"),
+        "partial": (
+            "#fef3c7", "#92400e",
+            f"⚠️ Publikacja częściowa ({len(tweet_ids or [])} tweetów) — sprawdź wątek:{link}",
+        ),
+        "failed": ("#fee2e2", "#991b1b", "❌ Publikacja na X nieudana — zobacz alert e-mail."),
+        "skipped": ("#f3f4f6", "#374151", "📝 Nie opublikowano na X (szkic / auto-publish OFF)."),
+    }
+    bg, fg, text = banners.get(
+        publish_status, ("#f3f4f6", "#374151", f"Status publikacji: {publish_status}")
+    )
+    return (
+        f'<div style="background:{bg};color:{fg};padding:12px 18px;margin-top:2px;'
+        f'font-size:13px;font-weight:600;">{text}</div>'
+    )
+
+
 def _post_email_html(
     window_name: str,
     date_str: str,
     tweets: list[str],
     scores: list[float | None] | None = None,
+    publish_status: str | None = None,
+    tweet_ids: list[str] | None = None,
 ) -> str:
     meta = _WINDOW_META.get(window_name, {"color": "#374151", "emoji": "📋"})
     color = meta["color"]
@@ -79,7 +117,7 @@ def _post_email_html(
   <span style="font-size:20px;font-weight:700;">𝕏 {emoji} {window_name}</span>
   <span style="float:right;font-size:15px;opacity:0.9;">🧵{n} &nbsp;|&nbsp; {date_str}</span>
 </div>
-
+{_publish_banner_html(publish_status, tweet_ids)}
 {blocks}
 
 <div style="background:#f9fafb;border:1px solid #e5e7eb;border-top:none;padding:12px 18px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280;text-align:center;">
@@ -108,11 +146,21 @@ def send_post_email(
     date_str: str,
     tweets: list[str],
     scores: list[float | None] | None = None,
+    publish_status: str | None = None,
+    tweet_ids: list[str] | None = None,
 ) -> None:
-    """Email the approved X thread to the owner as an HTML poster."""
+    """Email the approved X thread to the owner as an HTML poster.
+
+    When `publish_status` is given (published|skipped|failed|partial), a status
+    banner is rendered above the thread. Default None keeps today's body unchanged.
+    """
     meta = _WINDOW_META.get(window_name, {"emoji": "📋"})
     subject = f"{meta['emoji']} {window_name} 🧵{len(tweets)} | {date_str}"
-    _send(subject, _post_email_html(window_name, date_str, tweets, scores), html=True)
+    _send(
+        subject,
+        _post_email_html(window_name, date_str, tweets, scores, publish_status, tweet_ids),
+        html=True,
+    )
 
 
 def send_no_post_email(window_name: str, date_str: str, reason: str) -> None:

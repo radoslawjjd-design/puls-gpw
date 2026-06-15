@@ -319,8 +319,14 @@ def fetch_top_n_for_window(
     window_start: datetime,
     window_end: datetime,
     n: int = 4,
+    min_score: float = 50,
 ) -> list[dict]:
     """Return top-N approved announcements for a time window, ordered by score DESC.
+
+    Only announcements with `analysis_score >= min_score` qualify (PUL-27 quality
+    gate). Filtering at fetch time gates the WHOLE pipeline (generation + email +
+    publish): an empty pool after filtering routes to the existing no-post path,
+    never an empty thread. The caller passes MIN_XPOST_SCORE.
 
     Returns list of dicts with keys: announcement_id, ticker, company, title,
     structured_analysis, event_type, analysis_score, url.
@@ -334,6 +340,7 @@ def fetch_top_n_for_window(
         FROM `{_table_ref(client)}`
         WHERE analysis_approved = TRUE
           AND published_at BETWEEN @window_start AND @window_end
+          AND analysis_score >= @min_score
         ORDER BY analysis_score DESC
         LIMIT @n
     """
@@ -342,6 +349,7 @@ def fetch_top_n_for_window(
             bigquery.ScalarQueryParameter("window_start", "TIMESTAMP", window_start),
             bigquery.ScalarQueryParameter("window_end", "TIMESTAMP", window_end),
             bigquery.ScalarQueryParameter("n", "INT64", n),
+            bigquery.ScalarQueryParameter("min_score", "FLOAT64", min_score),
         ]
     )
     try:
