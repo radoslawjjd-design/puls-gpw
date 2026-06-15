@@ -1,7 +1,7 @@
 ---
 change_id: ci-cd-code-review
 title: CI/CD AI code-review pipeline (10xChampion path A)
-status: impl_reviewed
+status: implemented
 created: 2026-06-15
 updated: 2026-06-15
 archived_at: null

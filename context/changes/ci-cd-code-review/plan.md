@@ -336,6 +336,7 @@ The only phase exercising the live PR flow. Add the first `pull_request` workflo
 - Labels `ai-cr:passed`, `ai-cr:failed`, `ai-cr:review`, `ai-cr:override` must exist before the first label-apply. They are **not** auto-created by `gh pr edit --add-label`; the workflow's label-ensure step (`gh label create … --force`, Phase 4 §3) creates them idempotently. Document them in the workflow header.
 - **Action-pinning divergence (conscious decision):** this workflow pins third-party actions to `@<sha>` (per the m5l3 security guidance), whereas the existing `deploy.yml` uses floating majors (`auth@v2`, etc.). The new workflow is intentionally the stricter going-forward standard; `deploy.yml` is left unchanged for now. Revisit `deploy.yml` pinning separately if desired.
 - **Credential-dump guard (Phase 1, beyond plan §1.3):** an exported Cloud Run service-account key (`puls-gpw-api-*.json`) was found untracked at repo root during Phase 1. A `.gitignore` rule `puls-gpw-api-*.json` was added so the export can never be staged. File left on disk (human-owned); the rule is the only repo change. Recorded here for plan-vs-actual transparency.
+- **CI SA needed an IAM grant (Phase 4 verification, corrects research §3):** research §3 assumed `puls_gpw_secret` could call Vertex Gemini "no new secret, same trust boundary". In reality that secret backs the **deploy** SA `puls-gpw-ci@` (`artifactregistry.writer` + `run.developer`), which lacked `aiplatform.endpoints.predict` — only the **runtime** SA `puls-gpw-runner@` had `roles/aiplatform.user`. The first live PR run failed `Permission denied` on the Vertex model (which is what organically proved the fail-closed gate). Fix: granted `roles/aiplatform.user` to `puls-gpw-ci@` (additive, reversible IAM change; still no new secret — `puls_gpw_secret` remains the only credential). The default region `europe-central2` is valid for Vertex Gemini (production app uses it).
 
 ## References
 
@@ -398,15 +399,15 @@ The only phase exercising the live PR flow. Add the first `pull_request` workflo
 
 #### Automated
 
-- [x] 4.1 `actionlint` passes on the workflow
-- [x] 4.2 Third-party `uses:` SHA-pinned
-- [x] 4.3 Workflow YAML parses cleanly
+- [x] 4.1 `actionlint` passes on the workflow — 5bf877e
+- [x] 4.2 Third-party `uses:` SHA-pinned — 5bf877e
+- [x] 4.3 Workflow YAML parses cleanly — 5bf877e
 
 #### Manual
 
-- [ ] 4.4 `workflow_dispatch` produces comment + one passed/failed label + verdict status
-- [ ] 4.5 Bad BQ-column diff → `ai-cr:failed` + red gate
-- [ ] 4.6 `ai-cr:override` flips red gate to green
-- [ ] 4.7 `ai-cr:review` re-runs and updates (not duplicates) comment + status
-- [ ] 4.8 Simulated agent failure → red gate with "failed technically" message
-- [ ] 4.9 Run uses only `puls_gpw_secret` (Gemini Flash on Vertex, no new secret)
+- [x] 4.4 `workflow_dispatch` produces comment + one passed/failed label + verdict status — 5bf877e
+- [x] 4.5 Bad BQ-column diff → `ai-cr:failed` + red gate — 5bf877e
+- [x] 4.6 `ai-cr:override` flips red gate to green — 5bf877e
+- [x] 4.7 `ai-cr:review` re-runs and updates (not duplicates) comment + status — 5bf877e
+- [x] 4.8 Simulated agent failure → red gate with "failed technically" message — 5bf877e
+- [x] 4.9 Run uses only `puls_gpw_secret` (Gemini Flash on Vertex, no new secret) — 5bf877e
