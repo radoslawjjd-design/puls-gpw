@@ -254,10 +254,10 @@ threads/day + 1 optional at 13:00. (Doc does **not** state a ≤1-cashtag rule �
 
 ## Open Questions
 
-1. **X API access tier / write limits (2026)** — free tier write caps (posts/month) vs the 3
-   threads/weekday cadence (~6 tweets × 3 × 5 days). Needs confirmation against the actual
-   developer account tier; affects whether auto-publish is even within quota. *(External; not a
-   codebase question — resolve before enabling the flag.)*
+1. ~~**X API access tier / write limits (2026)**~~ **RESOLVED (user, 2026-06-15)**: account is X
+   **Premium** with a **funded developer-console wallet** (paid, not free trial). Write quota for the 3
+   threads/weekday cadence is **not a blocker**. Keep only defensive 429/403 handling (publish
+   `failed`/`partial` + alert, no retry storm) as good practice.
 2. **OAuth 1.0a (4 user keys, as in `x_credentials.json`) vs OAuth 2.0** — the prior art and
    your manual posting used 1.0a user-context; confirm that's the target for tweepy here.
 3. **Secret name** — old `bootstrap.py` used `x-api-credentials`; you mentioned `x-credentials`.

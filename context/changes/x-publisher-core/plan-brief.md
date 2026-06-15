@@ -74,14 +74,14 @@ behavior untouched.
 | 3. post_main wiring | flag + guards + publish + status + email | Empty-post hard constraint must hold; no double-post |
 | 4. Deploy & secrets | deploy.yml flag/secret/command + infra docs | Latent missing `--command`; human secret setup |
 
-**Prerequisites:** X developer account with the four OAuth-1.0a keys; confirm X API write tier/limits
-before flipping the flag ON; ability to create Secret Manager secrets (human).
+**Prerequisites:** X developer account (Premium + funded wallet) with the four OAuth-1.0a keys; ability
+to create Secret Manager secrets (human).
 **Estimated effort:** ~3-4 sessions across 4 phases (phases 1 & 2 parallelizable).
 
 ## Open Risks & Assumptions
 
-- **X API free-tier write limits (2026)** may not cover 3 threads/weekday — confirm before enabling
-  (external; handle 429/403 as `failed`/`partial` + alert, no retry storm).
+- **X API write quota: not a blocker** — account is X Premium + funded developer-console wallet (paid).
+  Still handle 429/403 defensively as `failed`/`partial` + alert, no retry storm.
 - **OAuth 1.0a** assumed correct (matches prior manual posting); confirm with the actual account.
 - **Non-atomic `save_x_post`** + idempotency guard rely on save-before-publish ordering.
 - **Latent deploy bug**: `puls-gpw-post` may currently run `main.py` (no `--command`); Phase 4 fixes it

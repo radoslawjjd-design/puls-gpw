@@ -437,9 +437,9 @@ human decisions — the plan stops at wiring + `false` default.
 ## Performance Considerations
 
 Negligible. One extra SELECT (idempotency) + one UPDATE per approved run, and up to ~6 sequential
-`create_tweet` calls per thread (3×/weekday). Mind X API free-tier write limits when enabling the flag
-(external; see research Open Questions) — handle 429/403 as a publish `failed`/`partial` + alert, no
-retry storm.
+`create_tweet` calls per thread (3×/weekday). Write quota is **not a concern**: the account is X
+Premium with a funded developer-console wallet (paid, not free tier). Still handle 429/403 defensively
+as a publish `failed`/`partial` + alert, no retry storm.
 
 ## Migration Notes
 
