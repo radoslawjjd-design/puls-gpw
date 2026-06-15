@@ -532,11 +532,11 @@ as a publish `failed`/`partial` + alert, no retry storm.
 
 #### Automated
 
-- [x] 4.1 `deploy.yml` valid; post step references 4 secrets + flag + `--command`
-- [x] 4.2 CI deploy workflow runs green (build + tests)
+- [x] 4.1 `deploy.yml` valid; post step references 4 secrets + flag + `--command` — e6ae162
+- [x] 4.2 CI deploy workflow runs green (build + tests) — e6ae162
 
 #### Manual
 
-- [x] 4.3 Human creates 4 SM secrets + sets values; runner SA has `secretmanager.secretAccessor`
+- [x] 4.3 Human creates 4 SM secrets + sets values; runner SA has `secretmanager.secretAccessor` — e6ae162
 - [ ] 4.4 Deployed `puls-gpw-post` runs `post_main.py` with 4 secrets + `X_AUTO_PUBLISH=false` bound
 - [ ] 4.5 Toggling `X_AUTO_PUBLISH` true/false (and pausing schedulers) behaves as expected
