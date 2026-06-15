@@ -335,6 +335,7 @@ The only phase exercising the live PR flow. Add the first `pull_request` workflo
 - This is the repo's **first PR-triggered workflow**; it does not touch `deploy.yml` (push-to-master deploy) and adds no PR gate to deployment. Adopting PR-flow is a team-process change tracked separately.
 - Labels `ai-cr:passed`, `ai-cr:failed`, `ai-cr:review`, `ai-cr:override` must exist before the first label-apply. They are **not** auto-created by `gh pr edit --add-label`; the workflow's label-ensure step (`gh label create … --force`, Phase 4 §3) creates them idempotently. Document them in the workflow header.
 - **Action-pinning divergence (conscious decision):** this workflow pins third-party actions to `@<sha>` (per the m5l3 security guidance), whereas the existing `deploy.yml` uses floating majors (`auth@v2`, etc.). The new workflow is intentionally the stricter going-forward standard; `deploy.yml` is left unchanged for now. Revisit `deploy.yml` pinning separately if desired.
+- **Credential-dump guard (Phase 1, beyond plan §1.3):** an exported Cloud Run service-account key (`puls-gpw-api-*.json`) was found untracked at repo root during Phase 1. A `.gitignore` rule `puls-gpw-api-*.json` was added so the export can never be staged. File left on disk (human-owned); the rule is the only repo change. Recorded here for plan-vs-actual transparency.
 
 ## References
 
@@ -354,15 +355,15 @@ The only phase exercising the live PR flow. Add the first `pull_request` workflo
 
 #### Automated
 
-- [x] 1.1 Dependencies install (`npm ci`)
-- [x] 1.2 Build passes (`npm run build`)
-- [x] 1.3 Type checking passes (`tsc --noEmit`)
-- [x] 1.4 No `node_modules/`/`dist/` tracked by git
+- [x] 1.1 Dependencies install (`npm ci`) — 72a7153
+- [x] 1.2 Build passes (`npm run build`) — 72a7153
+- [x] 1.3 Type checking passes (`tsc --noEmit`) — 72a7153
+- [x] 1.4 No `node_modules/`/`dist/` tracked by git — 72a7153
 
 #### Manual
 
-- [ ] 1.5 `ReviewResult` six criteria map 1:1 to `requirements.md` criteria 1–6
-- [ ] 1.6 No change to `pyproject.toml`, `tach.toml`, `Dockerfile`
+- [x] 1.5 `ReviewResult` six criteria map 1:1 to `requirements.md` criteria 1–6 — 72a7153
+- [x] 1.6 No change to `pyproject.toml`, `tach.toml`, `Dockerfile` — 72a7153
 
 ### Phase 2: Build the review agent (scorer)
 
