@@ -328,6 +328,8 @@ def fetch_top_n_for_window(
     publish): an empty pool after filtering routes to the existing no-post path,
     never an empty thread. The caller passes MIN_XPOST_SCORE.
 
+    Also excludes 'inne'-categorized announcements — they are not eligible for X posts.
+
     Returns list of dicts with keys: announcement_id, ticker, company, title,
     structured_analysis, event_type, analysis_score, url.
     Empty list if none found. Raises BigQueryError on query failure.
@@ -339,6 +341,7 @@ def fetch_top_n_for_window(
             structured_analysis, event_type, analysis_score, url
         FROM `{_table_ref(client)}`
         WHERE analysis_approved = TRUE
+          AND event_type != 'inne'
           AND published_at BETWEEN @window_start AND @window_end
           AND analysis_score >= @min_score
         ORDER BY analysis_score DESC

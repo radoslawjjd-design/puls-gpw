@@ -128,6 +128,18 @@ def test_fetch_top_n_for_window_filters_by_min_score():
     assert params["min_score"] == 50
 
 
+def test_fetch_top_n_for_window_excludes_inne():
+    start = datetime(2026, 6, 8, 6, 30, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 6, 8, 7, 29, 0, tzinfo=timezone.utc)
+
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        fetch_top_n_for_window(start, end)
+
+    query_str = mock.query.call_args[0][0]
+    assert "event_type != 'inne'" in query_str
+
+
 # ── x_posts table + save_x_post (PUL-29) ──────────────────────────────────────
 
 def test_create_x_posts_table_creates_on_not_found():
