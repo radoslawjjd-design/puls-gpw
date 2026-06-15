@@ -369,16 +369,16 @@ The only phase exercising the live PR flow. Add the first `pull_request` workflo
 
 #### Automated
 
-- [ ] 2.1 Build passes (`npm run build`)
-- [ ] 2.2 Unit tests pass (`npm test`)
-- [ ] 2.3 Type checking passes (`tsc --noEmit`)
-- [ ] 2.4 Lockfile-stripping test asserts `uv.lock`/`*.lock` removed
+- [x] 2.1 Build passes (`npm run build`)
+- [x] 2.2 Unit tests pass (`npm test`)
+- [x] 2.3 Type checking passes (`tsc --noEmit`)
+- [x] 2.4 Lockfile-stripping test asserts `uv.lock`/`*.lock` removed
 
 #### Manual
 
-- [ ] 2.5 Local CLI round-trip against Vertex returns a valid `ReviewResult`
-- [ ] 2.6 Bad diff (unbackticked reserved-keyword BQ column) scores `dataInfraSafety` low, trends `fail`
-- [ ] 2.7 Summary reads cleanly as a standalone PR comment
+- [x] 2.5 Local CLI round-trip against Vertex returns a valid `ReviewResult`
+- [x] 2.6 Bad diff (unbackticked reserved-keyword BQ column) scores `dataInfraSafety` low, trends `fail`
+- [x] 2.7 Summary reads cleanly as a standalone PR comment
 
 ### Phase 3: Composite action wrapper
 
