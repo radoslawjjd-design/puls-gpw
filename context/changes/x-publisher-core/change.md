@@ -1,7 +1,7 @@
 ---
 change_id: x-publisher-core
 title: X publisher core
-status: preparing
+status: planned
 created: 2026-06-15
 updated: 2026-06-15
 archived_at: null
