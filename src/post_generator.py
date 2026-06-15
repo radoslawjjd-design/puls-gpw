@@ -72,6 +72,15 @@ Zakaz obejmuje dosłowne i ukryte sugestie, w tym:
 - jakikolwiek wniosek co do niedowartościowania/przewartościowania
 Dozwolone: opis faktu, kontekst operacyjny, pytanie do czytelnika.
 
+=== ZASADA CASHTAG ($) vs HASHTAG (#) — KRYTYCZNE, X ODRZUCA NARUSZENIA ===
+X pozwala na MAKSYMALNIE JEDEN cashtag ($TICKER) w jednym tweecie. Tweet z dwoma lub
+więcej cashtagami jest odrzucany przez X (błąd 403). Dlatego BEZWZGLĘDNIE:
+- HOOK (tweet 1) i CLOSING (ostatni tweet): tickery spółek WYŁĄCZNIE jako hashtagi
+  (#TICKER) — NIGDY $TICKER. Tu może być wiele hashtagów, ale ZERO cashtagów.
+- Tweet środkowy (jedna spółka): DOKŁADNIE jeden cashtag $TICKER tej spółki i żadnego
+  innego cashtaga.
+Nie używaj $TICKER w żadnym tweecie poza tweetem danej spółki.
+
 === STRUKTURA WĄTKU — DYNAMICZNA LICZBA TWEETÓW ===
 Liczba tweetów = 1 (hook) + liczba spółek + 1 (closing).
 Dla 1 spółki = 3 tweetów. Dla 3 spółek = 5 tweetów. Dla 4 spółek = 6 tweetów.
@@ -81,16 +90,18 @@ Trzymaj się tej liczby ściśle — użytkownik poda dokładną liczbę w wiado
 Zacznij od 🚨, potem "N ważne/ważnych ESPI z GPW – [FRAZA OKNA]:", potem lista spółek
 z bulletami •, zakończ pytaniem. FRAZA OKNA jest podana w wiadomości użytkownika (klucz "fraza_hooka").
 
+Tickery w hooku jako HASHTAGI (#TICKER), nigdy $TICKER.
+
 Przykład dla 1 spółki (DOKŁADNIE 3 tweety łącznie):
 🚨 1 ważne ESPI z GPW – zerknij przed sesją:
-• Ekobox ( $EBX ) podpisanie istotnej umowy
+• Ekobox ( #EBX ) podpisanie istotnej umowy
 Warto się przyjrzeć?
 
 Przykład dla 3 spółek (DOKŁADNIE 5 tweetów łącznie):
 🚨 3 ważne ESPI z GPW – zerknij przed sesją:
-• Lubawa ( $LBW ) bije rekordy przychodów i zysku
-• Foothills ( $FTL ) podwyższenie kapitału
-• Hub.Tech ( $HUB ) emisja za 34,7 mln PLN
+• Lubawa ( #LBW ) bije rekordy przychodów i zysku
+• Foothills ( #FTL ) podwyższenie kapitału
+• Hub.Tech ( #HUB ) emisja za 34,7 mln PLN
 Która spółka najbardziej Cię interesuje?
 
 --- Tweety środkowe: JEDNA SPÓŁKA = JEDEN TWEET (140–180 znaków) ---
@@ -132,7 +143,9 @@ Nie zmieniaj fraza_closing — wstaw ją dosłownie przed "Napisz w komentarzu!"
 - Powtarzanie tej samej spółki w dwóch osobnych tweetach
 - Frazy AI-style: "warto obserwować", "to fascynujące", "potencjalny wpływ", "warto śledzić"
 - Placeholdery zamiast liczb
-- Linki w tweetach, więcej niż 2 hashtagi w całym wątku
+- Linki w tweetach
+- Cashtag ($TICKER) gdziekolwiek poza tweetem danej spółki, lub >1 cashtag w jednym tweecie
+  (patrz zasada cashtag/hashtag — X odrzuca takie posty)
 - Sugestie inwestycyjne (patrz zakaz powyżej)
 
 === FORMAT ODPOWIEDZI ===
@@ -159,7 +172,8 @@ def _pick_variant(variants: list[str], salt: str = "") -> str:
 
 
 def _build_tickers_str(tickers: list[str]) -> str:
-    tagged = [f"${t}" for t in tickers]
+    # Closing uses HASHTAGS (#TICKER), not cashtags — X rejects posts with >1 cashtag.
+    tagged = [f"#{t}" for t in tickers]
     if len(tagged) == 1:
         return tagged[0]
     return ", ".join(tagged[:-1]) + f" czy {tagged[-1]}"
