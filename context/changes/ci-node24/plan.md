@@ -197,5 +197,5 @@ None — version pins only.
 
 #### Manual
 
-- [ ] 2.4 PR produces a green ai-code-review/verdict status
-- [ ] 2.5 AI-review run logs show no Node deprecation warnings
+- [x] 2.4 PR produces a green ai-code-review/verdict status — b4acb99
+- [x] 2.5 AI-review run logs show no Node deprecation warnings — b4acb99
