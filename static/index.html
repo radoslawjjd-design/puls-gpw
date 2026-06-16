@@ -225,8 +225,10 @@ let role        = sessionStorage.getItem('role');
 let currentPage = 1;
 
 // ── init ───────────────────────────────────────────────────────────────
-if (apiKey && role) showDashboard(role);
-else               showLogin();
+function init() {
+  if (apiKey && role) showDashboard(role);
+  else                showLogin();
+}
 
 // ── auth ───────────────────────────────────────────────────────────────
 $('login-btn').addEventListener('click', async () => {
@@ -344,8 +346,10 @@ async function fetchAnnouncements(push = true) {
   if (v('ticker'))     params.set('ticker',     v('ticker'));
   if (v('company'))    params.set('company',    v('company'));
   if (v('event-type')) params.set('event_type', v('event-type'));
-  if (v('from'))       params.set('from',       new Date($('f-from').value).toISOString());
-  if (v('to'))         params.set('to',         new Date($('f-to').value).toISOString());
+  const fromIso = v('from') ? parseDateOrNull($('f-from').value) : null;
+  if (fromIso)         params.set('from',       fromIso);
+  const toIso   = v('to')   ? parseDateOrNull($('f-to').value)   : null;
+  if (toIso)           params.set('to',         toIso);
   const pageSize = $('f-page-size').value || '20';
   params.set('page',      currentPage);
   params.set('page_size', pageSize);
@@ -467,6 +471,15 @@ function esc(s) {
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+// Returns an ISO string for a parseable date, or null for an unparseable
+// value — never throws (guards against RangeError on garbage filter input).
+function parseDateOrNull(value) {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+init();
 </script>
 </body>
 </html>
