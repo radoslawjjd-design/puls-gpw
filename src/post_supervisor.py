@@ -54,10 +54,10 @@ def validate_post(
 
     body = "\n".join(post.tweets[1:-1]) if n >= 2 else ""
     for ticker in tickers:
-        # Body tweets reference the ticker parenthesized — (TICKER), plain text; only the
-        # top-score company carries a $cashtag, and that lives in the hook, not the body.
-        # Match `(TICKER)` (tolerant of spaces / an optional $) so the bare company name
-        # (e.g. "PKO" inside "PKO Bank") does not count as the ticker reference.
+        # Body tweets reference the ticker parenthesized — ( $TICKER ): each body tweet is
+        # about one company and carries that company's single cashtag (one per tweet is
+        # within X's per-post limit). Match `(TICKER)` (tolerant of spaces / an optional $)
+        # so the bare company name (e.g. "PKO" inside "PKO Bank") does not count as the ref.
         if not re.search(rf"\(\s*\$?{re.escape(ticker)}\s*\)", body):
             issues.append(f"missing ({ticker}) in body tweets")
 
