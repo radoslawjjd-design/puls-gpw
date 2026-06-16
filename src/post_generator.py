@@ -94,6 +94,11 @@ Trzymaj się tej liczby ściśle — użytkownik poda dokładną liczbę w wiado
 Zacznij od 🚨, potem "N ważne/ważnych ESPI z GPW – [FRAZA OKNA]:", potem lista spółek
 z bulletami •, zakończ pytaniem. FRAZA OKNA jest podana w wiadomości użytkownika (klucz "fraza_hooka").
 
+Limit znaków: cały hook (emoji, nagłówek, wszystkie bullety, pytanie) MUSI zmieścić się w
+280 znakach łącznie — to twardy limit X. Im więcej spółek w wątku, tym krótszy opis zdarzenia
+przy każdej z nich: dla 1 spółki opis zdarzenia może być pełnym zdaniem, dla 4 spółek to
+kilka słów. Liczy się suma całego hooka, nie pojedynczy bullet.
+
 Spółka z "cashtag_spolki" dostaje ( $TICKER ); pozostałe spółki ticker zwykłym tekstem ( TICKER ).
 Zawsze ze spacjami w nawiasie.
 
@@ -196,6 +201,93 @@ def _normalize_ticker_spacing(text: str) -> str:
     return _PAREN_TICKER_RE.sub(r"( \1 )", text)
 
 
+_HASHTAG_RE = re.compile(r"#\w+")
+# Disclaimer clause: bounded by sentence/line boundaries so it doesn't swallow adjacent text.
+_DISCLAIMER_RE = re.compile(r"[^\n.!?]*rekomendacj[^\n.!?]*[.!?]?", re.IGNORECASE)
+_BOUNDARY_CHARS = ".!?\n"
+
+
+def _protected_spans(text: str) -> list[tuple[int, int]]:
+    """Character ranges (ticker parens, hashtags, disclaimer clause) `_enforce_length` avoids trimming."""
+    spans = [m.span() for m in _PAREN_TICKER_RE.finditer(text)]
+    spans += [m.span() for m in _HASHTAG_RE.finditer(text)]
+    spans += [m.span() for m in _DISCLAIMER_RE.finditer(text) if m.group(0)]
+    spans.sort()
+    merged: list[tuple[int, int]] = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _free_text_gaps(text: str, protected: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    gaps = []
+    cursor = 0
+    for start, end in protected:
+        if start > cursor:
+            gaps.append((cursor, start))
+        cursor = max(cursor, end)
+    if cursor < len(text):
+        gaps.append((cursor, len(text)))
+    return [g for g in gaps if g[1] > g[0]]
+
+
+def _trim_gap(gap_text: str, keep_len: int) -> str:
+    if keep_len <= 0:
+        return ""
+    window = gap_text[:keep_len]
+    # Prefer cutting at the nearest preceding sentence/clause boundary over mid-word.
+    for i in range(len(window) - 1, -1, -1):
+        if window[i] in _BOUNDARY_CHARS:
+            return gap_text[: i + 1].rstrip()
+    # No sentence boundary in range — fall back to the nearest word boundary, dropping
+    # the trailing partial word rather than truncating it mid-character.
+    for i in range(len(window) - 1, -1, -1):
+        if window[i].isspace():
+            return gap_text[:i].rstrip()
+    return window.rstrip()
+
+
+def _strip_trailing_ellipsis(text: str) -> str:
+    text = text.rstrip()
+    if text.endswith("…"):
+        text = text[:-1].rstrip()
+    while text.endswith("..."):
+        text = text[:-3].rstrip()
+    return text
+
+
+def _enforce_length(tweet: str, limit: int = 280) -> str:
+    """Trim a tweet to `limit` chars; pure, idempotent, protects ticker/hashtag/disclaimer spans best-effort."""
+    if len(tweet) <= limit:
+        return tweet
+
+    text = tweet
+    while len(text) > limit:
+        gaps = _free_text_gaps(text, _protected_spans(text))
+        if not gaps:
+            break
+        gap_start, gap_end = max(gaps, key=lambda g: g[1] - g[0])
+        gap_text = text[gap_start:gap_end]
+        excess = len(text) - limit
+        keep_len = max(len(gap_text) - excess, 0)
+        trimmed = _trim_gap(gap_text, keep_len)
+        if trimmed == gap_text:
+            break
+        # Trimming a prefix of the gap can leave it abutting the next protected span
+        # with no separator (e.g. "...się" + "( $PEP )") — reinsert a single space.
+        if trimmed and gap_end < len(text) and not trimmed[-1].isspace() and not text[gap_end].isspace():
+            trimmed += " "
+        text = text[:gap_start] + trimmed + text[gap_end:]
+
+    if len(text) > limit:
+        text = text[:limit]
+
+    return _strip_trailing_ellipsis(text)
+
+
 def generate_post(
     announcements: list[dict],
     window: str | None = None,
@@ -259,7 +351,9 @@ def generate_post(
         feedback_block = (
             f"\n\n⚠️ POPRZEDNIA PRÓBA ODRZUCONA — popraw WSZYSTKIE poniższe błędy:\n"
             f"{issues_str}\n"
-            f"Każdy tweet musi mieć ≤280 znaków. Skróć hook jeśli lista spółek jest długa."
+            f"Każdy tweet musi mieć maksymalnie 260 znaków (margines bezpieczeństwa poniżej "
+            f"limitu 280). Jeśli tweet jest za długi, skróć WYŁĄCZNIE opis zdarzenia (tekst "
+            f"po tickerze i liczbach) — nigdy ticker, emoji, hashtagi ani disclaimer."
         )
 
     # The thread's single cashtag goes to the highest-score company. enriched preserves
@@ -291,7 +385,7 @@ def generate_post(
         if len(parsed.tweets) == 0:
             logger.warning("post_generator: empty tweets list in response")
             return None
-        tweets = [_normalize_ticker_spacing(t) for t in parsed.tweets]
+        tweets = [_enforce_length(_normalize_ticker_spacing(t)) for t in parsed.tweets]
         return GeneratedPost(tweets=tweets)
     except ValidationError:
         logger.warning("post_generator: response schema invalid", exc_info=True)

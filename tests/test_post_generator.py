@@ -6,9 +6,11 @@ from src.post_generator import (
     generate_post,
     _build_tickers_str,
     _normalize_ticker_spacing,
+    _enforce_length,
     _HOOK_VARIANTS,
     _CLOSING_QUESTIONS,
 )
+from src.post_supervisor import validate_post
 
 _ANNOUNCEMENTS = [
     {
@@ -205,3 +207,125 @@ def test_bad_structured_analysis_still_calls_gemini():
         result = generate_post(announcements_bad)
 
     assert isinstance(result, GeneratedPost)
+
+
+# ── _enforce_length ──────────────────────────────────────────────────────────
+
+def test_enforce_length_noop_when_short():
+    tweet = "📊 PKO Bank Polski ( PKO )\nZysk netto: 120,1 mln PLN.\nDobry trend?"
+    assert _enforce_length(tweet) == tweet
+
+
+def test_enforce_length_trims_oversized_hook_with_multiple_bullets():
+    filler = "opis bardzo długiego wydarzenia korporacyjnego testowego " * 6
+    hook = (
+        "🚨 2 ważne ESPI z GPW – sprawdź teraz:\n"
+        f"• PKO Bank Polski ( $PKO ) {filler}\n"
+        f"• XTB SA ( XTB ) {filler}\n"
+        "Która spółka Cię interesuje?"
+    )
+    assert len(hook) > 280
+
+    result = _enforce_length(hook)
+
+    assert len(result) <= 280
+
+
+def test_enforce_length_preserves_ticker_paren_in_body_tweet():
+    filler = "Bardzo długi opis zdarzenia korporacyjnego testowego. " * 8
+    tweet = f"📊 PKO Bank Polski ( PKO )\n{filler}Koniec."
+    assert len(tweet) > 280
+
+    result = _enforce_length(tweet)
+
+    assert len(result) <= 280
+    assert "( PKO )" in result
+
+
+def test_enforce_length_preserves_hashtags_and_disclaimer_in_closing_tweet():
+    long_question = "Bardzo długie testowe pytanie zamykające wątek, które z pewnością przekroczy limit znaków platformy X. " * 2
+    tweet = (
+        f"{long_question}Napisz w komentarzu!\n\n"
+        "💾 Zapisz na później\n"
+        "Nie jest to rekomendacja inwestycyjna. #GPW #ESPI #SmallCaps"
+    )
+    assert len(tweet) > 280
+
+    result = _enforce_length(tweet)
+
+    assert len(result) <= 280
+    assert "#GPW" in result
+    assert "rekomendacj" in result.lower()
+
+
+def test_enforce_length_never_ends_in_ellipsis():
+    tweet = "📊 Spółka ( ABC )\n" + "Słowo " * 60 + "podsumowanie..."
+    assert len(tweet) > 280
+
+    result = _enforce_length(tweet)
+
+    assert len(result) <= 280
+    assert not result.endswith("...")
+    assert not result.endswith("…")
+
+
+def test_enforce_length_idempotent_on_oversized_tweet():
+    filler = "Bardzo długi opis zdarzenia korporacyjnego testowego. " * 8
+    tweet = f"📊 PKO Bank Polski ( PKO )\n{filler}Koniec."
+
+    once = _enforce_length(tweet)
+    twice = _enforce_length(once)
+
+    assert once == twice
+    assert len(once) <= 280
+
+
+# ── Phase 2: prompt/feedback tightening ──────────────────────────────────────
+
+def test_system_prompt_has_hook_char_budget_guidance():
+    payload = json.dumps({"tweets": _SIX_TWEETS}, ensure_ascii=False)
+    with patch("src.post_generator.get_client", return_value=_mock_client(payload)) as mock_get:
+        generate_post(_ANNOUNCEMENTS)
+    config = mock_get.return_value.models.generate_content.call_args[1]["config"]
+    assert "280 znakach łącznie" in config.system_instruction
+    assert "im więcej spółek" in config.system_instruction.lower()
+
+
+def test_feedback_block_names_event_description_as_trim_target():
+    payload = json.dumps({"tweets": _SIX_TWEETS}, ensure_ascii=False)
+    with patch("src.post_generator.get_client", return_value=_mock_client(payload)) as mock_get:
+        generate_post(_ANNOUNCEMENTS, previous_issues=["tweet 1 exceeds 280 chars (310)"])
+    call_contents = mock_get.return_value.models.generate_content.call_args[1]["contents"]
+    assert "opis zdarzenia" in call_contents
+    assert "260 znaków" in call_contents
+
+
+def test_round_trip_oversized_tweets_get_trimmed_and_approved():
+    filler = "opis bardzo długiego wydarzenia korporacyjnego testowego " * 6
+    oversized_hook = (
+        "🚨 2 ważne ESPI z GPW – sprawdź teraz:\n"
+        f"• PKO Bank Polski ( $PKO ) {filler}\n"
+        f"• XTB SA ( XTB ) {filler}\n"
+        "Która spółka Cię interesuje?"
+    )
+    oversized_body = f"📊 PKO Bank Polski ( PKO )\n{filler}Dobry wynik?"
+    tweets = [
+        oversized_hook,
+        oversized_body,
+        "📊 XTB SA ( XTB )\nWzrost klientów o 27%. Najlepszy kwartał?",
+        "Która spółka Cię interesuje? #GPW #ESPI Nie jest to rekomendacja inwestycyjna.",
+    ]
+    assert len(oversized_hook) > 280
+    assert len(oversized_body) > 280
+
+    payload = json.dumps({"tweets": tweets}, ensure_ascii=False)
+    with patch("src.post_generator.get_client", return_value=_mock_client(payload)):
+        result = generate_post(_ANNOUNCEMENTS)
+
+    assert result is not None
+    assert all(len(t) <= 280 for t in result.tweets)
+
+    validation = validate_post(result, tickers=["PKO", "XTB"], expected_tweets=4)
+    assert validation.approved is True
+    assert not any("exceeds 280" in issue for issue in validation.issues)
+    assert not any("truncated" in issue for issue in validation.issues)
