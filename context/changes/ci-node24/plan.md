@@ -178,9 +178,9 @@ None — version pins only.
 
 #### Automated
 
-- [ ] 1.1 deploy.yml parses as valid YAML
-- [ ] 1.2 No remaining Node-20-era tags (`@v4`/`@v2`/`setup-uv@v6`) in deploy.yml
-- [ ] 1.3 Every pin in deploy.yml resolves to a real ref via gh api
+- [x] 1.1 deploy.yml parses as valid YAML
+- [x] 1.2 No remaining Node-20-era tags (`@v4`/`@v2`/`setup-uv@v6`) in deploy.yml
+- [x] 1.3 Every pin in deploy.yml resolves to a real ref via gh api
 
 #### Manual
 
