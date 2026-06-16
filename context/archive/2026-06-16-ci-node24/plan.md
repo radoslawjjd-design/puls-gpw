@@ -184,8 +184,8 @@ None — version pins only.
 
 #### Manual
 
-- [ ] 1.4 Post-merge Deploy run on master completes successfully
-- [ ] 1.5 Deploy run logs show no Node deprecation warnings
+- [x] 1.4 Post-merge Deploy run on master completes successfully — e2a52b2
+- [x] 1.5 Deploy run logs show no Node deprecation warnings — e2a52b2
 
 ### Phase 2: Bump AI-review pipeline (SHA-pinned)
 
