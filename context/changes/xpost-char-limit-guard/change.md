@@ -1,7 +1,7 @@
 ---
 change_id: xpost-char-limit-guard
 title: X post hook/tweets exceed 280-char limit, no deterministic fallback
-status: planned
+status: plan_reviewed
 created: 2026-06-16
 updated: 2026-06-16
 tracking:

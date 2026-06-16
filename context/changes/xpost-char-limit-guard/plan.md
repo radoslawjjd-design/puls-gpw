@@ -103,7 +103,7 @@ prompt template exactly. Detect protected spans by content (regex), not by
 tweet index: ticker-paren matches (reuse `_PAREN_TICKER_RE`,
 `post_generator.py:191`), hashtag tokens (`#\w+`), and a disclaimer span
 (any clause matching `rekomendacj` case-insensitively, per
-`post_supervisor.py:69`). Only text outside these spans is eligible for
+`post_supervisor.py:68-69`). Only text outside these spans is eligible for
 trimming.
 
 **Trim must never produce a `...`/`…` ending.** Cut at the nearest preceding
@@ -114,6 +114,15 @@ ending that way, which would make the guard self-defeating.
 **Idempotency.** Running the guard twice on its own output must return the
 same string unchanged. This matters because it runs unconditionally on
 every attempt (not just failed ones), same as `_normalize_ticker_spacing`.
+
+**Exception handling is shared with the Gemini call.** The guard runs
+inside `generate_post()`'s existing try block (`post_generator.py:279-301`),
+alongside `_normalize_ticker_spacing`. Any exception it raises is caught by
+the generic `except Exception:` and logged as "post_generator: Gemini call
+failed" — misleading for a bug that has nothing to do with the Gemini call.
+Accepted as-is: the guard is a simple pure function covered by Phase 1's
+test suite, so the actual risk of an uncaught bug reaching this path is
+low; no separate exception handling is being added for it.
 
 ## Phase 1: Deterministic length guard
 
@@ -140,11 +149,17 @@ existing `_normalize_ticker_spacing` pass (`post_generator.py:294`).
 **Contract**: `def _enforce_length(tweet: str, limit: int = 280) -> str` —
 pure function, no side effects, idempotent
 (`_enforce_length(_enforce_length(t)) == _enforce_length(t)`). Reuses
-`_PAREN_TICKER_RE` (`post_generator.py:191`) for ticker-span detection. Must
-satisfy, for any input: `len(result) <= limit`, every ticker-paren /
-hashtag / disclaimer span present in the input that fits within `limit` on
-its own is still present in the output, and the output never ends with
-`...` or `…`.
+`_PAREN_TICKER_RE` (`post_generator.py:191`) for ticker-span detection.
+`len(result) <= limit` is the non-negotiable invariant — it must hold for
+every input, with no exception. Preserving ticker-paren / hashtag /
+disclaimer spans is best-effort on top of that: trim free text first, and
+if no free text remains and the tweet is still over `limit`, fall back to a
+hard cut at `limit` (still never ending in `...`/`…`) even if that means a
+protected span gets clipped. This is no worse than today's behavior — an
+unfixable tweet still gets caught by `validate_post`'s other checks (e.g.
+missing ticker) the same way an over-length tweet does now — but it
+guarantees the length invariant unconditionally, matching Desired End
+State.
 
 #### 2. Unit tests for the guard
 
@@ -176,13 +191,13 @@ in this file.
 
 #### Manual Verification:
 
-- Replay the actual 2026-06-16 failing data through the updated pipeline
-  locally: reconstruct the `ranek` set (KLE, PUR, ULG, CRI) and the
-  `poludnie` set (MOL, IPW, PRH, PEP) from `puls-gpw.espi_ebi.announcements`
-  (same tickers pulled during the frame investigation), run them through
-  `generate_post()` with the real Gemini client, and confirm
-  `validate_post()` now approves on attempt 1 (or at least no longer
-  rejects for length across all 3 attempts)
+- Use the existing `_run_generate_post.py` (repo root) — it already does
+  fetch-real-announcements → `generate_post()` → `validate_post()` →
+  console + HTML email preview with a per-tweet char-count badge. Adjust
+  its date range (currently "last 7 days") to target the 2026-06-16
+  `ranek` (KLE, PUR, ULG, CRI) and `poludnie` (MOL, IPW, PRH, PEP) windows
+  specifically, and confirm `validate_post()` now approves on attempt 1 (or
+  at least no longer rejects for length across all 3 attempts)
 - After deploy, watch Cloud Logging (`job_name="puls-gpw-post"`) for the
   next `ranek`/`poludnie`/`wieczor` runs — confirm no recurrence of "all 3
   supervisor attempts failed" for length reasons
@@ -205,16 +220,25 @@ guarantees the 280-char invariant — but reduces how frequently trimmed
 
 **File**: `src/post_generator.py`
 
-**Intent**: Add an explicit numeric guideline to the hook section of
+**Intent**: Add an explicit guideline to the hook section of
 `_SYSTEM_PROMPT` (around `post_generator.py:93-110`) stating a per-company
 description budget that scales down as company count increases (mirroring
 the existing explicit budgets for middle tweets at line 112 and closing at
 line 140), plus a reiteration of the 280-char hard cap for the hook as a
-whole.
+whole. `_SYSTEM_PROMPT` stays a static module-level constant (unchanged
+from today, `post_generator.py:61,285`) — the scaling guidance is phrased
+as a general prose formula (e.g. "the more companies, the shorter each
+bullet's description — the full hook still has to fit in 280 chars
+total"), not a literal number tied to a specific company count. This
+matches how the existing 140-180 / max-280 budgets are already static
+prose, and preserves Gemini's `system_instruction` caching across calls;
+building the prompt dynamically per `n_companies` is explicitly out of
+scope for this phase.
 
-**Contract**: `_SYSTEM_PROMPT`'s hook section gains a numeric char
-guideline; existing example blocks (1-company, 3-company) stay valid
-illustrations.
+**Contract**: `_SYSTEM_PROMPT`'s hook section gains a prose char-budget
+guideline that scales qualitatively with company count, expressed as
+static text (no per-call interpolation); existing example blocks
+(1-company, 3-company) stay valid illustrations.
 
 #### 2. Directive retry feedback
 
@@ -275,8 +299,9 @@ wording appears in `contents` when `previous_issues` is passed to
 
 ### Manual Testing Steps:
 
-1. Reconstruct the 2026-06-16 `ranek` and `poludnie` announcement sets from
-   BigQuery and replay them through the real (non-mocked) pipeline locally
+1. Run `_run_generate_post.py` (repo root) with its date range adjusted to
+   target the 2026-06-16 `ranek`/`poludnie` windows, against the real
+   (non-mocked) pipeline
 2. Confirm the resulting tweets are all ≤280 chars and `validate_post`
    approves
 3. After deploy, watch the next few production windows in Cloud Logging for
