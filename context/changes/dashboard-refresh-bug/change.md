@@ -1,7 +1,7 @@
 ---
 change_id: dashboard-refresh-bug
 title: Dashboard refresh bug
-status: complete
+status: impl_reviewed
 created: 2026-06-16
 updated: 2026-06-16
 archived_at: null
