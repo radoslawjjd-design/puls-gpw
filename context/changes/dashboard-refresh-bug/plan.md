@@ -277,21 +277,21 @@ None — static asset change only; a normal deploy/restart picks up the new
 
 #### Automated
 
-- [x] 1.1 `uv run pytest tests/e2e/test_refresh.py -v` passes
-- [x] 1.2 Full suite passes: `uv run pytest`
+- [x] 1.1 `uv run pytest tests/e2e/test_refresh.py -v` passes — 98e119e
+- [x] 1.2 Full suite passes: `uv run pytest` — 98e119e
 
 #### Manual
 
-- [x] 1.3 Real Chrome, F5 refresh with existing session — table renders, no console error, filtering works (user-verified on localhost)
-- [x] 1.4 Real Chrome, Ctrl+F5 — identical result (user-verified on localhost)
+- [x] 1.3 Real Chrome, F5 refresh with existing session — table renders, no console error, filtering works (user-verified on localhost) — 98e119e
+- [x] 1.4 Real Chrome, Ctrl+F5 — identical result (user-verified on localhost) — 98e119e
 
 ### Phase 2: Defensive date-filter parsing guard
 
 #### Automated
 
-- [x] 2.1 Invalid date value doesn't throw, request fires without `from` param: `uv run pytest tests/e2e/test_refresh.py -v`
-- [x] 2.2 Full suite passes: `uv run pytest` (140 passed)
+- [x] 2.1 Invalid date value doesn't throw, request fires without `from` param: `uv run pytest tests/e2e/test_refresh.py -v` — 98e119e
+- [x] 2.2 Full suite passes: `uv run pytest` (140 passed) — 98e119e
 
 #### Manual
 
-- [x] 2.3 DevTools garbage date value — no uncaught promise rejection, request still completes (covered by e2e `test_invalid_date_filter_does_not_throw_and_drops_param`, which injects a garbage value and asserts no pageerror + request fires without `from`)
+- [x] 2.3 DevTools garbage date value — no uncaught promise rejection, request still completes (covered by e2e `test_invalid_date_filter_does_not_throw_and_drops_param`, which injects a garbage value and asserts no pageerror + request fires without `from`) — 98e119e
