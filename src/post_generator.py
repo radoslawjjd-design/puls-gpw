@@ -74,13 +74,16 @@ Zakaz obejmuje dosłowne i ukryte sugestie, w tym:
 Dozwolone: opis faktu, kontekst operacyjny, pytanie do czytelnika.
 
 === ZASADA CASHTAG / HASHTAG — KRYTYCZNE ===
-X odrzuca posty z więcej niż jednym cashtagiem (błąd 403) i karze za nadmiar
-cashtagów/hashtagów. Dlatego w CAŁEJ nitce używamy DOKŁADNIE JEDNEGO cashtaga:
-- Cashtag $TICKER pojawia się TYLKO RAZ w całym wątku: w HOOKU, przy spółce wskazanej
-  w wiadomości użytkownika (klucz "cashtag_spolki" — spółka z najwyższym score). Wstaw
-  go DOKŁADNIE tak, jak podano.
-- WSZYSTKIE pozostałe tickery (inne spółki w hooku, KAŻDY tweet środkowy, closing):
-  zwykłym tekstem w nawiasie, np. ( LBW ) — BEZ $ i BEZ #.
+X odrzuca POJEDYNCZY tweet z więcej niż jednym cashtagiem (błąd 403) i karze za nadmiar
+cashtagów/hashtagów. Limit dotyczy KAŻDEGO tweeta z OSOBNA (każdy tweet to osobny post),
+nie całego wątku. Dlatego: MAKSYMALNIE JEDEN cashtag $TICKER na pojedynczy tweet.
+- HOOK: lista wielu spółek, ale tylko JEDNA dostaje cashtag — spółka wskazana w wiadomości
+  użytkownika (klucz "cashtag_spolki", najwyższy score): ( $TICKER ), wstaw DOKŁADNIE jak
+  podano. Pozostałe spółki w hooku: zwykły tekst ( TICKER ) — BEZ $.
+- TWEETY ŚRODKOWE: każdy dotyczy JEDNEJ spółki → ta spółka ZAWSZE dostaje swój cashtag
+  ( $TICKER ). To jeden cashtag na tweet, więc jest OK i wymagane.
+- CLOSING: wymienia kilka tickerów naraz → wszystkie zwykłym tekstem ( TICKER ), BEZ $
+  (kilka cashtagów w jednym tweecie = błąd 403).
 - Hashtagi: WYŁĄCZNIE #GPW #ESPI #SmallCaps na samym końcu closingu. Nigdzie indziej.
 - SPACJE W NAWIASACH: ticker w nawiasie ZAWSZE ze spacją przed i po, np. ( $LBW ) oraz
   ( WAS ) — nigdy ($LBW) ani (WAS).
@@ -118,20 +121,20 @@ Która spółka najbardziej Cię interesuje?
 NIE dziel jednej spółki na dwa tweety.
 
 Format — każda wartość liczbowa na OSOBNEJ LINII:
-📊 Nazwa Spółki ( TICKER )
+📊 Nazwa Spółki ( $TICKER )
 [kluczowa liczba 1]
 [kluczowa liczba 2 jeśli jest]
 [jedno zdanie zakończenia — patrz zasady poniżej]
 
 Przykład:
-📊 Lubawa ( LBW )
+📊 Lubawa ( $LBW )
 Przychody Q1: 136,96 mln PLN
 Zysk netto: 23,65 mln PLN
 Drugi kwartał rekordowy z rzędu. Organika czy duże kontrakty?
 
 Zasady:
 - Emoji 📊 zawsze na początku
-- Pełna nazwa + ( TICKER ) tekstem ze spacjami — zawsze oba, BEZ cashtaga $
+- Pełna nazwa + ( $TICKER ) z cashtagiem, ze spacjami — zawsze oba (jeden cashtag na tweet)
 - Liczby z key_numbers na osobnych liniach — bez wymyślania
 - Jeśli key_numbers jest pustą listą: napisz jedno krótkie zdanie kontekstu z summary_pl zamiast linii z liczbami — nie kopiuj metadanych dokumentu (typ raportu, waluta, itp.)
 - Zakończ tweet spółki JEDNYM z poniższych stylów (dobierz do treści komunikatu):
@@ -154,8 +157,8 @@ Nie zmieniaj fraza_closing — wstaw ją dosłownie przed "Napisz w komentarzu!"
 - Frazy AI-style: "warto obserwować", "to fascynujące", "potencjalny wpływ", "warto śledzić"
 - Placeholdery zamiast liczb
 - Linki w tweetach
-- Więcej niż JEDEN cashtag w całej nitce, lub cashtag innej spółki niż wskazana w
-  "cashtag_spolki" (patrz zasada cashtag/hashtag — X odrzuca takie posty)
+- Więcej niż JEDEN cashtag w POJEDYNCZYM tweecie (X odrzuca taki post — błąd 403);
+  w hooku cashtag tylko przy spółce z "cashtag_spolki", w closingu żaden
 - Ticker w nawiasie bez spacji, np. ($LBW) lub (WAS) — ZAWSZE ze spacjami
 - Sugestie inwestycyjne (patrz zakaz powyżej)
 
@@ -183,8 +186,9 @@ def _pick_variant(variants: list[str], salt: str = "") -> str:
 
 
 def _build_tickers_str(tickers: list[str]) -> str:
-    # Closing lists tickers as PLAIN TEXT — no $ cashtag, no # hashtag. The thread's
-    # single cashtag lives in the hook (top-score company); everything else is plain.
+    # Closing lists several tickers in ONE tweet → all PLAIN TEXT, no $ cashtag (multiple
+    # cashtags in a single tweet would be X error 403). Body tweets carry one cashtag each
+    # (one company per tweet); the hook carries the top-score company's single cashtag.
     tagged = list(tickers)
     if len(tagged) == 1:
         return tagged[0]
@@ -199,6 +203,21 @@ _PAREN_TICKER_RE = re.compile(r"\(\s*(\$?[A-Z][A-Z0-9]{0,9})\s*\)")
 def _normalize_ticker_spacing(text: str) -> str:
     """Force `( TICKER )` / `( $TICKER )` spacing — Gemini drops the spaces inconsistently."""
     return _PAREN_TICKER_RE.sub(r"( \1 )", text)
+
+
+def _enforce_body_cashtag(tweet: str) -> str:
+    """Ensure a single-company body tweet carries its `$cashtag`.
+
+    Each body tweet is about ONE company, so its parenthesised ticker gets the `$`
+    (one cashtag per tweet is within X's per-post limit). The LLM drops it inconsistently
+    — same unreliability as ticker spacing — so we enforce it deterministically. No-op
+    unless the tweet has exactly one distinct ticker token, which keeps it from touching
+    the hook (top-company `$` only) or closing (several plain tickers) if ever misapplied.
+    """
+    distinct = {t.lstrip("$") for t in _PAREN_TICKER_RE.findall(tweet)}
+    if len(distinct) != 1:
+        return tweet
+    return _PAREN_TICKER_RE.sub(lambda m: f"( ${m.group(1).lstrip('$')} )", tweet)
 
 
 _HASHTAG_RE = re.compile(r"#\w+")
@@ -385,7 +404,16 @@ def generate_post(
         if len(parsed.tweets) == 0:
             logger.warning("post_generator: empty tweets list in response")
             return None
-        tweets = [_enforce_length(_normalize_ticker_spacing(t)) for t in parsed.tweets]
+        last_idx = len(parsed.tweets) - 1
+        tweets = []
+        for i, t in enumerate(parsed.tweets):
+            t = _normalize_ticker_spacing(t)
+            # Body tweets (one company each) carry that company's single $cashtag; the hook
+            # (top-company $ only) and closing (several plain tickers) are left to the prompt.
+            # Enforce the cashtag before length so the trim accounts for the added char.
+            if 0 < i < last_idx:
+                t = _enforce_body_cashtag(t)
+            tweets.append(_enforce_length(t))
         return GeneratedPost(tweets=tweets)
     except ValidationError:
         logger.warning("post_generator: response schema invalid", exc_info=True)

@@ -6,6 +6,7 @@ from src.post_generator import (
     generate_post,
     _build_tickers_str,
     _normalize_ticker_spacing,
+    _enforce_body_cashtag,
     _enforce_length,
     _HOOK_VARIANTS,
     _CLOSING_QUESTIONS,
@@ -172,6 +173,46 @@ def test_normalize_ticker_spacing_leaves_year_alone():
     assert _normalize_ticker_spacing("zysk za rok (2025) rośnie") == "zysk za rok (2025) rośnie"
 
 
+# ── body-tweet cashtag enforcement ───────────────────────────────────────────
+
+def test_enforce_body_cashtag_adds_dollar_to_single_company_tweet():
+    tweet = "📊 Synektik SA ( SNT )\nPrzychody: 100 mln PLN\nRekord?"
+    assert _enforce_body_cashtag(tweet) == "📊 Synektik SA ( $SNT )\nPrzychody: 100 mln PLN\nRekord?"
+
+
+def test_enforce_body_cashtag_idempotent_when_already_tagged():
+    tweet = "📊 Apator SA ( $APT )\nZysk: 1 mln\nMocno."
+    assert _enforce_body_cashtag(tweet) == tweet
+
+
+def test_enforce_body_cashtag_noop_on_multiple_tickers():
+    # Several distinct tickers (e.g. a closing line) → ambiguous, leave untouched.
+    tweet = "( PKO ), ( XTB ) czy ( LBW )?"
+    assert _enforce_body_cashtag(tweet) == tweet
+
+
+def test_enforce_body_cashtag_leaves_year_alone():
+    assert _enforce_body_cashtag("zysk za rok (2025) rośnie") == "zysk za rok (2025) rośnie"
+
+
+def test_generate_post_body_tweets_carry_company_cashtag():
+    raw = json.dumps({"tweets": [
+        "🚨 2 ważne ESPI z GPW:\n• PKO Bank Polski ( $PKO )\n• XTB SA ( XTB )\nKtóra?",
+        "📊 PKO Bank Polski ( PKO )\nZysk: 120 mln PLN\nDobry trend?",
+        "📊 XTB SA ( XTB )\nWzrost 27%\nRekord?",
+        "Co sądzisz? #GPW #ESPI Nie jest to rekomendacja inwestycyjna.",
+    ]}, ensure_ascii=False)
+    with patch("src.post_generator.get_client", return_value=_mock_client(raw)):
+        result = generate_post(_ANNOUNCEMENTS)
+    assert result is not None
+    # Each per-company body tweet gets its own cashtag.
+    assert "( $PKO )" in result.tweets[1]
+    assert "( $XTB )" in result.tweets[2]
+    # Hook keeps exactly one cashtag (top company); closing stays plain.
+    assert result.tweets[0].count("$") == 1
+    assert "$" not in result.tweets[3]
+
+
 def test_generate_post_injects_single_cashtag_for_first_company():
     payload = json.dumps({"tweets": _SIX_TWEETS}, ensure_ascii=False)
     with patch("src.post_generator.get_client", return_value=_mock_client(payload)) as mock_get:
@@ -191,7 +232,8 @@ def test_generate_post_normalizes_ticker_spacing_in_returned_tweets():
         result = generate_post(_ANNOUNCEMENTS[:1])
     assert result is not None
     assert "( $LBW )" in result.tweets[0]
-    assert "( LBW )" in result.tweets[1]
+    # Body tweet carries the company's single cashtag (one cashtag per tweet).
+    assert "( $LBW )" in result.tweets[1]
     assert "($LBW)" not in "".join(result.tweets)
 
 
