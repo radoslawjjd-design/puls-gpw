@@ -333,12 +333,12 @@ is unchanged.
 
 #### Automated
 
-- [ ] 1.1 `uv run pytest tests/test_post_generator.py` passes
-- [ ] 1.2 `uv run pytest` (full suite) passes
+- [x] 1.1 `uv run pytest tests/test_post_generator.py` passes
+- [x] 1.2 `uv run pytest` (full suite) passes
 
 #### Manual
 
-- [ ] 1.3 Replay 2026-06-16 ranek/poludnie data locally — confirm ≤280 chars and validate_post approval
+- [x] 1.3 Replay 2026-06-16 ranek/poludnie data locally — confirm ≤280 chars and validate_post approval
 - [ ] 1.4 Watch next production windows in Cloud Logging for absence of the failure signature
 
 ### Phase 2: Prompt and feedback tightening
