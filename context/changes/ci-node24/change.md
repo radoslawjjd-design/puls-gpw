@@ -1,7 +1,7 @@
 ---
 change_id: ci-node24
 title: Bump GitHub Actions to Node 24-compatible versions
-status: new
+status: plan_reviewed
 created: 2026-06-16
 updated: 2026-06-16
 archived_at: null
