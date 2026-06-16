@@ -191,9 +191,9 @@ None — version pins only.
 
 #### Automated
 
-- [x] 2.1 ai-code-review.yml and action.yml parse as valid YAML
-- [x] 2.2 No Node-20-era SHAs/comments remain (`# v4.2.2`, `# v2.1.13`, `# v4.4.0`)
-- [x] 2.3 Each bumped SHA matches its tag resolution via gh api
+- [x] 2.1 ai-code-review.yml and action.yml parse as valid YAML — b4acb99
+- [x] 2.2 No Node-20-era SHAs/comments remain (`# v4.2.2`, `# v2.1.13`, `# v4.4.0`) — b4acb99
+- [x] 2.3 Each bumped SHA matches its tag resolution via gh api — b4acb99
 
 #### Manual
 
