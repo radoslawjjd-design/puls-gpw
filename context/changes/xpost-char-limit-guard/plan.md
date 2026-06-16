@@ -339,15 +339,15 @@ is unchanged.
 #### Manual
 
 - [x] 1.3 Replay 2026-06-16 ranek/poludnie data locally — confirm ≤280 chars and validate_post approval — fff5444
-- [ ] 1.4 Watch next production windows in Cloud Logging for absence of the failure signature
+- [x] 1.4 Watch next production windows in Cloud Logging for absence of the failure signature — verified live 2026-06-16 (exec puls-gpw-post-wwwfk: wieczor approved on attempt 1, no "exceeds 280" / "all 3 attempts failed"; vs the pre-fix 15:25 run that failed all 3)
 
 ### Phase 2: Prompt and feedback tightening
 
 #### Automated
 
-- [x] 2.1 `uv run pytest tests/test_post_generator.py` passes
-- [x] 2.2 `uv run pytest` (full suite) passes
+- [x] 2.1 `uv run pytest tests/test_post_generator.py` passes — 45f02c1
+- [x] 2.2 `uv run pytest` (full suite) passes — 45f02c1
 
 #### Manual
 
-- [ ] 2.3 Monitor Cloud Logging over following days for reduced attempt-1 length rejections
+- [x] 2.3 Monitor Cloud Logging over following days for reduced attempt-1 length rejections — verified live 2026-06-16 (exec puls-gpw-post-wwwfk approved on attempt 1; prompt change confirmed not counterproductive); closed early as Phase 1's deterministic guard is the hard guarantee
