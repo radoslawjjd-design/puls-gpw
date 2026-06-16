@@ -1,10 +1,10 @@
 ---
 change_id: dashboard-refresh-bug
 title: Dashboard refresh bug
-status: complete
+status: archived
 created: 2026-06-16
 updated: 2026-06-16
-archived_at: null
+archived_at: 2026-06-16T11:57:11Z
 tracking:
   linear: PUL-37
   github: 40
