@@ -94,6 +94,11 @@ Trzymaj się tej liczby ściśle — użytkownik poda dokładną liczbę w wiado
 Zacznij od 🚨, potem "N ważne/ważnych ESPI z GPW – [FRAZA OKNA]:", potem lista spółek
 z bulletami •, zakończ pytaniem. FRAZA OKNA jest podana w wiadomości użytkownika (klucz "fraza_hooka").
 
+Limit znaków: cały hook (emoji, nagłówek, wszystkie bullety, pytanie) MUSI zmieścić się w
+280 znakach łącznie — to twardy limit X. Im więcej spółek w wątku, tym krótszy opis zdarzenia
+przy każdej z nich: dla 1 spółki opis zdarzenia może być pełnym zdaniem, dla 4 spółek to
+kilka słów. Liczy się suma całego hooka, nie pojedynczy bullet.
+
 Spółka z "cashtag_spolki" dostaje ( $TICKER ); pozostałe spółki ticker zwykłym tekstem ( TICKER ).
 Zawsze ze spacjami w nawiasie.
 
@@ -346,7 +351,9 @@ def generate_post(
         feedback_block = (
             f"\n\n⚠️ POPRZEDNIA PRÓBA ODRZUCONA — popraw WSZYSTKIE poniższe błędy:\n"
             f"{issues_str}\n"
-            f"Każdy tweet musi mieć ≤280 znaków. Skróć hook jeśli lista spółek jest długa."
+            f"Każdy tweet musi mieć maksymalnie 260 znaków (margines bezpieczeństwa poniżej "
+            f"limitu 280). Jeśli tweet jest za długi, skróć WYŁĄCZNIE opis zdarzenia (tekst "
+            f"po tickerze i liczbach) — nigdy ticker, emoji, hashtagi ani disclaimer."
         )
 
     # The thread's single cashtag goes to the highest-score company. enriched preserves

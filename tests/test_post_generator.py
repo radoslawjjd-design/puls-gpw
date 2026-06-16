@@ -280,6 +280,26 @@ def test_enforce_length_idempotent_on_oversized_tweet():
     assert len(once) <= 280
 
 
+# ── Phase 2: prompt/feedback tightening ──────────────────────────────────────
+
+def test_system_prompt_has_hook_char_budget_guidance():
+    payload = json.dumps({"tweets": _SIX_TWEETS}, ensure_ascii=False)
+    with patch("src.post_generator.get_client", return_value=_mock_client(payload)) as mock_get:
+        generate_post(_ANNOUNCEMENTS)
+    config = mock_get.return_value.models.generate_content.call_args[1]["config"]
+    assert "280 znakach łącznie" in config.system_instruction
+    assert "im więcej spółek" in config.system_instruction.lower()
+
+
+def test_feedback_block_names_event_description_as_trim_target():
+    payload = json.dumps({"tweets": _SIX_TWEETS}, ensure_ascii=False)
+    with patch("src.post_generator.get_client", return_value=_mock_client(payload)) as mock_get:
+        generate_post(_ANNOUNCEMENTS, previous_issues=["tweet 1 exceeds 280 chars (310)"])
+    call_contents = mock_get.return_value.models.generate_content.call_args[1]["contents"]
+    assert "opis zdarzenia" in call_contents
+    assert "260 znaków" in call_contents
+
+
 def test_round_trip_oversized_tweets_get_trimmed_and_approved():
     filler = "opis bardzo długiego wydarzenia korporacyjnego testowego " * 6
     oversized_hook = (

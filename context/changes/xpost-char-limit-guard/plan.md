@@ -345,8 +345,8 @@ is unchanged.
 
 #### Automated
 
-- [ ] 2.1 `uv run pytest tests/test_post_generator.py` passes
-- [ ] 2.2 `uv run pytest` (full suite) passes
+- [x] 2.1 `uv run pytest tests/test_post_generator.py` passes
+- [x] 2.2 `uv run pytest` (full suite) passes
 
 #### Manual
 
