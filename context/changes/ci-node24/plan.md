@@ -178,9 +178,9 @@ None — version pins only.
 
 #### Automated
 
-- [x] 1.1 deploy.yml parses as valid YAML
-- [x] 1.2 No remaining Node-20-era tags (`@v4`/`@v2`/`setup-uv@v6`) in deploy.yml
-- [x] 1.3 Every pin in deploy.yml resolves to a real ref via gh api
+- [x] 1.1 deploy.yml parses as valid YAML — 773a031
+- [x] 1.2 No remaining Node-20-era tags (`@v4`/`@v2`/`setup-uv@v6`) in deploy.yml — 773a031
+- [x] 1.3 Every pin in deploy.yml resolves to a real ref via gh api — 773a031
 
 #### Manual
 
@@ -191,9 +191,9 @@ None — version pins only.
 
 #### Automated
 
-- [ ] 2.1 ai-code-review.yml and action.yml parse as valid YAML
-- [ ] 2.2 No Node-20-era SHAs/comments remain (`# v4.2.2`, `# v2.1.13`, `# v4.4.0`)
-- [ ] 2.3 Each bumped SHA matches its tag resolution via gh api
+- [x] 2.1 ai-code-review.yml and action.yml parse as valid YAML
+- [x] 2.2 No Node-20-era SHAs/comments remain (`# v4.2.2`, `# v2.1.13`, `# v4.4.0`)
+- [x] 2.3 Each bumped SHA matches its tag resolution via gh api
 
 #### Manual
 
