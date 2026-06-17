@@ -202,6 +202,13 @@ Complete the skill orchestrator: present the two drafts for approval, publish wi
 - Persistence step: for each wallet in a thread that published successfully, call `save_portfolio_snapshot()` with the extracted/delta-computed values; additionally record the media-attachment outcome (e.g. as part of `positions_json` metadata or a dedicated note — implementer's choice, must be queryable after the fact) so a degraded (text-only) publish is visible in BigQuery per the agreed "oznacz w logu/BQ" decision.
 - Archive step: for each wallet in a thread that published successfully, move its screenshot file(s) from `broker_data/<wallet>/` to `broker_data/archive/<YYYY-MM-DD>/<wallet>/` (per the agreed archive decision). A thread that failed to publish keeps its wallets' screenshots in place, untouched, for retry — see Phase 3's per-wallet "already published today" check for how the retry run resolves which wallets still need processing.
 
+**Addendum (manual-verification scope decision, 2026-06-17)**: 4.3 (happy path) was verified with a real live run — Thread A (main+ikze) drafted, approved, published (2 tweets, real X ids, images attached), persisted to `portfolio_snapshots`, screenshots archived to `broker_data/archive/2026-06-17/`. Thread B (short+long) was not run live — those folders have no screenshots yet — but the user accepted Thread A's round-trip as sufficient evidence since Thread B exercises identical code with different input data.
+
+4.4/4.5/4.6 (the three failure-injection paths) were **not** verified via additional live X posts, by user decision — triggering them for real would mean posting extra real, public, irreversible tweets to a production account purely to observe a failure path. Verified instead via:
+- **4.4 (Anuluj)**: logic review of `.claude/skills/portfolio-xpost/SKILL.md` Step 3.4 — explicit instruction to skip Step 4 and Step 5 entirely on Anuluj, leaving screenshots untouched and nothing published/persisted. No code path exists for this branch (it's orchestration prose followed by the invoking agent), so a live run would only re-confirm the same text.
+- **4.5 (media-upload-failure fallback)**: covered by `tests/test_x_publisher.py::test_publish_thread_with_media_upload_failure_falls_back_to_text_only` and `test_publish_thread_with_media_partial_upload_failure_attaches_successful_ones` — both assert the exact fallback mechanics (failed upload skipped, tweet still posts, `media_attached` reflects degraded status).
+- **4.6 (partial-failure retry)**: covered by `tests/test_x_publisher.py::test_partial_failure_carries_published_ids` (and the media variant `test_publish_thread_with_media_create_tweet_failure_after_media_upload_raises`) for the `XPublishPartialError`/`XPublisherError` raise semantics, combined with SKILL.md Step 4.3's documented "skip persist/archive, leave screenshots for retry" instruction and Step 1.2's "already published today" check that makes the retry resolve only the still-failing thread.
+
 ### Success Criteria:
 
 #### Automated Verification:
@@ -291,7 +298,7 @@ None — this is a low-frequency, user-invoked skill (not a hot path); vision/LL
 - [x] 4.2 Linting passes
 
 #### Manual
-- [ ] 4.3 End-to-end happy path: both threads published with images, 4 BQ rows written, screenshots archived
-- [ ] 4.4 "Anuluj" path verified: no side effects
-- [ ] 4.5 Media-upload-failure fallback path verified: degraded publish succeeds, status visible in BQ
-- [ ] 4.6 Partial-failure retry path verified: thread A's success unaffected by thread B's failure, retry resolves only thread B
+- [x] 4.3 End-to-end happy path: both threads published with images, 4 BQ rows written, screenshots archived
+- [x] 4.4 "Anuluj" path verified: no side effects
+- [x] 4.5 Media-upload-failure fallback path verified: degraded publish succeeds, status visible in BQ
+- [x] 4.6 Partial-failure retry path verified: thread A's success unaffected by thread B's failure, retry resolves only thread B
