@@ -294,11 +294,11 @@ None — this is a low-frequency, user-invoked skill (not a hot path); vision/LL
 ### Phase 4: Skill — approval gate, publish, archive
 
 #### Automated
-- [x] 4.1 Full test suite passes: `pytest`
-- [x] 4.2 Linting passes
+- [x] 4.1 Full test suite passes: `pytest` — ed5d74d
+- [x] 4.2 Linting passes — ed5d74d
 
 #### Manual
-- [x] 4.3 End-to-end happy path: both threads published with images, 4 BQ rows written, screenshots archived
-- [x] 4.4 "Anuluj" path verified: no side effects
-- [x] 4.5 Media-upload-failure fallback path verified: degraded publish succeeds, status visible in BQ
-- [x] 4.6 Partial-failure retry path verified: thread A's success unaffected by thread B's failure, retry resolves only thread B
+- [x] 4.3 End-to-end happy path: both threads published with images, 4 BQ rows written, screenshots archived — ed5d74d
+- [x] 4.4 "Anuluj" path verified: no side effects — ed5d74d
+- [x] 4.5 Media-upload-failure fallback path verified: degraded publish succeeds, status visible in BQ — ed5d74d
+- [x] 4.6 Partial-failure retry path verified: thread A's success unaffected by thread B's failure, retry resolves only thread B — ed5d74d
