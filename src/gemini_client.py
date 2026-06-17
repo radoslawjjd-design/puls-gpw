@@ -108,11 +108,16 @@ def extract_portfolio_snapshot(image_paths: list[str]) -> PortfolioExtraction:
     expected shape (the caller has no portfolio data to fall back to).
     """
     parts = []
-    for path in image_paths:
-        with open(path, "rb") as f:
-            data = f.read()
-        mime_type, _ = mimetypes.guess_type(path)
-        parts.append(genai.types.Part.from_bytes(data=data, mime_type=mime_type or "image/png"))
+    try:
+        for path in image_paths:
+            with open(path, "rb") as f:
+                data = f.read()
+            mime_type, _ = mimetypes.guess_type(path)
+            if mime_type is None:
+                logger.warning("Could not guess mime type for %s, defaulting to image/png", path)
+            parts.append(genai.types.Part.from_bytes(data=data, mime_type=mime_type or "image/png"))
+    except OSError as exc:
+        raise AnalysisError(f"Portfolio extraction failed to read screenshot: {exc}") from exc
 
     client = get_client()
     try:
@@ -139,6 +144,8 @@ def extract_portfolio_snapshot(image_paths: list[str]) -> PortfolioExtraction:
         parsed = _PortfolioExtractionResponse.model_validate(data)
     except (ValidationError, ValueError) as exc:
         raise AnalysisError(f"Portfolio extraction failed to parse response: {exc}") from exc
+    except Exception as exc:
+        raise AnalysisError(f"Portfolio extraction call failed: {exc}") from exc
 
     return PortfolioExtraction(
         total_value=parsed.total_value,

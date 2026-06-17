@@ -147,10 +147,12 @@ Build the first half of the skill orchestrator: reading screenshots, extracting 
 
 **Contract**: Follows house `SKILL.md` structure (frontmatter → Initial Response → numbered Process steps → guardrails section), per `.claude/skills/10x-implement/SKILL.md` and `.claude/skills/10x-archive/SKILL.md` conventions identified in research. For each wallet subfolder (`broker_data/main/`, `ikze/`, `short/`, `long/`): if it's empty, check `get_latest_snapshot_before()`-adjacent lookup for a `portfolio_snapshots` row with `snapshot_date = today` for that wallet — if found, skip the wallet as already-published-today; if not found, halt with a clear error (genuinely missing data) rather than generating a partial thread. This makes retries after a partial publish failure (see Phase 4, Critical Implementation Details) resolvable without manual cleanup.
 
+**Addendum (impl-review, 2026-06-17)**: thread drafting does *not* use a Gemini text call. Tweets are composed directly from a fixed template filled with Step 1's already-extracted/delta-computed values, then validated with the reused `post_supervisor.py` rules (length, no-truncation, `_ADVICE_RE`, disclaimer-present). This is intentional — it keeps an LLM from re-touching financial figures that are already extracted and validated, avoiding paraphrase/rounding risk on the exact numbers. The validation-discipline goal of the original contract is met; only the "via a text Gemini call" mechanism differs.
+
 ### Success Criteria:
 
 #### Automated Verification:
-- Unit tests pass: `pytest tests/test_gemini_client.py -k portfolio` (extraction parsing, uncertain-field flagging, mocked `genai.Client` per the agreed mock-only testing strategy)
+- Unit tests pass: `pytest tests/test_gemini_client.py` (extraction parsing, uncertain-field flagging, mocked `genai.Client` per the agreed mock-only testing strategy; the whole file is portfolio-only, no `-k` filter needed)
 - Full test suite passes: `pytest`
 
 #### Manual Verification:
@@ -255,7 +257,7 @@ None — this is a low-frequency, user-invoked skill (not a hot path); vision/LL
 ### Phase 3: Skill — vision extraction + thread generation
 
 #### Automated
-- [x] 3.1 Unit tests pass: `pytest tests/test_gemini_client.py -k portfolio` — 8805e44
+- [x] 3.1 Unit tests pass: `pytest tests/test_gemini_client.py` — 8805e44
 - [x] 3.2 Full test suite passes: `pytest` — 8805e44
 
 #### Manual
