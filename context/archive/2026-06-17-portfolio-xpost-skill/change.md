@@ -1,10 +1,10 @@
 ---
 change_id: portfolio-xpost-skill
 title: Portfolio status X-post generator skill (broker_data → 2 X threads)
-status: implemented
+status: archived
 created: 2026-06-17
 updated: 2026-06-17
-archived_at: null
+archived_at: 2026-06-17T17:43:58Z
 tracking:
   linear: PUL-39
   github: 53
