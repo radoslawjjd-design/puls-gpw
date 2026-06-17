@@ -147,3 +147,73 @@ def test_publish_never_raises_even_if_persist_fails(monkeypatch, bq_mocks):
 
     assert status == "failed" and ids is None
     bq_mocks["alert"].assert_called_once()
+
+
+# ── _results_tweets_have_numbers (Defect B publish belt) ──────────────────────
+
+_NUMBERED_RESULTS = [
+    "zerknij przed sesją: 🧵",
+    "( $PKO ) zysk netto 1,2 mld zł ▲",
+    "$PKO — co dalej?",
+]
+_NUMBERLESS_RESULTS = [
+    "zerknij przed sesją: 🧵",
+    "( $PKO ) wyniki kwartalne — szczegóły w raporcie ▲",
+    "$PKO — co dalej?",
+]
+
+
+def test_results_belt_allows_numbered_results_tweet():
+    anns = [{"ticker": "PKO", "event_type": "wyniki_finansowe"}]
+    assert post_main._results_tweets_have_numbers(_NUMBERED_RESULTS, anns) is True
+
+
+def test_results_belt_blocks_numberless_results_tweet():
+    anns = [{"ticker": "PKO", "event_type": "wyniki_finansowe"}]
+    assert post_main._results_tweets_have_numbers(_NUMBERLESS_RESULTS, anns) is False
+
+
+def test_results_belt_blocks_numberless_wyniki_sprzedazowe():
+    anns = [{"ticker": "PKO", "event_type": "wyniki_sprzedazowe"}]
+    assert post_main._results_tweets_have_numbers(_NUMBERLESS_RESULTS, anns) is False
+
+
+def test_results_belt_ignores_non_results_event():
+    """A qualitative-event thread (no wyniki_*) is unaffected even if digit-less."""
+    anns = [{"ticker": "PKO", "event_type": "kontrakt_znaczacy"}]
+    assert post_main._results_tweets_have_numbers(_NUMBERLESS_RESULTS, anns) is True
+
+
+def test_results_belt_no_announcements_is_passthrough():
+    assert post_main._results_tweets_have_numbers(_NUMBERLESS_RESULTS, None) is True
+    assert post_main._results_tweets_have_numbers(_NUMBERLESS_RESULTS, []) is True
+
+
+def test_results_belt_skips_results_ann_without_matching_tweet():
+    """A results announcement whose body tweet is absent is left alone (supervisor
+    already enforces ticker presence on approval)."""
+    anns = [{"ticker": "XYZ", "event_type": "wyniki_finansowe"}]
+    assert post_main._results_tweets_have_numbers(_NUMBERED_RESULTS, anns) is True
+
+
+def test_publish_belt_blocks_numberless_results(monkeypatch, bq_mocks):
+    """End-to-end: a digit-less results thread is skipped (not published)."""
+    monkeypatch.setattr(post_main, "X_AUTO_PUBLISH", True)
+    anns = [{"ticker": "PKO", "event_type": "wyniki_finansowe"}]
+
+    status, ids = post_main._publish_to_x(_NUMBERLESS_RESULTS, "poludnie", "xp1", anns)
+
+    assert status == "skipped" and ids is None
+    bq_mocks["publisher"].publish_thread.assert_not_called()
+    bq_mocks["update"].assert_called_once_with("xp1", None, "skipped")
+
+
+def test_publish_belt_allows_numbered_results(monkeypatch, bq_mocks):
+    """Regression: a normal numbered results thread still publishes."""
+    monkeypatch.setattr(post_main, "X_AUTO_PUBLISH", True)
+    anns = [{"ticker": "PKO", "event_type": "wyniki_finansowe"}]
+
+    status, ids = post_main._publish_to_x(_NUMBERED_RESULTS, "poludnie", "xp1", anns)
+
+    assert status == "published"
+    bq_mocks["publisher"].publish_thread.assert_called_once_with(_NUMBERED_RESULTS)

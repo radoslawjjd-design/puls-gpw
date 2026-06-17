@@ -28,10 +28,16 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+# Generous safety cap for the over-fetch in fetch_top_n_for_window — bounds
+# SQL volume while giving select_top_companies enough rows to backfill slots.
+_FETCH_SAFETY_CAP = 200
+
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
 
 from src.exceptions import BigQueryError
+from src.post_selection import select_top_companies
 
 _DATASET = os.environ.get("BIGQUERY_DATASET", "espi_ebi")
 _TABLE_NAME = "announcements"
@@ -321,7 +327,7 @@ def fetch_top_n_for_window(
     n: int = 4,
     min_score: float = 50,  # mirrors post_main.MIN_XPOST_SCORE (the tunable source of truth)
 ) -> list[dict]:
-    """Return top-N approved announcements for a time window, ordered by score DESC.
+    """Return up to N approved announcements for a time window, one per company.
 
     Only announcements with `analysis_score >= min_score` qualify (PUL-27 quality
     gate). Filtering at fetch time gates the WHOLE pipeline (generation + email +
@@ -330,8 +336,15 @@ def fetch_top_n_for_window(
 
     Also excludes 'inne'-categorized announcements — they are not eligible for X posts.
 
+    Selection (PUL-40): the SQL over-fetches all qualifying rows in the window,
+    deterministically ordered by `analysis_score DESC, published_at DESC` and
+    bounded by a generous safety cap; `select_top_companies` then does
+    dedup-before-limit (one row per distinct ticker, first occurrence wins) and
+    drops number-less `wyniki_*` rows *before* the top-N cut so a freed slot
+    backfills. This makes N = N distinct companies, not N raw rows.
+
     Returns list of dicts with keys: announcement_id, ticker, company, title,
-    structured_analysis, event_type, analysis_score, url.
+    structured_analysis, event_type, analysis_score, url — at most N, score DESC.
     Empty list if none found. Raises BigQueryError on query failure.
     """
     client = _get_client()
@@ -344,14 +357,13 @@ def fetch_top_n_for_window(
           AND event_type != 'inne'
           AND published_at BETWEEN @window_start AND @window_end
           AND analysis_score >= @min_score
-        ORDER BY analysis_score DESC
-        LIMIT @n
+        ORDER BY analysis_score DESC, published_at DESC
+        LIMIT {_FETCH_SAFETY_CAP}
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ScalarQueryParameter("window_start", "TIMESTAMP", window_start),
             bigquery.ScalarQueryParameter("window_end", "TIMESTAMP", window_end),
-            bigquery.ScalarQueryParameter("n", "INT64", n),
             bigquery.ScalarQueryParameter("min_score", "FLOAT64", min_score),
         ]
     )
@@ -359,7 +371,7 @@ def fetch_top_n_for_window(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"fetch_top_n_for_window failed: {exc}") from exc
-    return [
+    candidates = [
         {
             "announcement_id": row.announcement_id,
             "ticker": row.ticker,
@@ -372,6 +384,7 @@ def fetch_top_n_for_window(
         }
         for row in rows
     ]
+    return select_top_companies(candidates, n)
 
 
 def _build_filter_clauses(

@@ -78,13 +78,15 @@ def test_fetch_top_n_for_window_returns_rows():
     row_data = [
         {
             "announcement_id": "id1", "ticker": "PKO", "company": "PKO Bank Polski",
-            "title": "Wyniki Q1", "structured_analysis": '{"summary_pl": "test"}',
+            "title": "Wyniki Q1",
+            "structured_analysis": '{"summary_pl": "test", "key_numbers": ["zysk 1 mld zł"]}',
             "event_type": "wyniki_finansowe", "analysis_score": 125.0,
             "url": "http://example.com/1",
         },
         {
             "announcement_id": "id2", "ticker": "XTB", "company": "XTB SA",
-            "title": "Wyniki Q1 XTB", "structured_analysis": '{"summary_pl": "test2"}',
+            "title": "Wyniki Q1 XTB",
+            "structured_analysis": '{"summary_pl": "test2", "key_numbers": ["przychody 500 mln zł"]}',
             "event_type": "wyniki_finansowe", "analysis_score": 140.0,
             "url": "http://example.com/2",
         },
@@ -138,6 +140,50 @@ def test_fetch_top_n_for_window_excludes_inne():
 
     query_str = mock.query.call_args[0][0]
     assert "event_type != 'inne'" in query_str
+
+
+def test_fetch_top_n_for_window_orders_by_published_at_tiebreak():
+    """PUL-40: deterministic tie-break requires ORDER BY score DESC, published_at DESC + safety cap."""
+    start = datetime(2026, 6, 8, 6, 30, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 6, 8, 7, 29, 0, tzinfo=timezone.utc)
+
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        fetch_top_n_for_window(start, end)
+
+    query_str = mock.query.call_args[0][0]
+    assert "ORDER BY analysis_score DESC, published_at DESC" in query_str
+    from db.bigquery import _FETCH_SAFETY_CAP
+    assert f"LIMIT {_FETCH_SAFETY_CAP}" in query_str
+
+
+def test_fetch_top_n_for_window_dedups_to_distinct_companies():
+    """PUL-40: dedup-before-limit — N raw rows of one ticker yield 1 company, slot backfills."""
+    row_data = [
+        {
+            "announcement_id": f"tow{i}", "ticker": "TOW", "company": "TOWERINVT",
+            "title": f"Wyniki {i}",
+            "structured_analysis": '{"key_numbers": ["zysk 1 mln zł"]}',
+            "event_type": "wyniki_finansowe", "analysis_score": 120.0,
+            "url": f"http://example.com/tow{i}",
+        }
+        for i in range(7)
+    ]
+    row_data.append({
+        "announcement_id": "asb1", "ticker": "ASB", "company": "ASB SA",
+        "title": "Kontrakt znaczący",
+        "structured_analysis": '{"summary_pl": "umowa"}',
+        "event_type": "kontrakt_znaczacy", "analysis_score": 120.0,
+        "url": "http://example.com/asb1",
+    })
+    start = datetime(2026, 6, 8, 6, 30, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 6, 8, 7, 29, 0, tzinfo=timezone.utc)
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(row_data)):
+        result = fetch_top_n_for_window(start, end, n=4)
+
+    tickers = [r["ticker"] for r in result]
+    assert tickers == ["TOW", "ASB"]
 
 
 # ── x_posts table + save_x_post (PUL-29) ──────────────────────────────────────

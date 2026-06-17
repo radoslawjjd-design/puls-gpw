@@ -29,6 +29,7 @@ from db.bigquery import (
 from src.exceptions import XPublishPartialError
 from src.notifier import send_alert, send_no_post_email, send_post_email
 from src.post_generator import generate_post
+from src.post_selection import NUMBER_DEPENDENT_EVENT_TYPES
 from src.post_supervisor import validate_post
 from src.x_publisher import get_x_publisher
 
@@ -78,6 +79,45 @@ def is_publishable(tweets: list[str]) -> bool:
     return True
 
 
+def _results_tweets_have_numbers(
+    tweets: list[str], announcements: list[dict] | None
+) -> bool:
+    """Belt (Defect B defense-in-depth): every results body tweet must carry a digit.
+
+    For each announcement whose ``event_type`` is number-dependent
+    (``NUMBER_DEPENDENT_EVENT_TYPES``), locate its body tweet by the parenthesised
+    ticker (``( $TICKER )`` / ``( TICKER )`` — the same match
+    ``post_supervisor.validate_post`` uses) and confirm it contains at least one
+    digit. Returns False (block publish) if any such results tweet is digit-less.
+
+    "Has a number" = ``\\d`` present — intentionally coarse (a stray "Q1"/"2025"
+    would pass). This is acceptable: Phase 1's selection drop already guarantees
+    non-empty ``key_numbers`` for any surviving ``wyniki_*`` row, so this belt is
+    genuine defense-in-depth, not the primary guarantee. Body tweets are
+    ``tweets[1:-1]``; a results announcement with no matching body tweet is left
+    alone (the supervisor already enforces ticker presence on approval).
+    """
+    # is_publishable runs before this function and blocks threads < 3 tweets,
+    # so an empty body here is unreachable in the normal publish path.
+    body = tweets[1:-1]
+    for ann in announcements or []:
+        if ann.get("event_type") not in NUMBER_DEPENDENT_EVENT_TYPES:
+            continue
+        ticker = ann.get("ticker")
+        if not ticker:
+            continue
+        pattern = rf"\(\s*\$?{re.escape(ticker)}\s*\)"
+        tweet = next((t for t in body if re.search(pattern, t)), None)
+        if tweet is None:
+            continue
+        if not re.search(r"\d", tweet):
+            logger.warning(
+                "post_main: results tweet for %s carries no number — not publishing", ticker
+            )
+            return False
+    return True
+
+
 def _persist_and_alert(
     x_post_id: str,
     tweet_ids: list[str] | None,
@@ -99,13 +139,15 @@ def _publish_to_x(
     tweets: list[str],
     window: str,
     x_post_id: str,
+    announcements: list[dict] | None = None,
 ) -> tuple[str, list[str] | None]:
     """Publish the approved thread to X when allowed; persist outcome + alert on failure.
 
     Returns (status, published_ids). Status ∈ published|skipped|failed|partial.
     Never raises — the owner email and job completion must happen regardless of the
     publish outcome. Skips (no publish) when: the flag is OFF, the thread fails the
-    substance guard, or the window was already published today (idempotency).
+    substance guard, a number-dependent results tweet carries no amount, or the window
+    was already published today (idempotency).
     """
     try:
         if not X_AUTO_PUBLISH:
@@ -113,6 +155,9 @@ def _publish_to_x(
             return "skipped", None
         if not is_publishable(tweets):
             logger.warning("post_main: thread failed substance guard — not publishing")
+            update_x_post_publish_result(x_post_id, None, "skipped")
+            return "skipped", None
+        if not _results_tweets_have_numbers(tweets, announcements):
             update_x_post_publish_result(x_post_id, None, "skipped")
             return "skipped", None
         if x_post_already_published(window):
@@ -234,7 +279,9 @@ def main() -> None:
                 # write + idempotency guard have a row to key on. Publish sits inside
                 # the approved branch so unapproved threads can never publish.
                 x_post_id = save_x_post(ann_ids, "\n\n".join(post.tweets), window, attempt)
-                publish_status, published_ids = _publish_to_x(post.tweets, window, x_post_id)
+                publish_status, published_ids = _publish_to_x(
+                    post.tweets, window, x_post_id, announcements
+                )
                 send_post_email(
                     window_name, date_str, post.tweets, company_scores,
                     publish_status=publish_status, tweet_ids=published_ids,
