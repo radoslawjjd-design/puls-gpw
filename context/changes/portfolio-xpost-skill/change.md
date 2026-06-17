@@ -1,7 +1,7 @@
 ---
 change_id: portfolio-xpost-skill
 title: Portfolio status X-post generator skill (broker_data → 2 X threads)
-status: preparing
+status: planned
 created: 2026-06-17
 updated: 2026-06-17
 archived_at: null
