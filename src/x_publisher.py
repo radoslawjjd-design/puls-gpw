@@ -18,6 +18,7 @@ Usage:
 import logging
 import os
 import threading
+from dataclasses import dataclass
 
 import tweepy
 
@@ -26,6 +27,14 @@ from src.exceptions import XPublisherError, XPublishPartialError
 logger = logging.getLogger(__name__)
 
 _CRED_VARS = ("X_API_KEY", "X_API_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_SECRET")
+
+
+@dataclass
+class MediaPublishResult:
+    """Result of `publish_thread_with_media` — parallel arrays, same length as `tweets`."""
+
+    tweet_ids: list[str]
+    media_attached: list[bool]
 
 
 def _clean(value: str) -> str:
@@ -44,6 +53,11 @@ class XPublisher:
             consumer_secret=api_secret,
             access_token=access_token,
             access_token_secret=access_secret,
+        )
+        self._api_v1 = tweepy.API(
+            tweepy.OAuth1UserHandler(
+                api_key, api_secret, access_token, access_secret
+            )
         )
         logger.info("X API client initialized")
 
@@ -79,6 +93,66 @@ class XPublisher:
             reply_to = tid
             logger.info("Tweet %d/%d published: id=%s", i + 1, len(tweets), tid)
         return published_ids
+
+    def publish_thread_with_media(
+        self, tweets: list[str], media_paths: list[list[str]]
+    ) -> MediaPublishResult:
+        """Publish `tweets` as a reply-chain, attaching up to 4 images per tweet (X's limit).
+
+        `media_paths[i]` is the list of image paths for that tweet (empty list means
+        no images). Per tweet, each path is uploaded independently via the v1.1 API;
+        a failed upload is logged and skipped rather than aborting the tweet. If at
+        least one upload for a tweet succeeds, those `media_ids` are attached; if all
+        requested uploads for a tweet fail, that tweet falls back to text-only. A
+        `create_tweet` failure follows the same partial/full-failure semantics as
+        `publish_thread` — that is a text-publish failure, not a media one.
+        """
+        tweet_ids: list[str] = []
+        media_attached: list[bool] = []
+        reply_to: str | None = None
+        for i, (text, paths) in enumerate(zip(tweets, media_paths)):
+            if len(paths) > 4:
+                logger.warning(
+                    "Tweet %d/%d requested %d images, X allows at most 4 — using the first 4",
+                    i + 1, len(tweets), len(paths),
+                )
+                paths = paths[:4]
+            uploaded_ids: list[str] = []
+            for path in paths:
+                try:
+                    media = self._api_v1.media_upload(path)
+                    uploaded_ids.append(str(media.media_id))
+                except Exception as exc:
+                    logger.warning(
+                        "Media upload failed for tweet %d/%d (%s), skipping this image: %s",
+                        i + 1, len(tweets), path, exc,
+                    )
+            media_ids = uploaded_ids or None
+            attached = bool(uploaded_ids)
+            try:
+                response = self._client.create_tweet(
+                    text=text,
+                    in_reply_to_tweet_id=reply_to,
+                    media_ids=media_ids,
+                )
+                tid = str(response.data["id"])
+            except Exception as exc:
+                if tweet_ids:
+                    logger.error(
+                        "X thread (media) failed on tweet %d/%d after posting %d: %s",
+                        i + 1, len(tweets), len(tweet_ids), exc,
+                    )
+                    raise XPublishPartialError(tweet_ids, exc) from exc
+                logger.error("X publish (media) failed on first tweet: %s", exc)
+                raise XPublisherError(f"X publish failed, nothing posted: {exc}") from exc
+            tweet_ids.append(tid)
+            media_attached.append(attached)
+            reply_to = tid
+            logger.info(
+                "Tweet %d/%d published: id=%s media_attached=%s",
+                i + 1, len(tweets), tid, attached,
+            )
+        return MediaPublishResult(tweet_ids=tweet_ids, media_attached=media_attached)
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────

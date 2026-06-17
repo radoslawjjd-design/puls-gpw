@@ -33,3 +33,6 @@ tools/**/*.tsbuildinfo
 
 # Exported GCP service-account / Cloud Run credential dumps — never commit
 puls-gpw-api-*.json
+
+# Personal broker portfolio screenshots (PUL-39) — financial data, never commit
+broker_data/
