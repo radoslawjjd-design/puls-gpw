@@ -259,8 +259,8 @@ None — this is a low-frequency, user-invoked skill (not a hot path); vision/LL
 - [x] 3.2 Full test suite passes: `pytest`
 
 #### Manual
-- [ ] 3.3 Real screenshot extraction manually verified against actual XTB screenshots
-- [ ] 3.4 Uncertainty flagging manually verified on a deliberately ambiguous screenshot
+- [x] 3.3 Real screenshot extraction manually verified against actual XTB screenshots
+- [x] 3.4 Uncertainty flagging manually verified on a deliberately ambiguous screenshot
 
 ### Phase 4: Skill — approval gate, publish, archive
 

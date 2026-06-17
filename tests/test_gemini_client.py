@@ -72,6 +72,52 @@ def test_extract_tolerates_trailing_comma_json(tmp_path):
     assert result.total_value == 100.0
 
 
+def test_extract_tolerates_missing_position_pct(tmp_path):
+    # Real XTB screenshots don't always show a per-position percentage allocation
+    # (PUL-39 manual round-trip finding) — pct must be optional, not a hard crash.
+    payload = json.dumps({
+        "total_value": 1000.0,
+        "currency": "PLN",
+        "positions": [{"ticker": "PKO", "value": 1000.0, "pct": None}],
+        "uncertain_fields": ["PKO.pct"],
+    })
+    image_path = _write_fake_screenshot(tmp_path)
+    with patch("src.gemini_client.get_client", return_value=_mock_client(payload)):
+        result = extract_portfolio_snapshot([image_path])
+
+    assert result.positions[0].pct is None
+    assert result.uncertain_fields == ["PKO.pct"]
+
+
+def test_extract_falls_back_to_last_item_when_response_is_a_list(tmp_path):
+    # Despite the prompt instructing exactly one JSON object, Gemini sometimes still
+    # returns one object per input image for multi-screenshot wallets (PUL-39 manual
+    # round-trip finding) — must not crash, should use the last (most complete) item.
+    payload = json.dumps([
+        {
+            "total_value": 100.0,
+            "currency": "PLN",
+            "positions": [{"ticker": "PKO", "value": 100.0, "pct": None}],
+            "uncertain_fields": ["PKO.pct"],
+        },
+        {
+            "total_value": 200.0,
+            "currency": "PLN",
+            "positions": [
+                {"ticker": "PKO", "value": 100.0, "pct": None},
+                {"ticker": "XTB", "value": 100.0, "pct": None},
+            ],
+            "uncertain_fields": ["PKO.pct", "XTB.pct"],
+        },
+    ])
+    image_path = _write_fake_screenshot(tmp_path)
+    with patch("src.gemini_client.get_client", return_value=_mock_client(payload)):
+        result = extract_portfolio_snapshot([image_path])
+
+    assert result.total_value == 200.0
+    assert [p.ticker for p in result.positions] == ["PKO", "XTB"]
+
+
 def test_extract_raises_analysis_error_on_invalid_response(tmp_path):
     payload = json.dumps({"currency": "PLN"})  # missing required total_value
     image_path = _write_fake_screenshot(tmp_path)

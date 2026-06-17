@@ -37,16 +37,35 @@ def get_client() -> genai.Client:
 
 
 _EXTRACTION_SYSTEM_PROMPT = """Jesteś analitykiem odczytującym zrzuty ekranu z portfela
-maklerskiego XTB. Z podanych obrazów odczytaj:
+maklerskiego XTB. Wszystkie podane obrazy traktuj jako fragmenty JEDNEGO portfela z tego
+samego momentu (np. różne zakładki lub przewinięcia tego samego ekranu) — NIE jako kolejne
+obserwacje w czasie. Scal informacje ze wszystkich obrazów w JEDEN odczyt:
 - całkowitą wartość portfela (total_value) i jej walutę (currency)
-- listę pozycji (positions): ticker, wartość (value), udział procentowy (pct)
+- listę pozycji (positions): ticker, wartość (value), udział procentowy (pct) — zdeduplikowaną
+  po tickerze; jeśli ten sam ticker pojawia się na więcej niż jednym obrazie, użyj odczytu z
+  obrazu, na którym jest czytelniejszy/pełniejszy
+
+WAŻNE — niektóre obrazy mogą być ekranem przeglądu/dashboardu konta XTB, na którym widać
+kilka kart pod-kont na raz (np. "IKE", "IKZE", "Plany Inwestycyjne", "Moje Transakcje") z ich
+sumami. Takie karty pod-kont NIE są pozycjami giełdowymi — nigdy nie dodawaj ich do listy
+positions, nawet jeśli wyglądają jak wiersz z wartością. Rozpoznaj prawdziwą pozycję po tym,
+że ma instrument (np. "Akcje"/"ETF") oraz liczbę jednostek i cenę zakupu (format
+"<liczba> @ <cena>"). Jeśli wśród podanych obrazów jest zarówno ekran dashboardu (z kartami
+pod-kont) JAK I ekran listy pozycji danego pod-konta (zakładka "Otwarte" z wierszami
+instrumentów), total_value odczytaj z nagłówka ekranu listy pozycji tego pod-konta — NIE z
+dużej liczby na ekranie dashboardu, bo to suma wszystkich pod-kont razem, nie tego jednego
+portfela.
 
 Jeśli jakiegoś pola nie da się odczytać z wysoką pewnością (np. obraz jest rozmyty,
 przycięty lub liczba jest nieczytelna), dodaj nazwę tego pola do uncertain_fields.
 Gdy wszystko jest czytelne, uncertain_fields ma być pustą listą.
 
-Zwróć TYLKO JSON:
-{"total_value": <float>, "currency": "<str>", "positions": [{"ticker": "<str>", "value": <float>, "pct": <float>}, ...], "uncertain_fields": ["<str>", ...]}
+Pole "pct" (udział procentowy pozycji) jest OPCJONALNE — wiele zrzutów XTB go nie
+pokazuje. Jeśli go nie widzisz dla danej pozycji, zwróć pct jako null (nie zgaduj) i
+dodaj "<ticker>.pct" do uncertain_fields.
+
+Zwróć TYLKO JEDEN obiekt JSON — NIGDY listę/tablicę, nawet jeśli podano kilka obrazów:
+{"total_value": <float>, "currency": "<str>", "positions": [{"ticker": "<str>", "value": <float>, "pct": <float|null>}, ...], "uncertain_fields": ["<str>", ...]}
 """
 
 
@@ -54,7 +73,7 @@ class _PortfolioPositionResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     ticker: str
     value: float
-    pct: float
+    pct: float | None = None
 
 
 class _PortfolioExtractionResponse(BaseModel):
@@ -69,7 +88,7 @@ class _PortfolioExtractionResponse(BaseModel):
 class PortfolioPosition:
     ticker: str
     value: float
-    pct: float
+    pct: float | None
 
 
 @dataclass
@@ -106,6 +125,17 @@ def extract_portfolio_snapshot(image_paths: list[str]) -> PortfolioExtraction:
             ),
         )
         data = json5.loads(response.text)
+        if isinstance(data, list):
+            # Despite the prompt's explicit "always one object" instruction, Gemini
+            # sometimes still returns one object per input image (PUL-39 manual
+            # round-trip finding). Fall back to the last element as the most
+            # complete reading rather than crashing.
+            logger.warning(
+                "Portfolio extraction got a JSON array instead of one object (%d items); "
+                "using the last element",
+                len(data),
+            )
+            data = data[-1]
         parsed = _PortfolioExtractionResponse.model_validate(data)
     except (ValidationError, ValueError) as exc:
         raise AnalysisError(f"Portfolio extraction failed to parse response: {exc}") from exc
