@@ -197,7 +197,7 @@ def test_publish_thread_with_media_success_passes_media_ids(monkeypatch):
     pub = xp.get_x_publisher()
 
     result = pub.publish_thread_with_media(
-        ["hook", "body"], ["shot1.png", "shot2.png"]
+        ["hook", "body"], [["shot1.png"], ["shot2.png"]]
     )
 
     assert result.tweet_ids == ["1001", "1002"]
@@ -207,19 +207,57 @@ def test_publish_thread_with_media_success_passes_media_ids(monkeypatch):
     assert calls[1]["media_ids"] == ["5002"]
 
 
+def test_publish_thread_with_media_multiple_images_per_tweet(monkeypatch):
+    _patch_media_doubles(monkeypatch)
+    _set_creds(monkeypatch)
+    pub = xp.get_x_publisher()
+
+    result = pub.publish_thread_with_media(
+        ["hook"], [["shot1.png", "shot2.png", "shot3.png"]]
+    )
+
+    assert result.media_attached == [True]
+    assert pub._api_v1.upload_calls == ["shot1.png", "shot2.png", "shot3.png"]
+    assert FakeClient.instances[0].calls[0]["media_ids"] == ["5001", "5002", "5003"]
+
+
+def test_publish_thread_with_media_caps_at_four_images(monkeypatch):
+    _patch_media_doubles(monkeypatch)
+    _set_creds(monkeypatch)
+    pub = xp.get_x_publisher()
+
+    pub.publish_thread_with_media(
+        ["hook"], [["a.png", "b.png", "c.png", "d.png", "e.png"]]
+    )
+
+    assert pub._api_v1.upload_calls == ["a.png", "b.png", "c.png", "d.png"]
+
+
 def test_publish_thread_with_media_upload_failure_falls_back_to_text_only(monkeypatch):
     _patch_media_doubles(monkeypatch)
     _set_creds(monkeypatch)
     pub = xp.get_x_publisher()
     pub._api_v1.fail_on = 1  # first media_upload call fails
 
-    result = pub.publish_thread_with_media(["hook", "body"], ["bad.png", None])
+    result = pub.publish_thread_with_media(["hook", "body"], [["bad.png"], []])
 
     assert result.media_attached == [False, False]
     assert result.tweet_ids == ["1001", "1002"]
     calls = FakeClient.instances[0].calls
     assert calls[0].get("media_ids") is None
     assert calls[1].get("media_ids") is None
+
+
+def test_publish_thread_with_media_partial_upload_failure_attaches_successful_ones(monkeypatch):
+    _patch_media_doubles(monkeypatch)
+    _set_creds(monkeypatch)
+    pub = xp.get_x_publisher()
+    pub._api_v1.fail_on = 2  # second of three uploads fails
+
+    result = pub.publish_thread_with_media(["hook"], [["a.png", "b.png", "c.png"]])
+
+    assert result.media_attached == [True]
+    assert FakeClient.instances[0].calls[0]["media_ids"] == ["5001", "5002"]
 
 
 def test_publish_thread_with_media_create_tweet_failure_after_media_upload_raises(monkeypatch):
@@ -229,7 +267,7 @@ def test_publish_thread_with_media_create_tweet_failure_after_media_upload_raise
     pub._client.fail_on = 1  # first create_tweet call fails -> full failure (0 posted)
 
     with pytest.raises(XPublisherError) as exc:
-        pub.publish_thread_with_media(["hook"], ["shot1.png"])
+        pub.publish_thread_with_media(["hook"], [["shot1.png"]])
     assert not isinstance(exc.value, XPublishPartialError)
     # media upload still happened before the failing create_tweet
     assert pub._api_v1.upload_calls == ["shot1.png"]

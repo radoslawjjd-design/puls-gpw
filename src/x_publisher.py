@@ -95,32 +95,40 @@ class XPublisher:
         return published_ids
 
     def publish_thread_with_media(
-        self, tweets: list[str], media_paths: list[str | None]
+        self, tweets: list[str], media_paths: list[list[str]]
     ) -> MediaPublishResult:
-        """Publish `tweets` as a reply-chain, attaching one image per tweet where given.
+        """Publish `tweets` as a reply-chain, attaching up to 4 images per tweet (X's limit).
 
-        `media_paths[i] is None` means no image for that tweet. Per tweet: if a media
-        path is set, upload it via the v1.1 API first; on upload failure, log a warning
-        and fall back to a text-only `create_tweet` for that tweet (do not abort the
-        thread). A `create_tweet` failure follows the same partial/full-failure
-        semantics as `publish_thread` — that is a text-publish failure, not a media one.
+        `media_paths[i]` is the list of image paths for that tweet (empty list means
+        no images). Per tweet, each path is uploaded independently via the v1.1 API;
+        a failed upload is logged and skipped rather than aborting the tweet. If at
+        least one upload for a tweet succeeds, those `media_ids` are attached; if all
+        requested uploads for a tweet fail, that tweet falls back to text-only. A
+        `create_tweet` failure follows the same partial/full-failure semantics as
+        `publish_thread` — that is a text-publish failure, not a media one.
         """
         tweet_ids: list[str] = []
         media_attached: list[bool] = []
         reply_to: str | None = None
-        for i, (text, media_path) in enumerate(zip(tweets, media_paths)):
-            media_ids = None
-            attached = False
-            if media_path is not None:
+        for i, (text, paths) in enumerate(zip(tweets, media_paths)):
+            if len(paths) > 4:
+                logger.warning(
+                    "Tweet %d/%d requested %d images, X allows at most 4 — using the first 4",
+                    i + 1, len(tweets), len(paths),
+                )
+                paths = paths[:4]
+            uploaded_ids: list[str] = []
+            for path in paths:
                 try:
-                    media = self._api_v1.media_upload(media_path)
-                    media_ids = [str(media.media_id)]
-                    attached = True
+                    media = self._api_v1.media_upload(path)
+                    uploaded_ids.append(str(media.media_id))
                 except Exception as exc:
                     logger.warning(
-                        "Media upload failed for tweet %d/%d (%s), falling back to text-only: %s",
-                        i + 1, len(tweets), media_path, exc,
+                        "Media upload failed for tweet %d/%d (%s), skipping this image: %s",
+                        i + 1, len(tweets), path, exc,
                     )
+            media_ids = uploaded_ids or None
+            attached = bool(uploaded_ids)
             try:
                 response = self._client.create_tweet(
                     text=text,

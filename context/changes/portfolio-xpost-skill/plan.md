@@ -112,6 +112,13 @@ Add an additive media-upload publish path, independently testable before the ski
 
 **Intent**: Add a `FakeAPI`/`FakeOAuth1UserHandler` test double (parallel to the existing `FakeClient`) and verify: media upload success passes `media_ids` through; media upload failure falls back to text-only `create_tweet` and reports `media_attached[i] = False`; a `create_tweet` failure after a successful media upload still raises `XPublishPartialError`/`XPublisherError` per existing semantics.
 
+**Addendum (manual-verification feedback, 2026-06-17)**: during Phase 4's live test of the corrected 2-tweet-per-thread format (see Phase 3 Addendum 2), the user pointed out that a wallet's *every* screenshot should attach to its tweet, not just the first one — `media_paths[i]` as a single optional path was too narrow for a multi-screenshot wallet (e.g. `main` had 3 screenshots). Corrected contract, superseding the single-path signature above:
+
+- `publish_thread_with_media(self, tweets: list[str], media_paths: list[list[str]]) -> MediaPublishResult` — `media_paths[i]` is now the **list** of image paths for that tweet (empty list = no images), capped at 4 per tweet (X's limit; excess paths are dropped with a logged warning).
+- Per tweet, each path in `media_paths[i]` is uploaded independently; an individual upload failure is logged and that image is skipped (not a full fallback) — the tweet still attaches whichever uploads succeeded. Only if *all* uploads for a tweet fail does it fall back to text-only, mirroring the original single-image fallback semantics. `media_attached[i]` is `True` iff at least one image attached.
+- Caller mapping (used by the skill, see Phase 4): for a thread with N wallets and N tweets, `media_paths[i]` = all screenshots discovered for `wallets[i]` in Step 1.1 — tweet *i* and wallet *i* are paired positionally, independent of which wallets' data the tweet's text actually describes (text now spans all wallets per Phase 3 Addendum 2; media attachment stays per-wallet-per-tweet).
+- New tests: `test_publish_thread_with_media_multiple_images_per_tweet`, `test_publish_thread_with_media_caps_at_four_images`, `test_publish_thread_with_media_partial_upload_failure_attaches_successful_ones` (in addition to the existing 3, updated for the list-based signature).
+
 ### Success Criteria:
 
 #### Automated Verification:
