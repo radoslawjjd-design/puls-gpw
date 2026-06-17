@@ -1,10 +1,10 @@
 ---
 change_id: xpost-selection-and-amounts-guard
 title: Fix X-post company starvation and number-less financial-results posts
-status: impl_reviewed
+status: archived
 created: 2026-06-17
 updated: 2026-06-17
-archived_at: null
+archived_at: 2026-06-17T08:08:15Z
 tracking:
   linear: PUL-40
   github: 54
