@@ -274,25 +274,25 @@ No schema or data migration. Pure query + selection logic change; the
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_post_selection.py tests/test_bigquery.py`
-- [x] 1.2 Full suite passes: `uv run pytest`
-- [x] 1.3 Linting passes: `uv run ruff check .`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_post_selection.py tests/test_bigquery.py` — d3c3f37
+- [x] 1.2 Full suite passes: `uv run pytest` — d3c3f37
+- [x] 1.3 Linting passes: `uv run ruff check .` — d3c3f37
 
 #### Manual
 
-- [x] 1.4 2026-06-17 `ranek` replay yields ASB (not 4× TOW); TOW correctly dropped as number-less `wyniki_finansowe`
-- [x] 1.5 Number-less `wyniki_finansowe` top row dropped + slot backfilled
-- [x] 1.6 Real-BQ round-trip confirms query parses + distinct companies
+- [x] 1.4 2026-06-17 `ranek` replay yields ASB (not 4× TOW); TOW correctly dropped as number-less `wyniki_finansowe` — d3c3f37
+- [x] 1.5 Number-less `wyniki_finansowe` top row dropped + slot backfilled — d3c3f37
+- [x] 1.6 Real-BQ round-trip confirms query parses + distinct companies — d3c3f37
 
 ### Phase 2: Publish-time belt — no number-less results tweet (Defect B defense-in-depth)
 
 #### Automated
 
-- [ ] 2.1 Unit tests pass: `uv run pytest tests/test_post_main.py`
-- [ ] 2.2 Full suite passes: `uv run pytest`
-- [ ] 2.3 Linting passes: `uv run ruff check .`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_post_main.py`
+- [x] 2.2 Full suite passes: `uv run pytest`
+- [x] 2.3 Linting passes: `uv run ruff check .`
 
 #### Manual
 
-- [ ] 2.4 Digit-less `wyniki_finansowe` tweet not published; owner email still sent
-- [ ] 2.5 Normal numbered results thread publishes (no regression)
+- [x] 2.4 Digit-less `wyniki_finansowe` tweet not published; owner email still sent
+- [x] 2.5 Normal numbered results thread publishes (no regression)
