@@ -246,11 +246,11 @@ None — this is a low-frequency, user-invoked skill (not a hot path); vision/LL
 ### Phase 2: x_publisher.py media upload extension
 
 #### Automated
-- [ ] 2.1 Unit tests pass: `pytest tests/test_x_publisher.py`
-- [ ] 2.2 Full test suite passes: `pytest`
+- [x] 2.1 Unit tests pass: `pytest tests/test_x_publisher.py`
+- [x] 2.2 Full test suite passes: `pytest`
 
 #### Manual
-- [ ] 2.3 Real X API v1.1 media_upload auth verified with existing credentials
+- [x] 2.3 Real X API v1.1 media_upload auth verified with existing credentials
 
 ### Phase 3: Skill — vision extraction + thread generation
 

@@ -18,6 +18,7 @@ Usage:
 import logging
 import os
 import threading
+from dataclasses import dataclass
 
 import tweepy
 
@@ -26,6 +27,14 @@ from src.exceptions import XPublisherError, XPublishPartialError
 logger = logging.getLogger(__name__)
 
 _CRED_VARS = ("X_API_KEY", "X_API_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_SECRET")
+
+
+@dataclass
+class MediaPublishResult:
+    """Result of `publish_thread_with_media` — parallel arrays, same length as `tweets`."""
+
+    tweet_ids: list[str]
+    media_attached: list[bool]
 
 
 def _clean(value: str) -> str:
@@ -44,6 +53,11 @@ class XPublisher:
             consumer_secret=api_secret,
             access_token=access_token,
             access_token_secret=access_secret,
+        )
+        self._api_v1 = tweepy.API(
+            tweepy.OAuth1UserHandler(
+                api_key, api_secret, access_token, access_secret
+            )
         )
         logger.info("X API client initialized")
 
@@ -79,6 +93,58 @@ class XPublisher:
             reply_to = tid
             logger.info("Tweet %d/%d published: id=%s", i + 1, len(tweets), tid)
         return published_ids
+
+    def publish_thread_with_media(
+        self, tweets: list[str], media_paths: list[str | None]
+    ) -> MediaPublishResult:
+        """Publish `tweets` as a reply-chain, attaching one image per tweet where given.
+
+        `media_paths[i] is None` means no image for that tweet. Per tweet: if a media
+        path is set, upload it via the v1.1 API first; on upload failure, log a warning
+        and fall back to a text-only `create_tweet` for that tweet (do not abort the
+        thread). A `create_tweet` failure follows the same partial/full-failure
+        semantics as `publish_thread` — that is a text-publish failure, not a media one.
+        """
+        tweet_ids: list[str] = []
+        media_attached: list[bool] = []
+        reply_to: str | None = None
+        for i, (text, media_path) in enumerate(zip(tweets, media_paths)):
+            media_ids = None
+            attached = False
+            if media_path is not None:
+                try:
+                    media = self._api_v1.media_upload(media_path)
+                    media_ids = [str(media.media_id)]
+                    attached = True
+                except Exception as exc:
+                    logger.warning(
+                        "Media upload failed for tweet %d/%d (%s), falling back to text-only: %s",
+                        i + 1, len(tweets), media_path, exc,
+                    )
+            try:
+                response = self._client.create_tweet(
+                    text=text,
+                    in_reply_to_tweet_id=reply_to,
+                    media_ids=media_ids,
+                )
+                tid = str(response.data["id"])
+            except Exception as exc:
+                if tweet_ids:
+                    logger.error(
+                        "X thread (media) failed on tweet %d/%d after posting %d: %s",
+                        i + 1, len(tweets), len(tweet_ids), exc,
+                    )
+                    raise XPublishPartialError(tweet_ids, exc) from exc
+                logger.error("X publish (media) failed on first tweet: %s", exc)
+                raise XPublisherError(f"X publish failed, nothing posted: {exc}") from exc
+            tweet_ids.append(tid)
+            media_attached.append(attached)
+            reply_to = tid
+            logger.info(
+                "Tweet %d/%d published: id=%s media_attached=%s",
+                i + 1, len(tweets), tid, attached,
+            )
+        return MediaPublishResult(tweet_ids=tweet_ids, media_attached=media_attached)
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
