@@ -255,8 +255,8 @@ None — this is a low-frequency, user-invoked skill (not a hot path); vision/LL
 ### Phase 3: Skill — vision extraction + thread generation
 
 #### Automated
-- [ ] 3.1 Unit tests pass: `pytest tests/test_gemini_client.py -k portfolio`
-- [ ] 3.2 Full test suite passes: `pytest`
+- [x] 3.1 Unit tests pass: `pytest tests/test_gemini_client.py -k portfolio`
+- [x] 3.2 Full test suite passes: `pytest`
 
 #### Manual
 - [ ] 3.3 Real screenshot extraction manually verified against actual XTB screenshots
