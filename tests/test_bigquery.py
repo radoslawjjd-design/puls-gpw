@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -6,13 +6,16 @@ import pytest
 from db.bigquery import (
     _X_POSTS_SCHEMA,
     _build_filter_clauses,
+    create_portfolio_snapshots_table_if_not_exists,
     create_x_posts_table_if_not_exists,
     delete_announcement,
     fetch_top_n_for_window,
+    get_latest_snapshot_before,
     insert_announcement,
     list_announcements_admin,
     list_announcements_user,
     save_analysis_result,
+    save_portfolio_snapshot,
     save_x_post,
     update_parsed_content,
     update_x_post_publish_result,
@@ -287,6 +290,75 @@ def test_update_x_post_publish_result_writes_status_and_joined_ids():
     assert params["tweet_ids"] == "111,222,333"
     assert params["status"] == "published"
     assert params["x_post_id"] == "xp1"
+
+
+# ── portfolio_snapshots table (PUL-39) ────────────────────────────────────────
+
+def test_create_portfolio_snapshots_table_creates_on_not_found():
+    """create_portfolio_snapshots_table_if_not_exists must create the table when get_table raises NotFound."""
+    from google.cloud.exceptions import NotFound
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.side_effect = NotFound("missing")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_portfolio_snapshots_table_if_not_exists()
+
+    assert client.create_table.called
+    created_table = client.create_table.call_args[0][0]
+    assert "portfolio_snapshots" in str(created_table.reference) or "portfolio_snapshots" in str(created_table)
+
+
+def test_save_portfolio_snapshot_inserts_row_and_returns_id():
+    """save_portfolio_snapshot must INSERT one portfolio_snapshots row (created_at server-side)."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        snapshot_id = save_portfolio_snapshot(
+            wallet="main",
+            snapshot_date=date(2026, 6, 17),
+            total_value=12345.67,
+            currency="PLN",
+            day_change_abs=100.0,
+            day_change_pct=0.81,
+            positions_json='[{"ticker": "PKO", "value": 1000.0, "pct": 8.1}]',
+        )
+
+    assert isinstance(snapshot_id, str) and snapshot_id
+    query_str = client.query.call_args[0][0]
+    assert "INSERT" in query_str and "portfolio_snapshots" in query_str
+    assert "created_at" in query_str and "CURRENT_TIMESTAMP()" in query_str
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["wallet"] == "main"
+    assert params["snapshot_date"] == date(2026, 6, 17)
+    assert params["total_value"] == 12345.67
+
+
+def test_get_latest_snapshot_before_returns_prior_row():
+    """get_latest_snapshot_before must filter snapshot_date < before_date (strict, not <=)."""
+    row_data = [{
+        "snapshot_id": "snap1", "wallet": "main", "snapshot_date": date(2026, 6, 16),
+        "total_value": 12000.0, "currency": "PLN",
+        "day_change_abs": 50.0, "day_change_pct": 0.42,
+        "positions_json": None,
+    }]
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(row_data)) as mock_get:
+        client = mock_get.return_value
+        result = get_latest_snapshot_before("main", date(2026, 6, 17))
+
+    assert result is not None
+    assert result["wallet"] == "main"
+    assert result["total_value"] == 12000.0
+    query_str = client.query.call_args[0][0]
+    assert "snapshot_date < @before_date" in query_str
+
+
+def test_get_latest_snapshot_before_returns_none_when_no_prior_row():
+    """First-ever run for a wallet has no prior snapshot — must return None, not raise."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
+        result = get_latest_snapshot_before("ikze", date(2026, 6, 17))
+
+    assert result is None
 
 
 def test_update_x_post_publish_result_none_ids_stores_null():

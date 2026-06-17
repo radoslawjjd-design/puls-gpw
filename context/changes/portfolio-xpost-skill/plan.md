@@ -235,13 +235,13 @@ None — this is a low-frequency, user-invoked skill (not a hot path); vision/LL
 ### Phase 1: BigQuery portfolio_snapshots table
 
 #### Automated
-- [ ] 1.1 Unit tests pass: `pytest tests/test_bigquery.py -k portfolio_snapshots`
-- [ ] 1.2 Full test suite passes: `pytest`
-- [ ] 1.3 Linting passes
+- [x] 1.1 Unit tests pass: `pytest tests/test_bigquery.py -k portfolio_snapshots`
+- [x] 1.2 Full test suite passes: `pytest`
+- [x] 1.3 Linting passes
 
 #### Manual
-- [ ] 1.4 Real-BigQuery round-trip: table creation + schema verified
-- [ ] 1.5 Manual insert + get_latest_snapshot_before round-trip verified
+- [x] 1.4 Real-BigQuery round-trip: table creation + schema verified
+- [x] 1.5 Manual insert + get_latest_snapshot_before round-trip verified
 
 ### Phase 2: x_publisher.py media upload extension
 

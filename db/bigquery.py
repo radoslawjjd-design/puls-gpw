@@ -186,6 +186,130 @@ def ensure_x_posts_schema_current() -> None:
     ensure_schema_current(_X_POSTS_TABLE_NAME, _X_POSTS_SCHEMA)
 
 
+_PORTFOLIO_SNAPSHOTS_TABLE_NAME = "portfolio_snapshots"
+
+_PORTFOLIO_SNAPSHOTS_SCHEMA = [
+    bigquery.SchemaField("snapshot_id", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("wallet", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("snapshot_date", "DATE", mode="REQUIRED"),
+    bigquery.SchemaField("total_value", "FLOAT64", mode="REQUIRED"),
+    bigquery.SchemaField("currency", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("day_change_abs", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("day_change_pct", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("positions_json", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("created_at", "TIMESTAMP", mode="REQUIRED"),
+]
+
+
+def create_portfolio_snapshots_table_if_not_exists() -> None:
+    """Create the portfolio_snapshots table in BigQuery if it does not already exist."""
+    client = _get_client()
+    table_id = _table_ref(client, _PORTFOLIO_SNAPSHOTS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_PORTFOLIO_SNAPSHOTS_SCHEMA)
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_portfolio_snapshots_schema_current() -> None:
+    """Migrate the portfolio_snapshots table — add any missing schema columns.
+
+    Thin binding over `ensure_schema_current()`; idempotent and safe to call on
+    every skill invocation, matching the existing x_posts migration convention.
+    """
+    ensure_schema_current(_PORTFOLIO_SNAPSHOTS_TABLE_NAME, _PORTFOLIO_SNAPSHOTS_SCHEMA)
+
+
+def save_portfolio_snapshot(
+    wallet: str,
+    snapshot_date: date,
+    total_value: float,
+    currency: str | None,
+    day_change_abs: float | None,
+    day_change_pct: float | None,
+    positions_json: str | None,
+) -> str:
+    """Insert one portfolio_snapshots row (one wallet, one day) and return its snapshot_id.
+
+    Raises BigQueryError if the query job fails.
+    """
+    client = _get_client()
+    snapshot_id = uuid.uuid4().hex
+
+    query = f"""
+        INSERT INTO `{_table_ref(client, _PORTFOLIO_SNAPSHOTS_TABLE_NAME)}`
+            (snapshot_id, wallet, snapshot_date, total_value, currency,
+             day_change_abs, day_change_pct, positions_json, created_at)
+        VALUES
+            (@snapshot_id, @wallet, @snapshot_date, @total_value, @currency,
+             @day_change_abs, @day_change_pct, @positions_json, CURRENT_TIMESTAMP())
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("snapshot_id", "STRING", snapshot_id),
+            bigquery.ScalarQueryParameter("wallet", "STRING", wallet),
+            bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date),
+            bigquery.ScalarQueryParameter("total_value", "FLOAT64", total_value),
+            bigquery.ScalarQueryParameter("currency", "STRING", currency),
+            bigquery.ScalarQueryParameter("day_change_abs", "FLOAT64", day_change_abs),
+            bigquery.ScalarQueryParameter("day_change_pct", "FLOAT64", day_change_pct),
+            bigquery.ScalarQueryParameter("positions_json", "STRING", positions_json),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"save_portfolio_snapshot failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"save_portfolio_snapshot failed: {job.errors}")
+    logger.debug("save_portfolio_snapshot: wallet=%s snapshot_date=%s id=%s", wallet, snapshot_date, snapshot_id)
+    return snapshot_id
+
+
+def get_latest_snapshot_before(wallet: str, before_date: date) -> dict | None:
+    """Return the most recent portfolio_snapshots row for `wallet` strictly before `before_date`.
+
+    Returns None if no prior row exists (first-ever run for that wallet).
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT snapshot_id, wallet, snapshot_date, total_value, currency,
+               day_change_abs, day_change_pct, positions_json
+        FROM `{_table_ref(client, _PORTFOLIO_SNAPSHOTS_TABLE_NAME)}`
+        WHERE wallet = @wallet AND snapshot_date < @before_date
+        ORDER BY snapshot_date DESC
+        LIMIT 1
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("wallet", "STRING", wallet),
+            bigquery.ScalarQueryParameter("before_date", "DATE", before_date),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_latest_snapshot_before failed: {exc}") from exc
+    if not rows:
+        return None
+    row = rows[0]
+    return {
+        "snapshot_id": row.snapshot_id,
+        "wallet": row.wallet,
+        "snapshot_date": row.snapshot_date,
+        "total_value": row.total_value,
+        "currency": row.currency,
+        "day_change_abs": row.day_change_abs,
+        "day_change_pct": row.day_change_pct,
+        "positions_json": row.positions_json,
+    }
+
+
 def is_processed(url: str) -> bool:
     """Return True if the announcement URL has already been inserted."""
     client = _get_client()
