@@ -41,6 +41,8 @@ Build bottom-up: persistence (BigQuery) first since both later phases depend on 
 
 **Day-delta query ordering**: when computing day-over-day deltas, query `portfolio_snapshots` for the most recent row per wallet with `snapshot_date < today` (not `<=`) — re-running the skill twice in one day must not compare today's data against itself.
 
+**Per-thread retry semantics**: the two threads (main+IKZE / short+long) are independent units of success — a failure in one must not block or corrupt the other, including on retry. Before halting because a wallet's `broker_data/<wallet>/` subfolder is empty, check `portfolio_snapshots` for a row with `snapshot_date = today` for that wallet: if one exists, treat the wallet as already-published-today and skip it rather than halting; only halt if the subfolder is empty AND no row exists for today. This lets a retry after a partial failure (e.g. thread A succeeded and was archived, thread B failed) process only the thread that still needs it, instead of incorrectly halting on thread A's now-empty, already-archived subfolders.
+
 ## Phase 1: BigQuery `portfolio_snapshots` table
 
 ### Overview
@@ -133,9 +135,9 @@ Build the first half of the skill orchestrator: reading screenshots, extracting 
 
 **File**: `src/gemini_client.py`
 
-**Intent**: Add a multimodal extraction function that reads one or more screenshot images for a wallet and returns structured portfolio data (total value, currency, positions), flagging any field the model could not read with high confidence.
+**Intent**: Add a multimodal extraction function that reads one or more screenshot images for a wallet and returns structured portfolio data (total value, currency, positions), flagging any field the model could not read with high confidence. Uses a dedicated, more capable model tier than the project's bulk-classification default, since misreading a financial figure is higher-stakes than a missed news classification.
 
-**Contract**: `extract_portfolio_snapshot(image_paths: list[str]) -> PortfolioExtraction` where `PortfolioExtraction` carries the extracted fields plus an `uncertain_fields: list[str]` (empty when extraction was fully confident). Built on the existing `get_client()` singleton (`src/gemini_client.py:16-27`), using a multimodal `generate_content` call with image parts read from disk and `response_mime_type="application/json"` (same JSON-response convention as `post_generator.py:394-401`); parse with `json5.loads()` per the existing Gemini trailing-comma workaround.
+**Contract**: `extract_portfolio_snapshot(image_paths: list[str]) -> PortfolioExtraction` where `PortfolioExtraction` carries the extracted fields plus an `uncertain_fields: list[str]` (empty when extraction was fully confident). Built on the existing `get_client()` singleton (`src/gemini_client.py:16-27`) but with its own model constant — `GEMINI_VISION_MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-2.5-flash")` (non-lite; `GEMINI_MODEL`/flash-lite stays untouched for the unrelated ESPI/EBI text pipeline, mirroring the tier-escalation precedent in `tools/ai-code-reviewer/src/agent.ts:8-11`) — using a multimodal `generate_content` call with image parts read from disk and `response_mime_type="application/json"` (same JSON-response convention as `post_generator.py:394-401`); parse with `json5.loads()` per the existing Gemini trailing-comma workaround.
 
 #### 2. Skill orchestrator — Steps 1-2
 
@@ -143,7 +145,7 @@ Build the first half of the skill orchestrator: reading screenshots, extracting 
 
 **Intent**: Define the skill's frontmatter and the first half of its Process: discover screenshots per wallet subfolder, run vision extraction per wallet, surface any `uncertain_fields` to the user via `AskUserQuestion` before continuing (per the agreed extraction-uncertainty handling), compute day-over-day deltas via `get_latest_snapshot_before()`, then generate the two thread drafts (main+IKZE / short+long) via a text Gemini call that also enforces the project's existing char-limit/cashtag-style discipline (mirroring `src/post_supervisor.py:32-80`'s validation rules for tweet length, applied to the new thread text).
 
-**Contract**: Follows house `SKILL.md` structure (frontmatter → Initial Response → numbered Process steps → guardrails section), per `.claude/skills/10x-implement/SKILL.md` and `.claude/skills/10x-archive/SKILL.md` conventions identified in research. If a required wallet subfolder (`broker_data/main/`, `ikze/`, `short/`, `long/`) is missing or empty, the skill halts with a clear error rather than generating a partial thread.
+**Contract**: Follows house `SKILL.md` structure (frontmatter → Initial Response → numbered Process steps → guardrails section), per `.claude/skills/10x-implement/SKILL.md` and `.claude/skills/10x-archive/SKILL.md` conventions identified in research. For each wallet subfolder (`broker_data/main/`, `ikze/`, `short/`, `long/`): if it's empty, check `get_latest_snapshot_before()`-adjacent lookup for a `portfolio_snapshots` row with `snapshot_date = today` for that wallet — if found, skip the wallet as already-published-today; if not found, halt with a clear error (genuinely missing data) rather than generating a partial thread. This makes retries after a partial publish failure (see Phase 4, Critical Implementation Details) resolvable without manual cleanup.
 
 ### Success Criteria:
 
@@ -172,10 +174,11 @@ Complete the skill orchestrator: present the two drafts for approval, publish wi
 **Intent**: Add the approval gate, publish step, and archive step to complete the Process section.
 
 **Contract**:
-- Approval gate: `AskUserQuestion` with three options — "Zatwierdź" (proceed to publish), "Edytuj" (collect free-text refinement, re-run thread generation from Phase 3), "Anuluj" (stop, screenshots remain in `broker_data/`, nothing published or archived) — per the agreed approval-gate decision.
-- Publish step: call `get_x_publisher().publish_thread_with_media(tweets, media_paths)` once per thread (the relevant wallet screenshot(s) attach to the thread's first tweet); on `media_attached[i] = False` for any tweet, continue (already-agreed fallback) but record that status.
-- Persistence step: for each of the 4 wallets, call `save_portfolio_snapshot()` with the extracted/delta-computed values; additionally record the media-attachment outcome (e.g. as part of `positions_json` metadata or a dedicated note — implementer's choice, must be queryable after the fact) so a degraded (text-only) publish is visible in BigQuery per the agreed "oznacz w logu/BQ" decision.
-- Archive step: move every screenshot file processed this run from `broker_data/<wallet>/` to `broker_data/archive/<YYYY-MM-DD>/<wallet>/` (per the agreed archive decision), only after a successful (or fallback-degraded) publish — on "Anuluj" or a full publish failure, screenshots stay in place for retry.
+- Approval gate: `AskUserQuestion` with three options — "Zatwierdź" (proceed to publish), "Edytuj" (collect free-text refinement, re-run thread generation from Phase 3), "Anuluj" (stop, screenshots remain in `broker_data/`, nothing published or archived) — per the agreed approval-gate decision. The approval gate runs once per thread, not once for both — approving thread A and editing thread B (or vice versa) must be possible independently.
+- The two threads are processed as fully independent units end to end (publish → persist → archive), per the Critical Implementation Details "Per-thread retry semantics" note: a failure publishing thread B must not affect thread A's already-completed persist/archive, and must leave thread B's wallets retryable on the next run.
+- Publish step: call `get_x_publisher().publish_thread_with_media(tweets, media_paths)` once per thread (the relevant wallet screenshot(s) attach to the thread's first tweet); on `media_attached[i] = False` for any tweet, continue (already-agreed fallback) but record that status. If the thread's publish raises `XPublisherError`/`XPublishPartialError` (full or partial text-publish failure), skip that thread's persist/archive steps entirely — its wallet screenshots remain in `broker_data/<wallet>/` for the next run to pick up.
+- Persistence step: for each wallet in a thread that published successfully, call `save_portfolio_snapshot()` with the extracted/delta-computed values; additionally record the media-attachment outcome (e.g. as part of `positions_json` metadata or a dedicated note — implementer's choice, must be queryable after the fact) so a degraded (text-only) publish is visible in BigQuery per the agreed "oznacz w logu/BQ" decision.
+- Archive step: for each wallet in a thread that published successfully, move its screenshot file(s) from `broker_data/<wallet>/` to `broker_data/archive/<YYYY-MM-DD>/<wallet>/` (per the agreed archive decision). A thread that failed to publish keeps its wallets' screenshots in place, untouched, for retry — see Phase 3's per-wallet "already published today" check for how the retry run resolves which wallets still need processing.
 
 ### Success Criteria:
 
@@ -187,6 +190,7 @@ Complete the skill orchestrator: present the two drafts for approval, publish wi
 - End-to-end manual run: place real screenshots in all 4 `broker_data/<wallet>/` subfolders, invoke the skill, approve both drafts, confirm both threads are live on X with images attached, confirm 4 new rows in `portfolio_snapshots`, confirm screenshots moved to `broker_data/archive/<today>/`.
 - Manually test the "Anuluj" path: confirm nothing is published, no BigQuery rows written, and screenshots remain in their original subfolders.
 - Manually test the media-upload-failure fallback path (e.g. by temporarily pointing at an invalid image) and confirm the tweet still publishes text-only and the degraded status is visible in BigQuery.
+- Manually test the partial-failure retry path: force thread B's publish to fail (e.g. temporarily break its credentials) after thread A succeeds; confirm thread A's wallets are archived/persisted, thread B's wallets are untouched, and re-running the skill processes only thread B (does not halt on thread A's now-empty subfolders).
 
 ---
 
@@ -268,3 +272,4 @@ None — this is a low-frequency, user-invoked skill (not a hot path); vision/LL
 - [ ] 4.3 End-to-end happy path: both threads published with images, 4 BQ rows written, screenshots archived
 - [ ] 4.4 "Anuluj" path verified: no side effects
 - [ ] 4.5 Media-upload-failure fallback path verified: degraded publish succeeds, status visible in BQ
+- [ ] 4.6 Partial-failure retry path verified: thread A's success unaffected by thread B's failure, retry resolves only thread B
