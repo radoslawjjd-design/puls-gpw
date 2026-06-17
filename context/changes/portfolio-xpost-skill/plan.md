@@ -149,6 +149,19 @@ Build the first half of the skill orchestrator: reading screenshots, extracting 
 
 **Addendum (impl-review, 2026-06-17)**: thread drafting does *not* use a Gemini text call. Tweets are composed directly from a fixed template filled with Step 1's already-extracted/delta-computed values, then validated with the reused `post_supervisor.py` rules (length, no-truncation, `_ADVICE_RE`, disclaimer-present). This is intentional — it keeps an LLM from re-touching financial figures that are already extracted and validated, avoiding paraphrase/rounding risk on the exact numbers. The validation-discipline goal of the original contract is met; only the "via a text Gemini call" mechanism differs.
 
+**Addendum 2 (manual-verification gap, 2026-06-17)**: the addendum above shipped a "1 self-contained tweet per wallet" template (a 2-tweet thread = main's tweet + IKZE's tweet, no shared framing). During Phase 4's manual end-to-end test the user rejected this format outright — it did not match the real legacy posting format the user had previously used and referenced when the ticket (PUL-39) was written. The Linear ticket's original description, not fully carried into `research.md`/`plan.md` during planning, specifies a combined-thread format; the user additionally supplied a real example thread (29.05.2026) as ground truth. Corrected contract, superseding the per-wallet-tweet template above:
+
+- **Thread shape stays 2 tweets, but the split is by role, not by wallet**: tweet 1 is a *combined header* covering every wallet in the thread (`main`+`ikze` for Thread A, `short`+`long` for Thread B); tweet 2 is a *combined "Liderzy portfela" (leaders) tweet*, also covering every wallet in the thread. Neither tweet is wallet-exclusive.
+- **New extraction fields** (implemented in `src/gemini_client.py`): `total_profit_abs` (wallet-level cumulative PLN profit) and per-position `profit_abs` (PLN profit for that position). `pct` is re-confirmed as the position's own cumulative % return (not a portfolio-allocation share — an earlier misreading during the manual test, corrected after the real example showed `pct` is exactly what the leaders tweet needs).
+- **Hard exclusion**: the `Syn2bio`/`SYN2BIO` position is always dropped (zero purchase price makes its % return meaningless) — enforced both in the extraction prompt and defensively in code (`_EXCLUDED_TICKERS` filter in `extract_portfolio_snapshot()`).
+- **Leaders selection rule** (user decision): top 3 positions by absolute PLN profit (`profit_abs`), filtered to `profit_abs > 500 zł` — fewer than 3 may qualify; ties broken by extraction order.
+- **Cashtag handling** (user decision): the leaders tweet lists multiple tickers in one tweet, which conflicts with the project's standing "max 1 cashtag per tweet → 403" rule (`[[reference-cashtag-per-tweet]]`, `src/post_generator.py:190`). The user confirmed that rule still holds and that the real example's multi-`$cashtag` tweet was published via a different method outside this project. Resolution: the leaders tweet uses **plain tickers** (`XTB`, not `$XTB`) — no cashtag formatting at all in that tweet.
+- **Polish number formatting**: comma decimal separator, space thousand separator (e.g. `54 442,99 zł`) — implemented as `format_pln()`.
+- **🚀 emoji rule**: cumulative % return > 100% on a leader line, or day-over-day % change > 5% on the header's per-wallet delta line (only the cumulative threshold has real data to trigger on today, since day-over-day deltas require a prior snapshot).
+- **Disclaimer/hashtags placement**: only the leaders (closing) tweet carries the disclaimer sentence and hashtags (`#GPW`, plus `#IKZE` when the IKZE wallet is in the thread) — the header tweet carries neither, matching the real example.
+- New module `src/portfolio_thread_composer.py` (`WalletThreadData`, `format_pln()`, `compose_portfolio_thread() -> [header_tweet, leaders_tweet]`) implements all of the above as pure, unit-tested formatting/selection logic — kept out of any Gemini call for the same paraphrase/rounding-risk reason as Addendum 1. Covered by `tests/test_portfolio_thread_composer.py` (8 tests) and 2 new tests in `tests/test_gemini_client.py` for the new extraction fields and the Syn2bio exclusion.
+- **Explicitly deferred, not implemented in this correction** (real gaps, not blocking the corrected format from shipping): the "Doładowanie" deposit-narrative line (detecting new buys by diffing today's positions against the prior snapshot), the `sum(positions) + free_cash == total_value` cross-check from the original ticket, and confirmed `short`/`long` wallet emoji/labels (no real example exists for that thread yet — current labels in `WALLET_LABELS` are best-effort guesses). Also unresolved: the ticket's archive path was `broker_data_archived/`, while this plan's Phase 4 contract (and the shipped code) use `broker_data/archive/<date>/<wallet>/` — not reconciled, flagging for visibility only since the implemented path is already in production use.
+
 ### Success Criteria:
 
 #### Automated Verification:
@@ -267,8 +280,8 @@ None — this is a low-frequency, user-invoked skill (not a hot path); vision/LL
 ### Phase 4: Skill — approval gate, publish, archive
 
 #### Automated
-- [ ] 4.1 Full test suite passes: `pytest`
-- [ ] 4.2 Linting passes
+- [x] 4.1 Full test suite passes: `pytest`
+- [x] 4.2 Linting passes
 
 #### Manual
 - [ ] 4.3 End-to-end happy path: both threads published with images, 4 BQ rows written, screenshots archived

@@ -56,17 +56,31 @@ instrumentów), total_value odczytaj z nagłówka ekranu listy pozycji tego pod-
 dużej liczby na ekranie dashboardu, bo to suma wszystkich pod-kont razem, nie tego jednego
 portfela.
 
+Pole "total_profit_abs" to skumulowany wynik (Zysk) CAŁEGO portfela w zł, widoczny
+zwykle wprost pod nagłówkiem salda (np. "Zysk +4926.11" albo "Zysk: +2511.75 (+16.79%)" —
+w obu przypadkach total_profit_abs to ta kwota w zł, NIE procent).
+
+Pole "pct" przy pozycji to skumulowany zwrot % tej pozycji (to, co widać w nawiasie przy
+kolorowej kwocie zysku/straty pod pozycją, np. "2728.50 (269.48%)" → pct=269.48) —
+**NIE jest to udział pozycji w wartości portfela**, tylko jej własny zwrot %.
+Pole "profit_abs" to ta sama kolorowa kwota w zł (bez %) — w przykładzie wyżej
+profit_abs=2728.50. Oba pola są OPCJONALNE — jeśli zrzut nie pokazuje tej linii dla
+danej pozycji, zwróć null i dodaj "<ticker>.pct" / "<ticker>.profit_abs" do
+uncertain_fields — nie zgaduj.
+
+WAŻNE — pozycję "Syn2bio" / "SYN2BIO" ZAWSZE pomiń całkowicie (nie dodawaj jej do
+positions wcale) — jej cena zakupu wynosi 0, więc procentowy zwrot nie ma sensu.
+
 Jeśli jakiegoś pola nie da się odczytać z wysoką pewnością (np. obraz jest rozmyty,
 przycięty lub liczba jest nieczytelna), dodaj nazwę tego pola do uncertain_fields.
 Gdy wszystko jest czytelne, uncertain_fields ma być pustą listą.
 
-Pole "pct" (udział procentowy pozycji) jest OPCJONALNE — wiele zrzutów XTB go nie
-pokazuje. Jeśli go nie widzisz dla danej pozycji, zwróć pct jako null (nie zgaduj) i
-dodaj "<ticker>.pct" do uncertain_fields.
-
 Zwróć TYLKO JEDEN obiekt JSON — NIGDY listę/tablicę, nawet jeśli podano kilka obrazów:
-{"total_value": <float>, "currency": "<str>", "positions": [{"ticker": "<str>", "value": <float>, "pct": <float|null>}, ...], "uncertain_fields": ["<str>", ...]}
+{"total_value": <float>, "currency": "<str>", "total_profit_abs": <float>, "positions": [{"ticker": "<str>", "value": <float>, "pct": <float|null>, "profit_abs": <float|null>}, ...], "uncertain_fields": ["<str>", ...]}
 """
+
+
+_EXCLUDED_TICKERS = {"syn2bio"}
 
 
 class _PortfolioPositionResponse(BaseModel):
@@ -74,12 +88,14 @@ class _PortfolioPositionResponse(BaseModel):
     ticker: str
     value: float
     pct: float | None = None
+    profit_abs: float | None = None
 
 
 class _PortfolioExtractionResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     total_value: float
     currency: str
+    total_profit_abs: float = 0.0
     positions: list[_PortfolioPositionResponse] = []
     uncertain_fields: list[str] = []
 
@@ -89,6 +105,7 @@ class PortfolioPosition:
     ticker: str
     value: float
     pct: float | None
+    profit_abs: float | None
 
 
 @dataclass
@@ -97,6 +114,7 @@ class PortfolioExtraction:
     extraction was fully confident."""
     total_value: float
     currency: str
+    total_profit_abs: float
     positions: list[PortfolioPosition]
     uncertain_fields: list[str]
 
@@ -150,9 +168,11 @@ def extract_portfolio_snapshot(image_paths: list[str]) -> PortfolioExtraction:
     return PortfolioExtraction(
         total_value=parsed.total_value,
         currency=parsed.currency,
+        total_profit_abs=parsed.total_profit_abs,
         positions=[
-            PortfolioPosition(ticker=p.ticker, value=p.value, pct=p.pct)
+            PortfolioPosition(ticker=p.ticker, value=p.value, pct=p.pct, profit_abs=p.profit_abs)
             for p in parsed.positions
+            if p.ticker.strip().lower() not in _EXCLUDED_TICKERS
         ],
         uncertain_fields=parsed.uncertain_fields,
     )
