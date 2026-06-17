@@ -52,10 +52,14 @@ def select_top_companies(rows: list[dict], n: int) -> list[dict]:
     (``analysis_score DESC, published_at DESC``). This function is
     order-preserving and performs first-occurrence dedup — it must NOT re-sort.
 
-    Sequence: dedup by ticker → drop empty-``key_numbers`` ``wyniki_*`` rows →
-    take first ``n``. Dropping happens *before* the cut so a removed results row
-    frees its slot for the next company. Rows without a ``ticker`` are skipped
-    (mirrors ``generate_post``).
+    Single-pass first-occurrence filter: each ticker is accepted at most once
+    (first row in priority order wins). Within that pass, a ``wyniki_*`` row
+    whose ``key_numbers`` is empty is dropped *before* the top-``n`` cut, so
+    its slot backfills with the next distinct company. Once a ticker is seen,
+    all later rows for that ticker are skipped regardless of their
+    ``key_numbers`` — there is no per-company "rescue" of a lower-ranked
+    numbered row. Rows without a ``ticker`` are skipped (mirrors
+    ``generate_post``).
 
     Pure: no I/O. Returns a sublist of the input dicts (same objects).
     """

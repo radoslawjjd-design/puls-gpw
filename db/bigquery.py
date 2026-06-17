@@ -28,6 +28,11 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+# Generous safety cap for the over-fetch in fetch_top_n_for_window — bounds
+# SQL volume while giving select_top_companies enough rows to backfill slots.
+_FETCH_SAFETY_CAP = 200
+
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
 
@@ -353,7 +358,7 @@ def fetch_top_n_for_window(
           AND published_at BETWEEN @window_start AND @window_end
           AND analysis_score >= @min_score
         ORDER BY analysis_score DESC, published_at DESC
-        LIMIT 200
+        LIMIT {_FETCH_SAFETY_CAP}
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[

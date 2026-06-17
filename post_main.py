@@ -97,6 +97,8 @@ def _results_tweets_have_numbers(
     ``tweets[1:-1]``; a results announcement with no matching body tweet is left
     alone (the supervisor already enforces ticker presence on approval).
     """
+    # is_publishable runs before this function and blocks threads < 3 tweets,
+    # so an empty body here is unreachable in the normal publish path.
     body = tweets[1:-1]
     for ann in announcements or []:
         if ann.get("event_type") not in NUMBER_DEPENDENT_EVENT_TYPES:

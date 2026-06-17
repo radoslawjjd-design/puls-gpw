@@ -153,7 +153,8 @@ def test_fetch_top_n_for_window_orders_by_published_at_tiebreak():
 
     query_str = mock.query.call_args[0][0]
     assert "ORDER BY analysis_score DESC, published_at DESC" in query_str
-    assert "LIMIT 200" in query_str
+    from db.bigquery import _FETCH_SAFETY_CAP
+    assert f"LIMIT {_FETCH_SAFETY_CAP}" in query_str
 
 
 def test_fetch_top_n_for_window_dedups_to_distinct_companies():
