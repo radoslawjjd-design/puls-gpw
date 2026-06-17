@@ -288,11 +288,11 @@ No schema or data migration. Pure query + selection logic change; the
 
 #### Automated
 
-- [x] 2.1 Unit tests pass: `uv run pytest tests/test_post_main.py`
-- [x] 2.2 Full suite passes: `uv run pytest`
-- [x] 2.3 Linting passes: `uv run ruff check .`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_post_main.py` — b21fbd8
+- [x] 2.2 Full suite passes: `uv run pytest` — b21fbd8
+- [x] 2.3 Linting passes: `uv run ruff check .` — b21fbd8
 
 #### Manual
 
-- [x] 2.4 Digit-less `wyniki_finansowe` tweet not published; owner email still sent
-- [x] 2.5 Normal numbered results thread publishes (no regression)
+- [x] 2.4 Digit-less `wyniki_finansowe` tweet not published; owner email still sent — b21fbd8
+- [x] 2.5 Normal numbered results thread publishes (no regression) — b21fbd8
