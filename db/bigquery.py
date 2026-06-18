@@ -820,6 +820,39 @@ def x_post_already_published(window: str, day: date | None = None) -> bool:
     return rows[0].cnt > 0
 
 
+def list_distinct_tickers() -> list[str]:
+    """Return sorted list of all distinct non-null tickers in the announcements table."""
+    client = _get_client()
+    query = f"""
+        SELECT DISTINCT ticker
+        FROM `{_table_ref(client)}`
+        WHERE ticker IS NOT NULL
+        ORDER BY ticker
+    """
+    try:
+        rows = list(client.query(query).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_distinct_tickers failed: {exc}") from exc
+    return [row.ticker for row in rows]
+
+
+def list_distinct_companies() -> list[str]:
+    """Return sorted list of up to 500 distinct non-null company names."""
+    client = _get_client()
+    query = f"""
+        SELECT DISTINCT company
+        FROM `{_table_ref(client)}`
+        WHERE company IS NOT NULL
+        ORDER BY company
+        LIMIT 500
+    """
+    try:
+        rows = list(client.query(query).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_distinct_companies failed: {exc}") from exc
+    return [row.company for row in rows]
+
+
 def delete_announcement(announcement_id: str) -> None:
     """Delete a single announcement row by its ID.
 

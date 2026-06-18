@@ -1,6 +1,7 @@
 import logging
 import os
 import pathlib
+import time
 from datetime import datetime
 from typing import Literal
 
@@ -13,7 +14,28 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ConfigDict
 
 from db.bigquery import BigQueryError  # type: ignore[attr-defined]
-from db.bigquery import delete_announcement, list_announcements_admin, list_announcements_user
+from db.bigquery import (
+    delete_announcement,
+    list_announcements_admin,
+    list_announcements_user,
+    list_distinct_companies,
+    list_distinct_tickers,
+)
+
+_AC_CACHE: dict[str, tuple[list[str], float]] = {}
+_AC_TTL = 300  # 5 minutes
+
+
+def _ac_get(key: str) -> list[str] | None:
+    if key in _AC_CACHE:
+        data, ts = _AC_CACHE[key]
+        if time.time() - ts < _AC_TTL:
+            return data
+    return None
+
+
+def _ac_set(key: str, data: list[str]) -> None:
+    _AC_CACHE[key] = (data, time.time())
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 Role = Literal["admin", "user"]
@@ -131,6 +153,32 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in /announcements: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/autocomplete/tickers")
+    async def autocomplete_tickers(role: Role = Depends(_get_role)) -> list[str]:
+        cached = _ac_get("tickers")
+        if cached is not None:
+            return cached
+        try:
+            data = list_distinct_tickers()
+        except BigQueryError as exc:
+            logger.error("BQ error in /autocomplete/tickers: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        _ac_set("tickers", data)
+        return data
+
+    @app.get("/autocomplete/companies")
+    async def autocomplete_companies(role: Role = Depends(_get_role)) -> list[str]:
+        cached = _ac_get("companies")
+        if cached is not None:
+            return cached
+        try:
+            data = list_distinct_companies()
+        except BigQueryError as exc:
+            logger.error("BQ error in /autocomplete/companies: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        _ac_set("companies", data)
+        return data
 
     @app.delete("/announcements/{announcement_id}", status_code=204)
     async def delete(announcement_id: str, role: Role = Depends(_require_admin)):

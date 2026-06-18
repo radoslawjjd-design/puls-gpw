@@ -160,3 +160,50 @@ def test_announcements_page_size_out_of_range_returns_422(api_client):
 def test_announcements_limit_param_removed_returns_422(api_client):
     r = api_client.get("/announcements?limit=10", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 422
+
+
+# ── autocomplete endpoints (PUL-25 panel-ui-redesign) ────────────────────────
+
+def test_autocomplete_tickers_valid_key_returns_200(api_client):
+    with patch("src.api.list_distinct_tickers", return_value=["CDR", "PKO", "XTB"]):
+        r = api_client.get("/autocomplete/tickers", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 200
+    assert r.json() == ["CDR", "PKO", "XTB"]
+
+
+def test_autocomplete_tickers_no_key_returns_401(api_client):
+    r = api_client.get("/autocomplete/tickers")
+    assert r.status_code == 401
+
+
+def test_autocomplete_companies_valid_key_returns_200(api_client):
+    with patch("src.api.list_distinct_companies", return_value=["Alior Bank SA", "PKO Bank Polski SA"]):
+        r = api_client.get("/autocomplete/companies", headers={"X-API-Key": _USER_KEY})
+    assert r.status_code == 200
+    assert r.json() == ["Alior Bank SA", "PKO Bank Polski SA"]
+
+
+def test_autocomplete_companies_no_key_returns_401(api_client):
+    r = api_client.get("/autocomplete/companies")
+    assert r.status_code == 401
+
+
+def test_autocomplete_tickers_bq_error_returns_500(api_client):
+    import src.api as api_module
+    from src.exceptions import BigQueryError
+    api_module._AC_CACHE.clear()
+    with patch("src.api.list_distinct_tickers", side_effect=BigQueryError("bq down")):
+        r = api_client.get("/autocomplete/tickers", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 500
+    api_module._AC_CACHE.clear()
+
+
+def test_autocomplete_tickers_cache_hit_skips_bq(api_client):
+    """Second call within TTL must return cached result without calling BQ again."""
+    import src.api as api_module
+    api_module._AC_CACHE.clear()
+    with patch("src.api.list_distinct_tickers", return_value=["PKO"]) as mock_bq:
+        api_client.get("/autocomplete/tickers", headers={"X-API-Key": _ADMIN_KEY})
+        api_client.get("/autocomplete/tickers", headers={"X-API-Key": _ADMIN_KEY})
+    mock_bq.assert_called_once()
+    api_module._AC_CACHE.clear()
