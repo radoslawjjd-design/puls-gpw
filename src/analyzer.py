@@ -39,6 +39,7 @@ _EVENT_TYPE_SCORES = {
 class _AnalysisResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     event_type: str
+    sentiment: str = "neutralny"
     key_numbers: list[str]
     summary_pl: str
 
@@ -51,6 +52,7 @@ Ticker i nazwa spółki są już znane — NIE wyciągaj ich z tekstu.
 
 Zwróć JSON z polami:
 - event_type: typ zdarzenia (string, jedna z wartości z listy poniżej)
+- sentiment: ogólny wydźwięk komunikatu dla inwestora (string, jedna z wartości: pozytywny, negatywny, neutralny)
 - key_numbers: lista kluczowych liczb/kwot (array of strings) — patrz zasady poniżej
 - summary_pl: krótkie podsumowanie komunikatu po polsku, max 2 zdania (string).
   WAŻNE: opieraj się WYŁĄCZNIE na treści komunikatu — nie dodawaj kontekstu

@@ -502,8 +502,8 @@ None. All changes are frontend (single HTML file) and new endpoints/functions â€
 
 #### Manual
 
-- [ ] 1.3 Server started locally; curl to `/autocomplete/tickers` returns list of strings
-- [ ] 1.4 Second call within 5 min returns identical result (cache hit confirmed)
+- [x] 1.3 Server started locally; curl to `/autocomplete/tickers` returns list of strings
+- [x] 1.4 Second call within 5 min returns identical result (cache hit confirmed)
 
 ### Phase 2: Login Screen Redesign + GDPR Banner
 
@@ -534,15 +534,15 @@ None. All changes are frontend (single HTML file) and new endpoints/functions â€
 
 #### Automated
 
-- [ ] 4.1 `uv run pytest tests/e2e/ --tb=short` passes â€” no regressions
+- [x] 4.1 `uv run pytest tests/e2e/ --tb=short` passes â€” no regressions
 
 #### Manual
 
-- [ ] 4.2 Filter form visually polished (consistent spacing, search icon)
-- [ ] 4.3 Table rows comfortable padding, hover state clear
-- [ ] 4.4 Pagination buttons rounded/styled, disabled state obvious
-- [ ] 4.5 Modal displays analysis as sections (not raw JSON)
-- [ ] 4.6 Mobile (375px) layout still correct
+- [x] 4.2 Filter form visually polished (consistent spacing, search icon)
+- [x] 4.3 Table rows comfortable padding, hover state clear
+- [x] 4.4 Pagination buttons rounded/styled, disabled state obvious
+- [x] 4.5 Modal displays analysis as sections (not raw JSON)
+- [x] 4.6 Mobile (375px) layout still correct
 
 ### Phase 5: E2E Tests
 

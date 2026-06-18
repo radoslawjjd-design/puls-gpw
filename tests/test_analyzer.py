@@ -188,12 +188,13 @@ def test_analysis_response_validation():
 
     valid = _AnalysisResponse(event_type="inne", key_numbers=[], summary_pl="x")
     assert valid.event_type == "inne"
+    assert valid.sentiment == "neutralny"  # default when not provided by model
 
-    # extra fields ignored (e.g. sentiment still returned by model during transition)
+    # sentiment is now a first-class field
     r = _AnalysisResponse.model_validate(
-        {"event_type": "inne", "key_numbers": [], "summary_pl": "x", "sentiment": "positive"}
+        {"event_type": "inne", "key_numbers": [], "summary_pl": "x", "sentiment": "pozytywny"}
     )
-    assert not hasattr(r, "sentiment")
+    assert r.sentiment == "pozytywny"
 
     # missing required field raises
     with pytest.raises(ValidationError):

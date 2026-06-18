@@ -72,18 +72,19 @@
 
   /* Filters */
   .filters {
-    display: flex; flex-wrap: wrap; gap: .6rem;
+    display: flex; flex-wrap: wrap; gap: .5rem;
     background: #fff; padding: 1rem; border-radius: 8px;
     margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.06);
   }
   .filters input, .filters select {
-    padding: .4rem .65rem; border: 1px solid #ccc; border-radius: 5px;
+    padding: .45rem .65rem; border: 1.5px solid #d1d5db; border-radius: 6px;
     font-size: .9rem; min-width: 120px;
   }
   .filters button {
     padding: .4rem 1rem; background: #2563eb; color: #fff;
     border: none; border-radius: 5px; cursor: pointer; font-size: .9rem;
   }
+  .filters button::before { content: '⌕  '; }
   .filters button:hover { background: #1d4ed8; }
 
   /* Autocomplete custom dropdown */
@@ -111,8 +112,9 @@
     background: #f9fafb; text-align: left; padding: .6rem .8rem;
     border-bottom: 2px solid #e5e7eb; white-space: nowrap;
   }
-  td { padding: .55rem .8rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  td { padding: .6rem .75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
   tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) td { background: #f8fafc; }
   tr:hover td { background: #f9fafb; }
   tr.clickable { cursor: pointer; }
   tr.clickable:active td { background: #eff6ff; }
@@ -154,6 +156,10 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  .modal-section { margin-bottom: 1rem; }
+  .modal-section h4 { font-size: .75rem; text-transform: uppercase; color: #6b7280; margin-bottom: .25rem; }
+  .sentiment-badge { display: inline-block; padding: .2rem .6rem; border-radius: 999px; font-size: .8rem; background: #e2e8f0; }
+
   .score { font-weight: 600; }
   .score.high { color: #16a34a; }
   .score.mid  { color: #d97706; }
@@ -192,11 +198,11 @@
   }
   #pagination-bar button {
     padding: .4rem 1rem; background: #e5e7eb; border: none;
-    border-radius: 5px; cursor: pointer; font-size: .9rem;
+    border-radius: 999px; cursor: pointer; font-size: .9rem; font-weight: 500;
   }
   #pagination-bar button:hover:not(:disabled) { background: #d1d5db; }
-  #pagination-bar button:disabled { opacity: .4; cursor: default; }
-  #pagination-bar span { font-size: .9rem; }
+  #pagination-bar button:disabled { opacity: .35; cursor: not-allowed; }
+  #page-label { font-size: .875rem; color: #64748b; font-weight: 500; }
 </style>
 </head>
 <body>
@@ -283,16 +289,14 @@
 const $ = id => document.getElementById(id);
 
 // ── event type label maps ──────────────────────────────────────────────
-const EVENT_TYPE_LABELS = {
-  wyniki_sprzedazowe: 'Wyniki sprzedażowe',
-  skup_akcji: 'Skup akcji',
-  zmiana_zarzadu: 'Zmiana zarządu',
-  compliance: 'Compliance',
-  inne: 'Inne',
-};
-const EVENT_TYPE_CODES = Object.fromEntries(
-  Object.entries(EVENT_TYPE_LABELS).map(([k, v]) => [v, k])
-);
+const _ALL_EVENT_TYPES = [
+  'compliance','dywidenda','emisja_akcji','fuzja','inne','kontrakt_znaczacy',
+  'przejecie','restrukturyzacja','skup_akcji','transakcja_insiderow','upadlosc',
+  'wezwanie','wyniki_finansowe','wyniki_sprzedazowe','zmiana_zarzadu',
+];
+function _toLabel(code) { return code.charAt(0).toUpperCase() + code.slice(1).replace(/_/g, ' '); }
+const EVENT_TYPE_LABELS = Object.fromEntries(_ALL_EVENT_TYPES.map(c => [c, _toLabel(c)]));
+const EVENT_TYPE_CODES  = Object.fromEntries(_ALL_EVENT_TYPES.map(c => [_toLabel(c), c]));
 
 // ── state ──────────────────────────────────────────────────────────────
 let apiKey      = sessionStorage.getItem('apiKey');
@@ -563,6 +567,7 @@ function renderTable(data, r) {
     const modalAttrs = `data-company="${esc(row.company||'')}" data-ticker="${esc(row.ticker||'')}" `
       + `data-date="${esc(date)}" data-event="${esc(row.event_type||'')}" `
       + `data-score="${esc(score)}" data-sc="${sc}" data-analysis="${summaryEsc}" `
+      + (row.structured_analysis ? `data-structured-analysis="${esc(JSON.stringify(row.structured_analysis))}" ` : '')
       + (r === 'admin' && row.url ? `data-url="${esc(row.url)}"` : '');
 
     if (r === 'admin') {
@@ -577,11 +582,12 @@ function renderTable(data, r) {
         <td><button class="btn-del" data-id="${esc(row.announcement_id)}">Usuń</button></td>
       </tr>`;
     } else {
+      const eventLabel = row.event_type ? _toLabel(row.event_type) : '—';
       return `<tr class="clickable" ${modalAttrs}>
         <td>${date}</td>
         <td>${esc(row.company || '—')}</td>
         <td>${esc(row.ticker || '—')}</td>
-        <td>${esc(row.event_type || '—')}</td>
+        <td>${esc(eventLabel)}</td>
         <td class="col-analysis analysis-summary">${summaryEsc}</td>
       </tr>`;
     }
@@ -616,10 +622,30 @@ function openModal(d) {
   const ticker = d.ticker ? ` ($${d.ticker})` : '';
   $('modal-title').textContent = (d.company || '—') + ticker;
   $('modal-meta').textContent  = [d.date, d.event].filter(Boolean).join(' · ');
-  let body = d.analysis && d.analysis !== '—' ? d.analysis : 'Brak analizy.';
-  if (role === 'admin' && d.score && d.score !== '—') body += `\n\nScore: ${d.score}`;
-  if (role === 'admin' && d.url) body += `\n\n🔗 ${d.url}`;
-  $('modal-body').textContent = body;
+  let analysis = null;
+  try { analysis = JSON.parse(d.structuredAnalysis || 'null'); } catch { analysis = null; }
+  let bodyHtml;
+  if (analysis) {
+    const kn = Array.isArray(analysis.key_numbers)
+      ? analysis.key_numbers.join(' · ')
+      : (analysis.key_numbers || '—');
+    bodyHtml = `<div class="modal-section"><h4>Podsumowanie</h4><p>${esc(analysis.summary_pl || '—')}</p></div>`
+      + `<div class="modal-section"><h4>Kluczowe liczby</h4><p>${esc(kn)}</p></div>`;
+    if (role === 'admin') {
+      if (analysis.sentiment)
+        bodyHtml += `<div class="modal-section"><h4>Sentyment</h4><span class="sentiment-badge sentiment-${esc(analysis.sentiment)}">${esc(analysis.sentiment)}</span></div>`;
+      if (d.score && d.score !== '—')
+        bodyHtml += `<div class="modal-section"><h4>Score</h4><p><span class="score ${esc(d.sc)}">${esc(d.score)}</span></p></div>`;
+      if (d.url)
+        bodyHtml += `<div class="modal-section"><h4>Źródło</h4><p><a href="${esc(d.url)}" target="_blank">🔗 link</a></p></div>`;
+    }
+  } else {
+    const fallback = d.analysis && d.analysis !== '—' ? d.analysis : 'Brak analizy.';
+    bodyHtml = `<pre>${esc(fallback)}</pre>`;
+    if (role === 'admin' && d.score && d.score !== '—') bodyHtml += `<p>Score: ${esc(d.score)}</p>`;
+    if (role === 'admin' && d.url) bodyHtml += `<p>🔗 ${esc(d.url)}</p>`;
+  }
+  $('modal-body').innerHTML = bodyHtml;
   $('modal-overlay').style.display = 'flex';
   document.body.style.overflow = 'hidden';
 }
