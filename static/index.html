@@ -14,21 +14,47 @@
     min-height: 100vh;
   }
   .login-box {
-    background: #fff; border-radius: 8px; padding: 2rem;
-    box-shadow: 0 2px 12px rgba(0,0,0,.1); width: 100%; max-width: 360px;
+    background: #fff; border-radius: 12px; padding: 2.5rem;
+    box-shadow: 0 4px 24px rgba(0,0,0,.1); width: 100%; max-width: 420px;
   }
-  .login-box h1 { font-size: 1.3rem; margin-bottom: 1.5rem; }
+  .login-brand { margin-bottom: 1.75rem; }
+  .login-brand h1 { font-size: 2rem; color: #2563eb; margin-bottom: 0.25rem; font-weight: 700; }
+  .login-brand p { font-size: 0.85rem; color: #6b7280; }
   .login-box label { display: block; font-size: .85rem; margin-bottom: .3rem; color: #555; }
   .login-box input {
-    width: 100%; padding: .55rem .75rem; border: 1px solid #ccc;
-    border-radius: 5px; font-size: 1rem; margin-bottom: 1rem;
+    width: 100%; padding: .75rem; border: 1.5px solid #d1d5db;
+    border-radius: 8px; font-size: 1rem; margin-bottom: .5rem;
+    outline: none; transition: border-color .15s, box-shadow .15s;
   }
+  .login-box input:focus {
+    border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+  }
+  .login-hint { font-size: 0.8rem; color: #6b7280; margin-top: -0.25rem; margin-bottom: 1.25rem; }
   .login-box button {
-    width: 100%; padding: .6rem; background: #2563eb; color: #fff;
-    border: none; border-radius: 5px; font-size: 1rem; cursor: pointer;
+    width: 100%; padding: .75rem; background: #2563eb; color: #fff;
+    border: none; border-radius: 8px; font-size: 1rem; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(37,99,235,.25); transition: background .15s, box-shadow .15s;
   }
-  .login-box button:hover { background: #1d4ed8; }
-  #login-error { color: #dc2626; font-size: .85rem; margin-top: .5rem; display: none; }
+  .login-box button:hover { background: #1d4ed8; box-shadow: 0 4px 14px rgba(37,99,235,.35); }
+  #login-error {
+    color: #dc2626; font-size: .85rem; margin-top: .75rem; display: none;
+    background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: .5rem .75rem;
+  }
+
+  /* GDPR banner */
+  #gdpr-banner {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #1e293b; color: #e2e8f0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .75rem 1.5rem; z-index: 200; font-size: .85rem; gap: 1rem;
+  }
+  #gdpr-accept {
+    background: transparent; border: 1px solid #94a3b8; color: #e2e8f0;
+    padding: .3rem .9rem; border-radius: 6px; cursor: pointer;
+    font-size: .8rem; white-space: nowrap; flex-shrink: 0;
+    transition: background .15s;
+  }
+  #gdpr-accept:hover { background: rgba(255,255,255,.1); }
 
   /* Dashboard */
   #dashboard-screen { display: none; padding: 1.5rem; }
@@ -163,11 +189,15 @@
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <h1>puls-gpw</h1>
+    <div class="login-brand">
+      <h1>puls-gpw</h1>
+      <p>Analizator komunikatów ESPI / EBI</p>
+    </div>
     <label for="api-key-input">Klucz API</label>
-    <input type="password" id="api-key-input" placeholder="Wpisz klucz API" autocomplete="current-password">
+    <input id="api-key-input" type="password" placeholder="Wpisz klucz API" autocomplete="current-password">
+    <p class="login-hint">Klucz API otrzymasz od administratora systemu.</p>
     <button id="login-btn">Zaloguj się</button>
-    <div id="login-error">Nieprawidłowy klucz API</div>
+    <div id="login-error" style="display:none">Nieprawidłowy klucz API</div>
   </div>
 </div>
 
@@ -216,6 +246,12 @@
   </div>
 </div>
 
+<!-- GDPR BANNER -->
+<div id="gdpr-banner" style="display:none">
+  <span>Ta strona używa sessionStorage do przechowywania klucza sesji. Nie stosujemy plików cookie ani śledzenia.</span>
+  <button id="gdpr-accept">Rozumiem</button>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 
@@ -224,8 +260,20 @@ let apiKey      = sessionStorage.getItem('apiKey');
 let role        = sessionStorage.getItem('role');
 let currentPage = 1;
 
+// ── GDPR ───────────────────────────────────────────────────────────────
+function initGdpr() {
+  if (!localStorage.getItem('gdpr_consent_v1')) {
+    $('gdpr-banner').style.display = 'flex';
+    $('gdpr-accept').addEventListener('click', () => {
+      localStorage.setItem('gdpr_consent_v1', 'accepted');
+      $('gdpr-banner').style.display = 'none';
+    });
+  }
+}
+
 // ── init ───────────────────────────────────────────────────────────────
 function init() {
+  initGdpr();
   if (apiKey && role) showDashboard(role);
   else                showLogin();
 }

@@ -497,8 +497,8 @@ None. All changes are frontend (single HTML file) and new endpoints/functions â€
 
 #### Automated
 
-- [x] 1.1 `uv run pytest tests/ --tb=short` passes
-- [x] 1.2 `GET /autocomplete/tickers` with valid `X-API-Key` returns 200 + JSON array
+- [x] 1.1 `uv run pytest tests/ --tb=short` passes â€” cc0ce4c
+- [x] 1.2 `GET /autocomplete/tickers` with valid `X-API-Key` returns 200 + JSON array â€” cc0ce4c
 
 #### Manual
 
@@ -509,13 +509,13 @@ None. All changes are frontend (single HTML file) and new endpoints/functions â€
 
 #### Automated
 
-- [ ] 2.1 `uv run pytest tests/ --tb=short` passes (no regressions)
+- [x] 2.1 `uv run pytest tests/ --tb=short` passes (no regressions)
 
 #### Manual
 
-- [ ] 2.2 Login screen: branded header, hint text, full-width button, styled error message
-- [ ] 2.3 GDPR banner appears on first load, dismissed on click, does not reappear after reload
-- [ ] 2.4 Login card looks correct on 375px viewport
+- [x] 2.2 Login screen: branded header, hint text, full-width button, styled error message
+- [x] 2.3 GDPR banner appears on first load, dismissed on click, does not reappear after reload
+- [x] 2.4 Login card looks correct on 375px viewport
 
 ### Phase 3: Dashboard Autocomplete
 

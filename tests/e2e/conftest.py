@@ -28,6 +28,12 @@ _FAKE_ADMIN_ROWS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _accept_gdpr(page):
+    """Pre-accept GDPR consent so the banner never blocks existing tests."""
+    page.add_init_script("localStorage.setItem('gdpr_consent_v1', 'accepted')")
+
+
 @pytest.fixture(scope="session")
 def live_server_url():
     os.environ["ADMIN_API_KEY"] = _ADMIN_KEY
