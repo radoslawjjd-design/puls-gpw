@@ -1,7 +1,7 @@
 ---
 change_id: panel-ui-redesign
 title: Panel UI/UX redesign — login screen, autocomplete, GDPR notice, visual polish
-status: impl_reviewed
+status: implementing
 created: 2026-06-18
 updated: 2026-06-18
 archived_at: null

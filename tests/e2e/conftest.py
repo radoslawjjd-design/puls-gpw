@@ -44,6 +44,8 @@ def live_server_url():
     with (
         patch("src.api.list_announcements_admin", return_value=_FAKE_ADMIN_ROWS),
         patch("src.api.list_announcements_user", return_value=[]),
+        patch("src.api.list_distinct_tickers",   return_value=["PKO", "CDR", "XTB"]),
+        patch("src.api.list_distinct_companies",  return_value=["PKO SA", "CD Projekt SA"]),
     ):
         server = uvicorn.Server(
             uvicorn.Config(create_app(), host="127.0.0.1", port=0, log_level="error")

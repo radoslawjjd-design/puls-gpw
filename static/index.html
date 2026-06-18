@@ -86,6 +86,21 @@
   }
   .filters button:hover { background: #1d4ed8; }
 
+  /* Autocomplete custom dropdown */
+  .ac-wrap { position: relative; min-width: 120px; }
+  .ac-wrap input { min-width: 0; width: 100%; }
+  .ac-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0; margin-top: 2px;
+    background: #fff; border: 1.5px solid #d1d5db; border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.1);
+    max-height: 13.5rem; overflow-y: auto; z-index: 50;
+  }
+  .ac-item {
+    padding: .45rem .65rem; cursor: pointer; font-size: .9rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ac-item:hover { background: #eff6ff; color: #2563eb; }
+
   /* Table */
   .table-wrap {
     background: #fff; border-radius: 8px;
@@ -160,7 +175,7 @@
     .topbar h1 { flex: 1 1 100%; }
 
     .filters { gap: .4rem; }
-    .filters input, .filters select { flex: 1 1 calc(50% - .2rem); min-width: 0; }
+    .filters input, .filters select, .filters .ac-wrap { flex: 1 1 calc(50% - .2rem); min-width: 0; }
     .filters button { width: 100%; }
 
     /* Mobile: chowamy Score i Analizę — zostaje Data/Spółka/Ticker/Typ + Usuń (admin) */
@@ -212,12 +227,24 @@
   </div>
 
   <form class="filters" id="filter-form">
-    <input type="text"   id="f-ticker"     placeholder="Ticker (np. PKO)">
-    <input type="text"   id="f-company"    placeholder="Spółka">
-    <input type="text"   id="f-event-type" placeholder="Typ (ESPI/EBI)">
+    <div class="ac-wrap">
+      <input type="text" id="f-ticker" placeholder="Ticker (np. PKO)" autocomplete="off">
+      <div id="ac-ticker" class="ac-dropdown" style="display:none"></div>
+    </div>
+    <datalist id="dl-tickers"></datalist>
+    <div class="ac-wrap">
+      <input type="text" id="f-company" placeholder="Spółka" autocomplete="off">
+      <div id="ac-company" class="ac-dropdown" style="display:none"></div>
+    </div>
+    <datalist id="dl-companies"></datalist>
+    <div class="ac-wrap">
+      <input type="text" id="f-event-type" placeholder="Typ (ESPI/EBI)" autocomplete="off">
+      <div id="ac-event-type" class="ac-dropdown" style="display:none"></div>
+    </div>
+    <datalist id="dl-event-types"></datalist>
     <input type="text" id="f-from" placeholder="Analizy od" class="date-toggle">
     <input type="text" id="f-to"   placeholder="Analizy do" class="date-toggle">
-    <select id="f-page-size"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
+    <select id="f-page-size" aria-label="Rozmiar strony"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
     <button type="submit">Filtruj</button>
   </form>
 
@@ -255,10 +282,49 @@
 <script>
 const $ = id => document.getElementById(id);
 
+// ── event type label maps ──────────────────────────────────────────────
+const EVENT_TYPE_LABELS = {
+  wyniki_sprzedazowe: 'Wyniki sprzedażowe',
+  skup_akcji: 'Skup akcji',
+  zmiana_zarzadu: 'Zmiana zarządu',
+  compliance: 'Compliance',
+  inne: 'Inne',
+};
+const EVENT_TYPE_CODES = Object.fromEntries(
+  Object.entries(EVENT_TYPE_LABELS).map(([k, v]) => [v, k])
+);
+
 // ── state ──────────────────────────────────────────────────────────────
 let apiKey      = sessionStorage.getItem('apiKey');
 let role        = sessionStorage.getItem('role');
 let currentPage = 1;
+let _acTickers     = [];
+let _acCompanies   = [];
+let _acEventTypes  = [];
+let _acInitialized = false;
+
+function _setupAcInput(inputId, dropId, data) {
+  const input = $(inputId);
+  const drop  = $(dropId);
+
+  function show(q) {
+    const matches = q ? data.filter(v => v.toUpperCase().includes(q.toUpperCase())) : data.slice();
+    if (!matches.length) { drop.style.display = 'none'; return; }
+    drop.innerHTML = matches.map(v => `<div class="ac-item">${esc(v)}</div>`).join('');
+    drop.querySelectorAll('.ac-item').forEach(item => {
+      item.addEventListener('mousedown', e => {
+        e.preventDefault();
+        input.value = item.textContent;
+        drop.style.display = 'none';
+      });
+    });
+    drop.style.display = 'block';
+  }
+
+  input.addEventListener('input', () => show(input.value.trim()));
+  input.addEventListener('focus', () => show(input.value.trim()));
+  input.addEventListener('blur',  () => setTimeout(() => { drop.style.display = 'none'; }, 150));
+}
 
 // ── GDPR ───────────────────────────────────────────────────────────────
 function initGdpr() {
@@ -268,6 +334,44 @@ function initGdpr() {
       localStorage.setItem('gdpr_consent_v1', 'accepted');
       $('gdpr-banner').style.display = 'none';
     }, { once: true });
+  }
+}
+
+// ── autocomplete ───────────────────────────────────────────────────────
+async function loadAutocomplete() {
+  const fillDl = (id, values) => {
+    const dl = $(id);
+    dl.innerHTML = '';
+    values.forEach(v => { const o = document.createElement('option'); o.value = v; dl.appendChild(o); });
+  };
+
+  if (!_acInitialized) {
+    _acEventTypes.length = 0;
+    Object.values(EVENT_TYPE_LABELS).forEach(v => _acEventTypes.push(v));
+    fillDl('dl-event-types', _acEventTypes);
+    _setupAcInput('f-ticker',     'ac-ticker',     _acTickers);
+    _setupAcInput('f-company',    'ac-company',    _acCompanies);
+    _setupAcInput('f-event-type', 'ac-event-type', _acEventTypes);
+    _acInitialized = true;
+  }
+
+  try {
+    const [tRes, cRes] = await Promise.all([
+      fetch('/autocomplete/tickers',   { headers: { 'X-API-Key': apiKey } }),
+      fetch('/autocomplete/companies', { headers: { 'X-API-Key': apiKey } }),
+    ]);
+    if (tRes.ok) {
+      const vals = await tRes.json();
+      _acTickers.length = 0; vals.forEach(v => _acTickers.push(v));
+      fillDl('dl-tickers', vals);
+    }
+    if (cRes.ok) {
+      const vals = await cRes.json();
+      _acCompanies.length = 0; vals.forEach(v => _acCompanies.push(v));
+      fillDl('dl-companies', vals);
+    }
+  } catch (e) {
+    console.warn('Autocomplete load failed:', e);
   }
 }
 
@@ -357,6 +461,7 @@ function showDashboard(r) {
   $('role-badge').textContent = r === 'admin' ? '👤 admin' : '👤 user';
   $('data-table').classList.toggle('admin-table', r === 'admin');
   renderHeaders(r);
+  loadAutocomplete();
   fetchAnnouncements(false);
 }
 
@@ -393,7 +498,9 @@ async function fetchAnnouncements(push = true) {
   const v = id => $(`f-${id}`) && $(`f-${id}`).value.trim();
   if (v('ticker'))     params.set('ticker',     v('ticker'));
   if (v('company'))    params.set('company',    v('company'));
-  if (v('event-type')) params.set('event_type', v('event-type'));
+  const rawEvent = v('event-type');
+  const eventParam = EVENT_TYPE_CODES[rawEvent] || rawEvent;
+  if (eventParam)      params.set('event_type', eventParam);
   const fromIso = v('from') ? parseDateOrNull($('f-from').value) : null;
   if (fromIso)         params.set('from',       fromIso);
   const toIso   = v('to')   ? parseDateOrNull($('f-to').value)   : null;
