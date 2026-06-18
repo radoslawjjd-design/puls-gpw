@@ -521,14 +521,14 @@ None. All changes are frontend (single HTML file) and new endpoints/functions �
 
 #### Automated
 
-- [x] 3.1 `uv run pytest tests/ --tb=short` passes
+- [x] 3.1 `uv run pytest tests/ --tb=short` passes — 866fb33
 - [ ] 3.2 E2E test `test_autocomplete.py` passes
 
 #### Manual
 
-- [x] 3.3 Ticker field shows datalist suggestions from BQ
-- [x] 3.4 Company field shows datalist suggestions from BQ
-- [x] 3.5 Event type field shows 5 Polish labels; selection submits correct API code
+- [x] 3.3 Ticker field shows datalist suggestions from BQ — 866fb33
+- [x] 3.4 Company field shows datalist suggestions from BQ — 866fb33
+- [x] 3.5 Event type field shows 5 Polish labels; selection submits correct API code — 866fb33
 
 ### Phase 4: Visual Polish
 

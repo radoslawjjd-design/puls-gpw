@@ -302,6 +302,7 @@ let _acTickers     = [];
 let _acCompanies   = [];
 let _acEventTypes  = [];
 let _acInitialized = false;
+let _acLoading     = null;
 
 function _setupAcInput(inputId, dropId, data) {
   const input = $(inputId);
@@ -312,7 +313,7 @@ function _setupAcInput(inputId, dropId, data) {
     if (!matches.length) { drop.style.display = 'none'; return; }
     drop.innerHTML = matches.map(v => `<div class="ac-item">${esc(v)}</div>`).join('');
     drop.querySelectorAll('.ac-item').forEach(item => {
-      item.addEventListener('mousedown', e => {
+      item.addEventListener('pointerdown', e => {
         e.preventDefault();
         input.value = item.textContent;
         drop.style.display = 'none';
@@ -323,7 +324,7 @@ function _setupAcInput(inputId, dropId, data) {
 
   input.addEventListener('input', () => show(input.value.trim()));
   input.addEventListener('focus', () => show(input.value.trim()));
-  input.addEventListener('blur',  () => setTimeout(() => { drop.style.display = 'none'; }, 150));
+  input.addEventListener('blur',  () => setTimeout(() => { drop.style.display = 'none'; }, 200));
 }
 
 // ── GDPR ───────────────────────────────────────────────────────────────
@@ -339,6 +340,13 @@ function initGdpr() {
 
 // ── autocomplete ───────────────────────────────────────────────────────
 async function loadAutocomplete() {
+  if (_acLoading) return _acLoading;
+  _acLoading = _doLoadAutocomplete();
+  await _acLoading;
+  _acLoading = null;
+}
+
+async function _doLoadAutocomplete() {
   const fillDl = (id, values) => {
     const dl = $(id);
     dl.innerHTML = '';
@@ -360,6 +368,9 @@ async function loadAutocomplete() {
       fetch('/autocomplete/tickers',   { headers: { 'X-API-Key': apiKey } }),
       fetch('/autocomplete/companies', { headers: { 'X-API-Key': apiKey } }),
     ]);
+    if (tRes.status === 401 || cRes.status === 401) {
+      sessionStorage.clear(); showLogin(); return;
+    }
     if (tRes.ok) {
       const vals = await tRes.json();
       _acTickers.length = 0; vals.forEach(v => _acTickers.push(v));
