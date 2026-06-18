@@ -509,13 +509,13 @@ None. All changes are frontend (single HTML file) and new endpoints/functions �
 
 #### Automated
 
-- [x] 2.1 `uv run pytest tests/ --tb=short` passes (no regressions)
+- [x] 2.1 `uv run pytest tests/ --tb=short` passes (no regressions) — ffa20df
 
 #### Manual
 
-- [x] 2.2 Login screen: branded header, hint text, full-width button, styled error message
-- [x] 2.3 GDPR banner appears on first load, dismissed on click, does not reappear after reload
-- [x] 2.4 Login card looks correct on 375px viewport
+- [x] 2.2 Login screen: branded header, hint text, full-width button, styled error message — ffa20df
+- [x] 2.3 GDPR banner appears on first load, dismissed on click, does not reappear after reload — ffa20df
+- [x] 2.4 Login card looks correct on 375px viewport — ffa20df
 
 ### Phase 3: Dashboard Autocomplete
 
