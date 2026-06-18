@@ -29,9 +29,11 @@ _FAKE_ADMIN_ROWS = [
 
 
 @pytest.fixture(autouse=True)
-def _accept_gdpr(page):
-    """Pre-accept GDPR consent so the banner never blocks existing tests."""
-    page.add_init_script("localStorage.setItem('gdpr_consent_v1', 'accepted')")
+def _accept_gdpr(page, request):
+    """Pre-accept GDPR consent so the banner never blocks existing tests.
+    Skip for tests marked @pytest.mark.gdpr — those need the real banner."""
+    if "gdpr" not in request.node.keywords:
+        page.add_init_script("localStorage.setItem('gdpr_consent_v1', 'accepted')")
 
 
 @pytest.fixture(scope="session")

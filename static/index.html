@@ -267,7 +267,7 @@ function initGdpr() {
     $('gdpr-accept').addEventListener('click', () => {
       localStorage.setItem('gdpr_consent_v1', 'accepted');
       $('gdpr-banner').style.display = 'none';
-    });
+    }, { once: true });
   }
 }
 
