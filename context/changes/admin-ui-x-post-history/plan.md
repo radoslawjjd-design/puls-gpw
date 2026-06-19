@@ -605,15 +605,15 @@ existing-row changes.
 
 #### Automated
 
-- [ ] 3.1 Existing test suite still passes: `uv run pytest tests/ --ignore=tests/e2e`
+- [x] 3.1 Existing test suite still passes: `uv run pytest tests/ --ignore=tests/e2e`
 
 #### Manual
 
-- [ ] 3.2 All 7 columns populated with real data, newest first
-- [ ] 3.3 Each filter narrows results correctly against live data
-- [ ] 3.4 Page-size select and Prev/Next page correctly; disabled states correct
-- [ ] 3.5 Changing page size resets to page 1
-- [ ] 3.6 No `/admin/x-posts` request fires before the menu item is clicked
+- [x] 3.2 All 7 columns populated with real data, newest first
+- [x] 3.3 Each filter narrows results correctly against live data
+- [x] 3.4 Page-size select and Prev/Next page correctly; disabled states correct
+- [x] 3.5 Changing page size resets to page 1
+- [x] 3.6 No `/admin/x-posts` request fires before the menu item is clicked
 
 ### Phase 4: Frontend — tweet-thread popup
 
