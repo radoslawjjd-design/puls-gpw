@@ -61,6 +61,7 @@ def test_announcements_admin_returns_list(api_client):
     assert len(data) == 1 and data[0]["ticker"] == "PKO"
     assert isinstance(data[0]["structured_analysis"], dict)
     assert data[0]["structured_analysis"]["summary_pl"] == "test"
+    assert data[0]["analysis_score"] == 0.9
 
 
 def test_announcements_user_parses_structured_analysis(api_client):
@@ -88,15 +89,15 @@ def test_auth_role_missing_key_returns_401(api_client):
 
 def test_announcements_user_returns_subset_fields(api_client):
     mock_rows = [{"company": "PKO", "ticker": "PKO", "event_type": "ESPI",
-                  "structured_analysis": None, "analysis_score": 0.7,
+                  "structured_analysis": None,
                   "published_at": "2024-01-01T00:00:00"}]
     with patch("src.api.list_announcements_user", return_value=mock_rows):
         r = api_client.get("/announcements", headers={"X-API-Key": _USER_KEY})
     assert r.status_code == 200
     data = r.json()
-    assert "announcement_id" not in data[0]
-    assert "url" not in data[0]
-    assert "ticker" in data[0]
+    assert set(data[0].keys()) == {
+        "company", "ticker", "event_type", "structured_analysis", "published_at",
+    }
 
 
 def test_announcements_no_key_returns_401(api_client):

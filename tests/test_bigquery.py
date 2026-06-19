@@ -525,6 +525,8 @@ def test_list_announcements_user_only_approved():
     query_str = mock.query.call_args[0][0]
     assert "analysis_approved = TRUE" in query_str
     assert len(rows) == 1
+    assert "analysis_score" not in query_str
+    assert "analysis_score" not in rows[0]
 
 
 def test_list_announcements_user_ticker_filter_passes_param():
