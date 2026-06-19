@@ -92,7 +92,6 @@ class AnnouncementUser(BaseModel):
     ticker: str | None = None
     event_type: str | None = None
     structured_analysis: dict | None = None
-    analysis_score: float | None = None
     published_at: datetime | None = None
 
 

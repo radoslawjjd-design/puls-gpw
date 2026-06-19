@@ -642,7 +642,7 @@ def list_announcements_user(
     query = f"""
         SELECT
             company, ticker, event_type, structured_analysis,
-            analysis_score, published_at
+            published_at
         FROM `{_table_ref(client)}`
         {where}
         ORDER BY published_at DESC
@@ -665,7 +665,6 @@ def list_announcements_user(
             "ticker": row.ticker,
             "event_type": row.event_type,
             "structured_analysis": row.structured_analysis,
-            "analysis_score": row.analysis_score,
             "published_at": row.published_at,
         }
         for row in rows
