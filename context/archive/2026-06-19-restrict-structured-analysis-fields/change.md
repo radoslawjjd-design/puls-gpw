@@ -1,10 +1,10 @@
 ---
 change_id: restrict-structured-analysis-fields
 title: Restrict sentiment and other internal fields inside structured_analysis from user-facing /announcements response
-status: impl_reviewed
+status: archived
 created: 2026-06-19
 updated: 2026-06-19
-archived_at: null
+archived_at: 2026-06-19T11:26:19Z
 tracking:
   linear: PUL-46
   github: 64
