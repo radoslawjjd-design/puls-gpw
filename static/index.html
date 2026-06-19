@@ -63,7 +63,7 @@
     margin-bottom: 1.5rem; position: sticky; top: 0; z-index: 60;
     background: #f4f6f8; padding: .6rem 0;
   }
-  .topbar h1 { font-size: 1.2rem; }
+  .topbar h1 { font-size: 1.2rem; cursor: pointer; }
   .topbar span { font-size: .85rem; color: #555; margin-right: 1rem; }
   .topbar button {
     padding: .4rem .9rem; background: #e5e7eb; border: none;
@@ -251,7 +251,7 @@
 <!-- DASHBOARD -->
 <div id="dashboard-screen">
   <div class="topbar">
-    <h1>puls-gpw</h1>
+    <h1 id="topbar-home">puls-gpw</h1>
     <div class="profile-menu-wrap">
       <button id="profile-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="profile-menu">
         <span id="role-badge"></span> ☰
@@ -262,6 +262,7 @@
     </div>
   </div>
 
+  <div id="announcements-view">
   <form class="filters" id="filter-form">
     <div class="ac-wrap">
       <input type="text" id="f-ticker" placeholder="Ticker (np. PKO)" autocomplete="off">
@@ -294,6 +295,7 @@
       <span id="page-label">Strona 1</span>
       <button id="btn-next">Następna &#8250;</button>
     </div>
+  </div>
   </div>
 </div>
 
@@ -545,8 +547,11 @@ document.addEventListener('click', e => {
   closeProfileMenu();
 });
 
+$('topbar-home').addEventListener('click', showAnnouncementsView);
+
 window.addEventListener('popstate', e => {
   if (!apiKey) return;
+  showAnnouncementsView();
   if (e.state && e.state.page) {
     currentPage = e.state.page;
     const ps = $('f-page-size');
@@ -598,6 +603,8 @@ function showDashboard(r) {
   $('role-badge').textContent = r === 'admin' ? '👤 admin' : '👤 user';
   $('data-table').classList.toggle('admin-table', r === 'admin');
   renderHeaders(r);
+  injectAdminOnlyChrome(r);
+  showAnnouncementsView();
   loadAutocomplete();
   fetchAnnouncements(false);
   startIdleTracking();
@@ -626,6 +633,42 @@ function renderHeaders(r) {
   const cols = r === 'admin' ? _ADMIN_COLS : _USER_COLS;
   $('table-head').innerHTML =
     '<tr>' + cols.map(c => `<th class="${c.cls}">${c.label}</th>`).join('') + '</tr>';
+}
+
+// ── admin-only chrome (x-post history) ──────────────────────────────────
+function injectAdminOnlyChrome(r) {
+  const existingBtn  = $('x-history-btn');
+  if (existingBtn) existingBtn.closest('li').remove();
+  const existingView = $('x-history-view');
+  if (existingView) existingView.remove();
+
+  if (r !== 'admin') return;
+
+  const menuItem = document.createElement('li');
+  menuItem.setAttribute('role', 'none');
+  menuItem.innerHTML = '<button id="x-history-btn" role="menuitem">Historia postów X</button>';
+  $('profile-menu').insertBefore(menuItem, $('logout-btn').closest('li'));
+
+  const view = document.createElement('div');
+  view.id = 'x-history-view';
+  view.style.display = 'none';
+  $('announcements-view').insertAdjacentElement('afterend', view);
+
+  $('x-history-btn').addEventListener('click', showXHistoryView);
+}
+
+// ── view toggle ────────────────────────────────────────────────────────
+function showAnnouncementsView() {
+  $('announcements-view').style.display = '';
+  const xView = $('x-history-view');
+  if (xView) xView.style.display = 'none';
+}
+
+function showXHistoryView() {
+  $('announcements-view').style.display = 'none';
+  $('x-history-view').style.display = '';
+  closeProfileMenu();
+  fetchXPosts();
 }
 
 // ── fetch ──────────────────────────────────────────────────────────────

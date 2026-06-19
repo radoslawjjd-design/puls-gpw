@@ -591,15 +591,15 @@ existing-row changes.
 
 #### Automated
 
-- [ ] 2.1 Existing test suite still passes unmodified: `uv run pytest tests/ --ignore=tests/e2e/test_x_post_history.py`
+- [x] 2.1 Existing test suite still passes unmodified: `uv run pytest tests/ --ignore=tests/e2e/test_x_post_history.py`
 
 #### Manual
 
-- [ ] 2.2 Admin sees "Historia postów X" above "Wyloguj"; clicking it swaps views
-- [ ] 2.3 User sees only "Wyloguj"; no `#x-history-btn`/`#x-history-view` node in Elements panel
-- [ ] 2.4 Clicking "puls-gpw" heading from x-history view returns to announcements table
-- [ ] 2.5 Logout-as-admin then login-as-user in same tab leaves no leftover injected nodes
-- [ ] 2.6 Paginate announcements, open x-history view, press browser Back — returns to announcements view (popstate guard)
+- [x] 2.2 Admin sees "Historia postów X" above "Wyloguj"; clicking it swaps views
+- [x] 2.3 User sees only "Wyloguj"; no `#x-history-btn`/`#x-history-view` node in Elements panel
+- [x] 2.4 Clicking "puls-gpw" heading from x-history view returns to announcements table
+- [x] 2.5 Logout-as-admin then login-as-user in same tab leaves no leftover injected nodes
+- [x] 2.6 Paginate announcements, open x-history view, press browser Back — returns to announcements view (popstate guard)
 
 ### Phase 3: Frontend — x-posts table (filter, fetch, render, paginate)
 
