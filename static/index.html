@@ -156,6 +156,15 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  /* Idle warning */
+  #idle-warning-overlay .modal-body { text-align: center; }
+  #idle-countdown { font-weight: 600; }
+  #idle-stay-btn {
+    margin-top: 1rem; padding: .6rem 1.5rem; background: #2563eb; color: #fff;
+    border: none; border-radius: 8px; font-size: .95rem; cursor: pointer;
+  }
+  #idle-stay-btn:hover { background: #1d4ed8; }
+
   .modal-section { margin-bottom: 1rem; }
   .modal-section h4 { font-size: .75rem; text-transform: uppercase; color: #6b7280; margin-bottom: .25rem; }
   .sentiment-badge { display: inline-block; padding: .2rem .6rem; border-radius: 999px; font-size: .8rem; background: #e2e8f0; }
@@ -279,6 +288,19 @@
   </div>
 </div>
 
+<!-- IDLE WARNING -->
+<div id="idle-warning-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <strong>Zostaniesz wylogowany za 2 minuty z powodu braku aktywności</strong>
+    </div>
+    <div class="modal-body">
+      <p>Pozostało: <span id="idle-countdown">2:00</span></p>
+      <button id="idle-stay-btn">Zostań zalogowany</button>
+    </div>
+  </div>
+</div>
+
 <!-- GDPR BANNER -->
 <div id="gdpr-banner" style="display:none">
   <span>Ta strona używa sessionStorage do przechowywania klucza sesji. Nie stosujemy plików cookie ani śledzenia.</span>
@@ -307,6 +329,65 @@ let _acCompanies   = [];
 let _acEventTypes  = [];
 let _acInitialized = false;
 let _acLoading     = null;
+
+// ── idle timeout ───────────────────────────────────────────────────────
+const SESSION_IDLE_MINUTES    = 10;
+const SESSION_WARNING_MINUTES = 2;
+const _ACTIVITY_EVENTS = ['mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
+let lastActivityAt   = Date.now();
+let idleInterval      = null;
+let idleWarningShown = false;
+
+function _onActivity() { lastActivityAt = Date.now(); }
+
+function startIdleTracking() {
+  lastActivityAt   = Date.now();
+  idleWarningShown = false;
+  _ACTIVITY_EVENTS.forEach(ev => window.addEventListener(ev, _onActivity, { passive: true }));
+  idleInterval = setInterval(checkIdle, 1000);
+}
+
+function stopIdleTracking() {
+  _ACTIVITY_EVENTS.forEach(ev => window.removeEventListener(ev, _onActivity));
+  if (idleInterval) { clearInterval(idleInterval); idleInterval = null; }
+  $('idle-warning-overlay').style.display = 'none';
+  idleWarningShown = false;
+}
+
+function checkIdle() {
+  const idleMs   = Date.now() - lastActivityAt;
+  const warnMs   = (SESSION_IDLE_MINUTES - SESSION_WARNING_MINUTES) * 60000;
+  const logoutMs = SESSION_IDLE_MINUTES * 60000;
+
+  if (idleMs >= logoutMs) { doLogout(); return; }
+
+  if (idleMs >= warnMs) {
+    idleWarningShown = true;
+    $('idle-warning-overlay').style.display = 'flex';
+    const remaining = Math.max(0, logoutMs - idleMs);
+    const mm = Math.floor(remaining / 60000);
+    const ss = Math.floor((remaining % 60000) / 1000);
+    $('idle-countdown').textContent = mm + ':' + String(ss).padStart(2, '0');
+  } else if (idleWarningShown) {
+    idleWarningShown = false;
+    $('idle-warning-overlay').style.display = 'none';
+  }
+}
+
+$('idle-stay-btn').addEventListener('click', () => {
+  lastActivityAt   = Date.now();
+  idleWarningShown = false;
+  $('idle-warning-overlay').style.display = 'none';
+});
+
+// ── auth: shared logout exit path ───────────────────────────────────────
+function doLogout() {
+  stopIdleTracking();
+  closeModal();
+  sessionStorage.clear();
+  apiKey = null; role = null;
+  showLogin();
+}
 
 function _setupAcInput(inputId, dropId, data) {
   const input = $(inputId);
@@ -373,7 +454,7 @@ async function _doLoadAutocomplete() {
       fetch('/autocomplete/companies', { headers: { 'X-API-Key': apiKey } }),
     ]);
     if (tRes.status === 401 || cRes.status === 401) {
-      sessionStorage.clear(); showLogin(); return;
+      doLogout(); return;
     }
     if (tRes.ok) {
       const vals = await tRes.json();
@@ -418,9 +499,7 @@ $('api-key-input').addEventListener('keydown', e => {
 });
 
 $('logout-btn').addEventListener('click', () => {
-  sessionStorage.clear();
-  apiKey = null; role = null;
-  showLogin();
+  doLogout();
 });
 
 window.addEventListener('popstate', e => {
@@ -478,6 +557,7 @@ function showDashboard(r) {
   renderHeaders(r);
   loadAutocomplete();
   fetchAnnouncements(false);
+  startIdleTracking();
 }
 
 // ── table headers ──────────────────────────────────────────────────────
@@ -528,7 +608,7 @@ async function fetchAnnouncements(push = true) {
     const r = await fetch('/announcements?' + params, {
       headers: { 'X-API-Key': apiKey }
     });
-    if (r.status === 401) { sessionStorage.clear(); showLogin(); return; }
+    if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     $('page-label').textContent = 'Strona ' + currentPage;
