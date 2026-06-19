@@ -387,5 +387,5 @@ than showing a broken/negative duration.
 
 #### Manual
 
-- [x] 3.1 PUL-32 description includes limitation note
-- [x] 3.2 GitHub issue #28 description includes limitation note
+- [x] 3.1 PUL-32 description includes limitation note — f828c33
+- [x] 3.2 GitHub issue #28 description includes limitation note — f828c33

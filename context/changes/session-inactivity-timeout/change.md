@@ -1,7 +1,7 @@
 ---
 change_id: session-inactivity-timeout
 title: Session security - inactivity timeout + session duration display
-status: implementing
+status: implemented
 created: 2026-06-19
 updated: 2026-06-19
 archived_at: null
