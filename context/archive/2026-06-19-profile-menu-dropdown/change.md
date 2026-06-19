@@ -1,10 +1,10 @@
 ---
 change_id: profile-menu-dropdown
 title: Profile menu button with dropdown for logout and future items
-status: impl_reviewed
+status: archived
 created: 2026-06-19
 updated: 2026-06-19
-archived_at: null
+archived_at: 2026-06-19T14:37:09Z
 tracking:
   linear: PUL-47
   github: 68
