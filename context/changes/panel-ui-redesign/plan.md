@@ -548,11 +548,11 @@ None. All changes are frontend (single HTML file) and new endpoints/functions �
 
 #### Automated
 
-- [x] 5.1 `uv run pytest tests/e2e/test_login_ux.py --tb=short` passes
-- [x] 5.2 `uv run pytest tests/e2e/test_gdpr.py --tb=short` passes
-- [x] 5.3 `uv run pytest tests/e2e/test_autocomplete.py --tb=short` passes
-- [x] 5.4 Full E2E suite still green: `uv run pytest tests/e2e/ --tb=short`
+- [x] 5.1 `uv run pytest tests/e2e/test_login_ux.py --tb=short` passes — 2f1ed78
+- [x] 5.2 `uv run pytest tests/e2e/test_gdpr.py --tb=short` passes — 2f1ed78
+- [x] 5.3 `uv run pytest tests/e2e/test_autocomplete.py --tb=short` passes — 2f1ed78
+- [x] 5.4 Full E2E suite still green: `uv run pytest tests/e2e/ --tb=short` — 2f1ed78
 
 #### Manual
 
-- [x] 5.5 All new E2E tests pass locally in Chromium
+- [x] 5.5 All new E2E tests pass locally in Chromium — 2f1ed78
