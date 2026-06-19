@@ -933,6 +933,24 @@ async function deleteRow(id, tr) {
 
 // ── modal ──────────────────────────────────────────────────────────────
 function openModal(d) {
+  if (d.kind === 'xpost') {
+    $('modal-title').textContent = [d.window, d.date].filter(Boolean).join(' — ') || '—';
+    $('modal-meta').textContent = '';
+    if (!d.postText) {
+      $('modal-body').innerHTML = `<p>Brak treści — supervisor odrzucił wszystkie próby.</p>`;
+    } else {
+      const tweets = d.postText.split('\n\n');
+      const ids = d.tweetIds ? d.tweetIds.split(',') : [];
+      $('modal-body').innerHTML = tweets.map((tweet, i) => {
+        let html = `<div class="modal-section"><h4>Tweet ${i + 1}/${tweets.length}</h4><p>${esc(tweet)}</p>`;
+        if (ids[i]) html += `<a href="https://x.com/i/web/status/${esc(ids[i])}" target="_blank">zobacz na X →</a>`;
+        return html + '</div>';
+      }).join('');
+    }
+    $('modal-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    return;
+  }
   const ticker = d.ticker ? ` ($${d.ticker})` : '';
   $('modal-title').textContent = (d.company || '—') + ticker;
   $('modal-meta').textContent  = [d.date, d.event].filter(Boolean).join(' · ');
