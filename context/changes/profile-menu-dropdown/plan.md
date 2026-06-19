@@ -145,9 +145,9 @@ None — no data or schema changes involved.
 
 #### Automated
 
-- [x] 1.8 E2E: trigger click opens menu (focus → "Wyloguj") and Escape closes it (focus → trigger), aria-expanded toggles correctly
-- [x] 1.9 E2E: clicking outside the menu closes it, while the opening click on the trigger itself does not (outside-click-guard regression)
-- [x] 1.10 Fixed pre-existing `tests/e2e/test_idle_timeout.py::test_manual_logout_still_works` — it clicked "Wyloguj" directly, now must open the profile menu first
+- [x] 1.8 E2E: trigger click opens menu (focus → "Wyloguj") and Escape closes it (focus → trigger), aria-expanded toggles correctly — 10e8270
+- [x] 1.9 E2E: clicking outside the menu closes it, while the opening click on the trigger itself does not (outside-click-guard regression) — 10e8270
+- [x] 1.10 Fixed pre-existing `tests/e2e/test_idle_timeout.py::test_manual_logout_still_works` — it clicked "Wyloguj" directly, now must open the profile menu first — 10e8270
 
 #### Manual
 
