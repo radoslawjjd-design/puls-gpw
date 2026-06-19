@@ -63,7 +63,7 @@
     margin-bottom: 1.5rem; position: sticky; top: 0; z-index: 60;
     background: #f4f6f8; padding: .6rem 0;
   }
-  .topbar h1 { font-size: 1.2rem; }
+  .topbar h1 { font-size: 1.2rem; cursor: pointer; }
   .topbar span { font-size: .85rem; color: #555; margin-right: 1rem; }
   .topbar button {
     padding: .4rem .9rem; background: #e5e7eb; border: none;
@@ -217,18 +217,18 @@
   }
 
   /* Pagination */
-  #pagination-bar {
+  .pagination-bar {
     display: flex; align-items: center; justify-content: center; gap: 1rem;
     padding: .75rem; background: #fff; border-top: 1px solid #e5e7eb;
     border-radius: 0 0 8px 8px;
   }
-  #pagination-bar button {
+  .pagination-bar button {
     padding: .4rem 1rem; background: #e5e7eb; border: none;
     border-radius: 999px; cursor: pointer; font-size: .9rem; font-weight: 500;
   }
-  #pagination-bar button:hover:not(:disabled) { background: #d1d5db; }
-  #pagination-bar button:disabled { opacity: .35; cursor: not-allowed; }
-  #page-label { font-size: .875rem; color: #64748b; font-weight: 500; }
+  .pagination-bar button:hover:not(:disabled) { background: #d1d5db; }
+  .pagination-bar button:disabled { opacity: .35; cursor: not-allowed; }
+  #page-label, #xp-page-label { font-size: .875rem; color: #64748b; font-weight: 500; }
 </style>
 </head>
 <body>
@@ -251,7 +251,7 @@
 <!-- DASHBOARD -->
 <div id="dashboard-screen">
   <div class="topbar">
-    <h1>puls-gpw</h1>
+    <h1 id="topbar-home">puls-gpw</h1>
     <div class="profile-menu-wrap">
       <button id="profile-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="profile-menu">
         <span id="role-badge"></span> ☰
@@ -262,6 +262,7 @@
     </div>
   </div>
 
+  <div id="announcements-view">
   <form class="filters" id="filter-form">
     <div class="ac-wrap">
       <input type="text" id="f-ticker" placeholder="Ticker (np. PKO)" autocomplete="off">
@@ -289,11 +290,12 @@
       <thead id="table-head"></thead>
       <tbody id="table-body"></tbody>
     </table>
-    <div id="pagination-bar">
+    <div id="pagination-bar" class="pagination-bar">
       <button id="btn-prev" disabled>&#8249; Poprzednia</button>
       <span id="page-label">Strona 1</span>
       <button id="btn-next">Następna &#8250;</button>
     </div>
+  </div>
   </div>
 </div>
 
@@ -341,10 +343,15 @@ function _toLabel(code) { return code.charAt(0).toUpperCase() + code.slice(1).re
 const EVENT_TYPE_LABELS = Object.fromEntries(_ALL_EVENT_TYPES.map(c => [c, _toLabel(c)]));
 const EVENT_TYPE_CODES  = Object.fromEntries(_ALL_EVENT_TYPES.map(c => [_toLabel(c), c]));
 
+// ── x-posts label maps ──────────────────────────────────────────────────
+const X_WINDOW_LABELS = { ranek: 'Ranek', poludnie: 'Południe', wieczor: 'Wieczór', test: 'Test' };
+const X_STATUS_LABELS = { published: 'Opublikowany', skipped: 'Pominięty', failed: 'Nieudany', partial: 'Częściowy' };
+
 // ── state ──────────────────────────────────────────────────────────────
 let apiKey      = sessionStorage.getItem('apiKey');
 let role        = sessionStorage.getItem('role');
 let currentPage = 1;
+let xpPage      = 1;
 let _acTickers     = [];
 let _acCompanies   = [];
 let _acEventTypes  = [];
@@ -545,8 +552,11 @@ document.addEventListener('click', e => {
   closeProfileMenu();
 });
 
+$('topbar-home').addEventListener('click', showAnnouncementsView);
+
 window.addEventListener('popstate', e => {
   if (!apiKey) return;
+  showAnnouncementsView();
   if (e.state && e.state.page) {
     currentPage = e.state.page;
     const ps = $('f-page-size');
@@ -555,11 +565,12 @@ window.addEventListener('popstate', e => {
   }
 });
 
-document.querySelectorAll('.date-toggle').forEach(el => {
+function bindDateToggle(el) {
   el.addEventListener('focus',  () => { el.type = 'datetime-local'; });
   el.addEventListener('blur',   () => { if (!el.value) el.type = 'text'; });
   el.addEventListener('change', () => { if (!el.value) el.blur(); });
-});
+}
+document.querySelectorAll('.date-toggle').forEach(bindDateToggle);
 
 $('filter-form').addEventListener('submit', e => {
   e.preventDefault();
@@ -598,6 +609,8 @@ function showDashboard(r) {
   $('role-badge').textContent = r === 'admin' ? '👤 admin' : '👤 user';
   $('data-table').classList.toggle('admin-table', r === 'admin');
   renderHeaders(r);
+  injectAdminOnlyChrome(r);
+  showAnnouncementsView();
   loadAutocomplete();
   fetchAnnouncements(false);
   startIdleTracking();
@@ -626,6 +639,99 @@ function renderHeaders(r) {
   const cols = r === 'admin' ? _ADMIN_COLS : _USER_COLS;
   $('table-head').innerHTML =
     '<tr>' + cols.map(c => `<th class="${c.cls}">${c.label}</th>`).join('') + '</tr>';
+}
+
+// ── admin-only chrome (x-post history) ──────────────────────────────────
+function injectAdminOnlyChrome(r) {
+  const existingBtn  = $('x-history-btn');
+  if (existingBtn) existingBtn.closest('li').remove();
+  const existingView = $('x-history-view');
+  if (existingView) existingView.remove();
+
+  if (r !== 'admin') return;
+
+  const profileMenu  = $('profile-menu');
+  const logoutLi     = $('logout-btn') && $('logout-btn').closest('li');
+  const announceView = $('announcements-view');
+  if (!profileMenu || !logoutLi || !announceView) return;
+
+  const menuItem = document.createElement('li');
+  menuItem.setAttribute('role', 'none');
+  menuItem.innerHTML = '<button id="x-history-btn" role="menuitem">Historia postów X</button>';
+  profileMenu.insertBefore(menuItem, logoutLi);
+
+  const view = document.createElement('div');
+  view.id = 'x-history-view';
+  view.style.display = 'none';
+  view.innerHTML = `
+    <form class="filters" id="xp-filter-form">
+      <select id="xp-f-window" aria-label="Okno">
+        <option value="">Wszystkie okna</option>
+        <option value="ranek">Ranek</option>
+        <option value="poludnie">Południe</option>
+        <option value="wieczor">Wieczór</option>
+      </select>
+      <select id="xp-f-status" aria-label="Status">
+        <option value="">Wszystkie statusy</option>
+        <option value="published">Opublikowany</option>
+        <option value="skipped">Pominięty</option>
+        <option value="failed">Nieudany</option>
+        <option value="partial">Częściowy</option>
+      </select>
+      <input type="text" id="xp-f-post-text" placeholder="Treść posta" autocomplete="off">
+      <input type="text" id="xp-f-from" placeholder="Od" class="date-toggle">
+      <input type="text" id="xp-f-to"   placeholder="Do"  class="date-toggle">
+      <select id="xp-f-page-size" aria-label="Rozmiar strony"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
+      <button type="submit">Filtruj</button>
+    </form>
+
+    <div class="table-wrap">
+      <table>
+        <thead id="xp-table-head"></thead>
+        <tbody id="xp-table-body"></tbody>
+      </table>
+      <div id="xp-pagination-bar" class="pagination-bar">
+        <button id="xp-btn-prev" disabled>&#8249; Poprzednia</button>
+        <span id="xp-page-label">Strona 1</span>
+        <button id="xp-btn-next">Następna &#8250;</button>
+      </div>
+    </div>
+  `;
+  announceView.insertAdjacentElement('afterend', view);
+
+  $('x-history-btn').addEventListener('click', showXHistoryView);
+
+  $('xp-filter-form').addEventListener('submit', e => {
+    e.preventDefault();
+    xpPage = 1;
+    fetchXPosts();
+  });
+  $('xp-f-page-size').addEventListener('change', () => {
+    xpPage = 1;
+    fetchXPosts();
+  });
+  $('xp-btn-prev').addEventListener('click', () => {
+    if (xpPage > 1) { xpPage--; fetchXPosts(); }
+  });
+  $('xp-btn-next').addEventListener('click', () => {
+    xpPage++;
+    fetchXPosts();
+  });
+  view.querySelectorAll('.date-toggle').forEach(bindDateToggle);
+}
+
+// ── view toggle ────────────────────────────────────────────────────────
+function showAnnouncementsView() {
+  $('announcements-view').style.display = '';
+  const xView = $('x-history-view');
+  if (xView) xView.style.display = 'none';
+}
+
+function showXHistoryView() {
+  $('announcements-view').style.display = 'none';
+  $('x-history-view').style.display = '';
+  closeProfileMenu();
+  fetchXPosts();
 }
 
 // ── fetch ──────────────────────────────────────────────────────────────
@@ -667,6 +773,90 @@ async function fetchAnnouncements(push = true) {
     $('btn-prev').disabled = currentPage === 1;
     $('btn-next').disabled = false;
   }
+}
+
+// ── x-posts: fetch ───────────────────────────────────────────────────────
+async function fetchXPosts() {
+  const btnPrev = $('xp-btn-prev');
+  const btnNext = $('xp-btn-next');
+  btnPrev.disabled = true;
+  btnNext.disabled = true;
+  const params = new URLSearchParams();
+  const win = $('xp-f-window').value;
+  if (win) params.set('window', win);
+  const status = $('xp-f-status').value;
+  if (status) params.set('x_publish_status', status);
+  const postText = $('xp-f-post-text').value.trim();
+  if (postText) params.set('post_text', postText);
+  const fromIso = $('xp-f-from').value ? parseDateOrNull($('xp-f-from').value) : null;
+  if (fromIso) params.set('from', fromIso);
+  const toIso = $('xp-f-to').value ? parseDateOrNull($('xp-f-to').value) : null;
+  if (toIso) params.set('to', toIso);
+  const pageSize = $('xp-f-page-size').value || '20';
+  params.set('page', xpPage);
+  params.set('page_size', pageSize);
+
+  try {
+    const r = await fetch('/admin/x-posts?' + params, {
+      headers: { 'X-API-Key': apiKey }
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    $('xp-page-label').textContent = 'Strona ' + xpPage;
+    renderXPostsTable(data);
+    btnPrev.disabled = xpPage === 1;
+    btnNext.disabled = data.length < Number(pageSize);
+  } catch (e) {
+    $('xp-table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
+    btnPrev.disabled = xpPage === 1;
+    btnNext.disabled = false;
+  }
+}
+
+// ── x-posts: render ───────────────────────────────────────────────────────
+const _X_HISTORY_COLS = ['Data', 'Okno', 'Status', 'Post ID', 'Tweets ID', 'Próby', 'Treść'];
+
+function renderXPostsTable(data) {
+  $('xp-table-head').innerHTML =
+    '<tr>' + _X_HISTORY_COLS.map(c => `<th>${c}</th>`).join('') + '</tr>';
+
+  const tbody = $('xp-table-body');
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">Brak wyników</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.map(row => {
+    const date = row.posted_at ? new Date(row.posted_at).toLocaleString('sv-SE', {
+      timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    }) : '—';
+    const windowLabel = X_WINDOW_LABELS[row.window] || row.window || '—';
+    const statusLabel = X_STATUS_LABELS[row.x_publish_status] || row.x_publish_status || '—';
+    let preview = '—';
+    if (row.post_text) {
+      const firstLine = row.post_text.split('\n\n')[0].trim();
+      preview = firstLine.length > 100 ? firstLine.slice(0, 100) + '…' : firstLine;
+    }
+
+    const modalAttrs = `data-kind="xpost" data-window="${esc(windowLabel)}" data-date="${esc(date)}" `
+      + `data-post-text="${esc(row.post_text || '')}" data-tweet-ids="${esc(row.tweet_ids || '')}"`;
+
+    return `<tr class="clickable" ${modalAttrs}>
+      <td>${date}</td>
+      <td>${esc(windowLabel)}</td>
+      <td>${esc(statusLabel)}</td>
+      <td>${esc(row.x_post_id || '—')}</td>
+      <td>${esc(row.tweet_ids || '—')}</td>
+      <td>${esc(row.supervisor_attempts != null ? String(row.supervisor_attempts) : '—')}</td>
+      <td>${esc(preview)}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('tr.clickable').forEach(tr => {
+    tr.addEventListener('click', () => openModal(tr.dataset));
+  });
 }
 
 // ── render ─────────────────────────────────────────────────────────────
@@ -742,6 +932,24 @@ async function deleteRow(id, tr) {
 
 // ── modal ──────────────────────────────────────────────────────────────
 function openModal(d) {
+  if (d.kind === 'xpost') {
+    $('modal-title').textContent = [d.window, d.date].filter(Boolean).join(' — ') || '—';
+    $('modal-meta').textContent = '';
+    if (!d.postText) {
+      $('modal-body').innerHTML = `<p>Brak treści — supervisor odrzucił wszystkie próby.</p>`;
+    } else {
+      const tweets = d.postText.split('\n\n');
+      const ids = d.tweetIds ? d.tweetIds.split(',') : [];
+      $('modal-body').innerHTML = tweets.map((tweet, i) => {
+        let html = `<div class="modal-section"><h4>Tweet ${i + 1}/${tweets.length}</h4><p>${esc(tweet)}</p>`;
+        if (ids[i]) html += `<a href="https://x.com/i/web/status/${esc(ids[i])}" target="_blank">zobacz na X →</a>`;
+        return html + '</div>';
+      }).join('');
+    }
+    $('modal-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    return;
+  }
   const ticker = d.ticker ? ` ($${d.ticker})` : '';
   $('modal-title').textContent = (d.company || '—') + ticker;
   $('modal-meta').textContent  = [d.date, d.event].filter(Boolean).join(' · ');

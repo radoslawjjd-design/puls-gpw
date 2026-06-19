@@ -9,7 +9,7 @@ def _login(page: Page, base_url: str) -> None:
     page.goto(base_url)
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.get_by_role("button", name="Zaloguj się").click()
-    expect(page.get_by_text("Strona 1", exact=True)).to_be_visible()
+    expect(page.locator("#page-label")).to_have_text("Strona 1")
 
 
 def test_ticker_and_company_datalists_populated(page: Page, live_server_url: str):

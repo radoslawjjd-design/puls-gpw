@@ -618,6 +618,89 @@ def list_announcements_admin(
     ]
 
 
+def _build_x_posts_filter_clauses(
+    window: str | None = None,
+    x_publish_status: str | None = None,
+    post_text: str | None = None,
+    from_dt: datetime | None = None,
+    to_dt: datetime | None = None,
+) -> tuple[str, list[bigquery.ScalarQueryParameter]]:
+    clauses, params = [], []
+    if window:
+        clauses.append("`window` = @window")
+        params.append(bigquery.ScalarQueryParameter("window", "STRING", window))
+    if x_publish_status:
+        clauses.append("x_publish_status = @x_publish_status")
+        params.append(
+            bigquery.ScalarQueryParameter("x_publish_status", "STRING", x_publish_status)
+        )
+    if post_text:
+        clauses.append("LOWER(post_text) LIKE LOWER(@post_text)")
+        params.append(bigquery.ScalarQueryParameter("post_text", "STRING", f"%{post_text}%"))
+    if from_dt:
+        clauses.append("posted_at >= @from_dt")
+        params.append(bigquery.ScalarQueryParameter("from_dt", "TIMESTAMP", from_dt))
+    if to_dt:
+        clauses.append("posted_at <= @to_dt")
+        params.append(bigquery.ScalarQueryParameter("to_dt", "TIMESTAMP", to_dt))
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    return where, params
+
+
+def list_x_posts_admin(
+    page: int = 1,
+    page_size: int = 20,
+    window: str | None = None,
+    x_publish_status: str | None = None,
+    post_text: str | None = None,
+    from_dt: datetime | None = None,
+    to_dt: datetime | None = None,
+) -> list[dict]:
+    if page < 1:
+        raise ValueError(f"page must be >= 1, got {page}")
+    client = _get_client()
+    offset = (page - 1) * page_size
+    where, filter_params = _build_x_posts_filter_clauses(
+        window=window,
+        x_publish_status=x_publish_status,
+        post_text=post_text,
+        from_dt=from_dt,
+        to_dt=to_dt,
+    )
+    query = f"""
+        SELECT
+            x_post_id, `window`, post_text, tweet_ids, posted_at,
+            supervisor_attempts, x_publish_status
+        FROM `{_table_ref(client, _X_POSTS_TABLE_NAME)}`
+        {where}
+        ORDER BY posted_at DESC
+        LIMIT @page_size OFFSET @offset
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("page_size", "INT64", page_size),
+            bigquery.ScalarQueryParameter("offset", "INT64", offset),
+            *filter_params,
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_x_posts_admin failed: {exc}") from exc
+    return [
+        {
+            "x_post_id": row.x_post_id,
+            "window": row.window,
+            "post_text": row.post_text,
+            "tweet_ids": row.tweet_ids,
+            "posted_at": row.posted_at,
+            "supervisor_attempts": row.supervisor_attempts,
+            "x_publish_status": row.x_publish_status,
+        }
+        for row in rows
+    ]
+
+
 def list_announcements_user(
     page: int = 1,
     page_size: int = 20,
