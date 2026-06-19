@@ -143,6 +143,12 @@ None — no data or schema changes involved.
 
 ### Phase 1: Profile menu dropdown shell
 
+#### Automated
+
+- [x] 1.8 E2E: trigger click opens menu (focus → "Wyloguj") and Escape closes it (focus → trigger), aria-expanded toggles correctly
+- [x] 1.9 E2E: clicking outside the menu closes it, while the opening click on the trigger itself does not (outside-click-guard regression)
+- [x] 1.10 Fixed pre-existing `tests/e2e/test_idle_timeout.py::test_manual_logout_still_works` — it clicked "Wyloguj" directly, now must open the profile menu first
+
 #### Manual
 
 - [x] 1.1 Trigger (role badge + hamburger icon) opens the menu, both admin and user roles — 58b5074
