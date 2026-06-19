@@ -17,7 +17,7 @@ Frontend-only panel feature (no backend changes):
 - Auto-logout after N minutes of inactivity (no mouse/keyboard/scroll), default `SESSION_IDLE_MINUTES = 30`, configurable via constant.
 - Dismissible warning ~2 min before expiry ("Zostaniesz wylogowany za 2 minuty z powodu braku aktywności").
 - On timeout: clear API key from sessionStorage/localStorage, redirect to login screen.
-- Optional/nice-to-have: "Zalogowano: X min" indicator in panel header, resets on login, counts up until logout.
+- Optional/nice-to-have: "Zalogowano: X min" indicator in panel header, resets on login, counts up until logout. **Dropped 2026-06-19** — no practical use, didn't fit the topbar visually; Phase 1 alone covers the actual need (see plan.md Phase 2).
 
 Related:
 - PUL-28 (user profile & auth tiers) — if server-side sessions land there, this ticket should be revisited to also invalidate the token server-side on timeout.

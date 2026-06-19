@@ -220,6 +220,11 @@ since accidentally dismissing this one should require a deliberate click.
 
 ## Phase 2: Session duration display
 
+**Status: Dropped — see Progress.** After seeing Phase 1 working, the user
+decided the duration indicator has no practical value (it was always
+"Optional/nice-to-have" per `change.md`) and doesn't fit the topbar visually.
+No code for this phase ships; the change closes with Phase 1 + Phase 3.
+
 ### Overview
 
 Add a "Zalogowano: X min" indicator in the topbar, backed by a persisted
@@ -355,18 +360,18 @@ than showing a broken/negative duration.
 
 #### Automated
 
-- [x] 1.1 `uv run pytest tests/e2e/test_idle_timeout.py -v` passes
-- [x] 1.2 Full e2e suite passes, no regressions
+- [x] 1.1 `uv run pytest tests/e2e/test_idle_timeout.py -v` passes — fa50366
+- [x] 1.2 Full e2e suite passes, no regressions — fa50366
 
 #### Manual
 
-- [ ] 1.3 Warning modal with live countdown appears at threshold
-- [ ] 1.4 "Zostań zalogowany" keeps session alive past original deadline
-- [ ] 1.5 Activity before threshold prevents warning
-- [ ] 1.6 Full idle clears sessionStorage and shows login screen
-- [ ] 1.7 Manual "Wyloguj" still works
+- [x] 1.3 Warning modal with live countdown appears at threshold
+- [x] 1.4 "Zostań zalogowany" keeps session alive past original deadline
+- [x] 1.5 Activity before threshold prevents warning
+- [x] 1.6 Full idle clears sessionStorage and shows login screen
+- [x] 1.7 Manual "Wyloguj" still works
 
-### Phase 2: Session duration display
+### Phase 2: Session duration display — Dropped 2026-06-19, not needed (no code shipped)
 
 #### Automated
 
