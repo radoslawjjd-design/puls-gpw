@@ -576,16 +576,16 @@ existing-row changes.
 
 #### Automated
 
-- [x] 1.1 Backend unit tests pass: `uv run pytest tests/test_bigquery.py -k x_posts_admin`
-- [x] 1.2 API tests pass: `uv run pytest tests/test_api.py -k admin_x_posts`
-- [x] 1.3 Full test suite still green: `uv run pytest tests/ --ignore=tests/e2e`
+- [x] 1.1 Backend unit tests pass: `uv run pytest tests/test_bigquery.py -k x_posts_admin` — c9de7be
+- [x] 1.2 API tests pass: `uv run pytest tests/test_api.py -k admin_x_posts` — c9de7be
+- [x] 1.3 Full test suite still green: `uv run pytest tests/ --ignore=tests/e2e` — c9de7be
 
 #### Manual
 
-- [x] 1.4 Admin curl to `/admin/x-posts` returns real `x_posts` rows newest-first
-- [x] 1.5 User key on `/admin/x-posts` returns 403
-- [x] 1.6 No key on `/admin/x-posts` returns 401
-- [x] 1.7 Each filter (window, x_publish_status, post_text, from/to) narrows results against live data
+- [x] 1.4 Admin curl to `/admin/x-posts` returns real `x_posts` rows newest-first — c9de7be
+- [x] 1.5 User key on `/admin/x-posts` returns 403 — c9de7be
+- [x] 1.6 No key on `/admin/x-posts` returns 401 — c9de7be
+- [x] 1.7 Each filter (window, x_publish_status, post_text, from/to) narrows results against live data — c9de7be
 
 ### Phase 2: Frontend — navigation infrastructure (admin-only)
 
