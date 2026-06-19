@@ -1,10 +1,10 @@
 ---
 change_id: remove-analysis-score
 title: Remove analysis_score from user-facing /announcements response
-status: impl_reviewed
+status: archived
 created: 2026-06-19
 updated: 2026-06-19
-archived_at: null
+archived_at: 2026-06-19T11:04:10Z
 tracking:
   linear: PUL-42
   github: 60
