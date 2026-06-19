@@ -219,12 +219,12 @@ and the `analysis_score` column are untouched.
 
 #### Automated
 
-- [x] 1.1 `uv run pytest tests/test_api.py -v` passes
-- [x] 1.2 `uv run pytest tests/test_bigquery.py -v` passes
-- [x] 1.3 Full suite passes: `uv run pytest`
+- [x] 1.1 `uv run pytest tests/test_api.py -v` passes — 2850cce
+- [x] 1.2 `uv run pytest tests/test_bigquery.py -v` passes — 2850cce
+- [x] 1.3 Full suite passes: `uv run pytest` — 2850cce
 
 #### Manual
 
-- [x] 1.4 `curl` with user API key — no `analysis_score` key in response
-- [x] 1.5 `curl` with admin API key — `analysis_score` still present
-- [x] 1.6 Real-BigQuery round-trip (`scripts/test_bq.py`) — modified `SELECT` executes cleanly, no `analysis_score` in returned rows
+- [x] 1.4 `curl` with user API key — no `analysis_score` key in response — 2850cce
+- [x] 1.5 `curl` with admin API key — `analysis_score` still present — 2850cce
+- [x] 1.6 Real-BigQuery round-trip (`scripts/test_bq.py`) — modified `SELECT` executes cleanly, no `analysis_score` in returned rows — 2850cce
