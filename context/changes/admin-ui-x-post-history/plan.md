@@ -632,9 +632,9 @@ existing-row changes.
 
 #### Automated
 
-- [x] 5.1 New E2E suite passes: `uv run pytest tests/e2e/test_x_post_history.py`
-- [x] 5.2 Full E2E suite still green: `uv run pytest tests/e2e/`
+- [x] 5.1 New E2E suite passes: `uv run pytest tests/e2e/test_x_post_history.py` — f3ad3ea
+- [x] 5.2 Full E2E suite still green: `uv run pytest tests/e2e/` — f3ad3ea
 
 #### Manual
 
-- [x] 5.3 Re-run Phase 2-4 manual checks once more after E2E fixtures land
+- [x] 5.3 Re-run Phase 2-4 manual checks once more after E2E fixtures land — f3ad3ea

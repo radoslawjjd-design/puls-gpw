@@ -1,7 +1,7 @@
 ---
 change_id: admin-ui-x-post-history
 title: Admin UI: X post history view
-status: impl_reviewed
+status: implemented
 created: 2026-06-19
 updated: 2026-06-20
 archived_at: null
