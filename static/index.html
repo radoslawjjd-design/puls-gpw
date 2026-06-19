@@ -644,15 +644,20 @@ function injectAdminOnlyChrome(r) {
 
   if (r !== 'admin') return;
 
+  const profileMenu  = $('profile-menu');
+  const logoutLi     = $('logout-btn') && $('logout-btn').closest('li');
+  const announceView = $('announcements-view');
+  if (!profileMenu || !logoutLi || !announceView) return;
+
   const menuItem = document.createElement('li');
   menuItem.setAttribute('role', 'none');
   menuItem.innerHTML = '<button id="x-history-btn" role="menuitem">Historia postów X</button>';
-  $('profile-menu').insertBefore(menuItem, $('logout-btn').closest('li'));
+  profileMenu.insertBefore(menuItem, logoutLi);
 
   const view = document.createElement('div');
   view.id = 'x-history-view';
   view.style.display = 'none';
-  $('announcements-view').insertAdjacentElement('afterend', view);
+  announceView.insertAdjacentElement('afterend', view);
 
   $('x-history-btn').addEventListener('click', showXHistoryView);
 }
