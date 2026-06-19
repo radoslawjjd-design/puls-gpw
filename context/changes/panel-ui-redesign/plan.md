@@ -534,25 +534,25 @@ None. All changes are frontend (single HTML file) and new endpoints/functions �
 
 #### Automated
 
-- [x] 4.1 `uv run pytest tests/e2e/ --tb=short` passes — no regressions
+- [x] 4.1 `uv run pytest tests/e2e/ --tb=short` passes — no regressions — b7425a4
 
 #### Manual
 
-- [x] 4.2 Filter form visually polished (consistent spacing, search icon)
-- [x] 4.3 Table rows comfortable padding, hover state clear
-- [x] 4.4 Pagination buttons rounded/styled, disabled state obvious
-- [x] 4.5 Modal displays analysis as sections (not raw JSON)
-- [x] 4.6 Mobile (375px) layout still correct
+- [x] 4.2 Filter form visually polished (consistent spacing, search icon) — b7425a4
+- [x] 4.3 Table rows comfortable padding, hover state clear — b7425a4
+- [x] 4.4 Pagination buttons rounded/styled, disabled state obvious — b7425a4
+- [x] 4.5 Modal displays analysis as sections (not raw JSON) — b7425a4
+- [x] 4.6 Mobile (375px) layout still correct — b7425a4
 
 ### Phase 5: E2E Tests
 
 #### Automated
 
-- [ ] 5.1 `uv run pytest tests/e2e/test_login_ux.py --tb=short` passes
-- [ ] 5.2 `uv run pytest tests/e2e/test_gdpr.py --tb=short` passes
-- [ ] 5.3 `uv run pytest tests/e2e/test_autocomplete.py --tb=short` passes
-- [ ] 5.4 Full E2E suite still green: `uv run pytest tests/e2e/ --tb=short`
+- [x] 5.1 `uv run pytest tests/e2e/test_login_ux.py --tb=short` passes
+- [x] 5.2 `uv run pytest tests/e2e/test_gdpr.py --tb=short` passes
+- [x] 5.3 `uv run pytest tests/e2e/test_autocomplete.py --tb=short` passes
+- [x] 5.4 Full E2E suite still green: `uv run pytest tests/e2e/ --tb=short`
 
 #### Manual
 
-- [ ] 5.5 All new E2E tests pass locally in Chromium
+- [x] 5.5 All new E2E tests pass locally in Chromium

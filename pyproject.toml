@@ -30,4 +30,7 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+    "gdpr: tests that need the real GDPR banner (skip the auto-accept fixture)",
+]
 
