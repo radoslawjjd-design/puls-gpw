@@ -137,6 +137,19 @@ None — no data or schema changes involved.
 - GitHub: #68
 - Related future tickets that extend this menu: PUL-43, PUL-44, PUL-45, PUL-28
 
+## Addendum: sticky topbar (post-implementation, 58b5074)
+
+While implementing Phase 1, the topbar (`static/index.html` `.topbar` rule)
+was additionally made `position: sticky; top: 0; z-index: 60;` with an
+explicit `background` and `padding`, so the profile menu trigger (and the
+dropdown anchored under it) stays reachable while the user scrolls a long
+result list, rather than scrolling out of view along with the rest of the
+topbar. This was not in the original Contract above and is not tracked by a
+Progress checkbox — documented here retroactively per impl-review F1.
+`z-index: 60` is intentionally above the `z-index: 50` convention shared by
+`.profile-menu` and `.ac-dropdown`, so the sticky topbar always paints over
+both.
+
 ## Progress
 
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles. See `references/progress-format.md`.
