@@ -210,10 +210,10 @@ and the `structured_analysis` column are untouched.
 
 #### Automated
 
-- [x] 1.1 `uv run pytest tests/test_api.py -v` passes
-- [x] 1.2 Full suite passes: `uv run pytest`
+- [x] 1.1 `uv run pytest tests/test_api.py -v` passes — af8e22c
+- [x] 1.2 Full suite passes: `uv run pytest` — af8e22c
 
 #### Manual
 
-- [x] 1.3 `curl` with user API key — no `sentiment` key inside `structured_analysis`
-- [x] 1.4 `curl` with admin API key — `sentiment` still present inside `structured_analysis`
+- [x] 1.3 `curl` with user API key — no `sentiment` key inside `structured_analysis` — af8e22c
+- [x] 1.4 `curl` with admin API key — `sentiment` still present inside `structured_analysis` — af8e22c
