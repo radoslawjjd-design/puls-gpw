@@ -837,7 +837,7 @@ function renderXPostsTable(data) {
     const statusLabel = X_STATUS_LABELS[row.x_publish_status] || row.x_publish_status || '—';
     let preview = '—';
     if (row.post_text) {
-      const firstLine = row.post_text.split('\n\n')[0];
+      const firstLine = row.post_text.split('\n\n')[0].trim();
       preview = firstLine.length > 100 ? firstLine.slice(0, 100) + '…' : firstLine;
     }
 
@@ -850,7 +850,7 @@ function renderXPostsTable(data) {
       <td>${esc(statusLabel)}</td>
       <td>${esc(row.x_post_id || '—')}</td>
       <td>${esc(row.tweet_ids || '—')}</td>
-      <td>${row.supervisor_attempts != null ? row.supervisor_attempts : '—'}</td>
+      <td>${esc(row.supervisor_attempts != null ? String(row.supervisor_attempts) : '—')}</td>
       <td>${esc(preview)}</td>
     </tr>`;
   }).join('');
