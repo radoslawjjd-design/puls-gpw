@@ -6,6 +6,7 @@ import json5
 from dataclasses import dataclass
 
 import google.genai as genai
+from pydantic import field_validator
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from src.gemini_client import get_client as _get_client, GEMINI_MODEL as _GEMINI_MODEL
@@ -36,11 +37,20 @@ _EVENT_TYPE_SCORES = {
     "zmiana_zarzadu": 50, "compliance": 20, "inne": 20,
 }
 
+_VALID_SENTIMENTS = {"pozytywny", "negatywny", "neutralny"}
+
+
 class _AnalysisResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     event_type: str
+    sentiment: str = "neutralny"
     key_numbers: list[str]
     summary_pl: str
+
+    @field_validator("sentiment", mode="before")
+    @classmethod
+    def _coerce_sentiment(cls, v: object) -> str:
+        return v if v in _VALID_SENTIMENTS else "neutralny"
 
 
 _ANALYSIS_SYSTEM_PROMPT = """\
@@ -51,6 +61,7 @@ Ticker i nazwa spółki są już znane — NIE wyciągaj ich z tekstu.
 
 Zwróć JSON z polami:
 - event_type: typ zdarzenia (string, jedna z wartości z listy poniżej)
+- sentiment: ogólny wydźwięk komunikatu dla inwestora (string, jedna z wartości: pozytywny, negatywny, neutralny)
 - key_numbers: lista kluczowych liczb/kwot (array of strings) — patrz zasady poniżej
 - summary_pl: krótkie podsumowanie komunikatu po polsku, max 2 zdania (string).
   WAŻNE: opieraj się WYŁĄCZNIE na treści komunikatu — nie dodawaj kontekstu

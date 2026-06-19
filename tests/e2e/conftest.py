@@ -28,6 +28,14 @@ _FAKE_ADMIN_ROWS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _accept_gdpr(page, request):
+    """Pre-accept GDPR consent so the banner never blocks existing tests.
+    Skip for tests marked @pytest.mark.gdpr — those need the real banner."""
+    if "gdpr" not in request.node.keywords:
+        page.add_init_script("localStorage.setItem('gdpr_consent_v1', 'accepted')")
+
+
 @pytest.fixture(scope="session")
 def live_server_url():
     os.environ["ADMIN_API_KEY"] = _ADMIN_KEY
@@ -36,6 +44,8 @@ def live_server_url():
     with (
         patch("src.api.list_announcements_admin", return_value=_FAKE_ADMIN_ROWS),
         patch("src.api.list_announcements_user", return_value=[]),
+        patch("src.api.list_distinct_tickers",   return_value=["PKO", "CDR", "XTB"]),
+        patch("src.api.list_distinct_companies",  return_value=["PKO SA", "CD Projekt SA"]),
     ):
         server = uvicorn.Server(
             uvicorn.Config(create_app(), host="127.0.0.1", port=0, log_level="error")

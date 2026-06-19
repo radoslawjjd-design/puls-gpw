@@ -12,6 +12,7 @@ _PARSED_CONTENT = (
 
 _ANALYSIS_DICT = {
     "event_type": "wyniki_finansowe",
+    "sentiment": "neutralny",
     "key_numbers": ["120,1 mln PLN", "45 mln PLN"],
     "summary_pl": "Dobry wynik Q1 2026.",
 }
@@ -177,6 +178,9 @@ def test_trailing_comma_json_handled():
 
     assert result.structured_analysis is not None
     assert result.analysis_approved is True
+    import json as _json
+    parsed = _json.loads(result.structured_analysis)
+    assert parsed["sentiment"] == "neutralny"  # "positive" coerced to "neutralny"
 
 
 # ── _AnalysisResponse validation ─────────────────────────────────────────────
@@ -188,12 +192,13 @@ def test_analysis_response_validation():
 
     valid = _AnalysisResponse(event_type="inne", key_numbers=[], summary_pl="x")
     assert valid.event_type == "inne"
+    assert valid.sentiment == "neutralny"  # default when not provided by model
 
-    # extra fields ignored (e.g. sentiment still returned by model during transition)
+    # sentiment is now a first-class field
     r = _AnalysisResponse.model_validate(
-        {"event_type": "inne", "key_numbers": [], "summary_pl": "x", "sentiment": "positive"}
+        {"event_type": "inne", "key_numbers": [], "summary_pl": "x", "sentiment": "pozytywny"}
     )
-    assert not hasattr(r, "sentiment")
+    assert r.sentiment == "pozytywny"
 
     # missing required field raises
     with pytest.raises(ValidationError):

@@ -14,21 +14,47 @@
     min-height: 100vh;
   }
   .login-box {
-    background: #fff; border-radius: 8px; padding: 2rem;
-    box-shadow: 0 2px 12px rgba(0,0,0,.1); width: 100%; max-width: 360px;
+    background: #fff; border-radius: 12px; padding: 2.5rem;
+    box-shadow: 0 4px 24px rgba(0,0,0,.1); width: 100%; max-width: 420px;
   }
-  .login-box h1 { font-size: 1.3rem; margin-bottom: 1.5rem; }
+  .login-brand { margin-bottom: 1.75rem; }
+  .login-brand h1 { font-size: 2rem; color: #2563eb; margin-bottom: 0.25rem; font-weight: 700; }
+  .login-brand p { font-size: 0.85rem; color: #6b7280; }
   .login-box label { display: block; font-size: .85rem; margin-bottom: .3rem; color: #555; }
   .login-box input {
-    width: 100%; padding: .55rem .75rem; border: 1px solid #ccc;
-    border-radius: 5px; font-size: 1rem; margin-bottom: 1rem;
+    width: 100%; padding: .75rem; border: 1.5px solid #d1d5db;
+    border-radius: 8px; font-size: 1rem; margin-bottom: .5rem;
+    outline: none; transition: border-color .15s, box-shadow .15s;
   }
+  .login-box input:focus {
+    border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+  }
+  .login-hint { font-size: 0.8rem; color: #6b7280; margin-top: -0.25rem; margin-bottom: 1.25rem; }
   .login-box button {
-    width: 100%; padding: .6rem; background: #2563eb; color: #fff;
-    border: none; border-radius: 5px; font-size: 1rem; cursor: pointer;
+    width: 100%; padding: .75rem; background: #2563eb; color: #fff;
+    border: none; border-radius: 8px; font-size: 1rem; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(37,99,235,.25); transition: background .15s, box-shadow .15s;
   }
-  .login-box button:hover { background: #1d4ed8; }
-  #login-error { color: #dc2626; font-size: .85rem; margin-top: .5rem; display: none; }
+  .login-box button:hover { background: #1d4ed8; box-shadow: 0 4px 14px rgba(37,99,235,.35); }
+  #login-error {
+    color: #dc2626; font-size: .85rem; margin-top: .75rem; display: none;
+    background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: .5rem .75rem;
+  }
+
+  /* GDPR banner */
+  #gdpr-banner {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #1e293b; color: #e2e8f0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .75rem 1.5rem; z-index: 200; font-size: .85rem; gap: 1rem;
+  }
+  #gdpr-accept {
+    background: transparent; border: 1px solid #94a3b8; color: #e2e8f0;
+    padding: .3rem .9rem; border-radius: 6px; cursor: pointer;
+    font-size: .8rem; white-space: nowrap; flex-shrink: 0;
+    transition: background .15s;
+  }
+  #gdpr-accept:hover { background: rgba(255,255,255,.1); }
 
   /* Dashboard */
   #dashboard-screen { display: none; padding: 1.5rem; }
@@ -46,19 +72,35 @@
 
   /* Filters */
   .filters {
-    display: flex; flex-wrap: wrap; gap: .6rem;
+    display: flex; flex-wrap: wrap; gap: .5rem;
     background: #fff; padding: 1rem; border-radius: 8px;
     margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.06);
   }
   .filters input, .filters select {
-    padding: .4rem .65rem; border: 1px solid #ccc; border-radius: 5px;
+    padding: .45rem .65rem; border: 1.5px solid #d1d5db; border-radius: 6px;
     font-size: .9rem; min-width: 120px;
   }
   .filters button {
     padding: .4rem 1rem; background: #2563eb; color: #fff;
     border: none; border-radius: 5px; cursor: pointer; font-size: .9rem;
   }
+  .filters button::before { content: '⌕  '; }
   .filters button:hover { background: #1d4ed8; }
+
+  /* Autocomplete custom dropdown */
+  .ac-wrap { position: relative; min-width: 120px; }
+  .ac-wrap input { min-width: 0; width: 100%; }
+  .ac-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0; margin-top: 2px;
+    background: #fff; border: 1.5px solid #d1d5db; border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.1);
+    max-height: 13.5rem; overflow-y: auto; z-index: 50;
+  }
+  .ac-item {
+    padding: .45rem .65rem; cursor: pointer; font-size: .9rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ac-item:hover { background: #eff6ff; color: #2563eb; }
 
   /* Table */
   .table-wrap {
@@ -70,8 +112,9 @@
     background: #f9fafb; text-align: left; padding: .6rem .8rem;
     border-bottom: 2px solid #e5e7eb; white-space: nowrap;
   }
-  td { padding: .55rem .8rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  td { padding: .6rem .75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
   tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) td { background: #f8fafc; }
   tr:hover td { background: #f9fafb; }
   tr.clickable { cursor: pointer; }
   tr.clickable:active td { background: #eff6ff; }
@@ -113,6 +156,10 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  .modal-section { margin-bottom: 1rem; }
+  .modal-section h4 { font-size: .75rem; text-transform: uppercase; color: #6b7280; margin-bottom: .25rem; }
+  .sentiment-badge { display: inline-block; padding: .2rem .6rem; border-radius: 999px; font-size: .8rem; background: #e2e8f0; }
+
   .score { font-weight: 600; }
   .score.high { color: #16a34a; }
   .score.mid  { color: #d97706; }
@@ -134,7 +181,7 @@
     .topbar h1 { flex: 1 1 100%; }
 
     .filters { gap: .4rem; }
-    .filters input, .filters select { flex: 1 1 calc(50% - .2rem); min-width: 0; }
+    .filters input, .filters select, .filters .ac-wrap { flex: 1 1 calc(50% - .2rem); min-width: 0; }
     .filters button { width: 100%; }
 
     /* Mobile: chowamy Score i Analizę — zostaje Data/Spółka/Ticker/Typ + Usuń (admin) */
@@ -151,11 +198,11 @@
   }
   #pagination-bar button {
     padding: .4rem 1rem; background: #e5e7eb; border: none;
-    border-radius: 5px; cursor: pointer; font-size: .9rem;
+    border-radius: 999px; cursor: pointer; font-size: .9rem; font-weight: 500;
   }
   #pagination-bar button:hover:not(:disabled) { background: #d1d5db; }
-  #pagination-bar button:disabled { opacity: .4; cursor: default; }
-  #pagination-bar span { font-size: .9rem; }
+  #pagination-bar button:disabled { opacity: .35; cursor: not-allowed; }
+  #page-label { font-size: .875rem; color: #64748b; font-weight: 500; }
 </style>
 </head>
 <body>
@@ -163,11 +210,15 @@
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <h1>puls-gpw</h1>
+    <div class="login-brand">
+      <h1>puls-gpw</h1>
+      <p>Analizator komunikatów ESPI / EBI</p>
+    </div>
     <label for="api-key-input">Klucz API</label>
-    <input type="password" id="api-key-input" placeholder="Wpisz klucz API" autocomplete="current-password">
+    <input id="api-key-input" type="password" placeholder="Wpisz klucz API" autocomplete="current-password">
+    <p class="login-hint">Klucz API otrzymasz od administratora systemu.</p>
     <button id="login-btn">Zaloguj się</button>
-    <div id="login-error">Nieprawidłowy klucz API</div>
+    <div id="login-error" style="display:none">Nieprawidłowy klucz API</div>
   </div>
 </div>
 
@@ -182,12 +233,24 @@
   </div>
 
   <form class="filters" id="filter-form">
-    <input type="text"   id="f-ticker"     placeholder="Ticker (np. PKO)">
-    <input type="text"   id="f-company"    placeholder="Spółka">
-    <input type="text"   id="f-event-type" placeholder="Typ (ESPI/EBI)">
+    <div class="ac-wrap">
+      <input type="text" id="f-ticker" placeholder="Ticker (np. PKO)" autocomplete="off">
+      <div id="ac-ticker" class="ac-dropdown" style="display:none"></div>
+    </div>
+    <datalist id="dl-tickers"></datalist>
+    <div class="ac-wrap">
+      <input type="text" id="f-company" placeholder="Spółka" autocomplete="off">
+      <div id="ac-company" class="ac-dropdown" style="display:none"></div>
+    </div>
+    <datalist id="dl-companies"></datalist>
+    <div class="ac-wrap">
+      <input type="text" id="f-event-type" placeholder="Typ (ESPI/EBI)" autocomplete="off">
+      <div id="ac-event-type" class="ac-dropdown" style="display:none"></div>
+    </div>
+    <datalist id="dl-event-types"></datalist>
     <input type="text" id="f-from" placeholder="Analizy od" class="date-toggle">
     <input type="text" id="f-to"   placeholder="Analizy do" class="date-toggle">
-    <select id="f-page-size"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
+    <select id="f-page-size" aria-label="Rozmiar strony"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
     <button type="submit">Filtruj</button>
   </form>
 
@@ -216,16 +279,120 @@
   </div>
 </div>
 
+<!-- GDPR BANNER -->
+<div id="gdpr-banner" style="display:none">
+  <span>Ta strona używa sessionStorage do przechowywania klucza sesji. Nie stosujemy plików cookie ani śledzenia.</span>
+  <button id="gdpr-accept">Rozumiem</button>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
+
+// ── event type label maps ──────────────────────────────────────────────
+const _ALL_EVENT_TYPES = [
+  'compliance','dywidenda','emisja_akcji','fuzja','inne','kontrakt_znaczacy',
+  'przejecie','restrukturyzacja','skup_akcji','transakcja_insiderow','upadlosc',
+  'wezwanie','wyniki_finansowe','wyniki_sprzedazowe','zmiana_zarzadu',
+];
+function _toLabel(code) { return code.charAt(0).toUpperCase() + code.slice(1).replace(/_/g, ' '); }
+const EVENT_TYPE_LABELS = Object.fromEntries(_ALL_EVENT_TYPES.map(c => [c, _toLabel(c)]));
+const EVENT_TYPE_CODES  = Object.fromEntries(_ALL_EVENT_TYPES.map(c => [_toLabel(c), c]));
 
 // ── state ──────────────────────────────────────────────────────────────
 let apiKey      = sessionStorage.getItem('apiKey');
 let role        = sessionStorage.getItem('role');
 let currentPage = 1;
+let _acTickers     = [];
+let _acCompanies   = [];
+let _acEventTypes  = [];
+let _acInitialized = false;
+let _acLoading     = null;
+
+function _setupAcInput(inputId, dropId, data) {
+  const input = $(inputId);
+  const drop  = $(dropId);
+
+  function show(q) {
+    const matches = q ? data.filter(v => v.toUpperCase().includes(q.toUpperCase())) : data.slice();
+    if (!matches.length) { drop.style.display = 'none'; return; }
+    drop.innerHTML = matches.map(v => `<div class="ac-item">${esc(v)}</div>`).join('');
+    drop.querySelectorAll('.ac-item').forEach(item => {
+      item.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        input.value = item.textContent;
+        drop.style.display = 'none';
+      });
+    });
+    drop.style.display = 'block';
+  }
+
+  input.addEventListener('input', () => show(input.value.trim()));
+  input.addEventListener('focus', () => show(input.value.trim()));
+  input.addEventListener('blur',  () => setTimeout(() => { drop.style.display = 'none'; }, 200));
+}
+
+// ── GDPR ───────────────────────────────────────────────────────────────
+function initGdpr() {
+  if (!localStorage.getItem('gdpr_consent_v1')) {
+    $('gdpr-banner').style.display = 'flex';
+    $('gdpr-accept').addEventListener('click', () => {
+      localStorage.setItem('gdpr_consent_v1', 'accepted');
+      $('gdpr-banner').style.display = 'none';
+    }, { once: true });
+  }
+}
+
+// ── autocomplete ───────────────────────────────────────────────────────
+async function loadAutocomplete() {
+  if (_acLoading) return _acLoading;
+  _acLoading = _doLoadAutocomplete();
+  await _acLoading;
+  _acLoading = null;
+}
+
+async function _doLoadAutocomplete() {
+  const fillDl = (id, values) => {
+    const dl = $(id);
+    dl.innerHTML = '';
+    values.forEach(v => { const o = document.createElement('option'); o.value = v; dl.appendChild(o); });
+  };
+
+  if (!_acInitialized) {
+    _acEventTypes.length = 0;
+    Object.values(EVENT_TYPE_LABELS).forEach(v => _acEventTypes.push(v));
+    fillDl('dl-event-types', _acEventTypes);
+    _setupAcInput('f-ticker',     'ac-ticker',     _acTickers);
+    _setupAcInput('f-company',    'ac-company',    _acCompanies);
+    _setupAcInput('f-event-type', 'ac-event-type', _acEventTypes);
+    _acInitialized = true;
+  }
+
+  try {
+    const [tRes, cRes] = await Promise.all([
+      fetch('/autocomplete/tickers',   { headers: { 'X-API-Key': apiKey } }),
+      fetch('/autocomplete/companies', { headers: { 'X-API-Key': apiKey } }),
+    ]);
+    if (tRes.status === 401 || cRes.status === 401) {
+      sessionStorage.clear(); showLogin(); return;
+    }
+    if (tRes.ok) {
+      const vals = await tRes.json();
+      _acTickers.length = 0; vals.forEach(v => _acTickers.push(v));
+      fillDl('dl-tickers', vals);
+    }
+    if (cRes.ok) {
+      const vals = await cRes.json();
+      _acCompanies.length = 0; vals.forEach(v => _acCompanies.push(v));
+      fillDl('dl-companies', vals);
+    }
+  } catch (e) {
+    console.warn('Autocomplete load failed:', e);
+  }
+}
 
 // ── init ───────────────────────────────────────────────────────────────
 function init() {
+  initGdpr();
   if (apiKey && role) showDashboard(role);
   else                showLogin();
 }
@@ -309,6 +476,7 @@ function showDashboard(r) {
   $('role-badge').textContent = r === 'admin' ? '👤 admin' : '👤 user';
   $('data-table').classList.toggle('admin-table', r === 'admin');
   renderHeaders(r);
+  loadAutocomplete();
   fetchAnnouncements(false);
 }
 
@@ -345,7 +513,9 @@ async function fetchAnnouncements(push = true) {
   const v = id => $(`f-${id}`) && $(`f-${id}`).value.trim();
   if (v('ticker'))     params.set('ticker',     v('ticker'));
   if (v('company'))    params.set('company',    v('company'));
-  if (v('event-type')) params.set('event_type', v('event-type'));
+  const rawEvent = v('event-type');
+  const eventParam = EVENT_TYPE_CODES[rawEvent] || rawEvent;
+  if (eventParam)      params.set('event_type', eventParam);
   const fromIso = v('from') ? parseDateOrNull($('f-from').value) : null;
   if (fromIso)         params.set('from',       fromIso);
   const toIso   = v('to')   ? parseDateOrNull($('f-to').value)   : null;
@@ -397,6 +567,7 @@ function renderTable(data, r) {
     const modalAttrs = `data-company="${esc(row.company||'')}" data-ticker="${esc(row.ticker||'')}" `
       + `data-date="${esc(date)}" data-event="${esc(row.event_type||'')}" `
       + `data-score="${esc(score)}" data-sc="${sc}" data-analysis="${summaryEsc}" `
+      + (row.structured_analysis ? `data-structured-analysis="${esc(JSON.stringify(row.structured_analysis))}" ` : '')
       + (r === 'admin' && row.url ? `data-url="${esc(row.url)}"` : '');
 
     if (r === 'admin') {
@@ -411,11 +582,12 @@ function renderTable(data, r) {
         <td><button class="btn-del" data-id="${esc(row.announcement_id)}">Usuń</button></td>
       </tr>`;
     } else {
+      const eventLabel = row.event_type ? _toLabel(row.event_type) : '—';
       return `<tr class="clickable" ${modalAttrs}>
         <td>${date}</td>
         <td>${esc(row.company || '—')}</td>
         <td>${esc(row.ticker || '—')}</td>
-        <td>${esc(row.event_type || '—')}</td>
+        <td>${esc(eventLabel)}</td>
         <td class="col-analysis analysis-summary">${summaryEsc}</td>
       </tr>`;
     }
@@ -450,10 +622,32 @@ function openModal(d) {
   const ticker = d.ticker ? ` ($${d.ticker})` : '';
   $('modal-title').textContent = (d.company || '—') + ticker;
   $('modal-meta').textContent  = [d.date, d.event].filter(Boolean).join(' · ');
-  let body = d.analysis && d.analysis !== '—' ? d.analysis : 'Brak analizy.';
-  if (role === 'admin' && d.score && d.score !== '—') body += `\n\nScore: ${d.score}`;
-  if (role === 'admin' && d.url) body += `\n\n🔗 ${d.url}`;
-  $('modal-body').textContent = body;
+  let analysis = null;
+  try { analysis = JSON.parse(d.structuredAnalysis || 'null'); } catch { analysis = null; }
+  let bodyHtml;
+  const _VALID_SENTIMENTS = new Set(['pozytywny', 'negatywny', 'neutralny']);
+  if (analysis) {
+    const kn = Array.isArray(analysis.key_numbers)
+      ? analysis.key_numbers.join(' · ')
+      : (analysis.key_numbers || '—');
+    bodyHtml = `<div class="modal-section"><h4>Podsumowanie</h4><p>${esc(analysis.summary_pl || '—')}</p></div>`
+      + `<div class="modal-section"><h4>Kluczowe liczby</h4><p>${esc(kn)}</p></div>`;
+    if (role === 'admin') {
+      const sentimentClass = _VALID_SENTIMENTS.has(analysis.sentiment) ? analysis.sentiment : 'neutralny';
+      if (analysis.sentiment)
+        bodyHtml += `<div class="modal-section"><h4>Sentyment</h4><span class="sentiment-badge sentiment-${sentimentClass}">${esc(analysis.sentiment)}</span></div>`;
+      if (d.score && d.score !== '—')
+        bodyHtml += `<div class="modal-section"><h4>Score</h4><p><span class="score ${esc(d.sc)}">${esc(d.score)}</span></p></div>`;
+      if (d.url)
+        bodyHtml += `<div class="modal-section"><h4>Źródło</h4><p><a href="${esc(d.url)}" target="_blank">🔗 link</a></p></div>`;
+    }
+  } else {
+    const fallback = d.analysis && d.analysis !== '—' ? d.analysis : 'Brak analizy.';
+    bodyHtml = `<pre>${esc(fallback)}</pre>`;
+    if (role === 'admin' && d.score && d.score !== '—') bodyHtml += `<p>Score: ${esc(d.score)}</p>`;
+    if (role === 'admin' && d.url) bodyHtml += `<p>🔗 ${esc(d.url)}</p>`;
+  }
+  $('modal-body').innerHTML = bodyHtml;
   $('modal-overlay').style.display = 'flex';
   document.body.style.overflow = 'hidden';
 }
