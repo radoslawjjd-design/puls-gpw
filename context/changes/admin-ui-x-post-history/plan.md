@@ -619,14 +619,14 @@ existing-row changes.
 
 #### Automated
 
-- [x] 4.1 Existing test suite still passes: `uv run pytest tests/ --ignore=tests/e2e`
+- [x] 4.1 Existing test suite still passes: `uv run pytest tests/ --ignore=tests/e2e` — b228f21
 
 #### Manual
 
-- [x] 4.2 Published row popup shows numbered tweets with working X links
-- [x] 4.3 Partial row popup shows links only for tweets that have an id
-- [x] 4.4 Failed/empty row popup shows "Brak treści" fallback
-- [x] 4.5 Modal close behaviors (✕, overlay click, Escape) unchanged for announcement rows
+- [x] 4.2 Published row popup shows numbered tweets with working X links — b228f21
+- [x] 4.3 Partial row popup shows links only for tweets that have an id — b228f21
+- [x] 4.4 Failed/empty row popup shows "Brak treści" fallback — b228f21
+- [x] 4.5 Modal close behaviors (✕, overlay click, Escape) unchanged for announcement rows — b228f21
 
 ### Phase 5: E2E coverage
 
