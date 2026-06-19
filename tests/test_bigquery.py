@@ -16,6 +16,7 @@ from db.bigquery import (
     list_announcements_user,
     list_distinct_companies,
     list_distinct_tickers,
+    list_x_posts_admin,
     save_analysis_result,
     save_portfolio_snapshot,
     save_x_post,
@@ -555,6 +556,59 @@ def test_list_announcements_user_offset_math():
     with patch("db.bigquery._get_client", return_value=mock):
         list_announcements_user(page=3, page_size=20)
     job_config = mock.query.call_args[1]["job_config"]
+    params_by_name = {p.name: p.value for p in job_config.query_parameters}
+    assert params_by_name["page_size"] == 20
+    assert params_by_name["offset"] == 40
+
+
+# ── list_x_posts_admin (admin-ui-x-post-history) ──────────────────────────────
+
+def test_list_x_posts_admin_no_filters_selects_all_orders_newest_first():
+    mock = _mock_bq_client_with_rows([{"x_post_id": "p1", "window": "ranek"}])
+    with patch("db.bigquery._get_client", return_value=mock):
+        rows = list_x_posts_admin(page=1, page_size=10)
+    query_str = mock.query.call_args[0][0]
+    assert "ORDER BY posted_at DESC" in query_str
+    assert len(rows) == 1 and rows[0]["x_post_id"] == "p1"
+
+
+def test_list_x_posts_admin_backticks_window_column():
+    """`window` is a BQ reserved keyword — must be backticked in SELECT and WHERE (PUL-29)."""
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        list_x_posts_admin(page=1, page_size=10, window="ranek")
+    query_str = mock.query.call_args[0][0]
+    assert "`window`" in query_str
+
+
+def test_list_x_posts_admin_filters_pass_params():
+    from datetime import datetime, timezone
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        list_x_posts_admin(
+            page=1, page_size=10, window="ranek", x_publish_status="published",
+            post_text="PASSUS",
+            from_dt=datetime(2026, 6, 1, tzinfo=timezone.utc),
+            to_dt=datetime(2026, 6, 19, tzinfo=timezone.utc),
+        )
+    query_str = mock.query.call_args[0][0]
+    job_config = mock.query.call_args.kwargs["job_config"]
+    params_by_name = {p.name: p.value for p in job_config.query_parameters}
+    assert "`window` = @window" in query_str
+    assert "x_publish_status = @x_publish_status" in query_str
+    assert "LOWER(post_text) LIKE LOWER(@post_text)" in query_str
+    assert "posted_at >= @from_dt" in query_str
+    assert "posted_at <= @to_dt" in query_str
+    assert params_by_name["window"] == "ranek"
+    assert params_by_name["x_publish_status"] == "published"
+    assert params_by_name["post_text"] == "%PASSUS%"
+
+
+def test_list_x_posts_admin_offset_math():
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        list_x_posts_admin(page=3, page_size=20)
+    job_config = mock.query.call_args.kwargs["job_config"]
     params_by_name = {p.name: p.value for p in job_config.query_parameters}
     assert params_by_name["page_size"] == 20
     assert params_by_name["offset"] == 40

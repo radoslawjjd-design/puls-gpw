@@ -20,6 +20,7 @@ from db.bigquery import (
     list_announcements_user,
     list_distinct_companies,
     list_distinct_tickers,
+    list_x_posts_admin,
 )
 
 _AC_CACHE: dict[str, tuple[list[str], float]] = {}
@@ -84,6 +85,17 @@ class AnnouncementAdmin(BaseModel):
     analysis_reject_reason: str | None = None
     event_type: str | None = None
     analysis_score: float | None = None
+
+
+class XPostAdmin(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    x_post_id: str | None = None
+    window: str | None = None
+    post_text: str | None = None
+    tweet_ids: str | None = None
+    posted_at: datetime | None = None
+    supervisor_attempts: int | None = None
+    x_publish_status: str | None = None
 
 
 class AnnouncementUser(BaseModel):
@@ -181,6 +193,28 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=str(exc))
         _ac_set("companies", data)
         return data
+
+    @app.get("/admin/x-posts")
+    async def admin_x_posts(
+        page: int = Query(1, ge=1),
+        page_size: int = Query(20, ge=1, le=100),
+        window: str | None = None,
+        x_publish_status: str | None = None,
+        post_text: str | None = None,
+        from_dt: datetime | None = Query(None, alias="from"),
+        to_dt: datetime | None = Query(None, alias="to"),
+        role: Role = Depends(_require_admin),
+    ):
+        try:
+            rows = list_x_posts_admin(
+                page=page, page_size=page_size, window=window,
+                x_publish_status=x_publish_status, post_text=post_text,
+                from_dt=from_dt, to_dt=to_dt,
+            )
+            return [XPostAdmin(**r).model_dump() for r in rows]
+        except BigQueryError as exc:
+            logger.error("BQ error in /admin/x-posts: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
 
     @app.delete("/announcements/{announcement_id}", status_code=204)
     async def delete(announcement_id: str, role: Role = Depends(_require_admin)):

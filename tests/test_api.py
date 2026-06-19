@@ -121,6 +121,47 @@ def test_announcements_filter_ticker_passed_to_bq(api_client):
     assert mock_fn.call_args.kwargs.get("ticker") == "CDR"
 
 
+def test_admin_x_posts_admin_returns_list(api_client):
+    mock_rows = [{"x_post_id": "p1", "window": "ranek", "post_text": "t1\n\nt2",
+                  "tweet_ids": "1,2", "posted_at": "2026-06-19T06:00:00",
+                  "supervisor_attempts": 1, "x_publish_status": "published"}]
+    with patch("src.api.list_x_posts_admin", return_value=mock_rows):
+        r = api_client.get("/admin/x-posts", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1 and data[0]["x_post_id"] == "p1"
+
+
+def test_admin_x_posts_user_returns_403(api_client):
+    r = api_client.get("/admin/x-posts", headers={"X-API-Key": _USER_KEY})
+    assert r.status_code == 403
+
+
+def test_admin_x_posts_no_key_returns_401(api_client):
+    r = api_client.get("/admin/x-posts")
+    assert r.status_code == 401
+
+
+def test_admin_x_posts_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with patch("src.api.list_x_posts_admin", side_effect=BigQueryError("boom")):
+        r = api_client.get("/admin/x-posts", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 500
+
+
+def test_admin_x_posts_filters_passed_to_bq(api_client):
+    with patch("src.api.list_x_posts_admin", return_value=[]) as mock_fn:
+        api_client.get(
+            "/admin/x-posts?window=ranek&x_publish_status=published&post_text=PASSUS"
+            "&from=2026-06-01T00:00:00&to=2026-06-19T00:00:00",
+            headers={"X-API-Key": _ADMIN_KEY},
+        )
+    mock_fn.assert_called_once()
+    assert mock_fn.call_args.kwargs.get("window") == "ranek"
+    assert mock_fn.call_args.kwargs.get("x_publish_status") == "published"
+    assert mock_fn.call_args.kwargs.get("post_text") == "PASSUS"
+
+
 def test_delete_admin_returns_204(api_client):
     with patch("src.api.delete_announcement", return_value=None):
         r = api_client.delete("/announcements/some-id",
