@@ -143,12 +143,15 @@ def create_app() -> FastAPI:
                     page=page, page_size=page_size, ticker=ticker, company=company,
                     event_type=event_type, from_dt=from_dt, to_dt=to_dt,
                 )
-                return [
-                    AnnouncementUser(
-                        **{**r, "structured_analysis": _parse_structured_analysis(r.get("structured_analysis"))}
-                    ).model_dump()
-                    for r in rows
-                ]
+                result = []
+                for r in rows:
+                    structured_analysis = _parse_structured_analysis(r.get("structured_analysis"))
+                    if structured_analysis is not None:
+                        structured_analysis.pop("sentiment", None)
+                    result.append(
+                        AnnouncementUser(**{**r, "structured_analysis": structured_analysis}).model_dump()
+                    )
+                return result
         except BigQueryError as exc:
             logger.error("BQ error in /announcements: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
