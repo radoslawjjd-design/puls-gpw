@@ -145,10 +145,10 @@ None — no data or schema changes involved.
 
 #### Manual
 
-- [x] 1.1 Trigger (role badge + hamburger icon) opens the menu, both admin and user roles
-- [x] 1.2 Trigger click again / Escape / outside-click closes the menu
-- [x] 1.3 "Wyloguj" inside the menu logs out exactly as before
-- [x] 1.4 No standalone logout button remains in the topbar
-- [x] 1.5 Keyboard: Tab→trigger, Enter/Space opens + focuses "Wyloguj", Escape closes + returns focus to trigger
-- [x] 1.6 Menu fully usable at mobile (<640px) and desktop widths, both roles
-- [x] 1.7 Hamburger icon (☰) visible on the trigger next to the role label
+- [x] 1.1 Trigger (role badge + hamburger icon) opens the menu, both admin and user roles — 58b5074
+- [x] 1.2 Trigger click again / Escape / outside-click closes the menu — 58b5074
+- [x] 1.3 "Wyloguj" inside the menu logs out exactly as before — 58b5074
+- [x] 1.4 No standalone logout button remains in the topbar — 58b5074
+- [x] 1.5 Keyboard: Tab→trigger, Enter/Space opens + focuses "Wyloguj", Escape closes + returns focus to trigger — 58b5074
+- [x] 1.6 Menu fully usable at mobile (<640px) and desktop widths, both roles — 58b5074
+- [x] 1.7 Hamburger icon (☰) visible on the trigger next to the role label — 58b5074
