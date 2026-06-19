@@ -1,10 +1,10 @@
 ---
 change_id: session-inactivity-timeout
 title: Session security - inactivity timeout + session duration display
-status: implemented
+status: archived
 created: 2026-06-19
 updated: 2026-06-19
-archived_at: null
+archived_at: 2026-06-19T13:24:32Z
 tracking:
   linear: PUL-32
   github: 28
