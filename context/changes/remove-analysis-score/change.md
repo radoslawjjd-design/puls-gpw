@@ -1,7 +1,7 @@
 ---
 change_id: remove-analysis-score
 title: Remove analysis_score from user-facing /announcements response
-status: implemented
+status: impl_reviewed
 created: 2026-06-19
 updated: 2026-06-19
 archived_at: null

@@ -89,7 +89,7 @@ def test_auth_role_missing_key_returns_401(api_client):
 
 def test_announcements_user_returns_subset_fields(api_client):
     mock_rows = [{"company": "PKO", "ticker": "PKO", "event_type": "ESPI",
-                  "structured_analysis": None, "analysis_score": 0.7,
+                  "structured_analysis": None,
                   "published_at": "2024-01-01T00:00:00"}]
     with patch("src.api.list_announcements_user", return_value=mock_rows):
         r = api_client.get("/announcements", headers={"X-API-Key": _USER_KEY})
