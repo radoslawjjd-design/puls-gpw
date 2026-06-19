@@ -60,7 +60,8 @@
   #dashboard-screen { display: none; padding: 1.5rem; }
   .topbar {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.5rem; position: sticky; top: 0; z-index: 60;
+    background: #f4f6f8; padding: .6rem 0;
   }
   .topbar h1 { font-size: 1.2rem; }
   .topbar span { font-size: .85rem; color: #555; margin-right: 1rem; }
@@ -69,6 +70,21 @@
     border-radius: 5px; cursor: pointer; font-size: .9rem;
   }
   .topbar button:hover { background: #d1d5db; }
+
+  /* Profile menu dropdown */
+  .profile-menu-wrap { position: relative; }
+  .profile-menu {
+    position: absolute; top: 100%; right: 0; margin-top: 2px;
+    background: #fff; border: 1.5px solid #d1d5db; border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.1);
+    list-style: none; min-width: 160px; z-index: 50;
+  }
+  .profile-menu button {
+    width: 100%; text-align: left; padding: .55rem .8rem;
+    background: none; border: none; border-radius: 0;
+    cursor: pointer; font-size: .9rem;
+  }
+  .profile-menu button:hover { background: #eff6ff; color: #2563eb; }
 
   /* Filters */
   .filters {
@@ -188,6 +204,7 @@
 
     .topbar { flex-wrap: wrap; gap: .4rem; }
     .topbar h1 { flex: 1 1 100%; }
+    .profile-menu-wrap { margin-left: auto; }
 
     .filters { gap: .4rem; }
     .filters input, .filters select, .filters .ac-wrap { flex: 1 1 calc(50% - .2rem); min-width: 0; }
@@ -235,9 +252,13 @@
 <div id="dashboard-screen">
   <div class="topbar">
     <h1>puls-gpw</h1>
-    <div>
-      <span id="role-badge"></span>
-      <button id="logout-btn">Wyloguj</button>
+    <div class="profile-menu-wrap">
+      <button id="profile-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="profile-menu">
+        <span id="role-badge"></span> ☰
+      </button>
+      <ul id="profile-menu" class="profile-menu" role="menu" hidden>
+        <li role="none"><button id="logout-btn" role="menuitem">Wyloguj</button></li>
+      </ul>
     </div>
   </div>
 
@@ -499,7 +520,29 @@ $('api-key-input').addEventListener('keydown', e => {
 });
 
 $('logout-btn').addEventListener('click', () => {
+  closeProfileMenu();
   doLogout();
+});
+
+// ── profile menu ──────────────────────────────────────────────────────
+function openProfileMenu() {
+  $('profile-menu').hidden = false;
+  $('profile-menu-btn').setAttribute('aria-expanded', 'true');
+  $('logout-btn').focus();
+}
+function closeProfileMenu() {
+  $('profile-menu').hidden = true;
+  $('profile-menu-btn').setAttribute('aria-expanded', 'false');
+  $('profile-menu-btn').focus();
+}
+$('profile-menu-btn').addEventListener('click', () => {
+  if ($('profile-menu').hidden) openProfileMenu();
+  else closeProfileMenu();
+});
+document.addEventListener('click', e => {
+  if ($('profile-menu').hidden) return;
+  if ($('profile-menu-btn').contains(e.target) || $('profile-menu').contains(e.target)) return;
+  closeProfileMenu();
 });
 
 window.addEventListener('popstate', e => {
@@ -737,7 +780,12 @@ function closeModal() {
 }
 $('modal-close').addEventListener('click', closeModal);
 $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeModal();
+    if (!$('profile-menu').hidden) closeProfileMenu();
+  }
+});
 
 // ── util ───────────────────────────────────────────────────────────────
 function esc(s) {

@@ -57,6 +57,7 @@ def test_full_idle_triggers_logout_and_clears_session_storage(page: Page, live_s
 
 def test_manual_logout_still_works(page: Page, live_server_url: str):
     _login(page, live_server_url)
-    page.get_by_role("button", name="Wyloguj").click()
+    page.get_by_role("button", name="admin", exact=False).click()
+    page.get_by_role("menuitem", name="Wyloguj").click()
     expect(page.locator("#login-screen")).to_be_visible()
     assert page.evaluate("() => sessionStorage.length") == 0
