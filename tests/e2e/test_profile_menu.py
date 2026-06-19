@@ -7,7 +7,7 @@ def _login(page: Page, base_url: str) -> None:
     page.goto(base_url)
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.get_by_role("button", name="Zaloguj się").click()
-    expect(page.get_by_text("Strona 1", exact=True)).to_be_visible()
+    expect(page.locator("#page-label")).to_have_text("Strona 1")
 
 
 def test_trigger_click_opens_menu_and_escape_closes_with_focus_management(

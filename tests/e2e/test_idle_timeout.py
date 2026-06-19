@@ -12,7 +12,7 @@ def _login(page: Page, base_url: str) -> None:
     page.clock.pause_at(page.evaluate("() => Date.now()"))
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.get_by_role("button", name="Zaloguj się").click()
-    expect(page.get_by_text("Strona 1", exact=True)).to_be_visible()
+    expect(page.locator("#page-label")).to_have_text("Strona 1")
 
 
 def test_warning_appears_with_live_countdown_at_threshold(page: Page, live_server_url: str):

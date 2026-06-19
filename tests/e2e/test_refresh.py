@@ -9,7 +9,7 @@ def _login(page: Page, base_url: str) -> None:
     page.goto(base_url)
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.get_by_role("button", name="Zaloguj się").click()
-    expect(page.get_by_text("Strona 1", exact=True)).to_be_visible()
+    expect(page.locator("#page-label")).to_have_text("Strona 1")
 
 
 def test_refresh_with_existing_session_keeps_dashboard_functional(page: Page, live_server_url: str):
@@ -18,7 +18,7 @@ def test_refresh_with_existing_session_keeps_dashboard_functional(page: Page, li
 
     _login(page, live_server_url)
     page.get_by_role("button", name=re.compile("Następna")).click()
-    expect(page.get_by_text("Strona 2", exact=True)).to_be_visible()
+    expect(page.locator("#page-label")).to_have_text("Strona 2")
     page.get_by_placeholder("Ticker (np. PKO)").fill("PKO")
 
     page.reload()
@@ -34,7 +34,7 @@ def test_refresh_with_existing_session_keeps_dashboard_functional(page: Page, li
     expect(page.get_by_placeholder("Analizy od")).to_have_attribute("type", "datetime-local")
 
     page.get_by_role("button", name=re.compile("Następna")).click()
-    expect(page.get_by_text("Strona 2", exact=True)).to_be_visible()
+    expect(page.locator("#page-label")).to_have_text("Strona 2")
 
 
 def test_invalid_date_filter_does_not_throw_and_drops_param(page: Page, live_server_url: str):
