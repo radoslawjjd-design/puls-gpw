@@ -12,6 +12,7 @@ _PARSED_CONTENT = (
 
 _ANALYSIS_DICT = {
     "event_type": "wyniki_finansowe",
+    "sentiment": "neutralny",
     "key_numbers": ["120,1 mln PLN", "45 mln PLN"],
     "summary_pl": "Dobry wynik Q1 2026.",
 }
@@ -177,6 +178,9 @@ def test_trailing_comma_json_handled():
 
     assert result.structured_analysis is not None
     assert result.analysis_approved is True
+    import json as _json
+    parsed = _json.loads(result.structured_analysis)
+    assert parsed["sentiment"] == "neutralny"  # "positive" coerced to "neutralny"
 
 
 # ── _AnalysisResponse validation ─────────────────────────────────────────────

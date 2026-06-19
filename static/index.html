@@ -625,6 +625,7 @@ function openModal(d) {
   let analysis = null;
   try { analysis = JSON.parse(d.structuredAnalysis || 'null'); } catch { analysis = null; }
   let bodyHtml;
+  const _VALID_SENTIMENTS = new Set(['pozytywny', 'negatywny', 'neutralny']);
   if (analysis) {
     const kn = Array.isArray(analysis.key_numbers)
       ? analysis.key_numbers.join(' · ')
@@ -632,8 +633,9 @@ function openModal(d) {
     bodyHtml = `<div class="modal-section"><h4>Podsumowanie</h4><p>${esc(analysis.summary_pl || '—')}</p></div>`
       + `<div class="modal-section"><h4>Kluczowe liczby</h4><p>${esc(kn)}</p></div>`;
     if (role === 'admin') {
+      const sentimentClass = _VALID_SENTIMENTS.has(analysis.sentiment) ? analysis.sentiment : 'neutralny';
       if (analysis.sentiment)
-        bodyHtml += `<div class="modal-section"><h4>Sentyment</h4><span class="sentiment-badge sentiment-${esc(analysis.sentiment)}">${esc(analysis.sentiment)}</span></div>`;
+        bodyHtml += `<div class="modal-section"><h4>Sentyment</h4><span class="sentiment-badge sentiment-${sentimentClass}">${esc(analysis.sentiment)}</span></div>`;
       if (d.score && d.score !== '—')
         bodyHtml += `<div class="modal-section"><h4>Score</h4><p><span class="score ${esc(d.sc)}">${esc(d.score)}</span></p></div>`;
       if (d.url)
