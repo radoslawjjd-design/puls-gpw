@@ -73,7 +73,7 @@ Replace the static role badge + standalone logout button with a clickable trigge
 
 **Intent**: Style the trigger to look like the existing topbar buttons, and the popover to look like the existing dropdown/modal chrome, anchored under the trigger at every viewport width.
 
-**Contract**: `.profile-menu-wrap { position: relative; }`. `.profile-menu` is `position: absolute; top: 100%; right: 0;` with the same visual chrome already used by `.ac-dropdown`/`.modal-box` (background, border, border-radius, box-shadow) so it reads as consistent with the rest of the app, `list-style: none`, hidden via the `hidden` attribute (toggled by JS, same mechanism the rest of the file uses for `style.display`). Menu item buttons override the inherited `.topbar button` pill styling so they render as full-width, left-aligned list rows instead of pills. No separate `@media (max-width: 640px)` block is needed for the menu itself — it's the same popover at all widths.
+**Contract**: `.profile-menu-wrap { position: relative; }`. `.profile-menu` is `position: absolute; top: 100%; right: 0; z-index: 50;` (matching the `z-index: 50` already used by `.ac-dropdown`, so every overlay-like element in the file relies on an explicit stacking value rather than implicit paint order) with the same visual chrome already used by `.ac-dropdown`/`.modal-box` (background, border, border-radius, box-shadow) so it reads as consistent with the rest of the app, `list-style: none`, hidden via the `hidden` attribute (toggled by JS, same mechanism the rest of the file uses for `style.display`). Menu item buttons override the inherited `.topbar button` pill styling so they render as full-width, left-aligned list rows instead of pills. No separate `@media (max-width: 640px)` block is needed for the menu itself — it's the same popover at all widths.
 
 #### 3. Open/close/focus/keyboard behavior
 
@@ -145,10 +145,10 @@ None — no data or schema changes involved.
 
 #### Manual
 
-- [ ] 1.1 Trigger (role badge + hamburger icon) opens the menu, both admin and user roles
-- [ ] 1.2 Trigger click again / Escape / outside-click closes the menu
-- [ ] 1.3 "Wyloguj" inside the menu logs out exactly as before
-- [ ] 1.4 No standalone logout button remains in the topbar
-- [ ] 1.5 Keyboard: Tab→trigger, Enter/Space opens + focuses "Wyloguj", Escape closes + returns focus to trigger
-- [ ] 1.6 Menu fully usable at mobile (<640px) and desktop widths, both roles
-- [ ] 1.7 Hamburger icon (☰) visible on the trigger next to the role label
+- [x] 1.1 Trigger (role badge + hamburger icon) opens the menu, both admin and user roles
+- [x] 1.2 Trigger click again / Escape / outside-click closes the menu
+- [x] 1.3 "Wyloguj" inside the menu logs out exactly as before
+- [x] 1.4 No standalone logout button remains in the topbar
+- [x] 1.5 Keyboard: Tab→trigger, Enter/Space opens + focuses "Wyloguj", Escape closes + returns focus to trigger
+- [x] 1.6 Menu fully usable at mobile (<640px) and desktop widths, both roles
+- [x] 1.7 Hamburger icon (☰) visible on the trigger next to the role label
