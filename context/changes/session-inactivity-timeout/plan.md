@@ -3,7 +3,8 @@
 ## Overview
 
 Add a client-side idle-lock to the panel: after `SESSION_IDLE_MINUTES` (default
-30) of no mouse/keyboard/scroll/touch activity, show a 2-minute warning modal,
+10 — lowered from the originally planned 30 per explicit request, 2026-06-19)
+of no mouse/keyboard/scroll/touch activity, show a 2-minute warning modal,
 then auto-clear the cached API key and return to the login screen. Also add a
 "Zalogowano: X min" indicator in the topbar. Frontend-only — `static/index.html`
 is the only file touched.
@@ -67,7 +68,8 @@ captured as Phase 3 (ticket/doc text), not a code change.
 ## Desired End State
 
 A user who stops interacting with the dashboard for `SESSION_IDLE_MINUTES`
-(default 30) sees a warning modal at the 2-minute mark, and — if they don't
+(default 10 — lowered from the originally planned 30 per explicit request,
+2026-06-19) sees a warning modal at the 2-minute mark, and — if they don't
 interact with it — is logged out and returned to the login screen with
 `sessionStorage` cleared. Any mouse/keyboard/scroll/touch activity, or
 clicking "stay logged in" on the warning, resets the clock. The topbar shows
@@ -168,7 +170,8 @@ its body.
 when idle time exceeds `SESSION_IDLE_MINUTES`.
 
 **Contract**: Two constants near the top of the `<script>` block:
-`SESSION_IDLE_MINUTES = 30`, `SESSION_WARNING_MINUTES = 2`. A module-level
+`SESSION_IDLE_MINUTES = 10` (lowered from the originally planned 30 per
+explicit request, 2026-06-19), `SESSION_WARNING_MINUTES = 2`. A module-level
 `lastActivityAt` timestamp updated by listeners on `mousemove`, `keydown`,
 `scroll`, `click`, `touchstart` (all on `window`/`document`, passive where
 applicable). A single `setInterval(checkIdle, 1000)` started in
