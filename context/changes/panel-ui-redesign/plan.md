@@ -502,8 +502,8 @@ None. All changes are frontend (single HTML file) and new endpoints/functions �
 
 #### Manual
 
-- [x] 1.3 Server started locally; curl to `/autocomplete/tickers` returns list of strings
-- [x] 1.4 Second call within 5 min returns identical result (cache hit confirmed)
+- [x] 1.3 Server started locally; curl to `/autocomplete/tickers` returns list of strings — cc0ce4c
+- [x] 1.4 Second call within 5 min returns identical result (cache hit confirmed) — cc0ce4c
 
 ### Phase 2: Login Screen Redesign + GDPR Banner
 
