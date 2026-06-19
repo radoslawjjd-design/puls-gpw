@@ -522,7 +522,7 @@ None. All changes are frontend (single HTML file) and new endpoints/functions �
 #### Automated
 
 - [x] 3.1 `uv run pytest tests/ --tb=short` passes — 866fb33
-- [ ] 3.2 E2E test `test_autocomplete.py` passes
+- [x] 3.2 E2E test `test_autocomplete.py` passes — 2f1ed78
 
 #### Manual
 
