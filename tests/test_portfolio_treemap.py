@@ -79,3 +79,37 @@ def test_zero_yesterday_value_avoids_division_by_zero():
 def test_malformed_json_returns_empty_list():
     assert compute_treemap_positions("{not json", None) == []
     assert compute_treemap_positions("{}", None) == []
+
+
+def test_malformed_item_in_today_positions_is_skipped_not_raised():
+    today = json.dumps({"positions": [
+        {"ticker": "PKO", "value": 1100.0, "pct": 10.0},
+        {"ticker": "BROKEN"},  # missing "value" — must be skipped, not crash
+        "not-a-dict",  # must be skipped, not crash
+    ], "media_attached": False})
+    yesterday = _positions_json([{"ticker": "PKO", "value": 1000.0, "pct": 9.0}])
+
+    result = compute_treemap_positions(today, yesterday)
+
+    assert result == [
+        {
+            "ticker": "PKO",
+            "position_value_pln": 1100.0,
+            "daily_change_pln": 100.0,
+            "daily_change_pct": 10.0,
+        }
+    ]
+
+
+def test_malformed_item_in_yesterday_positions_is_ignored_not_raised():
+    today = _positions_json([{"ticker": "PKO", "value": 1100.0, "pct": 10.0}])
+    yesterday = json.dumps({"positions": [
+        {"ticker": "PKO", "value": 1000.0, "pct": 9.0},
+        {"ticker": "BROKEN"},  # missing "value" — must be ignored, not crash
+        "not-a-dict",  # must be ignored, not crash
+    ], "media_attached": False})
+
+    result = compute_treemap_positions(today, yesterday)
+
+    assert result[0]["daily_change_pln"] == 100.0
+    assert result[0]["daily_change_pct"] == 10.0

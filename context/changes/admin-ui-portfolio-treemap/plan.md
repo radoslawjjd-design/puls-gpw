@@ -409,15 +409,15 @@ None — no schema or data migration; purely additive endpoint and frontend.
 
 #### Automated
 
-- [x] 1.1 New pure-function tests pass: `uv run pytest tests/test_portfolio_treemap.py -q`
-- [x] 1.2 New BQ-layer test passes: `uv run pytest tests/test_bigquery.py -q -k get_latest_snapshot`
-- [x] 1.3 New endpoint tests pass: `uv run pytest tests/test_api.py -q -k treemap`
-- [x] 1.4 Full test suite still passes: `uv run pytest --tb=short`
+- [x] 1.1 New pure-function tests pass: `uv run pytest tests/test_portfolio_treemap.py -q` — 0c97904
+- [x] 1.2 New BQ-layer test passes: `uv run pytest tests/test_bigquery.py -q -k get_latest_snapshot` — 0c97904
+- [x] 1.3 New endpoint tests pass: `uv run pytest tests/test_api.py -q -k treemap` — 0c97904
+- [x] 1.4 Full test suite still passes: `uv run pytest --tb=short` — 0c97904
 
 #### Manual
 
-- [x] 1.5 curl with admin key returns plausible positions/deltas
-- [x] 1.6 curl with user key returns 403
+- [x] 1.5 curl with admin key returns plausible positions/deltas — 0c97904
+- [x] 1.6 curl with user key returns 403 — 0c97904
 
 ### Phase 2: Frontend — treemap layout module
 

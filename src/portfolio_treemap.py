@@ -18,14 +18,21 @@ def compute_treemap_positions(
     if yesterday_positions_json is not None:
         try:
             yesterday_positions = json.loads(yesterday_positions_json)["positions"]
-            yesterday_by_ticker = {p["ticker"]: p["value"] for p in yesterday_positions}
         except Exception:
-            yesterday_by_ticker = {}
+            yesterday_positions = []
+        for position in yesterday_positions:
+            try:
+                yesterday_by_ticker[position["ticker"]] = position["value"]
+            except (KeyError, TypeError):
+                continue
 
     result = []
     for position in today_positions:
-        ticker = position["ticker"]
-        value = position["value"]
+        try:
+            ticker = position["ticker"]
+            value = position["value"]
+        except (KeyError, TypeError):
+            continue
         yesterday_value = yesterday_by_ticker.get(ticker)
         if yesterday_value is None:
             daily_change_pln: float | None = None
