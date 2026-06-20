@@ -66,3 +66,21 @@ test('all items are placed with positive width and height', () => {
     assert.ok(cell.item, 'cell must reference its source item');
   }
 });
+
+test('items with non-positive position_value_pln are excluded from the layout', () => {
+  const items = [
+    { position_value_pln: 0 },
+    { position_value_pln: 50 },
+  ];
+  const result = computeTreemapLayout(items, 800, 600);
+  assert.strictEqual(result.length, 1);
+  assert.strictEqual(result[0].item.position_value_pln, 50);
+  assert.strictEqual(result[0].width, 800);
+  assert.strictEqual(result[0].height, 600);
+});
+
+test('all-zero-value input returns an empty array, never NaN rects', () => {
+  const items = [{ position_value_pln: 0 }, { position_value_pln: 0 }];
+  const result = computeTreemapLayout(items, 800, 600);
+  assert.deepStrictEqual(result, []);
+});

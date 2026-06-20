@@ -70,7 +70,9 @@ function squarify(items, x, y, width, height) {
 
 function computeTreemapLayout(items, containerWidth, containerHeight) {
   if (!items || items.length === 0) return [];
-  return squarify(items, 0, 0, containerWidth, containerHeight);
+  const positiveItems = items.filter((item) => item.position_value_pln > 0);
+  if (positiveItems.length === 0) return [];
+  return squarify(positiveItems, 0, 0, containerWidth, containerHeight);
 }
 
 if (typeof module !== 'undefined' && module.exports) {
