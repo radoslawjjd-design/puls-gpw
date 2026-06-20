@@ -51,6 +51,77 @@ _FAKE_X_POSTS_ROWS = [
 ]
 
 
+_FAKE_TREEMAP_LATEST = {
+    "snapshot_id": "snap-e2e-1", "wallet": "main", "snapshot_date": "2026-06-20",
+    "total_value": 2000.0, "currency": "PLN",
+    "day_change_abs": 100.0, "day_change_pct": 5.0,
+    "positions_json": (
+        '{"positions": ['
+        '{"ticker": "PKO", "value": 1200.0}, '
+        '{"ticker": "CDR", "value": 300.0}, '
+        '{"ticker": "NEW", "value": 500.0}'
+        '], "media_attached": false}'
+    ),
+}
+
+_FAKE_TREEMAP_PRIOR = {
+    "snapshot_id": "snap-e2e-0", "wallet": "main", "snapshot_date": "2026-06-19",
+    "total_value": 1900.0, "currency": "PLN",
+    "day_change_abs": 0.0, "day_change_pct": 0.0,
+    "positions_json": (
+        '{"positions": ['
+        '{"ticker": "PKO", "value": 1000.0}, '
+        '{"ticker": "CDR", "value": 400.0}'
+        '], "media_attached": false}'
+    ),
+}
+
+
+_FAKE_TREEMAP_IKZE_LATEST = {
+    "snapshot_id": "snap-e2e-ikze-1", "wallet": "ikze", "snapshot_date": "2026-06-20",
+    "total_value": 1000.0, "currency": "PLN",
+    "day_change_abs": 50.0, "day_change_pct": 5.0,
+    "positions_json": (
+        '{"positions": ['
+        '{"ticker": "ALE", "value": 700.0}, '
+        '{"ticker": "KGH", "value": 300.0}'
+        '], "media_attached": false}'
+    ),
+}
+
+_FAKE_TREEMAP_IKZE_PRIOR = {
+    "snapshot_id": "snap-e2e-ikze-0", "wallet": "ikze", "snapshot_date": "2026-06-19",
+    "total_value": 900.0, "currency": "PLN",
+    "day_change_abs": 0.0, "day_change_pct": 0.0,
+    "positions_json": (
+        '{"positions": ['
+        '{"ticker": "ALE", "value": 600.0}, '
+        '{"ticker": "KGH", "value": 350.0}'
+        '], "media_attached": false}'
+    ),
+}
+
+
+def _fake_get_latest_snapshot_for_wallet(wallet):
+    """Patches get_latest_snapshot_for_wallet (PUL-50) — keyed by wallet so both
+    `main` and `ikze` render with their own real e2e fixture data."""
+    if wallet == "main":
+        return _FAKE_TREEMAP_LATEST
+    if wallet == "ikze":
+        return _FAKE_TREEMAP_IKZE_LATEST
+    return None
+
+
+def _fake_get_latest_snapshot_before(wallet, before_date):
+    """Patches get_latest_snapshot_before (PUL-50) — keyed by wallet so each
+    wallet's daily delta is computed against its own prior snapshot."""
+    if wallet == "main":
+        return _FAKE_TREEMAP_PRIOR
+    if wallet == "ikze":
+        return _FAKE_TREEMAP_IKZE_PRIOR
+    return None
+
+
 def _fake_list_x_posts_admin(
     page=1, page_size=20, window=None, x_publish_status=None,
     post_text=None, from_dt=None, to_dt=None,
@@ -92,6 +163,8 @@ def live_server_url():
         patch("src.api.list_distinct_tickers",   return_value=["PKO", "CDR", "XTB"]),
         patch("src.api.list_distinct_companies",  return_value=["PKO SA", "CD Projekt SA"]),
         patch("src.api.list_x_posts_admin", side_effect=_fake_list_x_posts_admin),
+        patch("src.api.get_latest_snapshot_for_wallet", side_effect=_fake_get_latest_snapshot_for_wallet),
+        patch("src.api.get_latest_snapshot_before", side_effect=_fake_get_latest_snapshot_before),
     ):
         server = uvicorn.Server(
             uvicorn.Config(create_app(), host="127.0.0.1", port=0, log_level="error")
