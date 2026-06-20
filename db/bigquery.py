@@ -310,6 +310,39 @@ def get_latest_snapshot_before(wallet: str, before_date: date) -> dict | None:
     }
 
 
+def get_latest_snapshot() -> dict | None:
+    """Return the most recently uploaded portfolio_snapshots row, across all wallets.
+
+    Returns None if the table is empty (no /portfolio-xpost run has ever happened).
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT snapshot_id, wallet, snapshot_date, total_value, currency,
+               day_change_abs, day_change_pct, positions_json
+        FROM `{_table_ref(client, _PORTFOLIO_SNAPSHOTS_TABLE_NAME)}`
+        ORDER BY snapshot_date DESC, created_at DESC
+        LIMIT 1
+    """
+    try:
+        rows = list(client.query(query).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_latest_snapshot failed: {exc}") from exc
+    if not rows:
+        return None
+    row = rows[0]
+    return {
+        "snapshot_id": row.snapshot_id,
+        "wallet": row.wallet,
+        "snapshot_date": row.snapshot_date,
+        "total_value": row.total_value,
+        "currency": row.currency,
+        "day_change_abs": row.day_change_abs,
+        "day_change_pct": row.day_change_pct,
+        "positions_json": row.positions_json,
+    }
+
+
 def is_processed(url: str) -> bool:
     """Return True if the announcement URL has already been inserted."""
     client = _get_client()

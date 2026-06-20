@@ -16,12 +16,15 @@ from pydantic import BaseModel, ConfigDict
 from db.bigquery import BigQueryError  # type: ignore[attr-defined]
 from db.bigquery import (
     delete_announcement,
+    get_latest_snapshot,
+    get_latest_snapshot_before,
     list_announcements_admin,
     list_announcements_user,
     list_distinct_companies,
     list_distinct_tickers,
     list_x_posts_admin,
 )
+from src.portfolio_treemap import compute_treemap_positions
 
 _AC_CACHE: dict[str, tuple[list[str], float]] = {}
 _AC_TTL = 300  # 5 minutes
@@ -96,6 +99,14 @@ class XPostAdmin(BaseModel):
     posted_at: datetime | None = None
     supervisor_attempts: int | None = None
     x_publish_status: str | None = None
+
+
+class TreemapPosition(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    ticker: str
+    position_value_pln: float
+    daily_change_pln: float | None = None
+    daily_change_pct: float | None = None
 
 
 class AnnouncementUser(BaseModel):
@@ -214,6 +225,21 @@ def create_app() -> FastAPI:
             return [XPostAdmin(**r).model_dump() for r in rows]
         except BigQueryError as exc:
             logger.error("BQ error in /admin/x-posts: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/admin/portfolio/treemap")
+    async def admin_portfolio_treemap(role: Role = Depends(_require_admin)):
+        try:
+            latest = get_latest_snapshot()
+            if latest is None:
+                return []
+            prior = get_latest_snapshot_before(latest["wallet"], latest["snapshot_date"])
+            positions = compute_treemap_positions(
+                latest["positions_json"], prior["positions_json"] if prior else None
+            )
+            return [TreemapPosition(**p).model_dump() for p in positions]
+        except BigQueryError as exc:
+            logger.error("BQ error in /admin/portfolio/treemap: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
 
     @app.delete("/announcements/{announcement_id}", status_code=204)

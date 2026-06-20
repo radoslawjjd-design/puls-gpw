@@ -268,3 +268,60 @@ def test_autocomplete_companies_cache_hit_skips_bq(api_client):
         api_client.get("/autocomplete/companies", headers={"X-API-Key": _ADMIN_KEY})
         api_client.get("/autocomplete/companies", headers={"X-API-Key": _ADMIN_KEY})
     mock_bq.assert_called_once()
+
+
+# ── admin treemap endpoint (PUL-45 admin-ui-portfolio-treemap) ──────────────
+
+_LATEST_SNAPSHOT = {
+    "snapshot_id": "snap1", "wallet": "main", "snapshot_date": "2026-06-19",
+    "total_value": 5000.0, "currency": "PLN",
+    "day_change_abs": 10.0, "day_change_pct": 0.2,
+    "positions_json": '{"positions": [{"ticker": "PKO", "value": 1100.0, "pct": 22.0}], "media_attached": false}',
+}
+_PRIOR_SNAPSHOT = {
+    "snapshot_id": "snap0", "wallet": "main", "snapshot_date": "2026-06-18",
+    "total_value": 4900.0, "currency": "PLN",
+    "day_change_abs": 0.0, "day_change_pct": 0.0,
+    "positions_json": '{"positions": [{"ticker": "PKO", "value": 1000.0, "pct": 20.0}], "media_attached": false}',
+}
+
+
+def test_admin_treemap_admin_returns_positions_with_deltas(api_client):
+    with (
+        patch("src.api.get_latest_snapshot", return_value=_LATEST_SNAPSHOT),
+        patch("src.api.get_latest_snapshot_before", return_value=_PRIOR_SNAPSHOT),
+    ):
+        r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 200
+    assert r.json() == [
+        {
+            "ticker": "PKO",
+            "position_value_pln": 1100.0,
+            "daily_change_pln": 100.0,
+            "daily_change_pct": 10.0,
+        }
+    ]
+
+
+def test_admin_treemap_no_snapshot_returns_empty_list(api_client):
+    with patch("src.api.get_latest_snapshot", return_value=None):
+        r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_admin_treemap_user_returns_403(api_client):
+    r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _USER_KEY})
+    assert r.status_code == 403
+
+
+def test_admin_treemap_no_key_returns_401(api_client):
+    r = api_client.get("/admin/portfolio/treemap")
+    assert r.status_code == 401
+
+
+def test_admin_treemap_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with patch("src.api.get_latest_snapshot", side_effect=BigQueryError("boom")):
+        r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 500

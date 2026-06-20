@@ -10,6 +10,7 @@ from db.bigquery import (
     create_x_posts_table_if_not_exists,
     delete_announcement,
     fetch_top_n_for_window,
+    get_latest_snapshot,
     get_latest_snapshot_before,
     insert_announcement,
     list_announcements_admin,
@@ -360,6 +361,33 @@ def test_get_latest_snapshot_before_returns_none_when_no_prior_row():
     """First-ever run for a wallet has no prior snapshot — must return None, not raise."""
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
         result = get_latest_snapshot_before("ikze", date(2026, 6, 17))
+
+    assert result is None
+
+
+def test_get_latest_snapshot_returns_most_recent_row_across_wallets():
+    """get_latest_snapshot must order by snapshot_date DESC, created_at DESC and pick row 0."""
+    row_data = [{
+        "snapshot_id": "snap2", "wallet": "ikze", "snapshot_date": date(2026, 6, 19),
+        "total_value": 5000.0, "currency": "PLN",
+        "day_change_abs": 10.0, "day_change_pct": 0.2,
+        "positions_json": '{"positions": [], "media_attached": false}',
+    }]
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(row_data)) as mock_get:
+        client = mock_get.return_value
+        result = get_latest_snapshot()
+
+    assert result is not None
+    assert result["wallet"] == "ikze"
+    assert result["snapshot_date"] == date(2026, 6, 19)
+    query_str = client.query.call_args[0][0]
+    assert "ORDER BY snapshot_date DESC, created_at DESC" in query_str
+
+
+def test_get_latest_snapshot_returns_none_when_table_empty():
+    """No /portfolio-xpost run has ever happened — must return None, not raise."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
+        result = get_latest_snapshot()
 
     assert result is None
 
