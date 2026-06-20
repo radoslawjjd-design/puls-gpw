@@ -231,7 +231,13 @@
   #page-label, #xp-page-label { font-size: .875rem; color: #64748b; font-weight: 500; }
 
   /* Treemap */
-  #treemap-container { position: relative; min-height: 400px; background: #fff; border-radius: 8px; }
+  .treemap-wallets { display: flex; gap: 1rem; }
+  .treemap-wallet { flex: 1 1 50%; min-width: 0; }
+  .treemap-wallet h3 { margin: 0 0 .5rem; font-size: 1rem; }
+  .treemap-container { position: relative; min-height: 400px; background: #fff; border-radius: 8px; }
+  @media (max-width: 768px) {
+    .treemap-wallets { flex-direction: column; }
+  }
   .treemap-cell {
     position: absolute; box-sizing: border-box; overflow: hidden;
     border: 1px solid rgba(255,255,255,.6); padding: .25rem .4rem;
@@ -746,7 +752,18 @@ function injectAdminOnlyChrome(r) {
   const treemapView = document.createElement('div');
   treemapView.id = 'treemap-view';
   treemapView.style.display = 'none';
-  treemapView.innerHTML = '<div id="treemap-container"></div>';
+  treemapView.innerHTML = `
+    <div class="treemap-wallets">
+      <div class="treemap-wallet">
+        <h3>Portfel główny</h3>
+        <div id="treemap-main" class="treemap-container"></div>
+      </div>
+      <div class="treemap-wallet">
+        <h3>IKZE</h3>
+        <div id="treemap-ikze" class="treemap-container"></div>
+      </div>
+    </div>
+  `;
   view.insertAdjacentElement('afterend', treemapView);
 
   $('treemap-btn').addEventListener('click', showTreemapView);

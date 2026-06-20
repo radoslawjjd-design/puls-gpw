@@ -488,8 +488,8 @@ None — no schema or data migration; `total_value` already exists on
 
 #### Automated
 
-- [ ] 2.1 Full test suite still passes: `uv run pytest --tb=short`
-- [ ] 2.2 Layout unit tests still pass: `node --test tests/test_treemap_layout.js`
+- [x] 2.1 Full test suite still passes: `uv run pytest --tb=short`
+- [x] 2.2 Layout unit tests still pass: `node --test tests/test_treemap_layout.js`
 
 #### Manual
 
