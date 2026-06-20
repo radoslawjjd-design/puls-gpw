@@ -84,3 +84,18 @@ test('all-zero-value input returns an empty array, never NaN rects', () => {
   const result = computeTreemapLayout(items, 800, 600);
   assert.deepStrictEqual(result, []);
 });
+
+test('a non-positive item buried in a larger row is dropped, never produces NaN rects', () => {
+  const items = [
+    { position_value_pln: 50 },
+    { position_value_pln: 30 },
+    { position_value_pln: 0 },
+    { position_value_pln: 20 },
+  ];
+  const result = computeTreemapLayout(items, 800, 600);
+  assert.strictEqual(result.length, 3);
+  for (const cell of result) {
+    assert.ok(Number.isFinite(cell.width) && cell.width > 0, 'width must be a positive finite number');
+    assert.ok(Number.isFinite(cell.height) && cell.height > 0, 'height must be a positive finite number');
+  }
+});

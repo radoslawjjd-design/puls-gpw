@@ -19,6 +19,7 @@ function worstAspectRatio(row, total, width, height) {
 }
 
 function squarify(items, x, y, width, height) {
+  items = items.filter((it) => it.position_value_pln > 0);
   if (items.length === 0) return [];
   if (items.length === 1) {
     return [{ item: items[0], x, y, width, height }];
