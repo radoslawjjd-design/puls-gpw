@@ -77,11 +77,49 @@ _FAKE_TREEMAP_PRIOR = {
 }
 
 
+_FAKE_TREEMAP_IKZE_LATEST = {
+    "snapshot_id": "snap-e2e-ikze-1", "wallet": "ikze", "snapshot_date": "2026-06-20",
+    "total_value": 1000.0, "currency": "PLN",
+    "day_change_abs": 50.0, "day_change_pct": 5.0,
+    "positions_json": (
+        '{"positions": ['
+        '{"ticker": "ALE", "value": 700.0}, '
+        '{"ticker": "KGH", "value": 300.0}'
+        '], "media_attached": false}'
+    ),
+}
+
+_FAKE_TREEMAP_IKZE_PRIOR = {
+    "snapshot_id": "snap-e2e-ikze-0", "wallet": "ikze", "snapshot_date": "2026-06-19",
+    "total_value": 900.0, "currency": "PLN",
+    "day_change_abs": 0.0, "day_change_pct": 0.0,
+    "positions_json": (
+        '{"positions": ['
+        '{"ticker": "ALE", "value": 600.0}, '
+        '{"ticker": "KGH", "value": 350.0}'
+        '], "media_attached": false}'
+    ),
+}
+
+
 def _fake_get_latest_snapshot_for_wallet(wallet):
-    """Patches get_latest_snapshot_for_wallet (PUL-50) — only `main` has e2e fixture
-    data for now; `ikze`'s fixture + frontend wiring land in Phase 2/3 of
-    portfolio-treemap-multi-wallet."""
-    return _FAKE_TREEMAP_LATEST if wallet == "main" else None
+    """Patches get_latest_snapshot_for_wallet (PUL-50) — keyed by wallet so both
+    `main` and `ikze` render with their own real e2e fixture data."""
+    if wallet == "main":
+        return _FAKE_TREEMAP_LATEST
+    if wallet == "ikze":
+        return _FAKE_TREEMAP_IKZE_LATEST
+    return None
+
+
+def _fake_get_latest_snapshot_before(wallet, before_date):
+    """Patches get_latest_snapshot_before (PUL-50) — keyed by wallet so each
+    wallet's daily delta is computed against its own prior snapshot."""
+    if wallet == "main":
+        return _FAKE_TREEMAP_PRIOR
+    if wallet == "ikze":
+        return _FAKE_TREEMAP_IKZE_PRIOR
+    return None
 
 
 def _fake_list_x_posts_admin(
@@ -126,7 +164,7 @@ def live_server_url():
         patch("src.api.list_distinct_companies",  return_value=["PKO SA", "CD Projekt SA"]),
         patch("src.api.list_x_posts_admin", side_effect=_fake_list_x_posts_admin),
         patch("src.api.get_latest_snapshot_for_wallet", side_effect=_fake_get_latest_snapshot_for_wallet),
-        patch("src.api.get_latest_snapshot_before", return_value=_FAKE_TREEMAP_PRIOR),
+        patch("src.api.get_latest_snapshot_before", side_effect=_fake_get_latest_snapshot_before),
     ):
         server = uvicorn.Server(
             uvicorn.Config(create_app(), host="127.0.0.1", port=0, log_level="error")

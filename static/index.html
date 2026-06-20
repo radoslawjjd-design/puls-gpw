@@ -234,7 +234,7 @@
   .treemap-wallets { display: flex; gap: 1rem; }
   .treemap-wallet { flex: 1 1 50%; min-width: 0; }
   .treemap-wallet h3 { margin: 0 0 .5rem; font-size: 1rem; }
-  .treemap-container { position: relative; min-height: 400px; background: #fff; border-radius: 8px; }
+  .treemap-container { position: relative; min-height: 600px; background: #fff; border-radius: 8px; }
   @media (max-width: 768px) {
     .treemap-wallets { flex-direction: column; }
   }
@@ -243,12 +243,22 @@
     border: 1px solid rgba(255,255,255,.6); padding: .25rem .4rem;
     color: #fff; font-size: .8rem;
   }
-  .treemap-cell .tc-ticker { font-weight: 600; display: block; }
-  .treemap-cell .tc-detail { display: block; font-size: .75rem; opacity: .9; }
+  .treemap-cell:hover { overflow: visible; z-index: 5; }
+  .treemap-cell .tc-ticker,
+  .treemap-cell .tc-detail { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .treemap-cell .tc-ticker { font-weight: 600; }
+  .treemap-cell .tc-detail { font-size: .75rem; opacity: .9; }
   .treemap-cell.positive { background: #16a34a; }
   .treemap-cell.negative { background: #dc2626; }
   .treemap-cell.neutral  { background: #9ca3af; }
   .treemap-cell.no-data  { background: #9ca3af; border: 1px dashed #4b5563; }
+  .treemap-cell .tc-tooltip {
+    display: none; position: absolute; top: 100%; left: 0; margin-top: 2px;
+    background: #1e293b; color: #fff; padding: .4rem .6rem; border-radius: 6px;
+    font-size: .75rem; line-height: 1.5; white-space: nowrap; width: max-content;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3); z-index: 30; pointer-events: none;
+  }
+  .treemap-cell:hover .tc-tooltip { display: block; }
 </style>
 </head>
 <body>
@@ -921,6 +931,19 @@ function renderXPostsTable(data) {
 }
 
 // ── treemap: fetch ──────────────────────────────────────────────────────
+const _TREEMAP_WALLET_CONTAINERS = [['main', 'treemap-main'], ['ikze', 'treemap-ikze']];
+let _treemapData = null;
+
+function _renderTreemapWallets(data) {
+  _TREEMAP_WALLET_CONTAINERS.forEach(([wallet, containerId]) => {
+    if (!data[wallet] || !data[wallet].length) {
+      $(containerId).innerHTML = `<div class="empty">Brak danych portfela</div>`;
+    } else {
+      renderTreemap(data[wallet], $(containerId));
+    }
+  });
+}
+
 async function fetchTreemap() {
   try {
     const r = await fetch('/admin/portfolio/treemap', {
@@ -929,19 +952,30 @@ async function fetchTreemap() {
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    if (!data.length) {
-      $('treemap-container').innerHTML = `<div class="empty">Brak danych portfela</div>`;
-      return;
-    }
-    renderTreemap(data);
+    _treemapData = data;
+    _renderTreemapWallets(data);
   } catch (e) {
-    $('treemap-container').innerHTML = `<div class="empty">Błąd ładowania danych</div>`;
+    _treemapData = null;
+    _TREEMAP_WALLET_CONTAINERS.forEach(([, containerId]) => {
+      $(containerId).innerHTML = `<div class="empty">Błąd ładowania danych</div>`;
+    });
   }
 }
 
+// Cell pixel sizes are computed from container width/height at render time;
+// re-render (from cached data, no refetch) on resize so layout never goes
+// stale and overflows its container — e.g. when crossing the 768px breakpoint.
+let _treemapResizeTimer = null;
+window.addEventListener('resize', () => {
+  if (!_treemapData) return;
+  const view = $('treemap-view');
+  if (!view || view.style.display === 'none') return;
+  clearTimeout(_treemapResizeTimer);
+  _treemapResizeTimer = setTimeout(() => _renderTreemapWallets(_treemapData), 150);
+});
+
 // ── treemap: render ─────────────────────────────────────────────────────
-function renderTreemap(data) {
-  const container = $('treemap-container');
+function renderTreemap(data, container) {
   const sorted = data.slice().sort((a, b) => b.position_value_pln - a.position_value_pln);
   const layout = computeTreemapLayout(sorted, container.clientWidth, container.clientHeight);
 
@@ -953,20 +987,27 @@ function renderTreemap(data) {
     else if (item.daily_change_pln < 0)      cls = 'negative';
     else                                      cls = 'neutral';
 
-    let detail = '';
-    if (cell.width >= 60 && cell.height >= 30) {
-      if (item.daily_change_pln === null) {
-        detail = `<span class="tc-detail">brak danych</span>`;
-      } else {
-        const sign = item.daily_change_pln > 0 ? '+' : '';
-        const pct  = item.daily_change_pct != null ? item.daily_change_pct.toFixed(1) : '—';
-        detail = `<span class="tc-detail">${sign}${pct}% / ${sign}${item.daily_change_pln.toFixed(0)} PLN</span>`;
-      }
+    let dailyText;
+    if (item.daily_change_pln === null) {
+      dailyText = 'brak danych';
+    } else {
+      const sign = item.daily_change_pln > 0 ? '+' : '';
+      const pct  = item.daily_change_pct != null ? item.daily_change_pct.toFixed(1) : '—';
+      dailyText = `${sign}${pct}% / ${sign}${item.daily_change_pln.toFixed(0)} PLN`;
     }
+    const sharePct = item.portfolio_share_pct != null ? item.portfolio_share_pct.toFixed(1) + '%' : '—';
+    const shareText = `${sharePct} · ${item.position_value_pln.toFixed(0)} PLN`;
+
+    let detail = '';
+    if (cell.width >= 90 && cell.height >= 46) {
+      detail = `<span class="tc-detail">${dailyText}</span><span class="tc-detail">${shareText}</span>`;
+    }
+
+    const tooltip = `<div class="tc-tooltip"><strong>${esc(item.ticker)}</strong><br>${dailyText}<br>${shareText}</div>`;
 
     const style = `left:${cell.x}px;top:${cell.y}px;width:${cell.width}px;height:${cell.height}px`;
     return `<div class="treemap-cell ${cls}" style="${style}">`
-      + `<span class="tc-ticker">${esc(item.ticker)}</span>${detail}</div>`;
+      + `<span class="tc-ticker">${esc(item.ticker)}</span>${detail}${tooltip}</div>`;
   }).join('');
 }
 

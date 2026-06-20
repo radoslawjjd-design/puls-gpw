@@ -1,6 +1,5 @@
 import re
 
-import pytest
 from playwright.sync_api import Page, expect
 
 _ADMIN_KEY = "e2e-admin-key"
@@ -19,25 +18,26 @@ def _open_treemap(page: Page) -> None:
     page.get_by_role("menuitem", name="Treemapa portfela").click()
 
 
-@pytest.mark.xfail(
-    reason="PUL-50 phase 1: backend now returns {main, ikze} keyed response; "
-    "frontend dual-container rendering lands in Phase 2/3 of "
-    "portfolio-treemap-multi-wallet",
-    strict=False,
-)
 def test_admin_can_open_treemap_and_see_positions_rendered_with_pl_deltas(
     page: Page, live_server_url: str
 ):
     _login(page, live_server_url)
     _open_treemap(page)
 
-    container = page.locator("#treemap-container")
-    expect(container.locator(".treemap-cell.positive")).to_contain_text("PKO")
-    expect(container.locator(".treemap-cell.positive")).to_contain_text("+200")
-    expect(container.locator(".treemap-cell.negative")).to_contain_text("CDR")
-    expect(container.locator(".treemap-cell.negative")).to_contain_text("-100")
-    expect(container.locator(".treemap-cell.no-data")).to_contain_text("NEW")
-    expect(container.locator(".treemap-cell.no-data")).to_contain_text("brak danych")
+    expect(page.get_by_role("heading", name="Portfel główny")).to_be_visible()
+    expect(page.get_by_role("heading", name="IKZE")).to_be_visible()
+
+    main_container = page.locator("#treemap-main")
+    expect(main_container.locator(".treemap-cell.positive")).to_contain_text("PKO")
+    expect(main_container.locator(".treemap-cell.positive")).to_contain_text("+200")
+    expect(main_container.locator(".treemap-cell.negative")).to_contain_text("CDR")
+    expect(main_container.locator(".treemap-cell.negative")).to_contain_text("-100")
+    expect(main_container.locator(".treemap-cell.no-data")).to_contain_text("NEW")
+    expect(main_container.locator(".treemap-cell.no-data")).to_contain_text("brak danych")
+
+    ikze_container = page.locator("#treemap-ikze")
+    expect(ikze_container.locator(".treemap-cell", has_text="ALE")).to_be_visible()
+    expect(ikze_container.locator(".treemap-cell", has_text="KGH")).to_be_visible()
 
 
 def test_user_role_has_no_treemap_menu_item_or_dom_node(page: Page, live_server_url: str):
