@@ -270,44 +270,88 @@ def test_autocomplete_companies_cache_hit_skips_bq(api_client):
     mock_bq.assert_called_once()
 
 
-# ── admin treemap endpoint (PUL-45 admin-ui-portfolio-treemap) ──────────────
+# ── admin treemap endpoint (PUL-45 admin-ui-portfolio-treemap, PUL-50 multi-wallet) ─
 
-_LATEST_SNAPSHOT = {
+_LATEST_SNAPSHOT_MAIN = {
     "snapshot_id": "snap1", "wallet": "main", "snapshot_date": "2026-06-19",
     "total_value": 5000.0, "currency": "PLN",
     "day_change_abs": 10.0, "day_change_pct": 0.2,
     "positions_json": '{"positions": [{"ticker": "PKO", "value": 1100.0, "pct": 22.0}], "media_attached": false}',
 }
-_PRIOR_SNAPSHOT = {
+_PRIOR_SNAPSHOT_MAIN = {
     "snapshot_id": "snap0", "wallet": "main", "snapshot_date": "2026-06-18",
     "total_value": 4900.0, "currency": "PLN",
     "day_change_abs": 0.0, "day_change_pct": 0.0,
     "positions_json": '{"positions": [{"ticker": "PKO", "value": 1000.0, "pct": 20.0}], "media_attached": false}',
 }
+_LATEST_SNAPSHOT_IKZE = {
+    "snapshot_id": "snap2", "wallet": "ikze", "snapshot_date": "2026-06-19",
+    "total_value": 2000.0, "currency": "PLN",
+    "day_change_abs": 5.0, "day_change_pct": 0.5,
+    "positions_json": '{"positions": [{"ticker": "CDR", "value": 800.0, "pct": 40.0}], "media_attached": false}',
+}
 
 
-def test_admin_treemap_admin_returns_positions_with_deltas(api_client):
+def _snapshot_side_effect(latest_by_wallet: dict):
+    def _fn(wallet):
+        return latest_by_wallet.get(wallet)
+    return _fn
+
+
+def test_admin_treemap_admin_returns_both_wallets_keyed_with_deltas(api_client):
     with (
-        patch("src.api.get_latest_snapshot", return_value=_LATEST_SNAPSHOT),
-        patch("src.api.get_latest_snapshot_before", return_value=_PRIOR_SNAPSHOT),
+        patch(
+            "src.api.get_latest_snapshot_for_wallet",
+            side_effect=_snapshot_side_effect(
+                {"main": _LATEST_SNAPSHOT_MAIN, "ikze": _LATEST_SNAPSHOT_IKZE}
+            ),
+        ),
+        patch("src.api.get_latest_snapshot_before", return_value=_PRIOR_SNAPSHOT_MAIN),
     ):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
-    assert r.json() == [
+    body = r.json()
+    assert list(body.keys()) == ["main", "ikze"]
+    assert body["main"] == [
         {
             "ticker": "PKO",
             "position_value_pln": 1100.0,
             "daily_change_pln": 100.0,
             "daily_change_pct": 10.0,
+            "portfolio_share_pct": 22.0,
+        }
+    ]
+    assert body["ikze"] == [
+        {
+            "ticker": "CDR",
+            "position_value_pln": 800.0,
+            "daily_change_pln": None,
+            "daily_change_pct": None,
+            "portfolio_share_pct": 40.0,
         }
     ]
 
 
-def test_admin_treemap_no_snapshot_returns_empty_list(api_client):
-    with patch("src.api.get_latest_snapshot", return_value=None):
+def test_admin_treemap_one_wallet_missing_other_still_renders(api_client):
+    with (
+        patch(
+            "src.api.get_latest_snapshot_for_wallet",
+            side_effect=_snapshot_side_effect({"main": _LATEST_SNAPSHOT_MAIN}),
+        ),
+        patch("src.api.get_latest_snapshot_before", return_value=_PRIOR_SNAPSHOT_MAIN),
+    ):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
-    assert r.json() == []
+    body = r.json()
+    assert body["ikze"] == []
+    assert len(body["main"]) == 1
+
+
+def test_admin_treemap_no_snapshots_returns_empty_lists_for_both_wallets(api_client):
+    with patch("src.api.get_latest_snapshot_for_wallet", return_value=None):
+        r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 200
+    assert r.json() == {"main": [], "ikze": []}
 
 
 def test_admin_treemap_user_returns_403(api_client):
@@ -322,18 +366,21 @@ def test_admin_treemap_no_key_returns_401(api_client):
 
 def test_admin_treemap_bq_error_returns_500(api_client):
     from src.exceptions import BigQueryError
-    with patch("src.api.get_latest_snapshot", side_effect=BigQueryError("boom")):
+    with patch("src.api.get_latest_snapshot_for_wallet", side_effect=BigQueryError("boom")):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 500
 
 
 def test_admin_treemap_malformed_position_value_returns_500(api_client):
     malformed_snapshot = {
-        **_LATEST_SNAPSHOT,
+        **_LATEST_SNAPSHOT_MAIN,
         "positions_json": '{"positions": [{"ticker": "PKO", "value": "not-a-number"}], "media_attached": false}',
     }
     with (
-        patch("src.api.get_latest_snapshot", return_value=malformed_snapshot),
+        patch(
+            "src.api.get_latest_snapshot_for_wallet",
+            side_effect=_snapshot_side_effect({"main": malformed_snapshot}),
+        ),
         patch("src.api.get_latest_snapshot_before", return_value=None),
     ):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})

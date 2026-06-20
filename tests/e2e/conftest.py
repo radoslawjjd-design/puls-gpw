@@ -77,6 +77,13 @@ _FAKE_TREEMAP_PRIOR = {
 }
 
 
+def _fake_get_latest_snapshot_for_wallet(wallet):
+    """Patches get_latest_snapshot_for_wallet (PUL-50) — only `main` has e2e fixture
+    data for now; `ikze`'s fixture + frontend wiring land in Phase 2/3 of
+    portfolio-treemap-multi-wallet."""
+    return _FAKE_TREEMAP_LATEST if wallet == "main" else None
+
+
 def _fake_list_x_posts_admin(
     page=1, page_size=20, window=None, x_publish_status=None,
     post_text=None, from_dt=None, to_dt=None,
@@ -118,7 +125,7 @@ def live_server_url():
         patch("src.api.list_distinct_tickers",   return_value=["PKO", "CDR", "XTB"]),
         patch("src.api.list_distinct_companies",  return_value=["PKO SA", "CD Projekt SA"]),
         patch("src.api.list_x_posts_admin", side_effect=_fake_list_x_posts_admin),
-        patch("src.api.get_latest_snapshot", return_value=_FAKE_TREEMAP_LATEST),
+        patch("src.api.get_latest_snapshot_for_wallet", side_effect=_fake_get_latest_snapshot_for_wallet),
         patch("src.api.get_latest_snapshot_before", return_value=_FAKE_TREEMAP_PRIOR),
     ):
         server = uvicorn.Server(

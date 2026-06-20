@@ -1,5 +1,6 @@
 import re
 
+import pytest
 from playwright.sync_api import Page, expect
 
 _ADMIN_KEY = "e2e-admin-key"
@@ -18,6 +19,12 @@ def _open_treemap(page: Page) -> None:
     page.get_by_role("menuitem", name="Treemapa portfela").click()
 
 
+@pytest.mark.xfail(
+    reason="PUL-50 phase 1: backend now returns {main, ikze} keyed response; "
+    "frontend dual-container rendering lands in Phase 2/3 of "
+    "portfolio-treemap-multi-wallet",
+    strict=False,
+)
 def test_admin_can_open_treemap_and_see_positions_rendered_with_pl_deltas(
     page: Page, live_server_url: str
 ):

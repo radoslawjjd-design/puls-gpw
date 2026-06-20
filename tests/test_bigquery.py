@@ -10,8 +10,8 @@ from db.bigquery import (
     create_x_posts_table_if_not_exists,
     delete_announcement,
     fetch_top_n_for_window,
-    get_latest_snapshot,
     get_latest_snapshot_before,
+    get_latest_snapshot_for_wallet,
     insert_announcement,
     list_announcements_admin,
     list_announcements_user,
@@ -365,8 +365,8 @@ def test_get_latest_snapshot_before_returns_none_when_no_prior_row():
     assert result is None
 
 
-def test_get_latest_snapshot_returns_most_recent_row_across_wallets():
-    """get_latest_snapshot must order by snapshot_date DESC, created_at DESC and pick row 0."""
+def test_get_latest_snapshot_for_wallet_returns_most_recent_row():
+    """get_latest_snapshot_for_wallet must bind wallet and order by snapshot_date DESC, created_at DESC."""
     row_data = [{
         "snapshot_id": "snap2", "wallet": "ikze", "snapshot_date": date(2026, 6, 19),
         "total_value": 5000.0, "currency": "PLN",
@@ -375,19 +375,22 @@ def test_get_latest_snapshot_returns_most_recent_row_across_wallets():
     }]
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(row_data)) as mock_get:
         client = mock_get.return_value
-        result = get_latest_snapshot()
+        result = get_latest_snapshot_for_wallet("ikze")
 
     assert result is not None
     assert result["wallet"] == "ikze"
     assert result["snapshot_date"] == date(2026, 6, 19)
     query_str = client.query.call_args[0][0]
+    assert "WHERE wallet = @wallet" in query_str
     assert "ORDER BY snapshot_date DESC, created_at DESC" in query_str
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["wallet"] == "ikze"
 
 
-def test_get_latest_snapshot_returns_none_when_table_empty():
-    """No /portfolio-xpost run has ever happened — must return None, not raise."""
+def test_get_latest_snapshot_for_wallet_returns_none_when_no_rows():
+    """No /portfolio-xpost run has ever happened for this wallet — must return None, not raise."""
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
-        result = get_latest_snapshot()
+        result = get_latest_snapshot_for_wallet("main")
 
     assert result is None
 

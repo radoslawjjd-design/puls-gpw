@@ -310,24 +310,29 @@ def get_latest_snapshot_before(wallet: str, before_date: date) -> dict | None:
     }
 
 
-def get_latest_snapshot() -> dict | None:
-    """Return the most recently uploaded portfolio_snapshots row, across all wallets.
+def get_latest_snapshot_for_wallet(wallet: str) -> dict | None:
+    """Return the most recently uploaded portfolio_snapshots row for `wallet`.
 
-    Returns None if the table is empty (no /portfolio-xpost run has ever happened).
-    Raises BigQueryError on query failure.
+    Returns None if that wallet has no rows. Raises BigQueryError on query failure.
     """
     client = _get_client()
     query = f"""
         SELECT snapshot_id, wallet, snapshot_date, total_value, currency,
                day_change_abs, day_change_pct, positions_json
         FROM `{_table_ref(client, _PORTFOLIO_SNAPSHOTS_TABLE_NAME)}`
+        WHERE wallet = @wallet
         ORDER BY snapshot_date DESC, created_at DESC
         LIMIT 1
     """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("wallet", "STRING", wallet),
+        ]
+    )
     try:
-        rows = list(client.query(query).result())
+        rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
-        raise BigQueryError(f"get_latest_snapshot failed: {exc}") from exc
+        raise BigQueryError(f"get_latest_snapshot_for_wallet failed: {exc}") from exc
     if not rows:
         return None
     row = rows[0]

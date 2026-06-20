@@ -17,8 +17,8 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from db.bigquery import BigQueryError  # type: ignore[attr-defined]
 from db.bigquery import (
     delete_announcement,
-    get_latest_snapshot,
     get_latest_snapshot_before,
+    get_latest_snapshot_for_wallet,
     list_announcements_admin,
     list_announcements_user,
     list_distinct_companies,
@@ -108,6 +108,10 @@ class TreemapPosition(BaseModel):
     position_value_pln: float
     daily_change_pln: float | None = None
     daily_change_pct: float | None = None
+    portfolio_share_pct: float | None = None
+
+
+_TREEMAP_WALLETS = ("main", "ikze")
 
 
 class AnnouncementUser(BaseModel):
@@ -231,14 +235,20 @@ def create_app() -> FastAPI:
     @app.get("/admin/portfolio/treemap")
     async def admin_portfolio_treemap(role: Role = Depends(_require_admin)):
         try:
-            latest = get_latest_snapshot()
-            if latest is None:
-                return []
-            prior = get_latest_snapshot_before(latest["wallet"], latest["snapshot_date"])
-            positions = compute_treemap_positions(
-                latest["positions_json"], prior["positions_json"] if prior else None
-            )
-            return [TreemapPosition(**p).model_dump() for p in positions]
+            result: dict[str, list[dict]] = {}
+            for wallet in _TREEMAP_WALLETS:
+                latest = get_latest_snapshot_for_wallet(wallet)
+                if latest is None:
+                    result[wallet] = []
+                    continue
+                prior = get_latest_snapshot_before(wallet, latest["snapshot_date"])
+                positions = compute_treemap_positions(
+                    latest["positions_json"],
+                    prior["positions_json"] if prior else None,
+                    latest["total_value"],
+                )
+                result[wallet] = [TreemapPosition(**p).model_dump() for p in positions]
+            return result
         except BigQueryError as exc:
             logger.error("BQ error in /admin/portfolio/treemap: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
