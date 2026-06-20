@@ -13,6 +13,11 @@ def _login(page: Page, base_url: str) -> None:
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.get_by_role("button", name="Zaloguj się").click()
     expect(page.locator("#page-label")).to_have_text("Strona 1")
+    # showDashboard() kicks off a fire-and-forget fetchAnnouncements() call.
+    # fast_forward()/run_for() drive Chromium's virtual-time-policy CDP command,
+    # which can stall or misfire while a real network request is still in
+    # flight — wait for it to settle before the first clock jump.
+    page.wait_for_load_state("networkidle")
 
 
 def test_warning_appears_with_live_countdown_at_threshold(page: Page, live_server_url: str):
