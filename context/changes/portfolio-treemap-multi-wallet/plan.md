@@ -474,15 +474,15 @@ None — no schema or data migration; `total_value` already exists on
 
 #### Automated
 
-- [x] 1.1 Updated pure-function tests pass: `uv run pytest tests/test_portfolio_treemap.py -q`
-- [x] 1.2 Updated BQ-layer tests pass: `uv run pytest tests/test_bigquery.py -q -k get_latest_snapshot`
-- [x] 1.3 Updated endpoint tests pass: `uv run pytest tests/test_api.py -q -k treemap`
-- [x] 1.4 Full test suite still passes: `uv run pytest --tb=short`
+- [x] 1.1 Updated pure-function tests pass: `uv run pytest tests/test_portfolio_treemap.py -q` — 39971fe
+- [x] 1.2 Updated BQ-layer tests pass: `uv run pytest tests/test_bigquery.py -q -k get_latest_snapshot` — 39971fe
+- [x] 1.3 Updated endpoint tests pass: `uv run pytest tests/test_api.py -q -k treemap` — 39971fe
+- [x] 1.4 Full test suite still passes: `uv run pytest --tb=short` — 39971fe
 
 #### Manual
 
-- [x] 1.5 curl with admin key returns `{"main": [...], "ikze": [...]}` with plausible data
-- [x] 1.6 curl with user key returns 403
+- [x] 1.5 curl with admin key returns `{"main": [...], "ikze": [...]}` with plausible data — 39971fe
+- [x] 1.6 curl with user key returns 403 — 39971fe
 
 ### Phase 2: Frontend — dual containers, headers, responsive structure
 

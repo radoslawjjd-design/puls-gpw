@@ -1,7 +1,7 @@
 ---
 change_id: portfolio-treemap-multi-wallet
 title: Portfolio treemap — main + IKZE side-by-side with portfolio-share %
-status: implementing
+status: impl_reviewed
 created: 2026-06-20
 updated: 2026-06-20
 archived_at: null

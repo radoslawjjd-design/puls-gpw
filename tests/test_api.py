@@ -371,6 +371,23 @@ def test_admin_treemap_bq_error_returns_500(api_client):
     assert r.status_code == 500
 
 
+def test_admin_treemap_first_wallet_succeeds_second_raises_returns_500(api_client):
+    """`main`'s already-computed data is discarded, not partially returned, when `ikze` raises."""
+    from src.exceptions import BigQueryError
+
+    def _side_effect(wallet):
+        if wallet == "main":
+            return _LATEST_SNAPSHOT_MAIN
+        raise BigQueryError("boom")
+
+    with (
+        patch("src.api.get_latest_snapshot_for_wallet", side_effect=_side_effect),
+        patch("src.api.get_latest_snapshot_before", return_value=_PRIOR_SNAPSHOT_MAIN),
+    ):
+        r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 500
+
+
 def test_admin_treemap_malformed_position_value_returns_500(api_client):
     malformed_snapshot = {
         **_LATEST_SNAPSHOT_MAIN,
