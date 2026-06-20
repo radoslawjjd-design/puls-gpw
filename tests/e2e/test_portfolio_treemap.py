@@ -40,6 +40,23 @@ def test_admin_can_open_treemap_and_see_positions_rendered_with_pl_deltas(
     expect(ikze_container.locator(".treemap-cell", has_text="KGH")).to_be_visible()
 
 
+def test_resizing_window_reflows_treemap_layout_without_reopening_view(
+    page: Page, live_server_url: str
+):
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _login(page, live_server_url)
+    _open_treemap(page)
+
+    cell = page.locator("#treemap-main .treemap-cell").first
+    expect(cell).to_be_visible()
+    original_style = cell.get_attribute("style")
+
+    page.set_viewport_size({"width": 700, "height": 800})
+
+    expect(page.locator(".treemap-wallets")).to_have_css("flex-direction", "column")
+    expect(cell).not_to_have_attribute("style", original_style)
+
+
 def test_user_role_has_no_treemap_menu_item_or_dom_node(page: Page, live_server_url: str):
     _login(page, live_server_url, key=_USER_KEY)
     page.get_by_role("button", name="user").click()

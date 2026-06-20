@@ -83,10 +83,16 @@ share%/value once large enough.
 - No cross-wallet date-alignment logic — each wallet shows its own latest
   snapshot independently, even if the two wallets' latest dates differ (see
   Critical Implementation Details).
-- No resize listener — matches PUL-45's existing pattern; the view re-fetches
-  and re-measures only when reopened.
-- No d3/charting library changes, no tooltip/hover detail — same constraints
-  as PUL-45.
+- ~~No resize listener~~ — **superseded during Phase 3** (commit `652d770`,
+  see addendum below): a debounced resize listener was added after manual
+  verification surfaced stale/overflowing layout when crossing the 768px
+  breakpoint without reopening the view.
+- ~~No d3/charting library changes, no tooltip/hover detail~~ — **partially
+  superseded during Phase 3**: no charting library was added, but a
+  CSS-only hover tooltip plus ellipsis truncation and a 400px→600px
+  container height bump were added (see addendum below) to fix text
+  overflow surfaced during manual verification. No JS library dependency
+  was introduced.
 - No schema/migration changes — `total_value` already exists on
   `portfolio_snapshots`.
 
@@ -326,6 +332,37 @@ a second stacked line.
 **Contract**: `.treemap-cell .tc-detail` already uses `display: block`; no
 rule change required, only verify visually in Phase 3's manual step that two
 stacked `.tc-detail` lines don't overflow the larger minimum cell size.
+
+**Addendum (post-impl-review, 2026-06-21)**: Manual verification of the above
+surfaced real text overflow on smaller cells and stale layout after resizing
+across the 768px breakpoint without reopening the view — both regressions the
+plan hadn't anticipated. Item 3's "no rule change required" turned out to be
+wrong in practice; the following were added in commit `652d770` and are now
+part of this phase's accepted scope, superseding the corresponding "What
+We're NOT Doing" lines above:
+
+- `.treemap-cell .tc-ticker`/`.tc-detail` gained `white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis`, paired with a CSS-only
+  `:hover` tooltip (`.tc-tooltip`) showing the untruncated ticker/daily/share
+  text — no JS library, no behavior beyond CSS `:hover { display: block }`.
+- `.treemap-container` min-height raised from `400px` to `600px` to reduce
+  how often cells hit the truncation threshold at all.
+- A debounced (150ms) `window.addEventListener('resize', ...)` re-renders
+  both wallets from the already-fetched `_treemapData` cache (no refetch) so
+  layout doesn't go stale across the 768px breakpoint.
+
+Confirmed safe in impl-review: all new text goes through the existing
+`esc()` helper or is numeric-only output (no XSS surface); `_treemapData` is
+read/written synchronously so no tear-in race with concurrent fetches;
+re-render cost is trivial at "a few dozen positions per wallet" scale. The
+resize listener's lifecycle was brought in line with the file's
+`startIdleTracking`/`stopIdleTracking` convention: `startTreemapResizeTracking()`/
+`stopTreemapResizeTracking()` wrap the resize listener, called from
+`showTreemapView()` and from `showAnnouncementsView()`/`showXHistoryView()`/
+`doLogout()` respectively, so the listener is only live while the treemap
+view is actually open. A regression test
+(`tests/e2e/test_portfolio_treemap.py::test_resizing_window_reflows_treemap_layout_without_reopening_view`)
+covers the resize re-flow behavior.
 
 #### 4. `tests/test_bigquery.py` — replace `get_latest_snapshot` tests
 

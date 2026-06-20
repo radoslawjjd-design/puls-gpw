@@ -442,6 +442,7 @@ $('idle-stay-btn').addEventListener('click', () => {
 // ── auth: shared logout exit path ───────────────────────────────────────
 function doLogout() {
   stopIdleTracking();
+  stopTreemapResizeTracking();
   closeModal();
   sessionStorage.clear();
   apiKey = null; role = null;
@@ -786,6 +787,7 @@ function showAnnouncementsView() {
   if (xView) xView.style.display = 'none';
   const tView = $('treemap-view');
   if (tView) tView.style.display = 'none';
+  stopTreemapResizeTracking();
 }
 
 function showXHistoryView() {
@@ -793,6 +795,7 @@ function showXHistoryView() {
   $('x-history-view').style.display = '';
   const tView = $('treemap-view');
   if (tView) tView.style.display = 'none';
+  stopTreemapResizeTracking();
   closeProfileMenu();
   fetchXPosts();
 }
@@ -803,6 +806,7 @@ function showTreemapView() {
   $('treemap-view').style.display = '';
   closeProfileMenu();
   fetchTreemap();
+  startTreemapResizeTracking();
 }
 
 // ── fetch ──────────────────────────────────────────────────────────────
@@ -966,13 +970,18 @@ async function fetchTreemap() {
 // re-render (from cached data, no refetch) on resize so layout never goes
 // stale and overflows its container — e.g. when crossing the 768px breakpoint.
 let _treemapResizeTimer = null;
-window.addEventListener('resize', () => {
+function _onTreemapResize() {
   if (!_treemapData) return;
-  const view = $('treemap-view');
-  if (!view || view.style.display === 'none') return;
   clearTimeout(_treemapResizeTimer);
   _treemapResizeTimer = setTimeout(() => _renderTreemapWallets(_treemapData), 150);
-});
+}
+function startTreemapResizeTracking() {
+  window.addEventListener('resize', _onTreemapResize);
+}
+function stopTreemapResizeTracking() {
+  window.removeEventListener('resize', _onTreemapResize);
+  clearTimeout(_treemapResizeTimer);
+}
 
 // ── treemap: render ─────────────────────────────────────────────────────
 function renderTreemap(data, container) {
