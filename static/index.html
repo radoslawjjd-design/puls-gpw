@@ -229,6 +229,20 @@
   .pagination-bar button:hover:not(:disabled) { background: #d1d5db; }
   .pagination-bar button:disabled { opacity: .35; cursor: not-allowed; }
   #page-label, #xp-page-label { font-size: .875rem; color: #64748b; font-weight: 500; }
+
+  /* Treemap */
+  #treemap-container { position: relative; min-height: 400px; background: #fff; border-radius: 8px; }
+  .treemap-cell {
+    position: absolute; box-sizing: border-box; overflow: hidden;
+    border: 1px solid rgba(255,255,255,.6); padding: .25rem .4rem;
+    color: #fff; font-size: .8rem;
+  }
+  .treemap-cell .tc-ticker { font-weight: 600; display: block; }
+  .treemap-cell .tc-detail { display: block; font-size: .75rem; opacity: .9; }
+  .treemap-cell.positive { background: #16a34a; }
+  .treemap-cell.negative { background: #dc2626; }
+  .treemap-cell.neutral  { background: #9ca3af; }
+  .treemap-cell.no-data  { background: #9ca3af; border: 1px dashed #4b5563; }
 </style>
 </head>
 <body>
@@ -330,6 +344,7 @@
   <button id="gdpr-accept">Rozumiem</button>
 </div>
 
+<script src="/static/js/treemap-layout.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -647,6 +662,10 @@ function injectAdminOnlyChrome(r) {
   if (existingBtn) existingBtn.closest('li').remove();
   const existingView = $('x-history-view');
   if (existingView) existingView.remove();
+  const existingTreemapBtn = $('treemap-btn');
+  if (existingTreemapBtn) existingTreemapBtn.closest('li').remove();
+  const existingTreemapView = $('treemap-view');
+  if (existingTreemapView) existingTreemapView.remove();
 
   if (r !== 'admin') return;
 
@@ -718,6 +737,19 @@ function injectAdminOnlyChrome(r) {
     fetchXPosts();
   });
   view.querySelectorAll('.date-toggle').forEach(bindDateToggle);
+
+  const treemapItem = document.createElement('li');
+  treemapItem.setAttribute('role', 'none');
+  treemapItem.innerHTML = '<button id="treemap-btn" role="menuitem">Treemapa portfela</button>';
+  profileMenu.insertBefore(treemapItem, logoutLi);
+
+  const treemapView = document.createElement('div');
+  treemapView.id = 'treemap-view';
+  treemapView.style.display = 'none';
+  treemapView.innerHTML = '<div id="treemap-container"></div>';
+  view.insertAdjacentElement('afterend', treemapView);
+
+  $('treemap-btn').addEventListener('click', showTreemapView);
 }
 
 // ── view toggle ────────────────────────────────────────────────────────
@@ -725,13 +757,25 @@ function showAnnouncementsView() {
   $('announcements-view').style.display = '';
   const xView = $('x-history-view');
   if (xView) xView.style.display = 'none';
+  const tView = $('treemap-view');
+  if (tView) tView.style.display = 'none';
 }
 
 function showXHistoryView() {
   $('announcements-view').style.display = 'none';
   $('x-history-view').style.display = '';
+  const tView = $('treemap-view');
+  if (tView) tView.style.display = 'none';
   closeProfileMenu();
   fetchXPosts();
+}
+
+function showTreemapView() {
+  $('announcements-view').style.display = 'none';
+  $('x-history-view').style.display = 'none';
+  $('treemap-view').style.display = '';
+  closeProfileMenu();
+  fetchTreemap();
 }
 
 // ── fetch ──────────────────────────────────────────────────────────────
@@ -857,6 +901,56 @@ function renderXPostsTable(data) {
   tbody.querySelectorAll('tr.clickable').forEach(tr => {
     tr.addEventListener('click', () => openModal(tr.dataset));
   });
+}
+
+// ── treemap: fetch ──────────────────────────────────────────────────────
+async function fetchTreemap() {
+  try {
+    const r = await fetch('/admin/portfolio/treemap', {
+      headers: { 'X-API-Key': apiKey }
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (!data.length) {
+      $('treemap-container').innerHTML = `<div class="empty">Brak danych portfela</div>`;
+      return;
+    }
+    renderTreemap(data);
+  } catch (e) {
+    $('treemap-container').innerHTML = `<div class="empty">Błąd ładowania danych</div>`;
+  }
+}
+
+// ── treemap: render ─────────────────────────────────────────────────────
+function renderTreemap(data) {
+  const container = $('treemap-container');
+  const sorted = data.slice().sort((a, b) => b.position_value_pln - a.position_value_pln);
+  const layout = computeTreemapLayout(sorted, container.clientWidth, container.clientHeight);
+
+  container.innerHTML = layout.map(cell => {
+    const item = cell.item;
+    let cls;
+    if (item.daily_change_pln === null)      cls = 'no-data';
+    else if (item.daily_change_pln > 0)      cls = 'positive';
+    else if (item.daily_change_pln < 0)      cls = 'negative';
+    else                                      cls = 'neutral';
+
+    let detail = '';
+    if (cell.width >= 60 && cell.height >= 30) {
+      if (item.daily_change_pln === null) {
+        detail = `<span class="tc-detail">brak danych</span>`;
+      } else {
+        const sign = item.daily_change_pln > 0 ? '+' : '';
+        const pct  = item.daily_change_pct != null ? item.daily_change_pct.toFixed(1) : '—';
+        detail = `<span class="tc-detail">${sign}${pct}% / ${sign}${item.daily_change_pln.toFixed(0)} PLN</span>`;
+      }
+    }
+
+    const style = `left:${cell.x}px;top:${cell.y}px;width:${cell.width}px;height:${cell.height}px`;
+    return `<div class="treemap-cell ${cls}" style="${style}">`
+      + `<span class="tc-ticker">${esc(item.ticker)}</span>${detail}</div>`;
+  }).join('');
 }
 
 // ── render ─────────────────────────────────────────────────────────────

@@ -435,8 +435,8 @@ None — no schema or data migration; purely additive endpoint and frontend.
 
 #### Automated
 
-- [ ] 3.1 Full test suite passes: `uv run pytest --tb=short`
-- [ ] 3.2 Layout unit tests still pass: `node --test tests/test_treemap_layout.js`
+- [x] 3.1 Full test suite passes: `uv run pytest --tb=short`
+- [x] 3.2 Layout unit tests still pass: `node --test tests/test_treemap_layout.js`
 
 #### Manual
 
