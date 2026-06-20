@@ -325,3 +325,14 @@ def test_admin_treemap_bq_error_returns_500(api_client):
     with patch("src.api.get_latest_snapshot", side_effect=BigQueryError("boom")):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 500
+
+
+def test_static_treemap_layout_js_is_reachable(api_client):
+    r = api_client.get("/static/js/treemap-layout.js")
+    assert r.status_code == 200
+
+
+def test_root_route_still_serves_html_after_static_mount(api_client):
+    r = api_client.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]

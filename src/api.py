@@ -11,6 +11,7 @@ import json5
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 from db.bigquery import BigQueryError  # type: ignore[attr-defined]
@@ -251,5 +252,7 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=404, detail="Not found")
             logger.error("BQ error in DELETE /announcements/%s: %s", announcement_id, exc)
             raise HTTPException(status_code=500, detail=str(exc))
+
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
     return app

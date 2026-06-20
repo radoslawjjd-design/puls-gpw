@@ -423,13 +423,13 @@ None — no schema or data migration; purely additive endpoint and frontend.
 
 #### Automated
 
-- [ ] 2.1 Layout unit tests pass: `node --test tests/test_treemap_layout.js`
-- [ ] 2.2 `static/js/treemap-layout.js` reachable: `curl -I localhost:8000/static/js/treemap-layout.js` returns 200
-- [ ] 2.3 Existing test suite unaffected: `uv run pytest --tb=short`
+- [x] 2.1 Layout unit tests pass: `node --test tests/test_treemap_layout.js`
+- [x] 2.2 `static/js/treemap-layout.js` reachable: `curl -I localhost:8000/static/js/treemap-layout.js` returns 200
+- [x] 2.3 Existing test suite unaffected: `uv run pytest --tb=short`
 
 #### Manual
 
-- [ ] 2.4 `/` still renders dashboard with no console errors
+- [x] 2.4 `/` still renders dashboard with no console errors
 
 ### Phase 3: Frontend — UI integration
 
