@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from db.bigquery import BigQueryError  # type: ignore[attr-defined]
 from db.bigquery import (
@@ -242,6 +242,9 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in /admin/portfolio/treemap: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        except ValidationError as exc:
+            logger.error("Malformed position data in /admin/portfolio/treemap: %s", exc)
+            raise HTTPException(status_code=500, detail="Malformed position data")
 
     @app.delete("/announcements/{announcement_id}", status_code=204)
     async def delete(announcement_id: str, role: Role = Depends(_require_admin)):
