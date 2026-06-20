@@ -435,13 +435,13 @@ None — no schema or data migration; purely additive endpoint and frontend.
 
 #### Automated
 
-- [x] 3.1 Full test suite passes: `uv run pytest --tb=short`
-- [x] 3.2 Layout unit tests still pass: `node --test tests/test_treemap_layout.js`
+- [x] 3.1 Full test suite passes: `uv run pytest --tb=short` — adb6a76
+- [x] 3.2 Layout unit tests still pass: `node --test tests/test_treemap_layout.js` — adb6a76
 
 #### Manual
 
-- [ ] 3.3 Menu item appears between x-history and logout
-- [ ] 3.4 Treemap renders with proportional, correctly-coloured rectangles
-- [ ] 3.5 Small rectangles fall back to ticker-only text (reopen view after resize)
-- [ ] 3.6 Non-admin: menu item absent, endpoint returns 403
-- [ ] 3.7 No-prior-data positions render with distinct "no data" styling
+- [x] 3.3 Menu item appears between x-history and logout — adb6a76
+- [x] 3.4 Treemap renders with proportional, correctly-coloured rectangles — adb6a76
+- [x] 3.5 Small rectangles fall back to ticker-only text (reopen view after resize) — adb6a76
+- [x] 3.6 Non-admin: menu item absent, endpoint returns 403 — adb6a76
+- [x] 3.7 No-prior-data positions render with distinct "no data" styling — adb6a76

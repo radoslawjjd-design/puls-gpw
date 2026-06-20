@@ -1,7 +1,7 @@
 ---
 change_id: admin-ui-portfolio-treemap
 title: Admin UI portfolio treemap with daily P&L colouring
-status: impl_reviewed
+status: implemented
 created: 2026-06-20
 updated: 2026-06-20
 archived_at: null
