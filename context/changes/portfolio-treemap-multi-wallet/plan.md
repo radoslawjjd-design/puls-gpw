@@ -500,14 +500,14 @@ None — no schema or data migration; `total_value` already exists on
 
 #### Automated
 
-- [x] 3.1 Full test suite passes: `uv run pytest --tb=short`
-- [x] 3.2 Layout unit tests still pass: `node --test tests/test_treemap_layout.js`
-- [x] 3.3 E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q`
+- [x] 3.1 Full test suite passes: `uv run pytest --tb=short` — 652d770
+- [x] 3.2 Layout unit tests still pass: `node --test tests/test_treemap_layout.js` — 652d770
+- [x] 3.3 E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q` — 652d770
 
 #### Manual
 
-- [x] 3.4 Both wallets render proportionally with correct colouring and the new share%/value line on large-enough cells
-- [x] 3.5 A wallet with no snapshot shows its own empty state without affecting the other wallet
-- [x] 3.6 Stacking/reopen behaviour confirmed across the 768px breakpoint
-- [x] 3.7 Ticker-only fallback still works per wallet below the raised threshold
-- [x] 3.8 Non-admin: menu item absent, endpoint returns 403
+- [x] 3.4 Both wallets render proportionally with correct colouring and the new share%/value line on large-enough cells — 652d770
+- [x] 3.5 A wallet with no snapshot shows its own empty state without affecting the other wallet — 652d770
+- [x] 3.6 Stacking/reopen behaviour confirmed across the 768px breakpoint — 652d770
+- [x] 3.7 Ticker-only fallback still works per wallet below the raised threshold — 652d770
+- [x] 3.8 Non-admin: menu item absent, endpoint returns 403 — 652d770
