@@ -674,31 +674,13 @@ function renderHeaders(r) {
 }
 
 // ── admin-only chrome (x-post history) ──────────────────────────────────
-function injectAdminOnlyChrome(r) {
-  const existingBtn  = $('x-history-btn');
-  if (existingBtn) existingBtn.closest('li').remove();
-  const existingView = $('x-history-view');
-  if (existingView) existingView.remove();
-  const existingTreemapBtn = $('treemap-btn');
-  if (existingTreemapBtn) existingTreemapBtn.closest('li').remove();
-  const existingTreemapView = $('treemap-view');
-  if (existingTreemapView) existingTreemapView.remove();
+// #x-history-view's inner markup (filter form + table + pagination) is built
+// lazily on first showXHistoryView() call rather than here, since building it
+// eagerly during login adds enough synchronous DOM work to perturb
+// Playwright's virtual-clock idle-timeout simulation (PUL-49).
+let _xHistoryViewBuilt = false;
 
-  if (r !== 'admin') return;
-
-  const profileMenu  = $('profile-menu');
-  const logoutLi     = $('logout-btn') && $('logout-btn').closest('li');
-  const announceView = $('announcements-view');
-  if (!profileMenu || !logoutLi || !announceView) return;
-
-  const menuItem = document.createElement('li');
-  menuItem.setAttribute('role', 'none');
-  menuItem.innerHTML = '<button id="x-history-btn" role="menuitem">Historia postów X</button>';
-  profileMenu.insertBefore(menuItem, logoutLi);
-
-  const view = document.createElement('div');
-  view.id = 'x-history-view';
-  view.style.display = 'none';
+function _buildXHistoryViewContent(view) {
   view.innerHTML = `
     <form class="filters" id="xp-filter-form">
       <select id="xp-f-window" aria-label="Okno">
@@ -733,9 +715,6 @@ function injectAdminOnlyChrome(r) {
       </div>
     </div>
   `;
-  announceView.insertAdjacentElement('afterend', view);
-
-  $('x-history-btn').addEventListener('click', showXHistoryView);
 
   $('xp-filter-form').addEventListener('submit', e => {
     e.preventDefault();
@@ -754,6 +733,37 @@ function injectAdminOnlyChrome(r) {
     fetchXPosts();
   });
   view.querySelectorAll('.date-toggle').forEach(bindDateToggle);
+}
+
+function injectAdminOnlyChrome(r) {
+  const existingBtn  = $('x-history-btn');
+  if (existingBtn) existingBtn.closest('li').remove();
+  const existingView = $('x-history-view');
+  if (existingView) existingView.remove();
+  const existingTreemapBtn = $('treemap-btn');
+  if (existingTreemapBtn) existingTreemapBtn.closest('li').remove();
+  const existingTreemapView = $('treemap-view');
+  if (existingTreemapView) existingTreemapView.remove();
+
+  if (r !== 'admin') return;
+
+  const profileMenu  = $('profile-menu');
+  const logoutLi     = $('logout-btn') && $('logout-btn').closest('li');
+  const announceView = $('announcements-view');
+  if (!profileMenu || !logoutLi || !announceView) return;
+
+  const menuItem = document.createElement('li');
+  menuItem.setAttribute('role', 'none');
+  menuItem.innerHTML = '<button id="x-history-btn" role="menuitem">Historia postów X</button>';
+  profileMenu.insertBefore(menuItem, logoutLi);
+
+  const view = document.createElement('div');
+  view.id = 'x-history-view';
+  view.style.display = 'none';
+  announceView.insertAdjacentElement('afterend', view);
+  _xHistoryViewBuilt = false;
+
+  $('x-history-btn').addEventListener('click', showXHistoryView);
 
   const treemapItem = document.createElement('li');
   treemapItem.setAttribute('role', 'none');
@@ -791,8 +801,13 @@ function showAnnouncementsView() {
 }
 
 function showXHistoryView() {
+  const view = $('x-history-view');
+  if (!_xHistoryViewBuilt) {
+    _buildXHistoryViewContent(view);
+    _xHistoryViewBuilt = true;
+  }
   $('announcements-view').style.display = 'none';
-  $('x-history-view').style.display = '';
+  view.style.display = '';
   const tView = $('treemap-view');
   if (tView) tView.style.display = 'none';
   stopTreemapResizeTracking();
