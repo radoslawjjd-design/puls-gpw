@@ -590,26 +590,26 @@ None — no schema or data migration; `pct` already exists in every
 
 #### Automated
 
-- [x] 2.1 Full test suite passes: `uv run pytest --tb=short`
-- [x] 2.2 E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q`
+- [x] 2.1 Full test suite passes: `uv run pytest --tb=short` — f8c17f9
+- [x] 2.2 E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q` — f8c17f9
 
 #### Manual
 
-- [x] 2.3 D/D:, Total:, Zakup: lines render correctly on large-enough cells
-- [x] 2.4 A position with no purchase-cost data shows "Zakup: brak danych"
-- [x] 2.5 No overflow/clipping at the 150×60 threshold; ticker-only fallback still works below it
+- [x] 2.3 D/D:, Total:, Zakup: lines render correctly on large-enough cells — f8c17f9
+- [x] 2.4 A position with no purchase-cost data shows "Zakup: brak danych" — f8c17f9
+- [x] 2.5 No overflow/clipping at the 150×60 threshold; ticker-only fallback still works below it — f8c17f9
 
 ### Phase 3: Frontend — click-to-open popup with summary + navigate
 
 #### Automated
 
-- [x] 3.1 Full test suite passes: `uv run pytest --tb=short`
-- [x] 3.2 E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q`
+- [x] 3.1 Full test suite passes: `uv run pytest --tb=short` — f8c17f9
+- [x] 3.2 E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q` — f8c17f9
 
 #### Manual
 
-- [x] 3.3 Hovering any cell shows the bold white outline
-- [x] 3.4 Clicking any cell opens a centered popup with that position's D/D:/Total:/Zakup: lines
-- [x] 3.5 Clicking "Ostatnie podsumowania" in the popup navigates to announcements filtered by that ticker
-- [x] 3.6 Closing the popup (X, backdrop click, or Esc) does not navigate anywhere
-- [x] 3.7 Clicking a cell with another filter already active, then using the popup's button, leaves that filter intact
+- [x] 3.3 Hovering any cell shows the bold white outline — f8c17f9
+- [x] 3.4 Clicking any cell opens a centered popup with that position's D/D:/Total:/Zakup: lines — f8c17f9
+- [x] 3.5 Clicking "Ostatnie podsumowania" in the popup navigates to announcements filtered by that ticker — f8c17f9
+- [x] 3.6 Closing the popup (X, backdrop click, or Esc) does not navigate anywhere — f8c17f9
+- [x] 3.7 Clicking a cell with another filter already active, then using the popup's button, leaves that filter intact — f8c17f9
