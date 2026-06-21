@@ -1,10 +1,10 @@
 ---
 change_id: portfolio-treemap-labels-since-purchase-pnl-click-filter
 title: Treemap D/D:/Total: labels, since-purchase P&L, hover highlight + click-to-filter
-status: implemented
+status: archived
 created: 2026-06-21
 updated: 2026-06-21
-archived_at: null
+archived_at: 2026-06-21T15:30:21Z
 tracking:
   linear: PUL-51
   github: 77
