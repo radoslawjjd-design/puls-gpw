@@ -48,11 +48,26 @@ def compute_treemap_positions(
             portfolio_share_pct = (value / total_value * 100) if total_value != 0 else None
         except TypeError:
             portfolio_share_pct = None
+        pct = position.get("pct")
+        if not isinstance(pct, (int, float)):
+            since_purchase_pct: float | None = None
+            since_purchase_pln: float | None = None
+        else:
+            denom = 1 + pct / 100
+            if denom == 0:
+                since_purchase_pct = None
+                since_purchase_pln = None
+            else:
+                cost = value / denom
+                since_purchase_pct = pct
+                since_purchase_pln = value - cost
         result.append({
             "ticker": ticker,
             "position_value_pln": value,
             "daily_change_pln": daily_change_pln,
             "daily_change_pct": daily_change_pct,
             "portfolio_share_pct": portfolio_share_pct,
+            "since_purchase_pct": since_purchase_pct,
+            "since_purchase_pln": since_purchase_pln,
         })
     return result

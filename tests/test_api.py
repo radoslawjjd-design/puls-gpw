@@ -313,22 +313,26 @@ def test_admin_treemap_admin_returns_both_wallets_keyed_with_deltas(api_client):
     body = r.json()
     assert list(body.keys()) == ["main", "ikze"]
     assert body["main"] == [
-        {
+        pytest.approx({
             "ticker": "PKO",
             "position_value_pln": 1100.0,
             "daily_change_pln": 100.0,
             "daily_change_pct": 10.0,
             "portfolio_share_pct": 22.0,
-        }
+            "since_purchase_pct": 22.0,
+            "since_purchase_pln": 198.36065573770486,
+        })
     ]
     assert body["ikze"] == [
-        {
+        pytest.approx({
             "ticker": "CDR",
             "position_value_pln": 800.0,
             "daily_change_pln": None,
             "daily_change_pct": None,
             "portfolio_share_pct": 40.0,
-        }
+            "since_purchase_pct": 40.0,
+            "since_purchase_pln": 228.57142857142856,
+        })
     ]
 
 
