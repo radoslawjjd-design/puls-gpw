@@ -290,9 +290,158 @@ and that the `NEW` ticker's cell contains `"Zakup: brak danych"`.
 **Implementation Note**: Pause here for manual confirmation before
 proceeding to Phase 3.
 
+**Deviation from plan (discovered during manual verification)**: the
+`.tc-tooltip` hover tooltip (pre-existing from PUL-45/50, originally planned
+to gain the third line per item #1 above) was removed entirely instead of
+extended. Manual testing surfaced a sequence of hover/touch issues with the
+tooltip approach (CSS `:hover` unreliable on tap, viewport-overflow growing
+the page, narrow-cell text truncation) that converged on a product decision
+to replace hover-tooltip-on-cell with a click-triggered modal (see Phase 3's
+rewritten design below) — the user explicitly requested this pivot mid-phase.
+The inline `.tc-detail` lines (item #1's other half) were kept and their
+width gate raised from `cell.width >= 90` to `cell.width >= 150` (height gate
+unchanged at `>= 60`) since the new `Zakup:` line is longer than the other
+two and was getting ellipsis-truncated in narrow cells at the original
+width. `touch-action: manipulation` was added to `.treemap-cell` to keep tap
+interactions (now driving Phase 3's click-to-open-modal) free of double-tap-
+zoom interference.
+
 ---
 
-## Phase 3: Frontend — hover highlight & click-to-filter
+## Phase 3: Frontend — click-to-open popup with summary + navigate
+
+### Overview
+
+**Rewritten mid-implementation per explicit user request** (original design
+below this note, kept for history, superseded). Original design: bold hover
+outline + direct click-to-filter navigation to the announcements table.
+New design: hover outline is kept as a visual affordance, but clicking any
+cell now opens a centered modal popup showing that position's full info
+(ticker + the same `D/D:`/`Total:`/`Zakup:` lines), with a single button —
+"Ostatnie podsumowania" — inside the popup. Only clicking that button
+navigates to the announcements table pre-filtered by the popup's ticker,
+reusing the existing filter/fetch/view-switch machinery untouched. The popup
+closes via an explicit close (X) button, clicking outside the popup, or
+Esc — without navigating anywhere.
+
+### Changes Required:
+
+#### 1. `static/index.html` — hover outline CSS
+
+**Intent**: Add a bold border highlight on hover, signaling the cell is
+clickable.
+
+**Contract**: Add a `.treemap-cell:hover { outline: 3px solid #fff;
+outline-offset: -3px; }` rule (drawn inward so it isn't clipped by
+neighboring absolutely-positioned cells). No JS-driven active-state class
+needed for this — it's a plain CSS `:hover`, since (unlike the removed
+tooltip) it's a non-essential visual cue, not something touch devices need
+to reach via tap.
+
+#### 2. `static/index.html` — popup modal markup + CSS
+
+**Intent**: A single reusable modal element, populated per-click, centered
+on screen, dismissible three ways.
+
+**Contract**: Add one hidden modal container to the DOM (created once,
+analogous to how `treemap-view` itself is injected in
+`injectAdminOnlyChrome()`), with a backdrop, a close (X) button, a ticker
+heading, the three detail lines, and the "Ostatnie podsumowania" button.
+CSS: backdrop fixed full-screen with semi-transparent fill, modal box
+centered via flexbox or fixed+transform, above all other content
+(`z-index` higher than the treemap's existing `30`).
+
+#### 3. `static/index.html` — click-to-open wiring
+
+**Intent**: Clicking any cell opens the popup populated with that cell's
+data; the popup's button navigates, closing the popup first.
+
+**Contract**: In `renderTreemap()`'s cell template, add
+`data-ticker="${esc(item.ticker)}"` to the `<div class="treemap-cell ...">`
+element (each cell already has the three text values in scope at render
+time — store them via `data-*` attributes or look them up from the
+in-memory `_treemapData` by ticker when the popup opens). Add one delegated
+`click` listener per wallet container (`$('treemap-main')`,
+`$('treemap-ikze')`), attached once in `injectAdminOnlyChrome()` so it
+survives re-renders: `event.target.closest('.treemap-cell')` → read
+`.dataset.ticker` → populate and show the popup. The popup's "Ostatnie
+podsumowania" button click handler: hide the popup, set
+`$('f-ticker').value = ticker`, `currentPage = 1`, call
+`showAnnouncementsView()`, then `fetchAnnouncements()`. The popup's close
+(X) button, a backdrop click, and an `Escape` keydown all just hide the
+popup without touching any filter state.
+
+#### 4. `tests/e2e/test_portfolio_treemap.py` — popup + hover coverage
+
+**Intent**: Assert the new interactions end to end against real fixture
+data.
+
+**Contract**: Add `test_hovering_treemap_cell_shows_outline` — hover a cell,
+assert `to_have_css("outline-style", "solid")`. Add
+`test_clicking_treemap_cell_opens_popup_with_summary` — click a cell with a
+known ticker, assert the popup is visible and contains that ticker's
+`D/D:`/`Total:`/`Zakup:` text. Add
+`test_clicking_popup_button_navigates_to_filtered_announcements` — open the
+popup, click "Ostatnie podsumowania", assert the announcements view becomes
+visible, `#f-ticker` has that ticker's value, and a request to
+`/announcements` containing the ticker fires (mirroring the
+`page.expect_response` pattern in
+`test_user_role_never_triggers_treemap_network_request`,
+`tests/e2e/test_portfolio_treemap.py:69-77`). Add
+`test_closing_popup_does_not_navigate` — open the popup, close it via the X
+button, assert the announcements view was never shown and no `/announcements`
+request fired. Add
+`test_clicking_treemap_cell_preserves_other_active_filters` — set the
+company filter, open the treemap, click a cell, click "Ostatnie
+podsumowania", assert the company filter's value is unchanged after
+navigating.
+
+### Success Criteria:
+
+#### Automated Verification:
+
+- Full test suite passes: `uv run pytest --tb=short`
+- E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q`
+
+#### Manual Verification:
+
+- Hovering any cell shows a bold white outline.
+- Clicking any cell opens a centered popup showing that position's ticker
+  and `D/D:`/`Total:`/`Zakup:` lines.
+- Clicking "Ostatnie podsumowania" in the popup navigates to the
+  announcements table with that ticker filled into the ticker filter and
+  matching results displayed.
+- Closing the popup (X, backdrop click, or Esc) does not navigate anywhere.
+- Clicking a cell while another filter (e.g. company) is already set, then
+  using the popup's button, leaves that filter intact alongside the new
+  ticker filter.
+
+**Deviation from plan (discovered during manual verification)**: the
+treemap's `item.ticker` field is actually a company display name sourced
+from XTB screenshot OCR (e.g. "Toya"), not an exchange ticker symbol (e.g.
+"TOA") — confirmed against real announcement data
+(`{"company":"Toya SA","ticker":"TOA"}`). The announcements endpoint's
+`ticker` filter is an exact match against the real symbol, so setting
+`#f-ticker` from the popup (as originally written above) silently returned
+zero results for every position. Fixed: the popup's "Ostatnie podsumowania"
+button now sets `#f-company` (a case-insensitive partial match) instead of
+`#f-ticker`. The "preserves other filters" test/manual-check was updated to
+verify `#f-ticker` (now the untouched field) instead of `#f-company` (now
+the field this feature sets).
+
+**Out of scope, deferred**: the user separately noted that switching between
+views (Treemapa/Historia/Ogłoszenia, including this popup's navigation)
+never updates the browser URL — confirmed as a pre-existing, app-wide gap
+(the app only `pushState`s for announcements pagination, not view-switching)
+that predates this change and isn't specific to the treemap. Decided to skip
+it here and track separately rather than expand this plan's scope.
+
+---
+
+<details>
+<summary>Superseded original Phase 3 design (kept for history)</summary>
+
+## Phase 3 (original): Frontend — hover highlight & click-to-filter
 
 ### Overview
 
@@ -370,6 +519,8 @@ value is unchanged after navigating.
 - Clicking a cell while another filter (e.g. company) is already set leaves
   that filter intact alongside the new ticker filter.
 
+</details>
+
 ---
 
 ## Testing Strategy
@@ -428,35 +579,37 @@ None — no schema or data migration; `pct` already exists in every
 
 #### Automated
 
-- [x] 1.1 Updated pure-function tests pass: `uv run pytest tests/test_portfolio_treemap.py -q`
-- [x] 1.2 Full test suite still passes: `uv run pytest --tb=short`
+- [x] 1.1 Updated pure-function tests pass: `uv run pytest tests/test_portfolio_treemap.py -q` — 5c5effc
+- [x] 1.2 Full test suite still passes: `uv run pytest --tb=short` — 5c5effc
 
 #### Manual
 
-- [x] 1.3 curl with admin key returns `since_purchase_pct`/`since_purchase_pln` per position with plausible values
+- [x] 1.3 curl with admin key returns `since_purchase_pct`/`since_purchase_pln` per position with plausible values — 5c5effc
 
 ### Phase 2: Frontend — labeled lines & since-purchase display
 
 #### Automated
 
-- [ ] 2.1 Full test suite passes: `uv run pytest --tb=short`
-- [ ] 2.2 E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q`
+- [x] 2.1 Full test suite passes: `uv run pytest --tb=short`
+- [x] 2.2 E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q`
 
 #### Manual
 
-- [ ] 2.3 D/D:, Total:, Zakup: lines render correctly on large-enough cells
-- [ ] 2.4 A position with no purchase-cost data shows "Zakup: brak danych"
-- [ ] 2.5 No overflow/clipping at the 90×60 threshold; ticker-only fallback still works below it
+- [x] 2.3 D/D:, Total:, Zakup: lines render correctly on large-enough cells
+- [x] 2.4 A position with no purchase-cost data shows "Zakup: brak danych"
+- [x] 2.5 No overflow/clipping at the 150×60 threshold; ticker-only fallback still works below it
 
-### Phase 3: Frontend — hover highlight & click-to-filter
+### Phase 3: Frontend — click-to-open popup with summary + navigate
 
 #### Automated
 
-- [ ] 3.1 Full test suite passes: `uv run pytest --tb=short`
-- [ ] 3.2 E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q`
+- [x] 3.1 Full test suite passes: `uv run pytest --tb=short`
+- [x] 3.2 E2E suite passes: `uv run pytest tests/e2e/test_portfolio_treemap.py -q`
 
 #### Manual
 
-- [ ] 3.3 Hovering any cell shows the bold white outline alongside the existing tooltip
-- [ ] 3.4 Clicking any cell navigates to announcements filtered by that ticker
-- [ ] 3.5 Clicking a cell with another filter already active leaves that filter intact
+- [x] 3.3 Hovering any cell shows the bold white outline
+- [x] 3.4 Clicking any cell opens a centered popup with that position's D/D:/Total:/Zakup: lines
+- [x] 3.5 Clicking "Ostatnie podsumowania" in the popup navigates to announcements filtered by that ticker
+- [x] 3.6 Closing the popup (X, backdrop click, or Esc) does not navigate anywhere
+- [x] 3.7 Clicking a cell with another filter already active, then using the popup's button, leaves that filter intact

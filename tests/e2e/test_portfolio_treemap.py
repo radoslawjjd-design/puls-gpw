@@ -35,6 +35,11 @@ def test_admin_can_open_treemap_and_see_positions_rendered_with_pl_deltas(
     expect(main_container.locator(".treemap-cell.no-data")).to_contain_text("NEW")
     expect(main_container.locator(".treemap-cell.no-data")).to_contain_text("brak danych")
 
+    expect(main_container).to_contain_text("D/D:")
+    expect(main_container).to_contain_text("Total:")
+    expect(main_container).to_contain_text("Zakup:")
+    expect(main_container.locator(".treemap-cell.no-data")).to_contain_text("Zakup: brak danych")
+
     ikze_container = page.locator("#treemap-ikze")
     expect(ikze_container.locator(".treemap-cell", has_text="ALE")).to_be_visible()
     expect(ikze_container.locator(".treemap-cell", has_text="KGH")).to_be_visible()
@@ -75,3 +80,78 @@ def test_user_role_never_triggers_treemap_network_request(page: Page, live_serve
         page.get_by_role("button", name="Filtruj").click()
 
     assert not any("/admin/portfolio/treemap" in url for url in requests)
+
+
+def test_hovering_treemap_cell_shows_outline(page: Page, live_server_url: str):
+    _login(page, live_server_url)
+    _open_treemap(page)
+
+    cell = page.locator("#treemap-main .treemap-cell").first
+    cell.hover()
+    expect(cell).to_have_css("outline-style", "solid")
+
+
+def test_clicking_treemap_cell_opens_popup_with_summary(page: Page, live_server_url: str):
+    _login(page, live_server_url)
+    _open_treemap(page)
+
+    page.locator("#treemap-main .treemap-cell", has_text="PKO").first.click()
+
+    popup = page.locator("#treemap-popup-backdrop")
+    expect(popup).to_be_visible()
+    expect(page.locator("#tc-popup-ticker")).to_have_text("PKO")
+    expect(page.locator("#tc-popup-daily")).to_contain_text("D/D:")
+    expect(page.locator("#tc-popup-total")).to_contain_text("Total:")
+    expect(page.locator("#tc-popup-since")).to_contain_text("Zakup:")
+
+
+def test_clicking_popup_button_navigates_to_filtered_announcements(
+    page: Page, live_server_url: str
+):
+    _login(page, live_server_url)
+    _open_treemap(page)
+
+    page.locator("#treemap-main .treemap-cell", has_text="PKO").first.click()
+    expect(page.locator("#treemap-popup-backdrop")).to_be_visible()
+
+    # The treemap's "ticker" field is actually a company display name (e.g. "Toya"
+    # from XTB OCR), so navigation must use the announcements `company` filter
+    # (partial match) rather than its exact-match `ticker` filter.
+    with page.expect_response(re.compile(r"/announcements\?.*company=PKO")):
+        page.get_by_role("button", name="Ostatnie podsumowania").click()
+
+    expect(page.locator("#announcements-view")).to_be_visible()
+    expect(page.locator("#treemap-view")).to_be_hidden()
+    expect(page.locator("#f-company")).to_have_value("PKO")
+
+
+def test_closing_popup_does_not_navigate(page: Page, live_server_url: str):
+    _login(page, live_server_url)
+    _open_treemap(page)
+
+    requests: list[str] = []
+    page.on("request", lambda r: requests.append(r.url))
+
+    page.locator("#treemap-main .treemap-cell", has_text="PKO").first.click()
+    popup = page.locator("#treemap-popup-backdrop")
+    expect(popup).to_be_visible()
+
+    page.locator("#tc-popup-close").click()
+    expect(popup).to_be_hidden()
+    expect(page.locator("#announcements-view")).to_be_hidden()
+    assert not any("/announcements" in url for url in requests)
+
+
+def test_clicking_treemap_cell_preserves_other_active_filters(
+    page: Page, live_server_url: str
+):
+    _login(page, live_server_url)
+    page.locator("#f-ticker").fill("ABC")
+    _open_treemap(page)
+
+    page.locator("#treemap-main .treemap-cell", has_text="PKO").first.click()
+    with page.expect_response(re.compile(r"/announcements")):
+        page.get_by_role("button", name="Ostatnie podsumowania").click()
+
+    expect(page.locator("#f-ticker")).to_have_value("ABC")
+    expect(page.locator("#f-company")).to_have_value("PKO")

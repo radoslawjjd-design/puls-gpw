@@ -57,8 +57,8 @@ _FAKE_TREEMAP_LATEST = {
     "day_change_abs": 100.0, "day_change_pct": 5.0,
     "positions_json": (
         '{"positions": ['
-        '{"ticker": "PKO", "value": 1200.0}, '
-        '{"ticker": "CDR", "value": 300.0}, '
+        '{"ticker": "PKO", "value": 1200.0, "pct": 20.0}, '
+        '{"ticker": "CDR", "value": 300.0, "pct": 50.0}, '
         '{"ticker": "NEW", "value": 500.0}'
         '], "media_attached": false}'
     ),
@@ -83,8 +83,8 @@ _FAKE_TREEMAP_IKZE_LATEST = {
     "day_change_abs": 50.0, "day_change_pct": 5.0,
     "positions_json": (
         '{"positions": ['
-        '{"ticker": "ALE", "value": 700.0}, '
-        '{"ticker": "KGH", "value": 300.0}'
+        '{"ticker": "ALE", "value": 700.0, "pct": 40.0}, '
+        '{"ticker": "KGH", "value": 300.0, "pct": 20.0}'
         '], "media_attached": false}'
     ),
 }
