@@ -109,6 +109,8 @@ class TreemapPosition(BaseModel):
     daily_change_pln: float | None = None
     daily_change_pct: float | None = None
     portfolio_share_pct: float | None = None
+    since_purchase_pct: float | None = None
+    since_purchase_pln: float | None = None
 
 
 _TREEMAP_WALLETS = ("main", "ikze")
