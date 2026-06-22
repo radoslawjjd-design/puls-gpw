@@ -396,6 +396,7 @@ let apiKey      = sessionStorage.getItem('apiKey');
 let role        = sessionStorage.getItem('role');
 let currentPage = 1;
 let xpPage      = 1;
+let currentView = 'announcements';
 let _acTickers     = [];
 let _acCompanies   = [];
 let _acEventTypes  = [];
@@ -597,17 +598,11 @@ document.addEventListener('click', e => {
   closeProfileMenu();
 });
 
-$('topbar-home').addEventListener('click', showAnnouncementsView);
+$('topbar-home').addEventListener('click', () => _navigateToView('announcements'));
 
-window.addEventListener('popstate', e => {
+window.addEventListener('popstate', () => {
   if (!apiKey) return;
-  showAnnouncementsView();
-  if (e.state && e.state.page) {
-    currentPage = e.state.page;
-    const ps = $('f-page-size');
-    if (ps && e.state.page_size) ps.value = String(e.state.page_size);
-    fetchAnnouncements(false);
-  }
+  _applyUrlState();
 });
 
 function bindDateToggle(el) {
@@ -655,9 +650,8 @@ function showDashboard(r) {
   $('data-table').classList.toggle('admin-table', r === 'admin');
   renderHeaders(r);
   injectAdminOnlyChrome(r);
-  showAnnouncementsView();
   loadAutocomplete();
-  fetchAnnouncements(false);
+  _applyUrlState();
   startIdleTracking();
 }
 
@@ -776,7 +770,7 @@ function injectAdminOnlyChrome(r) {
   announceView.insertAdjacentElement('afterend', view);
   _xHistoryViewBuilt = false;
 
-  $('x-history-btn').addEventListener('click', showXHistoryView);
+  $('x-history-btn').addEventListener('click', () => _navigateToView('x-history'));
 
   const treemapItem = document.createElement('li');
   treemapItem.setAttribute('role', 'none');
@@ -810,7 +804,7 @@ function injectAdminOnlyChrome(r) {
   `;
   view.insertAdjacentElement('afterend', treemapView);
 
-  $('treemap-btn').addEventListener('click', showTreemapView);
+  $('treemap-btn').addEventListener('click', () => _navigateToView('treemap'));
 
   ['treemap-main', 'treemap-ikze'].forEach(id => {
     $(id).addEventListener('click', e => {
@@ -888,6 +882,44 @@ function showTreemapView() {
   closeProfileMenu();
   fetchTreemap();
   startTreemapResizeTracking();
+}
+
+// ── routing ────────────────────────────────────────────────────────────
+// Single dispatcher for view switches: sets currentView, shows the view, and
+// writes the URL exactly once per click. fetchAnnouncements()/fetchXPosts()
+// will own the URL write whenever they fire on their own (x-history always
+// fetches on show, announcements doesn't) — see plan's sequencing rule. Until
+// Phase 3 lands fetchXPosts()'s own write, x-history's push lives here too.
+function _navigateToView(view) {
+  currentView = view;
+  if (view === 'treemap') {
+    showTreemapView();
+    history.pushState({ view: 'treemap' }, '', '?view=treemap');
+  } else if (view === 'x-history') {
+    showXHistoryView();
+    history.pushState({ view: 'x-history' }, '', '?view=x-history');
+  } else {
+    showAnnouncementsView();
+    history.pushState({}, '', '/');
+  }
+}
+
+// Resolves the active view from location.search — shared by init() (deep
+// link / refresh) and the popstate listener (back/forward), so both read the
+// URL through one code path and can't diverge.
+function _applyUrlState() {
+  const view = new URLSearchParams(location.search).get('view');
+  if (view === 'treemap') {
+    currentView = 'treemap';
+    showTreemapView();
+  } else if (view === 'x-history') {
+    currentView = 'x-history';
+    showXHistoryView();
+  } else {
+    currentView = 'announcements';
+    showAnnouncementsView();
+    fetchAnnouncements(false);
+  }
 }
 
 // ── fetch ──────────────────────────────────────────────────────────────

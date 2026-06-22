@@ -493,16 +493,16 @@ one-time-rewrite logic is needed (see What We're NOT Doing).
 
 #### Automated
 
-- [ ] 1.1 Full test suite passes: `uv run pytest --tb=short`
-- [ ] 1.2 E2E suite passes: `uv run pytest tests/e2e/ -q`
+- [x] 1.1 Full test suite passes: `uv run pytest --tb=short`
+- [x] 1.2 E2E suite passes: `uv run pytest tests/e2e/ -q`
 
 #### Manual
 
-- [ ] 1.3 Clicking "Treemapa portfela" sets the URL to `...?view=treemap`
-- [ ] 1.4 Clicking "Historia postów X" sets the URL to `...?view=x-history`
-- [ ] 1.5 Clicking the "puls-gpw" topbar heading returns the URL to `/` (no `view=`)
-- [ ] 1.6 Refreshing while on `?view=treemap` lands back on the treemap view, not announcements
-- [ ] 1.7 Browser back after Treemapa → Historia postów X returns to the treemap view (URL shows `?view=treemap` again)
+- [x] 1.3 Clicking "Treemapa portfela" sets the URL to `...?view=treemap`
+- [x] 1.4 Clicking "Historia postów X" sets the URL to `...?view=x-history`
+- [x] 1.5 Clicking the "puls-gpw" topbar heading returns the URL to `/` (no `view=`)
+- [x] 1.6 Refreshing while on `?view=treemap` lands back on the treemap view, not announcements
+- [x] 1.7 Browser back after Treemapa → Historia postów X returns to the treemap view (URL shows `?view=treemap` again)
 
 ### Phase 2: Announcements — full state in the URL
 
