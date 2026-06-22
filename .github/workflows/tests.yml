@@ -1,0 +1,44 @@
+# .github/workflows/tests.yml
+#
+# Pre-merge test gate. Until this workflow existed, `uv run pytest` (including
+# the full Playwright E2E suite) only ran post-merge, inside deploy.yml — so a
+# CI-environment-only flake (headless Linux Chromium vs local Windows) was
+# discovered after landing on master, blocking the next production deploy
+# instead of blocking the PR. ai-code-review.yml never executes code; it only
+# scores the diff. This workflow closes that gap by running the exact same
+# `uv run pytest --tb=short` command on every PR, in the same environment
+# deploy.yml uses, before merge.
+#
+# No GCP auth needed: tests run entirely against mocks/fixtures (see
+# tests/e2e/conftest.py's live_server_url fixture).
+
+name: Tests
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install Playwright browsers
+        run: uv run playwright install chromium --with-deps
+
+      - name: Run tests
+        run: uv run pytest --tb=short
