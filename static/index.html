@@ -904,11 +904,33 @@ function _navigateToView(view) {
   }
 }
 
+// Restores filter inputs + page from a URL's params — used by
+// _applyUrlState() for both initial deep-link/refresh and popstate
+// back/forward, so the two entry points can't diverge. Always sets every
+// field (clearing it when the param is absent), since on a popstate
+// transition the DOM persists across navigations and stale values from a
+// previous URL would otherwise survive.
+function _applyAnnouncementsParams(params) {
+  $('f-ticker').value  = params.get('ticker')  || '';
+  $('f-company').value = params.get('company') || '';
+  const eventCode = params.get('event_type');
+  $('f-event-type').value = eventCode ? (EVENT_TYPE_LABELS[eventCode] || eventCode) : '';
+  const fromIso = params.get('from');
+  if (fromIso) { $('f-from').type = 'datetime-local'; $('f-from').value = _isoToLocalInputValue(fromIso); }
+  else         { $('f-from').type = 'text';           $('f-from').value = ''; }
+  const toIso = params.get('to');
+  if (toIso) { $('f-to').type = 'datetime-local'; $('f-to').value = _isoToLocalInputValue(toIso); }
+  else       { $('f-to').type = 'text';           $('f-to').value = ''; }
+  $('f-page-size').value = params.get('page_size') || '20';
+  currentPage = Number(params.get('page')) || 1;
+}
+
 // Resolves the active view from location.search — shared by init() (deep
 // link / refresh) and the popstate listener (back/forward), so both read the
 // URL through one code path and can't diverge.
 function _applyUrlState() {
-  const view = new URLSearchParams(location.search).get('view');
+  const params = new URLSearchParams(location.search);
+  const view = params.get('view');
   if (view === 'treemap' && role === 'admin') {
     currentView = 'treemap';
     showTreemapView();
@@ -917,15 +939,31 @@ function _applyUrlState() {
     showXHistoryView();
   } else {
     currentView = 'announcements';
+    _applyAnnouncementsParams(params);
     showAnnouncementsView();
     fetchAnnouncements(false);
   }
 }
 
+// Prefixes `params` with `view=<name>` unless `view` is the default
+// announcements view, then pushes/replaces the resulting query string —
+// shared by every view's fetch so the visible URL and the API query can
+// never drift apart.
+function _writeUrl(view, params, push) {
+  const out = new URLSearchParams();
+  if (view !== 'announcements') out.set('view', view);
+  for (const [k, val] of params) out.append(k, val);
+  const url = '?' + out.toString();
+  const state = { view };
+  if (push) history.pushState(state, '', url);
+  else      history.replaceState(state, '', url);
+}
+
 // ── fetch ──────────────────────────────────────────────────────────────
-async function fetchAnnouncements(push = true) {
-  $('btn-prev').disabled = true;
-  $('btn-next').disabled = true;
+// Builds the announcements filter+pagination params from the current form
+// state — shared by fetchAnnouncements() (API query) and _writeUrl() (visible
+// URL) so the two can never drift apart.
+function _announcementsParams() {
   const params = new URLSearchParams();
   const v = id => $(`f-${id}`) && $(`f-${id}`).value.trim();
   if (v('ticker'))     params.set('ticker',     v('ticker'));
@@ -940,6 +978,14 @@ async function fetchAnnouncements(push = true) {
   const pageSize = $('f-page-size').value || '20';
   params.set('page',      currentPage);
   params.set('page_size', pageSize);
+  return params;
+}
+
+async function fetchAnnouncements(push = true) {
+  $('btn-prev').disabled = true;
+  $('btn-next').disabled = true;
+  const params   = _announcementsParams();
+  const pageSize = params.get('page_size');
 
   try {
     const r = await fetch('/announcements?' + params, {
@@ -952,10 +998,7 @@ async function fetchAnnouncements(push = true) {
     renderTable(data, role);
     $('btn-prev').disabled = currentPage === 1;
     $('btn-next').disabled = data.length < Number(pageSize);
-    const histState = { page: currentPage, page_size: Number(pageSize) };
-    const histUrl   = '?page=' + currentPage + '&page_size=' + pageSize;
-    if (push) history.pushState(histState, '', histUrl);
-    else      history.replaceState(histState, '', histUrl);
+    _writeUrl('announcements', params, push);
   } catch (e) {
     $('table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
     $('btn-prev').disabled = currentPage === 1;
@@ -1292,6 +1335,15 @@ function esc(s) {
 function parseDateOrNull(value) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// Converts an ISO/UTC date string into the value a `datetime-local` input
+// expects (local wall-clock time) — slicing the ISO string directly would
+// shift the restored value by the local UTC offset.
+function _isoToLocalInputValue(iso) {
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 init();
