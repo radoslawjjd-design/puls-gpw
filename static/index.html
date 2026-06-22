@@ -909,10 +909,10 @@ function _navigateToView(view) {
 // URL through one code path and can't diverge.
 function _applyUrlState() {
   const view = new URLSearchParams(location.search).get('view');
-  if (view === 'treemap') {
+  if (view === 'treemap' && role === 'admin') {
     currentView = 'treemap';
     showTreemapView();
-  } else if (view === 'x-history') {
+  } else if (view === 'x-history' && role === 'admin') {
     currentView = 'x-history';
     showXHistoryView();
   } else {
