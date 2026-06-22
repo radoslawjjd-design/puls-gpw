@@ -524,15 +524,15 @@ one-time-rewrite logic is needed (see What We're NOT Doing).
 
 #### Automated
 
-- [ ] 3.1 Full test suite passes: `uv run pytest --tb=short`
-- [ ] 3.2 E2E suite passes: `uv run pytest tests/e2e/ -q`
+- [x] 3.1 Full test suite passes: `uv run pytest --tb=short`
+- [x] 3.2 E2E suite passes: `uv run pytest tests/e2e/ -q`
 
 #### Manual
 
-- [ ] 3.3 Opening "Historia postów X" and clicking "Następna" changes the URL to include `view=x-history&page=2`
-- [ ] 3.4 Refreshing on that URL restores x-history view, page 2
-- [ ] 3.5 Setting a window/status filter, refreshing, restores the dropdown selections
-- [ ] 3.6 Browser back after paging x-history steps back to page 1 of x-history (not to announcements)
+- [x] 3.3 Opening "Historia postów X" and clicking "Następna" changes the URL to include `view=x-history&page=2`
+- [x] 3.4 Refreshing on that URL restores x-history view, page 2
+- [x] 3.5 Setting a window/status filter, refreshing, restores the dropdown selections
+- [x] 3.6 Browser back after paging x-history steps back to page 1 of x-history (not to announcements)
 
 ### Phase 4: Polish, edge cases, and test coverage
 

@@ -860,7 +860,10 @@ function showAnnouncementsView() {
   stopTreemapResizeTracking();
 }
 
-function showXHistoryView() {
+// DOM-only half of showXHistoryView() — split out so _applyUrlState() can
+// restore filter/page values into the just-built #xp-f-* elements before
+// the first fetch fires, instead of after.
+function _showXHistoryViewDom() {
   const view = $('x-history-view');
   if (!_xHistoryViewBuilt) {
     _buildXHistoryViewContent(view);
@@ -872,7 +875,11 @@ function showXHistoryView() {
   if (tView) tView.style.display = 'none';
   stopTreemapResizeTracking();
   closeProfileMenu();
-  fetchXPosts();
+}
+
+function showXHistoryView(push = true) {
+  _showXHistoryViewDom();
+  fetchXPosts(push);
 }
 
 function showTreemapView() {
@@ -887,9 +894,8 @@ function showTreemapView() {
 // ── routing ────────────────────────────────────────────────────────────
 // Single dispatcher for view switches: sets currentView, shows the view, and
 // writes the URL exactly once per click. fetchAnnouncements()/fetchXPosts()
-// will own the URL write whenever they fire on their own (x-history always
-// fetches on show, announcements doesn't) — see plan's sequencing rule. Until
-// Phase 3 lands fetchXPosts()'s own write, x-history's push lives here too.
+// own the URL write whenever they fire on their own (x-history always
+// fetches on show, announcements doesn't) — see plan's sequencing rule.
 function _navigateToView(view) {
   currentView = view;
   if (view === 'treemap') {
@@ -897,7 +903,6 @@ function _navigateToView(view) {
     history.pushState({ view: 'treemap' }, '', '?view=treemap');
   } else if (view === 'x-history') {
     showXHistoryView();
-    history.pushState({ view: 'x-history' }, '', '?view=x-history');
   } else {
     showAnnouncementsView();
     history.pushState({}, '', '/');
@@ -925,6 +930,23 @@ function _applyAnnouncementsParams(params) {
   currentPage = Math.max(1, Number(params.get('page')) || 1);
 }
 
+// Mirrors _applyAnnouncementsParams() for the x-history view's filter set.
+// Must run after _showXHistoryViewDom() (so the #xp-f-* elements exist) and
+// before fetchXPosts() (so the restored values are what gets fetched).
+function _applyXPostsParams(params) {
+  $('xp-f-window').value     = params.get('window')            || '';
+  $('xp-f-status').value     = params.get('x_publish_status')  || '';
+  $('xp-f-post-text').value  = params.get('post_text')          || '';
+  const fromLocal = params.get('from') ? _isoToLocalInputValue(params.get('from')) : null;
+  if (fromLocal) { $('xp-f-from').type = 'datetime-local'; $('xp-f-from').value = fromLocal; }
+  else           { $('xp-f-from').type = 'text';           $('xp-f-from').value = ''; }
+  const toLocal = params.get('to') ? _isoToLocalInputValue(params.get('to')) : null;
+  if (toLocal) { $('xp-f-to').type = 'datetime-local'; $('xp-f-to').value = toLocal; }
+  else         { $('xp-f-to').type = 'text';           $('xp-f-to').value = ''; }
+  $('xp-f-page-size').value = params.get('page_size') || '20';
+  xpPage = Math.max(1, Number(params.get('page')) || 1);
+}
+
 // Resolves the active view from location.search — shared by init() (deep
 // link / refresh) and the popstate listener (back/forward), so both read the
 // URL through one code path and can't diverge.
@@ -936,7 +958,9 @@ function _applyUrlState() {
     showTreemapView();
   } else if (view === 'x-history' && role === 'admin') {
     currentView = 'x-history';
-    showXHistoryView();
+    _showXHistoryViewDom();
+    _applyXPostsParams(params);
+    fetchXPosts(false);
   } else {
     currentView = 'announcements';
     _applyAnnouncementsParams(params);
@@ -1007,11 +1031,10 @@ async function fetchAnnouncements(push = true) {
 }
 
 // ── x-posts: fetch ───────────────────────────────────────────────────────
-async function fetchXPosts() {
-  const btnPrev = $('xp-btn-prev');
-  const btnNext = $('xp-btn-next');
-  btnPrev.disabled = true;
-  btnNext.disabled = true;
+// Builds the x-history filter+pagination params from the current form
+// state — shared by fetchXPosts() (API query) and _writeUrl() (visible URL),
+// mirroring _announcementsParams()'s role for the announcements view.
+function _xPostsParams() {
   const params = new URLSearchParams();
   const win = $('xp-f-window').value;
   if (win) params.set('window', win);
@@ -1026,6 +1049,16 @@ async function fetchXPosts() {
   const pageSize = $('xp-f-page-size').value || '20';
   params.set('page', xpPage);
   params.set('page_size', pageSize);
+  return params;
+}
+
+async function fetchXPosts(push = true) {
+  const btnPrev = $('xp-btn-prev');
+  const btnNext = $('xp-btn-next');
+  btnPrev.disabled = true;
+  btnNext.disabled = true;
+  const params   = _xPostsParams();
+  const pageSize = params.get('page_size');
 
   try {
     const r = await fetch('/admin/x-posts?' + params, {
@@ -1038,6 +1071,7 @@ async function fetchXPosts() {
     renderXPostsTable(data);
     btnPrev.disabled = xpPage === 1;
     btnNext.disabled = data.length < Number(pageSize);
+    _writeUrl('x-history', params, push);
   } catch (e) {
     $('xp-table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
     btnPrev.disabled = xpPage === 1;
