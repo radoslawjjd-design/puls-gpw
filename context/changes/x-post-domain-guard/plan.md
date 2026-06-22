@@ -346,20 +346,20 @@ post-processing on newly generated content.
 
 #### Automated
 
-- [x] 1.1 Unit tests for `_strip_domain_suffix` pass
-- [x] 1.2 Full `post_generator` suite passes
+- [x] 1.1 Unit tests for `_strip_domain_suffix` pass — ead7dce
+- [x] 1.2 Full `post_generator` suite passes — ead7dce
 
 #### Manual
 
-- [ ] 1.4 `generate_post()` with `"Oponeo.pl"` company produces tweets with no `.pl` substring
+- [x] 1.4 `generate_post()` with `"Oponeo.pl"` company produces tweets with no `.pl` substring — ead7dce
 
 ### Phase 2: Non-blocking observability in post_supervisor.py
 
 #### Automated
 
-- [ ] 2.1 New warnings tests pass
-- [ ] 2.2 Full `post_supervisor` suite passes
-- [ ] 2.3 `approved` unaffected by `warnings` (regression test)
+- [x] 2.1 New warnings tests pass
+- [x] 2.2 Full `post_supervisor` suite passes
+- [x] 2.3 `approved` unaffected by `warnings` (regression test)
 
 #### Manual
 

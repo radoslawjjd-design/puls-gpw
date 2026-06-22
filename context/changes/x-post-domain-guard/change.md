@@ -1,9 +1,10 @@
 ---
 change_id: x-post-domain-guard
 title: Block domain-like text (e.g. .pl/.com) from generated X posts
-status: implementing
+status: impl_reviewed
 created: 2026-06-22
 updated: 2026-06-22
+last_phase_review: phase-2 (APPROVED)
 archived_at: null
 tracking:
   linear: PUL-48

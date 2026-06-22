@@ -122,3 +122,28 @@ def test_kupuje_question_not_rejected():
     tweets[2] = "📊 XTB ($XTB)\nEmisja 10 mln akcji za 34,7 mln PLN.\nKto kupuje te akcje i po co?"
     result = validate_post(_post(*tweets), _TICKERS, expected_tweets=5)
     assert result.approved is True
+
+
+# ── Domain-like text warnings (non-blocking safety net) ──────────────────────
+
+def test_valid_post_has_no_warnings():
+    result = validate_post(_post(*_VALID_TWEETS), _TICKERS, expected_tweets=5)
+    assert result.warnings == []
+
+
+def test_domain_like_text_produces_warning_not_rejection():
+    # Simulates a path that bypassed the Phase 1 sanitizer (e.g. a hand-built GeneratedPost).
+    tweets = list(_VALID_TWEETS)
+    tweets[1] = "📊 Oponeo.pl ($PKO)\nZysk netto Q1: 120,1 mln PLN. Drugi kwartał z rzędu wzrostu.\nSkąd ta poprawa?"
+    result = validate_post(_post(*tweets), _TICKERS, expected_tweets=5)
+    assert result.issues == []
+    assert result.approved is True
+    assert any("Oponeo.pl" in warning for warning in result.warnings)
+
+
+def test_domain_like_text_does_not_affect_approved():
+    tweets = list(_VALID_TWEETS)
+    tweets[2] = "📊 Hub.io ($XTB)\nLiczba klientów +27% r/r. Rekordowy kwartał pod względem pozyskania.\nCzy wzrost jakościowy czy tylko liczba kont?"
+    result = validate_post(_post(*tweets), _TICKERS, expected_tweets=5)
+    assert result.approved is True
+    assert result.warnings != []
