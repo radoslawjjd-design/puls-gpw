@@ -508,17 +508,17 @@ one-time-rewrite logic is needed (see What We're NOT Doing).
 
 #### Automated
 
-- [x] 2.1 Full test suite passes: `uv run pytest --tb=short`
-- [x] 2.2 E2E suite passes: `uv run pytest tests/e2e/ -q`
-- [x] 2.3 `tests/e2e/test_pagination.py` passes unmodified
-- [x] 2.4 `tests/e2e/test_refresh.py` passes (with the Phase 4 assertion additions)
+- [x] 2.1 Full test suite passes: `uv run pytest --tb=short` — d1aa5b2
+- [x] 2.2 E2E suite passes: `uv run pytest tests/e2e/ -q` — d1aa5b2
+- [x] 2.3 `tests/e2e/test_pagination.py` passes unmodified — d1aa5b2
+- [x] 2.4 `tests/e2e/test_refresh.py` passes (with the Phase 4 assertion additions) — d1aa5b2
 
 #### Manual
 
-- [x] 2.5 Setting a ticker filter and paging to page 2 shows both `ticker=` and `page=2` in the URL
-- [x] 2.6 Refreshing on that URL restores the ticker filter field's value, the event-type dropdown's label, and page 2's data
-- [x] 2.7 Setting a date filter, refreshing, re-opening the date field shows the same date/time (not shifted by timezone)
-- [x] 2.8 An old-style bookmark (`?page=2&page_size=20`, no filters, no `view=`) still lands on announcements page 2 with empty filters
+- [x] 2.5 Setting a ticker filter and paging to page 2 shows both `ticker=` and `page=2` in the URL — d1aa5b2
+- [x] 2.6 Refreshing on that URL restores the ticker filter field's value, the event-type dropdown's label, and page 2's data — d1aa5b2
+- [x] 2.7 Setting a date filter, refreshing, re-opening the date field shows the same date/time (not shifted by timezone) — d1aa5b2
+- [x] 2.8 An old-style bookmark (`?page=2&page_size=20`, no filters, no `view=`) still lands on announcements page 2 with empty filters — d1aa5b2
 
 ### Phase 3: X-history — full state in the URL (new ground)
 

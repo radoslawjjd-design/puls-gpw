@@ -915,14 +915,14 @@ function _applyAnnouncementsParams(params) {
   $('f-company').value = params.get('company') || '';
   const eventCode = params.get('event_type');
   $('f-event-type').value = eventCode ? (EVENT_TYPE_LABELS[eventCode] || eventCode) : '';
-  const fromIso = params.get('from');
-  if (fromIso) { $('f-from').type = 'datetime-local'; $('f-from').value = _isoToLocalInputValue(fromIso); }
-  else         { $('f-from').type = 'text';           $('f-from').value = ''; }
-  const toIso = params.get('to');
-  if (toIso) { $('f-to').type = 'datetime-local'; $('f-to').value = _isoToLocalInputValue(toIso); }
-  else       { $('f-to').type = 'text';           $('f-to').value = ''; }
+  const fromLocal = params.get('from') ? _isoToLocalInputValue(params.get('from')) : null;
+  if (fromLocal) { $('f-from').type = 'datetime-local'; $('f-from').value = fromLocal; }
+  else           { $('f-from').type = 'text';           $('f-from').value = ''; }
+  const toLocal = params.get('to') ? _isoToLocalInputValue(params.get('to')) : null;
+  if (toLocal) { $('f-to').type = 'datetime-local'; $('f-to').value = toLocal; }
+  else         { $('f-to').type = 'text';           $('f-to').value = ''; }
   $('f-page-size').value = params.get('page_size') || '20';
-  currentPage = Number(params.get('page')) || 1;
+  currentPage = Math.max(1, Number(params.get('page')) || 1);
 }
 
 // Resolves the active view from location.search — shared by init() (deep
@@ -1339,9 +1339,11 @@ function parseDateOrNull(value) {
 
 // Converts an ISO/UTC date string into the value a `datetime-local` input
 // expects (local wall-clock time) — slicing the ISO string directly would
-// shift the restored value by the local UTC offset.
+// shift the restored value by the local UTC offset. Returns null for an
+// unparseable value, mirroring parseDateOrNull's never-throws contract.
 function _isoToLocalInputValue(iso) {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
