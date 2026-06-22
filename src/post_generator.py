@@ -220,6 +220,14 @@ def _enforce_body_cashtag(tweet: str) -> str:
     return _PAREN_TICKER_RE.sub(lambda m: f"( ${m.group(1).lstrip('$')} )", tweet)
 
 
+_DOMAIN_TLD_RE = re.compile(r"\b([\w-]+)\.(pl|com|net|org|info|io|co)\b", re.IGNORECASE)
+
+
+def _strip_domain_suffix(text: str) -> str:
+    """Strip a domain-like `.<tld>` suffix so X's link auto-detection can't linkify it."""
+    return _DOMAIN_TLD_RE.sub(r"\1", text)
+
+
 _HASHTAG_RE = re.compile(r"#\w+")
 # Disclaimer clause: bounded by sentence/line boundaries so it doesn't swallow adjacent text.
 _DISCLAIMER_RE = re.compile(r"[^\n.!?]*rekomendacj[^\n.!?]*[.!?]?", re.IGNORECASE)
@@ -408,6 +416,7 @@ def generate_post(
         tweets = []
         for i, t in enumerate(parsed.tweets):
             t = _normalize_ticker_spacing(t)
+            t = _strip_domain_suffix(t)
             # Body tweets (one company each) carry that company's single $cashtag; the hook
             # (top-company $ only) and closing (several plain tickers) are left to the prompt.
             # Enforce the cashtag before length so the trim accounts for the added char.

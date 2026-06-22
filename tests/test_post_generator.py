@@ -7,6 +7,7 @@ from src.post_generator import (
     _build_tickers_str,
     _normalize_ticker_spacing,
     _enforce_body_cashtag,
+    _strip_domain_suffix,
     _enforce_length,
     _HOOK_VARIANTS,
     _CLOSING_QUESTIONS,
@@ -193,6 +194,48 @@ def test_enforce_body_cashtag_noop_on_multiple_tickers():
 
 def test_enforce_body_cashtag_leaves_year_alone():
     assert _enforce_body_cashtag("zysk za rok (2025) rośnie") == "zysk za rok (2025) rośnie"
+
+
+# ── domain-like text guard ───────────────────────────────────────────────────
+
+def test_strip_domain_suffix_strips_known_tlds():
+    assert _strip_domain_suffix("📊 Oponeo.pl ( OPN )") == "📊 Oponeo ( OPN )"
+    assert _strip_domain_suffix("Allegro.com rośnie") == "Allegro rośnie"
+    assert _strip_domain_suffix("Firma.net i Firma.org i Firma.info") == "Firma i Firma i Firma"
+    assert _strip_domain_suffix("Firma.io oraz Firma.co") == "Firma oraz Firma"
+
+
+def test_strip_domain_suffix_case_insensitive():
+    assert _strip_domain_suffix("Oponeo.PL") == "Oponeo"
+
+
+def test_strip_domain_suffix_leaves_non_tld_dotted_text_alone():
+    # "pl" must be a whole TLD token, not a prefix of a longer word.
+    assert _strip_domain_suffix("firma.placu") == "firma.placu"
+    # "plus" near-miss — no TLD boundary right after the dot.
+    assert _strip_domain_suffix("firma.plus") == "firma.plus"
+    # Plain numeric/year-like dotted text is untouched.
+    assert _strip_domain_suffix("wynik 12.5 mln PLN") == "wynik 12.5 mln PLN"
+
+
+def test_strip_domain_suffix_idempotent():
+    once = _strip_domain_suffix("Oponeo.pl")
+    twice = _strip_domain_suffix(once)
+    assert once == twice == "Oponeo"
+
+
+def test_generate_post_strips_domain_like_company_name():
+    raw = json.dumps({"tweets": [
+        "🚨 1 ważne ESPI z GPW:\n• Oponeo.pl ( $OPN )\nKtóra?",
+        "📊 Oponeo.pl ( OPN )\nZysk: 1 mln\nMocno.",
+        "Co sądzisz? #GPW #ESPI #SmallCaps Nie jest to rekomendacja inwestycyjna.",
+    ]}, ensure_ascii=False)
+    with patch("src.post_generator.get_client", return_value=_mock_client(raw)):
+        result = generate_post(_ANNOUNCEMENTS[:1])
+    assert result is not None
+    joined = "".join(result.tweets)
+    assert "Oponeo" in joined
+    assert ".pl" not in joined.lower()
 
 
 def test_generate_post_body_tweets_carry_company_cashtag():
