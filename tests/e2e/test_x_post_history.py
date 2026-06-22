@@ -35,6 +35,22 @@ def test_clicking_menu_item_renders_x_posts_table(page: Page, live_server_url: s
     expect(page.get_by_role("cell", name="post-partial-1")).to_be_visible()
 
 
+def test_opening_x_history_sets_view_url_param(page: Page, live_server_url: str):
+    _login(page, live_server_url)
+    _open_x_history(page)
+
+    expect(page).to_have_url(re.compile(r"view=x-history"))
+
+
+def test_paging_to_page_2_changes_url(page: Page, live_server_url: str):
+    _login(page, live_server_url)
+    _open_x_history(page)
+
+    page.get_by_role("button", name=re.compile("Następna")).click()
+    expect(page.locator("#xp-page-label")).to_have_text("Strona 2")
+    expect(page).to_have_url(re.compile(r"view=x-history&page=2"))
+
+
 def test_clicking_topbar_heading_returns_to_announcements(page: Page, live_server_url: str):
     _login(page, live_server_url)
     _open_x_history(page)

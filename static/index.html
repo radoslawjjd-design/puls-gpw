@@ -396,6 +396,7 @@ let apiKey      = sessionStorage.getItem('apiKey');
 let role        = sessionStorage.getItem('role');
 let currentPage = 1;
 let xpPage      = 1;
+let currentView = 'announcements';
 let _acTickers     = [];
 let _acCompanies   = [];
 let _acEventTypes  = [];
@@ -459,6 +460,12 @@ function doLogout() {
   closeModal();
   sessionStorage.clear();
   apiKey = null; role = null;
+  currentView = 'announcements';
+  // Session state is gone — a stale `?view=treemap`/`?view=x-history` in the
+  // address bar would otherwise sit there through the login screen and get
+  // silently re-applied on the next login. replaceState (not pushState) so
+  // logout doesn't add its own back-button entry.
+  history.replaceState({}, '', '/');
   showLogin();
 }
 
@@ -597,17 +604,11 @@ document.addEventListener('click', e => {
   closeProfileMenu();
 });
 
-$('topbar-home').addEventListener('click', showAnnouncementsView);
+$('topbar-home').addEventListener('click', () => _navigateToView('announcements'));
 
-window.addEventListener('popstate', e => {
+window.addEventListener('popstate', () => {
   if (!apiKey) return;
-  showAnnouncementsView();
-  if (e.state && e.state.page) {
-    currentPage = e.state.page;
-    const ps = $('f-page-size');
-    if (ps && e.state.page_size) ps.value = String(e.state.page_size);
-    fetchAnnouncements(false);
-  }
+  _applyUrlState();
 });
 
 function bindDateToggle(el) {
@@ -655,9 +656,8 @@ function showDashboard(r) {
   $('data-table').classList.toggle('admin-table', r === 'admin');
   renderHeaders(r);
   injectAdminOnlyChrome(r);
-  showAnnouncementsView();
   loadAutocomplete();
-  fetchAnnouncements(false);
+  _applyUrlState();
   startIdleTracking();
 }
 
@@ -776,7 +776,7 @@ function injectAdminOnlyChrome(r) {
   announceView.insertAdjacentElement('afterend', view);
   _xHistoryViewBuilt = false;
 
-  $('x-history-btn').addEventListener('click', showXHistoryView);
+  $('x-history-btn').addEventListener('click', () => _navigateToView('x-history'));
 
   const treemapItem = document.createElement('li');
   treemapItem.setAttribute('role', 'none');
@@ -810,7 +810,7 @@ function injectAdminOnlyChrome(r) {
   `;
   view.insertAdjacentElement('afterend', treemapView);
 
-  $('treemap-btn').addEventListener('click', showTreemapView);
+  $('treemap-btn').addEventListener('click', () => _navigateToView('treemap'));
 
   ['treemap-main', 'treemap-ikze'].forEach(id => {
     $(id).addEventListener('click', e => {
@@ -866,7 +866,10 @@ function showAnnouncementsView() {
   stopTreemapResizeTracking();
 }
 
-function showXHistoryView() {
+// DOM-only half of showXHistoryView() — split out so _applyUrlState() can
+// restore filter/page values into the just-built #xp-f-* elements before
+// the first fetch fires, instead of after.
+function _showXHistoryViewDom() {
   const view = $('x-history-view');
   if (!_xHistoryViewBuilt) {
     _buildXHistoryViewContent(view);
@@ -878,7 +881,11 @@ function showXHistoryView() {
   if (tView) tView.style.display = 'none';
   stopTreemapResizeTracking();
   closeProfileMenu();
-  fetchXPosts();
+}
+
+function showXHistoryView(push = true) {
+  _showXHistoryViewDom();
+  fetchXPosts(push);
 }
 
 function showTreemapView() {
@@ -890,10 +897,106 @@ function showTreemapView() {
   startTreemapResizeTracking();
 }
 
+// ── routing ────────────────────────────────────────────────────────────
+// Single dispatcher for view switches: sets currentView, shows the view, and
+// writes the URL exactly once per click. fetchAnnouncements()/fetchXPosts()
+// own the URL write whenever they fire on their own (x-history always
+// fetches on show, announcements doesn't) — see plan's sequencing rule.
+function _navigateToView(view) {
+  currentView = view;
+  if (view === 'treemap') {
+    showTreemapView();
+    history.pushState({ view: 'treemap' }, '', '?view=treemap');
+  } else if (view === 'x-history') {
+    showXHistoryView();
+  } else {
+    showAnnouncementsView();
+    history.pushState({}, '', '/');
+  }
+}
+
+// Restores filter inputs + page from a URL's params — used by
+// _applyUrlState() for both initial deep-link/refresh and popstate
+// back/forward, so the two entry points can't diverge. Always sets every
+// field (clearing it when the param is absent), since on a popstate
+// transition the DOM persists across navigations and stale values from a
+// previous URL would otherwise survive.
+function _applyAnnouncementsParams(params) {
+  $('f-ticker').value  = params.get('ticker')  || '';
+  $('f-company').value = params.get('company') || '';
+  const eventCode = params.get('event_type');
+  $('f-event-type').value = eventCode ? (EVENT_TYPE_LABELS[eventCode] || eventCode) : '';
+  const fromLocal = params.get('from') ? _isoToLocalInputValue(params.get('from')) : null;
+  if (fromLocal) { $('f-from').type = 'datetime-local'; $('f-from').value = fromLocal; }
+  else           { $('f-from').type = 'text';           $('f-from').value = ''; }
+  const toLocal = params.get('to') ? _isoToLocalInputValue(params.get('to')) : null;
+  if (toLocal) { $('f-to').type = 'datetime-local'; $('f-to').value = toLocal; }
+  else         { $('f-to').type = 'text';           $('f-to').value = ''; }
+  $('f-page-size').value = params.get('page_size') || '20';
+  currentPage = Math.max(1, Number(params.get('page')) || 1);
+}
+
+// Mirrors _applyAnnouncementsParams() for the x-history view's filter set.
+// Must run after _showXHistoryViewDom() (so the #xp-f-* elements exist) and
+// before fetchXPosts() (so the restored values are what gets fetched).
+function _applyXPostsParams(params) {
+  $('xp-f-window').value     = params.get('window')            || '';
+  $('xp-f-status').value     = params.get('x_publish_status')  || '';
+  $('xp-f-post-text').value  = params.get('post_text')          || '';
+  const fromLocal = params.get('from') ? _isoToLocalInputValue(params.get('from')) : null;
+  if (fromLocal) { $('xp-f-from').type = 'datetime-local'; $('xp-f-from').value = fromLocal; }
+  else           { $('xp-f-from').type = 'text';           $('xp-f-from').value = ''; }
+  const toLocal = params.get('to') ? _isoToLocalInputValue(params.get('to')) : null;
+  if (toLocal) { $('xp-f-to').type = 'datetime-local'; $('xp-f-to').value = toLocal; }
+  else         { $('xp-f-to').type = 'text';           $('xp-f-to').value = ''; }
+  $('xp-f-page-size').value = params.get('page_size') || '20';
+  xpPage = Math.max(1, Number(params.get('page')) || 1);
+}
+
+// Resolves the active view from location.search — shared by init() (deep
+// link / refresh) and the popstate listener (back/forward), so both read the
+// URL through one code path and can't diverge.
+function _applyUrlState() {
+  const params = new URLSearchParams(location.search);
+  const view = params.get('view');
+  if (view === 'treemap' && role === 'admin') {
+    currentView = 'treemap';
+    showTreemapView();
+  } else if (view === 'x-history' && role === 'admin') {
+    currentView = 'x-history';
+    _showXHistoryViewDom();
+    _applyXPostsParams(params);
+    fetchXPosts(false);
+  } else {
+    currentView = 'announcements';
+    _applyAnnouncementsParams(params);
+    showAnnouncementsView();
+    fetchAnnouncements(false);
+  }
+}
+
+// Prefixes `params` with `view=<name>` unless `view` is the default
+// announcements view, then pushes/replaces the resulting query string —
+// shared by every view's fetch so the visible URL and the API query can
+// never drift apart. Guarded on apiKey so a fetch that was already in
+// flight when the user logged out can't land its URL write after
+// doLogout() has reset the address bar to '/'.
+function _writeUrl(view, params, push) {
+  if (!apiKey) return;
+  const out = new URLSearchParams();
+  if (view !== 'announcements') out.set('view', view);
+  for (const [k, val] of params) out.append(k, val);
+  const url = '?' + out.toString();
+  const state = { view };
+  if (push) history.pushState(state, '', url);
+  else      history.replaceState(state, '', url);
+}
+
 // ── fetch ──────────────────────────────────────────────────────────────
-async function fetchAnnouncements(push = true) {
-  $('btn-prev').disabled = true;
-  $('btn-next').disabled = true;
+// Builds the announcements filter+pagination params from the current form
+// state — shared by fetchAnnouncements() (API query) and _writeUrl() (visible
+// URL) so the two can never drift apart.
+function _announcementsParams() {
   const params = new URLSearchParams();
   const v = id => $(`f-${id}`) && $(`f-${id}`).value.trim();
   if (v('ticker'))     params.set('ticker',     v('ticker'));
@@ -908,6 +1011,14 @@ async function fetchAnnouncements(push = true) {
   const pageSize = $('f-page-size').value || '20';
   params.set('page',      currentPage);
   params.set('page_size', pageSize);
+  return params;
+}
+
+async function fetchAnnouncements(push = true) {
+  $('btn-prev').disabled = true;
+  $('btn-next').disabled = true;
+  const params   = _announcementsParams();
+  const pageSize = params.get('page_size');
 
   try {
     const r = await fetch('/announcements?' + params, {
@@ -920,10 +1031,7 @@ async function fetchAnnouncements(push = true) {
     renderTable(data, role);
     $('btn-prev').disabled = currentPage === 1;
     $('btn-next').disabled = data.length < Number(pageSize);
-    const histState = { page: currentPage, page_size: Number(pageSize) };
-    const histUrl   = '?page=' + currentPage + '&page_size=' + pageSize;
-    if (push) history.pushState(histState, '', histUrl);
-    else      history.replaceState(histState, '', histUrl);
+    _writeUrl('announcements', params, push);
   } catch (e) {
     $('table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
     $('btn-prev').disabled = currentPage === 1;
@@ -932,11 +1040,10 @@ async function fetchAnnouncements(push = true) {
 }
 
 // ── x-posts: fetch ───────────────────────────────────────────────────────
-async function fetchXPosts() {
-  const btnPrev = $('xp-btn-prev');
-  const btnNext = $('xp-btn-next');
-  btnPrev.disabled = true;
-  btnNext.disabled = true;
+// Builds the x-history filter+pagination params from the current form
+// state — shared by fetchXPosts() (API query) and _writeUrl() (visible URL),
+// mirroring _announcementsParams()'s role for the announcements view.
+function _xPostsParams() {
   const params = new URLSearchParams();
   const win = $('xp-f-window').value;
   if (win) params.set('window', win);
@@ -951,6 +1058,16 @@ async function fetchXPosts() {
   const pageSize = $('xp-f-page-size').value || '20';
   params.set('page', xpPage);
   params.set('page_size', pageSize);
+  return params;
+}
+
+async function fetchXPosts(push = true) {
+  const btnPrev = $('xp-btn-prev');
+  const btnNext = $('xp-btn-next');
+  btnPrev.disabled = true;
+  btnNext.disabled = true;
+  const params   = _xPostsParams();
+  const pageSize = params.get('page_size');
 
   try {
     const r = await fetch('/admin/x-posts?' + params, {
@@ -963,6 +1080,7 @@ async function fetchXPosts() {
     renderXPostsTable(data);
     btnPrev.disabled = xpPage === 1;
     btnNext.disabled = data.length < Number(pageSize);
+    _writeUrl('x-history', params, push);
   } catch (e) {
     $('xp-table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
     btnPrev.disabled = xpPage === 1;
@@ -1260,6 +1378,17 @@ function esc(s) {
 function parseDateOrNull(value) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// Converts an ISO/UTC date string into the value a `datetime-local` input
+// expects (local wall-clock time) — slicing the ISO string directly would
+// shift the restored value by the local UTC offset. Returns null for an
+// unparseable value, mirroring parseDateOrNull's never-throws contract.
+function _isoToLocalInputValue(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 init();

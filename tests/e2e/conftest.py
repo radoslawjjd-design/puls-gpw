@@ -48,6 +48,19 @@ _FAKE_X_POSTS_ROWS = [
         "posted_at": datetime(2026, 6, 18, 18, 0, 0, tzinfo=timezone.utc),
         "supervisor_attempts": 3, "x_publish_status": "failed",
     },
+    # Padding rows so the unfiltered AND the `x_publish_status=skipped` filtered
+    # count both reach the default page_size (20) — without these, the
+    # "Następna" button is permanently disabled (3 rows < 20) and url-routing
+    # pagination tests have nothing to click into a real page 2.
+    *[
+        {
+            "x_post_id": f"pad-{i}", "window": "test",
+            "post_text": None, "tweet_ids": None,
+            "posted_at": datetime(2026, 6, 10, 8, 0, 0, tzinfo=timezone.utc),
+            "supervisor_attempts": 1, "x_publish_status": "skipped",
+        }
+        for i in range(20)
+    ],
 ]
 
 
