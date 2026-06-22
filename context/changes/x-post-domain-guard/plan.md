@@ -369,4 +369,4 @@ post-processing on newly generated content.
 
 #### Manual
 
-- [ ] 3.1 Updated Step 2.2/Step 3 instructions read through and confirmed unambiguous
+- [x] 3.1 Updated Step 2.2/Step 3 instructions read through and confirmed unambiguous
