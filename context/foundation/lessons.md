@@ -233,3 +233,34 @@ wyszedł dopiero w round-tripie na realnym BigQuery (`scripts/test_bq.py`).
    dołoży nowej kolumny; migrację kolumn robi wyłącznie `ensure_schema_current()`.
 
 **Applies to**: Każdy change dotykający ręcznie pisanego SQL w `db/bigquery.py`
+
+---
+
+## SPA pagination — out-of-order fetch responses can desync the URL
+
+**Context**: `static/index.html` — `fetchAnnouncements()`/`fetchXPosts()` prev/next
+pagination handlers (`btn-prev`/`btn-next`, `xp-btn-prev`/`xp-btn-next`)
+
+**Problem** (found in spa-view-url-routing Phase 3 impl-review, 2026-06-22): the
+prev/next click handlers don't disable themselves before calling
+`fetchAnnouncements()`/`fetchXPosts()` — disabling happens inside the fetch
+function itself, after the page number is already snapshotted into the
+request params. A fast double-click fires two overlapping fetches with
+different page snapshots; if responses resolve out of order, the
+later-resolving response wins and can leave the rendered table — and, since
+Phase 3, the visible URL — out of sync with what the user actually clicked.
+
+**Rule**: When adding request-driven state (pagination, filters) that also
+writes to `history.pushState`/`replaceState`, either:
+1. Disable the triggering control synchronously in the click handler itself
+   (before the async function is even called), not inside the async
+   function after it's already read the current state, or
+2. Guard the async function with a request-sequence id (or
+   `AbortController`) so only the response matching the latest request is
+   allowed to update the DOM/URL.
+Pure in-function `btnPrev.disabled = true` (after snapshotting state) does
+not close the window — the snapshot already happened.
+
+**Applies to**: Any vanilla-JS view in `static/index.html` that pairs a
+fetch-on-click pagination/filter control with a URL write
+(`history.pushState`/`replaceState`)
