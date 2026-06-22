@@ -2,7 +2,7 @@
 import re
 from dataclasses import dataclass, field
 
-from src.post_generator import GeneratedPost
+from src.post_generator import GeneratedPost, _DOMAIN_TLD_RE
 
 # Phrases that constitute implicit or explicit investment recommendations (MAR/MiFID risk).
 _INVESTMENT_ADVICE_PATTERNS = [
@@ -27,6 +27,7 @@ _ADVICE_RE = re.compile("|".join(_INVESTMENT_ADVICE_PATTERNS), re.IGNORECASE)
 class ValidationResult:
     approved: bool
     issues: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 def validate_post(
@@ -77,4 +78,12 @@ def validate_post(
     if match:
         issues.append(f"investment advice detected: \"{match.group(0)}\"")
 
-    return ValidationResult(approved=len(issues) == 0, issues=issues)
+    # Safety net: flags domain-like text that survived into a GeneratedPost regardless of
+    # which code path constructed it. Non-blocking — this defect class has no alternate
+    # text to regenerate toward (see plan's Current State Analysis), so it never affects
+    # `approved`.
+    warnings: list[str] = []
+    for domain_match in _DOMAIN_TLD_RE.finditer(full_text):
+        warnings.append(f"domain-like text detected: \"{domain_match.group(0)}\"")
+
+    return ValidationResult(approved=len(issues) == 0, issues=issues, warnings=warnings)

@@ -274,6 +274,8 @@ def main() -> None:
                 logger.warning("post_main: generate_post returned None on attempt %d", attempt)
                 continue
             result = validate_post(post, tickers, expected_tweets=expected_tweets)
+            if result.warnings:
+                logger.warning("post_main: attempt %d has warnings: %s", attempt, result.warnings)
             if result.approved:
                 # Order matters: save_x_post first (returns x_post_id) so the publish
                 # write + idempotency guard have a row to key on. Publish sits inside
