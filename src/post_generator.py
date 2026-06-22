@@ -220,7 +220,7 @@ def _enforce_body_cashtag(tweet: str) -> str:
     return _PAREN_TICKER_RE.sub(lambda m: f"( ${m.group(1).lstrip('$')} )", tweet)
 
 
-_DOMAIN_TLD_RE = re.compile(r"\b([\w-]+)\.(pl|com|net|org|info|io|co)\b", re.IGNORECASE)
+_DOMAIN_TLD_RE = re.compile(r"\b([\w-]{1,63})\.(pl|com|net|org|info|io|co)\b", re.IGNORECASE)
 
 
 def _strip_domain_suffix(text: str) -> str:
