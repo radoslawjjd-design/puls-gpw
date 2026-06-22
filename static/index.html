@@ -978,8 +978,11 @@ function _applyUrlState() {
 // Prefixes `params` with `view=<name>` unless `view` is the default
 // announcements view, then pushes/replaces the resulting query string —
 // shared by every view's fetch so the visible URL and the API query can
-// never drift apart.
+// never drift apart. Guarded on apiKey so a fetch that was already in
+// flight when the user logged out can't land its URL write after
+// doLogout() has reset the address bar to '/'.
 function _writeUrl(view, params, push) {
+  if (!apiKey) return;
   const out = new URLSearchParams();
   if (view !== 'announcements') out.set('view', view);
   for (const [k, val] of params) out.append(k, val);

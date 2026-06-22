@@ -1,7 +1,7 @@
 ---
 change_id: spa-view-url-routing
 title: Admin dashboard — per-view URLs and pagination in browser history
-status: implemented
+status: impl_reviewed
 created: 2026-06-21
 updated: 2026-06-22
 archived_at: null

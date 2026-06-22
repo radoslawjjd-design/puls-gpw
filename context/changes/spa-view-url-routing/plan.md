@@ -414,6 +414,23 @@ touches them, but this is the regression PUL-51 already had to fix once.
 **Contract**: No code change expected; this is a verification pass with an
 E2E assertion (see Testing below) acting as the regression guard.
 
+#### Addendum (post-implementation, found during this phase's own manual verification)
+
+Two unplanned-but-benign additions landed alongside the planned work above:
+
+- **`doLogout()` URL reset** (`static/index.html`): logging out left a stale
+  `?view=treemap`/`?view=x-history` query string in the address bar through
+  the login screen, which would silently re-apply on the next login. Fixed
+  by resetting `currentView` and calling `history.replaceState({}, '', '/')`
+  before showing the login screen. Covered by
+  `test_logout_resets_url_to_root` in `tests/e2e/test_url_routing.py`.
+- **`tests/e2e/conftest.py` x-posts fixture padding**: 20 synthetic rows
+  added to `_FAKE_X_POSTS_ROWS` so the unfiltered (and `x_publish_status=
+  skipped`-filtered) row count reaches the default `page_size` (20),
+  enabling the "Następna" button — without this, the 3-row fixture kept
+  pagination permanently disabled and the new page-2 URL tests had nothing
+  to click into.
+
 ### Testing Strategy:
 
 #### Unit Tests:
