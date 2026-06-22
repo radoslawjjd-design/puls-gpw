@@ -22,6 +22,18 @@ def _open_x_history(page: Page) -> None:
     page.get_by_role("menuitem", name="Historia postów X").click()
 
 
+def _persist_session_across_goto(page: Page) -> None:
+    """sessionStorage must survive the next page.goto() for a deep-link/bookmark
+    scenario to mean anything. page.reload() carries it forward reliably, but a
+    full goto() to a new query string has been observed to drop sessionStorage
+    in CI's headless Chromium (never reproduced locally) — an init script
+    guarantees the same session values are present before the next document's
+    script runs, regardless of that navigation-type quirk."""
+    page.add_init_script(
+        f"sessionStorage.setItem('apiKey', '{_ADMIN_KEY}'); sessionStorage.setItem('role', 'admin');"
+    )
+
+
 def test_view_switch_sequence_updates_url_and_is_back_navigable(
     page: Page, live_server_url: str
 ):
@@ -52,6 +64,7 @@ def test_view_switch_sequence_updates_url_and_is_back_navigable(
 
 def test_deep_link_to_treemap_lands_directly_on_treemap_view(page: Page, live_server_url: str):
     _login(page, live_server_url)
+    _persist_session_across_goto(page)
 
     page.goto(f"{live_server_url}?view=treemap")
 
@@ -85,6 +98,7 @@ def test_refresh_on_x_history_page_2_with_filter_restores_view_page_and_filter(
 
 def test_old_format_bookmark_resolves_to_announcements_page_2(page: Page, live_server_url: str):
     _login(page, live_server_url)
+    _persist_session_across_goto(page)
 
     page.goto(f"{live_server_url}?page=2&page_size=50")
 
