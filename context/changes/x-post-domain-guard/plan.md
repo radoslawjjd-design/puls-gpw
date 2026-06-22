@@ -357,13 +357,13 @@ post-processing on newly generated content.
 
 #### Automated
 
-- [x] 2.1 New warnings tests pass
-- [x] 2.2 Full `post_supervisor` suite passes
-- [x] 2.3 `approved` unaffected by `warnings` (regression test)
+- [x] 2.1 New warnings tests pass — 34d6d5e
+- [x] 2.2 Full `post_supervisor` suite passes — 34d6d5e
+- [x] 2.3 `approved` unaffected by `warnings` (regression test) — 34d6d5e
 
 #### Manual
 
-- [ ] 2.4 Warning logged without blocking publication, confirmed via log inspection / dry run
+- [x] 2.4 Warning logged without blocking publication, confirmed via log inspection / dry run
 
 ### Phase 3: portfolio-xpost skill documentation
 
