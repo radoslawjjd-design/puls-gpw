@@ -82,6 +82,13 @@ def test_user_role_never_triggers_treemap_network_request(page: Page, live_serve
     assert not any("/admin/portfolio/treemap" in url for url in requests)
 
 
+def test_opening_treemap_sets_view_url_param(page: Page, live_server_url: str):
+    _login(page, live_server_url)
+    _open_treemap(page)
+
+    expect(page).to_have_url(re.compile(r"\?view=treemap"))
+
+
 def test_hovering_treemap_cell_shows_outline(page: Page, live_server_url: str):
     _login(page, live_server_url)
     _open_treemap(page)
@@ -135,11 +142,13 @@ def test_closing_popup_does_not_navigate(page: Page, live_server_url: str):
     page.locator("#treemap-main .treemap-cell", has_text="PKO").first.click()
     popup = page.locator("#treemap-popup-backdrop")
     expect(popup).to_be_visible()
+    url_before_close = page.url
 
     page.locator("#tc-popup-close").click()
     expect(popup).to_be_hidden()
     expect(page.locator("#announcements-view")).to_be_hidden()
     assert not any("/announcements" in url for url in requests)
+    assert page.url == url_before_close
 
 
 def test_clicking_treemap_cell_preserves_other_active_filters(

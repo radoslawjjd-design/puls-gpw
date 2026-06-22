@@ -460,6 +460,12 @@ function doLogout() {
   closeModal();
   sessionStorage.clear();
   apiKey = null; role = null;
+  currentView = 'announcements';
+  // Session state is gone — a stale `?view=treemap`/`?view=x-history` in the
+  // address bar would otherwise sit there through the login screen and get
+  // silently re-applied on the next login. replaceState (not pushState) so
+  // logout doesn't add its own back-button entry.
+  history.replaceState({}, '', '/');
   showLogin();
 }
 

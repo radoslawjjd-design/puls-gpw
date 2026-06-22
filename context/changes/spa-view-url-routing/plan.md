@@ -538,14 +538,14 @@ one-time-rewrite logic is needed (see What We're NOT Doing).
 
 #### Automated
 
-- [ ] 4.1 New `tests/e2e/test_url_routing.py` passes (view-switch URLs, back-navigation, deep link, refresh, old-format bookmark)
-- [ ] 4.2 `tests/e2e/test_portfolio_treemap.py` updated assertions pass (view URL on open, popup close leaves URL unchanged)
-- [ ] 4.3 `tests/e2e/test_x_post_history.py` updated assertions pass (view URL on open, page URL on next)
-- [ ] 4.4 `tests/e2e/test_refresh.py::test_refresh_preserves_page_and_filters` passes
+- [x] 4.1 New `tests/e2e/test_url_routing.py` passes (view-switch URLs, back-navigation, deep link, refresh, old-format bookmark)
+- [x] 4.2 `tests/e2e/test_portfolio_treemap.py` updated assertions pass (view URL on open, popup close leaves URL unchanged)
+- [x] 4.3 `tests/e2e/test_x_post_history.py` updated assertions pass (view URL on open, page URL on next)
+- [x] 4.4 `tests/e2e/test_refresh.py::test_refresh_preserves_page_and_filters` passes
 
 #### Manual
 
-- [ ] 4.5 Log in, click through all three views via the menu, confirm each shows the expected URL
-- [ ] 4.6 Filters + page 2 on announcements reproduce in a fresh private window via copied URL
-- [ ] 4.7 Browser back twice on x-history after paging forward twice steps back through x-history pages, not into announcements
-- [ ] 4.8 Treemap popup open + Escape leaves the URL unchanged and does not consume an extra back-press
+- [x] 4.5 Log in, click through all three views via the menu, confirm each shows the expected URL
+- [x] 4.6 Filters + page 2 on announcements reproduce in a fresh private window via copied URL
+- [x] 4.7 Browser back twice on x-history after paging forward twice steps back through x-history pages, not into announcements
+- [x] 4.8 Treemap popup open + Escape leaves the URL unchanged and does not consume an extra back-press
