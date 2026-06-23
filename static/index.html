@@ -148,7 +148,7 @@
   }
   @media (max-width: 640px) {
     .modal-overlay { align-items: flex-end; padding: 0; }
-    .modal-box { border-radius: 16px 16px 0 0; max-width: 100%; }
+    .modal-box { border-radius: 16px 16px 0 0; max-width: 100%; max-height: 68vh; }
   }
   .modal-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -1082,14 +1082,16 @@ async function fetchXPosts(push = true) {
     btnNext.disabled = data.length < Number(pageSize);
     _writeUrl('x-history', params, push);
   } catch (e) {
-    $('xp-table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
+    $('xp-table-body').innerHTML = `<tr><td colspan="4" class="empty">Błąd ładowania danych</td></tr>`;
     btnPrev.disabled = xpPage === 1;
     btnNext.disabled = false;
   }
 }
 
 // ── x-posts: render ───────────────────────────────────────────────────────
-const _X_HISTORY_COLS = ['Data', 'Okno', 'Status', 'Post ID', 'Tweets ID', 'Próby', 'Treść'];
+// Post ID / Tweets ID / Próby moved into the modal (data-* below) to keep the
+// mobile table to 4 columns instead of 7 — see openModal's xpost branch.
+const _X_HISTORY_COLS = ['Data', 'Okno', 'Status', 'Treść'];
 
 function renderXPostsTable(data) {
   $('xp-table-head').innerHTML =
@@ -1097,7 +1099,7 @@ function renderXPostsTable(data) {
 
   const tbody = $('xp-table-body');
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty">Brak wyników</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="empty">Brak wyników</td></tr>`;
     return;
   }
 
@@ -1115,15 +1117,14 @@ function renderXPostsTable(data) {
     }
 
     const modalAttrs = `data-kind="xpost" data-window="${esc(windowLabel)}" data-date="${esc(date)}" `
+      + `data-status="${esc(statusLabel)}" data-post-id="${esc(row.x_post_id || '')}" `
+      + `data-attempts="${esc(row.supervisor_attempts != null ? String(row.supervisor_attempts) : '')}" `
       + `data-post-text="${esc(row.post_text || '')}" data-tweet-ids="${esc(row.tweet_ids || '')}"`;
 
     return `<tr class="clickable" ${modalAttrs}>
       <td>${date}</td>
       <td>${esc(windowLabel)}</td>
       <td>${esc(statusLabel)}</td>
-      <td>${esc(row.x_post_id || '—')}</td>
-      <td>${esc(row.tweet_ids || '—')}</td>
-      <td>${esc(row.supervisor_attempts != null ? String(row.supervisor_attempts) : '—')}</td>
       <td>${esc(preview)}</td>
     </tr>`;
   }).join('');
@@ -1305,7 +1306,11 @@ async function deleteRow(id, tr) {
 function openModal(d) {
   if (d.kind === 'xpost') {
     $('modal-title').textContent = [d.window, d.date].filter(Boolean).join(' — ') || '—';
-    $('modal-meta').textContent = '';
+    $('modal-meta').textContent = [
+      d.status,
+      d.postId ? `Post ID: ${d.postId}` : '',
+      d.attempts ? `Próby: ${d.attempts}` : ''
+    ].filter(Boolean).join(' · ');
     if (!d.postText) {
       $('modal-body').innerHTML = `<p>Brak treści — supervisor odrzucił wszystkie próby.</p>`;
     } else {

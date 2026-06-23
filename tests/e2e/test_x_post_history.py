@@ -31,8 +31,8 @@ def test_menu_shows_x_history_above_wyloguj_for_admin(page: Page, live_server_ur
 def test_clicking_menu_item_renders_x_posts_table(page: Page, live_server_url: str):
     _login(page, live_server_url)
     _open_x_history(page)
-    expect(page.get_by_role("cell", name="post-pub-1")).to_be_visible()
-    expect(page.get_by_role("cell", name="post-partial-1")).to_be_visible()
+    expect(page.get_by_role("row", name=re.compile("Ranek"))).to_be_visible()
+    expect(page.get_by_role("row", name=re.compile("Południe"))).to_be_visible()
 
 
 def test_opening_x_history_sets_view_url_param(page: Page, live_server_url: str):
@@ -54,36 +54,36 @@ def test_paging_to_page_2_changes_url(page: Page, live_server_url: str):
 def test_clicking_topbar_heading_returns_to_announcements(page: Page, live_server_url: str):
     _login(page, live_server_url)
     _open_x_history(page)
-    expect(page.get_by_role("cell", name="post-pub-1")).to_be_visible()
+    expect(page.get_by_role("row", name=re.compile("Ranek"))).to_be_visible()
 
     page.get_by_role("heading", name="puls-gpw").click()
 
     expect(page.locator("#page-label")).to_be_visible()
-    expect(page.get_by_role("cell", name="post-pub-1")).not_to_be_visible()
+    expect(page.get_by_role("row", name=re.compile("Ranek"))).not_to_be_visible()
 
 
 def test_filter_by_window_narrows_results(page: Page, live_server_url: str):
     _login(page, live_server_url)
     _open_x_history(page)
-    expect(page.get_by_role("cell", name="post-pub-1")).to_be_visible()
+    expect(page.get_by_role("row", name=re.compile("Ranek"))).to_be_visible()
 
     page.get_by_role("combobox", name="Okno").select_option("ranek")
     page.get_by_role("button", name="Filtruj").click()
 
-    expect(page.get_by_role("cell", name="post-pub-1")).to_be_visible()
-    expect(page.get_by_role("cell", name="post-partial-1")).not_to_be_visible()
+    expect(page.get_by_role("row", name=re.compile("Ranek"))).to_be_visible()
+    expect(page.get_by_role("row", name=re.compile("Południe"))).not_to_be_visible()
 
 
 def test_filter_by_status_narrows_results(page: Page, live_server_url: str):
     _login(page, live_server_url)
     _open_x_history(page)
-    expect(page.get_by_role("cell", name="post-pub-1")).to_be_visible()
+    expect(page.get_by_role("row", name=re.compile("Ranek"))).to_be_visible()
 
     page.get_by_role("combobox", name="Status").select_option("failed")
     page.get_by_role("button", name="Filtruj").click()
 
-    expect(page.get_by_role("cell", name="post-pub-1")).not_to_be_visible()
-    expect(page.get_by_role("cell", name="post-partial-1")).not_to_be_visible()
+    expect(page.get_by_role("row", name=re.compile("Ranek"))).not_to_be_visible()
+    expect(page.get_by_role("row", name=re.compile("Południe"))).not_to_be_visible()
     expect(page.get_by_role("row", name=re.compile("Nieudany"))).to_be_visible()
 
 
@@ -93,7 +93,7 @@ def test_clicking_published_row_opens_modal_with_numbered_tweets_and_link(
     _login(page, live_server_url)
     _open_x_history(page)
 
-    page.get_by_role("cell", name="post-pub-1").click()
+    page.get_by_role("row", name=re.compile("Ranek")).click()
 
     expect(page.get_by_role("dialog")).to_be_visible()
     expect(page.get_by_text("Tweet 1/2", exact=True)).to_be_visible()
