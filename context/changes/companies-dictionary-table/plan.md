@@ -528,14 +528,14 @@ assume `companies` is a superset.
 
 #### Automated
 
-- [x] 1.1 New unit tests pass: `uv run pytest tests/test_bigquery.py -k companies`
-- [x] 1.2 Full unit suite still passes: `uv run pytest tests/test_bigquery.py`
-- [x] 1.3 Lint passes: `uv run ruff check db/bigquery.py tests/test_bigquery.py`
+- [x] 1.1 New unit tests pass: `uv run pytest tests/test_bigquery.py -k companies` — 9bdb683
+- [x] 1.2 Full unit suite still passes: `uv run pytest tests/test_bigquery.py` — 9bdb683
+- [x] 1.3 Lint passes: `uv run ruff check db/bigquery.py tests/test_bigquery.py` — 9bdb683
 
 #### Manual
 
-- [x] 1.4 `companies` table created in real BigQuery dataset with expected 6 columns
-- [x] 1.5 `upsert_company()` round-tripped against real BigQuery (insert + update paths both verified)
+- [x] 1.4 `companies` table created in real BigQuery dataset with expected 6 columns — 9bdb683
+- [x] 1.5 `upsert_company()` round-tripped against real BigQuery (insert + update paths both verified) — 9bdb683
 
 ### Phase 2: Shared profile-parsing module
 
