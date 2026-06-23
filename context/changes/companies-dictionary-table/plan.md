@@ -541,13 +541,13 @@ assume `companies` is a superset.
 
 #### Automated
 
-- [x] 2.1 Parser tests pass: `uv run pytest tests/test_parser.py`
-- [x] 2.2 New module tests pass: `uv run pytest tests/test_company_profile.py`
-- [x] 2.3 Lint passes: `uv run ruff check src/parser.py src/company_profile.py tests/test_parser.py tests/test_company_profile.py`
+- [x] 2.1 Parser tests pass: `uv run pytest tests/test_parser.py` — f93dd31
+- [x] 2.2 New module tests pass: `uv run pytest tests/test_company_profile.py` — f93dd31
+- [x] 2.3 Lint passes: `uv run ruff check src/parser.py src/company_profile.py tests/test_parser.py tests/test_company_profile.py` — f93dd31
 
 #### Manual
 
-- [x] 2.4 Real announcement parse confirms correct `hop_url`/`isin` values
+- [x] 2.4 Real announcement parse confirms correct `hop_url`/`isin` values — f93dd31
 
 ### Phase 3: Wire Phase A — pipeline write + startup hooks + test mocks
 
