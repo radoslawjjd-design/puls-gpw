@@ -553,14 +553,14 @@ assume `companies` is a superset.
 
 #### Automated
 
-- [ ] 3.1 Full unit suite passes: `uv run pytest tests/test_bigquery.py`
-- [ ] 3.2 Full E2E suite passes: `uv run pytest tests/e2e`
-- [ ] 3.3 Lint passes: `uv run ruff check main.py src/api.py tests/test_bigquery.py tests/e2e/conftest.py`
+- [x] 3.1 Full unit suite passes: `uv run pytest tests/test_bigquery.py`
+- [x] 3.2 Full E2E suite passes: `uv run pytest tests/e2e`
+- [x] 3.3 Lint passes: `uv run ruff check main.py src/api.py tests/test_bigquery.py tests/e2e/conftest.py`
 
 #### Manual
 
-- [ ] 3.4 Real pipeline run produces a `companies` row
-- [ ] 3.5 Forced `upsert_company` failure does not abort the pipeline
+- [x] 3.4 Real pipeline run produces a `companies` row
+- [x] 3.5 Forced `upsert_company` failure does not abort the pipeline
 
 ### Phase 4: Phase B — one-off full-GPW seed script
 

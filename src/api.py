@@ -17,8 +17,10 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from db.bigquery import BigQueryError  # type: ignore[attr-defined]
 from db.bigquery import (
     add_watchlist_ticker,
+    create_companies_table_if_not_exists,
     create_watchlist_table_if_not_exists,
     delete_announcement,
+    ensure_companies_schema_current,
     ensure_watchlist_schema_current,
     get_latest_snapshot_before,
     get_latest_snapshot_for_wallet,
@@ -144,9 +146,11 @@ def create_app() -> FastAPI:
     app = FastAPI()
 
     @app.on_event("startup")
-    async def _create_watchlist_table():
+    async def _init_dimension_tables():
         create_watchlist_table_if_not_exists()
         ensure_watchlist_schema_current()
+        create_companies_table_if_not_exists()
+        ensure_companies_schema_current()
 
     @app.get("/health")
     async def health():

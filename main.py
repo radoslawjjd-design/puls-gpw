@@ -14,12 +14,15 @@ logger = logging.getLogger(__name__)
 from db.bigquery import (
     BigQueryError,
     announcement_id_for_url,
+    create_companies_table_if_not_exists,
     create_table_if_not_exists,
     create_x_posts_table_if_not_exists,
+    ensure_companies_schema_current,
     ensure_schema_current,
     insert_announcement,
     save_analysis_result,
     update_parsed_content,
+    upsert_company,
 )
 from src.analyzer import analyze_announcement
 from src.notifier import send_alert
@@ -41,6 +44,8 @@ def main():
         create_table_if_not_exists()
         ensure_schema_current()
         create_x_posts_table_if_not_exists()
+        create_companies_table_if_not_exists()
+        ensure_companies_schema_current()
         new = scrape_new_announcements(window_minutes=window_minutes, max_pages=args.max_pages)
         if not new:
             logger.info("Pipeline completed: 0 new announcements")
@@ -65,6 +70,12 @@ def main():
                     continue
                 insert_announcement(ann.bankier_url, ann.published_at, ann.title, ann.priority)
                 update_parsed_content(ann_id, parsed.parsed_content, parsed.ticker, parsed.company)
+                try:
+                    upsert_company(parsed.ticker, parsed.company, parsed.hop_url, parsed.isin)
+                except BigQueryError:
+                    # best-effort: dictionary enrichment is lower-stakes than the core
+                    # pipeline — don't let it block analysis/alerting.
+                    logger.warning("BQ upsert_company failed for %s — skipping", parsed.ticker)
                 result = analyze_announcement(ann_id, parsed.parsed_content, parsed.ticker, ann.priority)
                 try:
                     save_analysis_result(
