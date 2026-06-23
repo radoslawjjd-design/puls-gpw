@@ -519,29 +519,29 @@ backfill. No changes to the `announcements` or `x_posts` schemas.
 
 #### Automated
 
-- [x] 2.1 Unit tests pass: `uv run pytest tests/test_api.py`
-- [x] 2.2 Full suite passes: `uv run pytest`
-- [x] 2.3 Type/compile check passes: `uv run python -m py_compile src/api.py`
-- [x] 2.4 E2E test server boots without a live BigQuery call: `uv run pytest tests/e2e/`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_api.py` — 7bc2204
+- [x] 2.2 Full suite passes: `uv run pytest` — 7bc2204
+- [x] 2.3 Type/compile check passes: `uv run python -m py_compile src/api.py` — 7bc2204
+- [x] 2.4 E2E test server boots without a live BigQuery call: `uv run pytest tests/e2e/` — 7bc2204
 
 #### Manual
 
-- [x] 2.5 curl/dev-tools check: missing header 400, unknown ticker 422, duplicate add no-op, remove-nonexistent no-op
+- [x] 2.5 curl/dev-tools check: missing header 400, unknown ticker 422, duplicate add no-op, remove-nonexistent no-op — 7bc2204
 
 ### Phase 3: Frontend — My Wallet View
 
 #### Automated
 
-- [ ] 3.1 Full suite passes: `uv run pytest`
+- [x] 3.1 Full suite passes: `uv run pytest`
 
 #### Manual
 
-- [ ] 3.2 Fresh browser: `watchlist_client_id` appears in localStorage automatically
-- [ ] 3.3 Profile menu shows "Moje obserwowane" for the user role (not admin-gated)
-- [ ] 3.4 Add known ticker via autocomplete — appears in watchlist + announcements show
-- [ ] 3.5 Add unknown ticker — rejected with visible error
-- [ ] 3.6 Remove ticker — disappears instantly, no confirmation
-- [ ] 3.7 Remove last ticker — empty-state CTA appears
-- [ ] 3.8 Reload + logout/login — watchlist persists
-- [ ] 3.9 Deep-link `?view=my-wallet` — loads and fetches correctly
-- [ ] 3.10 Rapid double-click on add-ticker button does not create a duplicate row
+- [x] 3.2 Fresh browser: `watchlist_client_id` appears in localStorage automatically
+- [x] 3.3 Profile menu shows "Obserwowane" for the user role (not admin-gated)
+- [x] 3.4 Add known ticker via autocomplete — appears in watchlist + announcements show
+- [x] 3.5 Add unknown ticker — rejected with visible error
+- [x] 3.6 Remove ticker — disappears instantly, no confirmation
+- [x] 3.7 Remove last ticker — empty-state CTA appears
+- [x] 3.8 Reload + logout/login — watchlist persists
+- [x] 3.9 Deep-link `?view=my-wallet` — loads and fetches correctly
+- [x] 3.10 Rapid double-click on add-ticker button does not create a duplicate row
