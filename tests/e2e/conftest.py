@@ -135,6 +135,41 @@ def _fake_get_latest_snapshot_before(wallet, before_date):
     return None
 
 
+# In-memory watchlist store keyed by client_id, mirroring the real BQ
+# semantics (idempotent add, no-op-safe remove, most-recently-added first).
+# Session-scoped like live_server_url, but each test gets a fresh browser
+# context (and so a fresh `watchlist_client_id`), so tests never collide.
+_watchlist_store: dict[str, list[str]] = {}
+
+_FAKE_WATCHLIST_ANNOUNCEMENT = {
+    "company": "PKO SA", "ticker": "PKO", "event_type": "ESPI",
+    "structured_analysis": None,
+    "published_at": datetime(2026, 6, 20, 9, 0, 0, tzinfo=timezone.utc),
+}
+
+
+def _fake_add_watchlist_ticker(client_id, ticker):
+    tickers = _watchlist_store.setdefault(client_id, [])
+    if ticker not in tickers:
+        tickers.insert(0, ticker)
+
+
+def _fake_remove_watchlist_ticker(client_id, ticker):
+    tickers = _watchlist_store.get(client_id, [])
+    if ticker in tickers:
+        tickers.remove(ticker)
+
+
+def _fake_list_watchlist_tickers(client_id):
+    return list(_watchlist_store.get(client_id, []))
+
+
+def _fake_list_announcements_for_watchlist(client_id, page=1, page_size=20, from_dt=None, to_dt=None):
+    if "PKO" in _watchlist_store.get(client_id, []):
+        return [_FAKE_WATCHLIST_ANNOUNCEMENT]
+    return []
+
+
 def _fake_list_x_posts_admin(
     page=1, page_size=20, window=None, x_publish_status=None,
     post_text=None, from_dt=None, to_dt=None,
@@ -180,6 +215,10 @@ def live_server_url():
         patch("src.api.get_latest_snapshot_before", side_effect=_fake_get_latest_snapshot_before),
         patch("src.api.create_watchlist_table_if_not_exists"),
         patch("src.api.ensure_watchlist_schema_current"),
+        patch("src.api.add_watchlist_ticker", side_effect=_fake_add_watchlist_ticker),
+        patch("src.api.remove_watchlist_ticker", side_effect=_fake_remove_watchlist_ticker),
+        patch("src.api.list_watchlist_tickers", side_effect=_fake_list_watchlist_tickers),
+        patch("src.api.list_announcements_for_watchlist", side_effect=_fake_list_announcements_for_watchlist),
     ):
         server = uvicorn.Server(
             uvicorn.Config(create_app(), host="127.0.0.1", port=0, log_level="error")
