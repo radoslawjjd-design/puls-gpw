@@ -4,10 +4,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from db.bigquery import (
+    _COMPANIES_SCHEMA,
     _WATCHLIST_SCHEMA,
     _X_POSTS_SCHEMA,
     _build_filter_clauses,
     add_watchlist_ticker,
+    create_companies_table_if_not_exists,
     create_portfolio_snapshots_table_if_not_exists,
     create_watchlist_table_if_not_exists,
     create_x_posts_table_if_not_exists,
@@ -29,6 +31,7 @@ from db.bigquery import (
     save_x_post,
     update_parsed_content,
     update_x_post_publish_result,
+    upsert_company,
     x_post_already_published,
 )
 
@@ -792,3 +795,50 @@ def test_list_announcements_for_watchlist_offset_math():
     params_by_name = {p.name: p.value for p in job_config.query_parameters}
     assert params_by_name["page_size"] == 20
     assert params_by_name["offset"] == 40
+
+
+# ── companies dimension table (PUL-53) ────────────────────────────────────────
+
+def test_create_companies_table_creates_on_not_found():
+    """create_companies_table_if_not_exists must create the table when get_table raises NotFound."""
+    from google.cloud.exceptions import NotFound
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.side_effect = NotFound("missing")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_companies_table_if_not_exists()
+
+    assert client.create_table.called
+    created_table = client.create_table.call_args[0][0]
+    assert "companies" in str(created_table.reference) or "companies" in str(created_table)
+
+
+def test_companies_schema_has_required_columns():
+    """_COMPANIES_SCHEMA must define ticker, name, hop_url, isin, created_at, updated_at."""
+    names = {f.name: f for f in _COMPANIES_SCHEMA}
+    assert set(names) == {"ticker", "name", "hop_url", "isin", "created_at", "updated_at"}
+    assert names["ticker"].mode == "REQUIRED"
+    assert names["created_at"].mode == "REQUIRED"
+    assert names["updated_at"].mode == "REQUIRED"
+    assert names["name"].mode == "NULLABLE"
+    assert names["hop_url"].mode == "NULLABLE"
+    assert names["isin"].mode == "NULLABLE"
+
+
+def test_upsert_company_sends_merge_with_all_fields():
+    """upsert_company must issue a MERGE statement binding all four scalar fields."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        upsert_company("ECH", "Echo Investment SA", "https://example.com/profile", "PLECHPS00019")
+
+    query_str = client.query.call_args[0][0]
+    job_config = client.query.call_args.kwargs["job_config"]
+    params = {p.name: p.value for p in job_config.query_parameters}
+    assert "MERGE" in query_str
+    assert "companies" in query_str
+    assert params["ticker"] == "ECH"
+    assert params["name"] == "Echo Investment SA"
+    assert params["hop_url"] == "https://example.com/profile"
+    assert params["isin"] == "PLECHPS00019"
