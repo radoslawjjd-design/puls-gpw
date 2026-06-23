@@ -1306,13 +1306,14 @@ function renderWatchlistTickers() {
 // (partial match) and picks the row whose company matches exactly, to avoid
 // mismatches when one company name is a substring of another.
 async function _resolveTickerForCompany(companyName) {
-  const params = new URLSearchParams({ company: companyName, page_size: '20' });
+  const params = new URLSearchParams({ company: companyName, page_size: '100' });
   const r = await fetch('/announcements?' + params, {
     headers: { 'X-API-Key': apiKey }
   });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const rows = await r.json();
-  const match = rows.find(row => row.company === companyName);
+  const needle = companyName.toLowerCase();
+  const match = rows.find(row => (row.company || '').toLowerCase() === needle);
   return match ? match.ticker : null;
 }
 
