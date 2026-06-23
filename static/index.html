@@ -274,6 +274,32 @@
     border: none; border-radius: 6px; cursor: pointer; font-size: .9rem;
   }
   .tc-popup-btn:hover { background: #1d4ed8; }
+
+  /* My Wallet */
+  #wl-add-form {
+    display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+    background: #fff; padding: 1rem; border-radius: 8px;
+    margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  #wl-add-form .ac-wrap { flex: 0 1 220px; }
+  #wl-add-form-or { color: #9ca3af; font-size: .85rem; }
+  #wl-add-btn {
+    padding: .4rem 1rem; background: #2563eb; color: #fff;
+    border: none; border-radius: 5px; cursor: pointer; font-size: .9rem;
+  }
+  #wl-add-btn:hover { background: #1d4ed8; }
+  #wl-error { color: #dc2626; font-size: .85rem; margin-bottom: .75rem; }
+  .wl-tickers-list { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+  .wl-chip {
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px;
+    padding: .3rem .7rem; font-size: .85rem;
+  }
+  .wl-remove-btn {
+    background: none; border: none; color: #dc2626; cursor: pointer;
+    font-size: 1rem; line-height: 1; padding: 0;
+  }
+  .wl-remove-btn:hover { color: #b91c1c; }
 </style>
 </head>
 <body>
@@ -302,6 +328,7 @@
         <span id="role-badge"></span> ☰
       </button>
       <ul id="profile-menu" class="profile-menu" role="menu" hidden>
+        <li role="none"><button id="my-wallet-btn" role="menuitem">Obserwowane</button></li>
         <li role="none"><button id="logout-btn" role="menuitem">Wyloguj</button></li>
       </ul>
     </div>
@@ -342,6 +369,8 @@
     </div>
   </div>
   </div>
+
+  <div id="my-wallet-view" style="display:none"></div>
 </div>
 
 <!-- MODAL -->
@@ -396,8 +425,10 @@ const X_STATUS_LABELS = { published: 'Opublikowany', skipped: 'Pominięty', fail
 // ── state ──────────────────────────────────────────────────────────────
 let apiKey      = sessionStorage.getItem('apiKey');
 let role        = sessionStorage.getItem('role');
+let clientId    = null;
 let currentPage = 1;
 let xpPage      = 1;
+let wlPage      = 1;
 let currentView = 'announcements';
 let _acTickers     = [];
 let _acCompanies   = [];
@@ -494,6 +525,17 @@ function _setupAcInput(inputId, dropId, data) {
   input.addEventListener('blur',  () => setTimeout(() => { drop.style.display = 'none'; }, 200));
 }
 
+// ── client id (watchlist identity) ──────────────────────────────────────
+// Throwaway, registration-free per-browser id — survives logout/reload (same
+// browser, localStorage) but not shared across browsers/devices.
+function initClientId() {
+  clientId = localStorage.getItem('watchlist_client_id');
+  if (!clientId) {
+    clientId = crypto.randomUUID();
+    localStorage.setItem('watchlist_client_id', clientId);
+  }
+}
+
 // ── GDPR ───────────────────────────────────────────────────────────────
 function initGdpr() {
   if (!localStorage.getItem('gdpr_consent_v1')) {
@@ -555,6 +597,7 @@ async function _doLoadAutocomplete() {
 
 // ── init ───────────────────────────────────────────────────────────────
 function init() {
+  initClientId();
   initGdpr();
   if (apiKey && role) showDashboard(role);
   else                showLogin();
@@ -584,6 +627,8 @@ $('logout-btn').addEventListener('click', () => {
   closeProfileMenu();
   doLogout();
 });
+
+$('my-wallet-btn').addEventListener('click', () => _navigateToView('my-wallet'));
 
 // ── profile menu ──────────────────────────────────────────────────────
 function openProfileMenu() {
@@ -865,6 +910,7 @@ function showAnnouncementsView() {
   if (xView) xView.style.display = 'none';
   const tView = $('treemap-view');
   if (tView) tView.style.display = 'none';
+  $('my-wallet-view').style.display = 'none';
   stopTreemapResizeTracking();
 }
 
@@ -881,6 +927,7 @@ function _showXHistoryViewDom() {
   view.style.display = '';
   const tView = $('treemap-view');
   if (tView) tView.style.display = 'none';
+  $('my-wallet-view').style.display = 'none';
   stopTreemapResizeTracking();
   closeProfileMenu();
 }
@@ -890,9 +937,86 @@ function showXHistoryView(push = true) {
   fetchXPosts(push);
 }
 
+// DOM-only half of showMyWalletView() — mirrors _showXHistoryViewDom() so
+// _applyUrlState() can restore page state before the first fetch fires.
+let _myWalletViewBuilt = false;
+
+function _buildMyWalletViewContent(view) {
+  view.innerHTML = `
+    <form id="wl-add-form">
+      <div class="ac-wrap">
+        <input type="text" id="wl-ticker-input" placeholder="Ticker (np. PKO)" autocomplete="off">
+        <div id="ac-wl-ticker" class="ac-dropdown" style="display:none"></div>
+      </div>
+      <span id="wl-add-form-or">lub</span>
+      <div class="ac-wrap">
+        <input type="text" id="wl-company-input" placeholder="Nazwa spółki" autocomplete="off">
+        <div id="ac-wl-company" class="ac-dropdown" style="display:none"></div>
+      </div>
+      <button type="submit" id="wl-add-btn">Dodaj</button>
+    </form>
+
+    <div id="wl-error" style="display:none"></div>
+    <div id="wl-tickers-list" class="wl-tickers-list"></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead id="my-wallet-table-head"></thead>
+        <tbody id="my-wallet-table-body"></tbody>
+      </table>
+      <div id="wl-pagination-bar" class="pagination-bar">
+        <button id="wl-btn-prev" disabled>&#8249; Poprzednia</button>
+        <span id="wl-page-label">Strona 1</span>
+        <button id="wl-btn-next">Następna &#8250;</button>
+      </div>
+    </div>
+  `;
+
+  $('my-wallet-table-head').innerHTML =
+    '<tr>' + _USER_COLS.map(c => `<th class="${c.cls}">${c.label}</th>`).join('') + '</tr>';
+
+  _setupAcInput('wl-ticker-input', 'ac-wl-ticker', _acTickers);
+  _setupAcInput('wl-company-input', 'ac-wl-company', _acCompanies);
+
+  $('wl-add-form').addEventListener('submit', e => {
+    e.preventDefault();
+    addWatchlistTicker();
+  });
+  $('wl-btn-prev').addEventListener('click', () => {
+    if (wlPage > 1) { wlPage--; fetchMyWalletAnnouncements(); }
+  });
+  $('wl-btn-next').addEventListener('click', () => {
+    wlPage++;
+    fetchMyWalletAnnouncements();
+  });
+}
+
+function _showMyWalletViewDom() {
+  const view = $('my-wallet-view');
+  if (!_myWalletViewBuilt) {
+    _buildMyWalletViewContent(view);
+    _myWalletViewBuilt = true;
+  }
+  $('announcements-view').style.display = 'none';
+  const xView = $('x-history-view');
+  if (xView) xView.style.display = 'none';
+  const tView = $('treemap-view');
+  if (tView) tView.style.display = 'none';
+  view.style.display = '';
+  stopTreemapResizeTracking();
+  closeProfileMenu();
+}
+
+function showMyWalletView(push = true) {
+  _showMyWalletViewDom();
+  fetchWatchlistTickers();
+  fetchMyWalletAnnouncements(push);
+}
+
 function showTreemapView() {
   $('announcements-view').style.display = 'none';
   $('x-history-view').style.display = 'none';
+  $('my-wallet-view').style.display = 'none';
   $('treemap-view').style.display = '';
   closeProfileMenu();
   fetchTreemap();
@@ -911,6 +1035,8 @@ function _navigateToView(view) {
     history.pushState({ view: 'treemap' }, '', '?view=treemap');
   } else if (view === 'x-history') {
     showXHistoryView();
+  } else if (view === 'my-wallet') {
+    showMyWalletView();
   } else {
     showAnnouncementsView();
     history.pushState({}, '', '/');
@@ -955,6 +1081,12 @@ function _applyXPostsParams(params) {
   xpPage = Math.max(1, Number(params.get('page')) || 1);
 }
 
+// Mirrors _applyXPostsParams() for the My Wallet view — no filter inputs
+// (the watchlist itself is the filter), just the restored page number.
+function _applyMyWalletParams(params) {
+  wlPage = Math.max(1, Number(params.get('page')) || 1);
+}
+
 // Resolves the active view from location.search — shared by init() (deep
 // link / refresh) and the popstate listener (back/forward), so both read the
 // URL through one code path and can't diverge.
@@ -969,6 +1101,12 @@ function _applyUrlState() {
     _showXHistoryViewDom();
     _applyXPostsParams(params);
     fetchXPosts(false);
+  } else if (view === 'my-wallet') {
+    currentView = 'my-wallet';
+    _showMyWalletViewDom();
+    _applyMyWalletParams(params);
+    fetchWatchlistTickers();
+    fetchMyWalletAnnouncements(false);
   } else {
     currentView = 'announcements';
     _applyAnnouncementsParams(params);
@@ -1087,6 +1225,161 @@ async function fetchXPosts(push = true) {
     $('xp-table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
     btnPrev.disabled = xpPage === 1;
     btnNext.disabled = false;
+  }
+}
+
+// ── My Wallet: fetch ──────────────────────────────────────────────────────
+// Mirrors _announcementsParams()/_xPostsParams() — built and shared by
+// fetchMyWalletAnnouncements() (API query) and _writeUrl() (visible URL).
+// No ticker/company/event_type filters: the watchlist itself is the filter.
+function _myWalletParams() {
+  const params = new URLSearchParams();
+  params.set('page', wlPage);
+  params.set('page_size', 20);
+  return params;
+}
+
+async function fetchMyWalletAnnouncements(push = true) {
+  const btnPrev = $('wl-btn-prev');
+  const btnNext = $('wl-btn-next');
+  btnPrev.disabled = true;
+  btnNext.disabled = true;
+  const params   = _myWalletParams();
+  const pageSize = params.get('page_size');
+
+  try {
+    const r = await fetch('/announcements/my-wallet?' + params, {
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    $('wl-page-label').textContent = 'Strona ' + wlPage;
+    renderTable(data, 'user', 'my-wallet-table-body');
+    btnPrev.disabled = wlPage === 1;
+    btnNext.disabled = data.length < Number(pageSize);
+    _writeUrl('my-wallet', params, push);
+  } catch (e) {
+    $('my-wallet-table-body').innerHTML = `<tr><td colspan="${_USER_COLS.length}" class="empty">Błąd ładowania danych</td></tr>`;
+    btnPrev.disabled = wlPage === 1;
+    btnNext.disabled = false;
+  }
+}
+
+// ── My Wallet: ticker list (add/remove) ───────────────────────────────────
+let _watchlistTickers = [];
+
+async function fetchWatchlistTickers() {
+  try {
+    const r = await fetch('/watchlist', {
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    _watchlistTickers = data.tickers || [];
+    renderWatchlistTickers();
+  } catch (e) {
+    $('wl-tickers-list').innerHTML = `<div class="empty">Błąd ładowania obserwowanych</div>`;
+  }
+}
+
+function renderWatchlistTickers() {
+  const list = $('wl-tickers-list');
+  if (!_watchlistTickers.length) {
+    list.innerHTML = `<div class="empty">Nie obserwujesz jeszcze żadnego tickera. Dodaj pierwszy powyżej.</div>`;
+    return;
+  }
+  list.innerHTML = _watchlistTickers.map(t => `
+    <span class="wl-chip" data-ticker="${esc(t)}">
+      ${esc(t)}
+      <button class="wl-remove-btn" data-ticker="${esc(t)}" aria-label="Usuń ${esc(t)} z obserwowanych">&times;</button>
+    </span>
+  `).join('');
+  list.querySelectorAll('.wl-remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => removeWatchlistTicker(btn.dataset.ticker));
+  });
+}
+
+// No dedicated company->ticker endpoint exists — both autocomplete lists
+// come from the same `announcements` table (db/bigquery.py list_distinct_*),
+// so every company in `_acCompanies` has at least one announcement row
+// carrying its ticker. Reuses the existing /announcements company filter
+// (partial match) and picks the row whose company matches exactly, to avoid
+// mismatches when one company name is a substring of another.
+async function _resolveTickerForCompany(companyName) {
+  const params = new URLSearchParams({ company: companyName, page_size: '100' });
+  const r = await fetch('/announcements?' + params, {
+    headers: { 'X-API-Key': apiKey }
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const rows = await r.json();
+  const needle = companyName.toLowerCase();
+  const match = rows.find(row => (row.company || '').toLowerCase() === needle);
+  return match ? match.ticker : null;
+}
+
+// Disables the submit button synchronously (before the await), not after —
+// add_watchlist_ticker's INSERT ... WHERE NOT EXISTS does the existence
+// check and insert as two logical steps, so two rapid clicks could both pass
+// the check before either commits, producing a duplicate row otherwise.
+async function addWatchlistTicker() {
+  const tickerInput  = $('wl-ticker-input');
+  const companyInput = $('wl-company-input');
+  const btn          = $('wl-add-btn');
+  const tickerValue   = tickerInput.value.trim();
+  const companyValue  = companyInput.value.trim();
+  $('wl-error').style.display = 'none';
+  if (!tickerValue && !companyValue) return;
+  btn.disabled = true;
+  try {
+    let ticker = tickerValue;
+    if (!ticker) {
+      ticker = await _resolveTickerForCompany(companyValue);
+      if (!ticker) {
+        $('wl-error').textContent = 'Nie znaleziono tickera dla tej spółki.';
+        $('wl-error').style.display = 'block';
+        return;
+      }
+    }
+    const r = await fetch(`/watchlist/${encodeURIComponent(ticker)}`, {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (r.status === 422) {
+      $('wl-error').textContent = 'Nieznany ticker.';
+      $('wl-error').style.display = 'block';
+      return;
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    tickerInput.value = '';
+    companyInput.value = '';
+    wlPage = 1;
+    await fetchWatchlistTickers();
+    await fetchMyWalletAnnouncements();
+  } catch (e) {
+    $('wl-error').textContent = 'Błąd dodawania tickera.';
+    $('wl-error').style.display = 'block';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function removeWatchlistTicker(ticker) {
+  try {
+    const r = await fetch(`/watchlist/${encodeURIComponent(ticker)}`, {
+      method: 'DELETE',
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (r.status !== 204 && !r.ok) throw new Error('HTTP ' + r.status);
+    wlPage = 1;
+    await fetchWatchlistTickers();
+    await fetchMyWalletAnnouncements();
+  } catch (e) {
+    $('wl-error').textContent = 'Błąd usuwania tickera.';
+    $('wl-error').style.display = 'block';
   }
 }
 
@@ -1247,10 +1540,11 @@ function renderTreemap(data, container) {
 }
 
 // ── render ─────────────────────────────────────────────────────────────
-function renderTable(data, r) {
-  const tbody = $('table-body');
+function renderTable(data, r, containerId = 'table-body') {
+  const tbody = $(containerId);
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty">Brak wyników</td></tr>`;
+    const colspan = (r === 'admin' ? _ADMIN_COLS : _USER_COLS).length;
+    tbody.innerHTML = `<tr><td colspan="${colspan}" class="empty">Brak wyników</td></tr>`;
     return;
   }
 

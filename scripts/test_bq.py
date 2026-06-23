@@ -22,17 +22,25 @@ from db.bigquery import (
     _X_POSTS_TABLE_NAME,
     _get_client,
     _table_ref,
+    add_watchlist_ticker,
     create_table_if_not_exists,
+    create_watchlist_table_if_not_exists,
     create_x_posts_table_if_not_exists,
     ensure_schema_current,
+    ensure_watchlist_schema_current,
     ensure_x_posts_schema_current,
     insert_announcement,
     is_processed,
+    list_watchlist_tickers,
+    remove_watchlist_ticker,
     save_analysis_result,
     save_x_post,
     update_x_post_publish_result,
     x_post_already_published,
 )
+
+TEST_WATCHLIST_CLIENT_ID = "test-bq-integration-watchlist-client"
+TEST_WATCHLIST_TICKER = "TST"
 
 TEST_URL = "https://www.bankier.pl/gielda/wiadomosci/komunikaty-spolek/test-bq-integration-F02"
 
@@ -43,6 +51,8 @@ def main() -> None:
     ensure_schema_current()  # migrates announcements.x_post_id onto the existing table
     create_x_posts_table_if_not_exists()
     ensure_x_posts_schema_current()  # migrates x_posts.x_publish_status onto the existing table
+    create_watchlist_table_if_not_exists()
+    ensure_watchlist_schema_current()
     client = _get_client()
     table = _table_ref(client)
     x_posts_table = _table_ref(client, _X_POSTS_TABLE_NAME)
@@ -155,6 +165,24 @@ def main() -> None:
         already = x_post_already_published("poludnie")
         assert already is True, "x_post_already_published should be True after publish"
         print(f"[11] idempotency guard (poludnie, today): already_published={already}")
+
+        # Step 12 — watchlist round-trip: add, list, remove, confirm empty
+        add_watchlist_ticker(TEST_WATCHLIST_CLIENT_ID, TEST_WATCHLIST_TICKER)
+        tickers = list_watchlist_tickers(TEST_WATCHLIST_CLIENT_ID)
+        assert tickers == [TEST_WATCHLIST_TICKER], f"expected one watchlisted ticker, got {tickers!r}"
+        print(f"[12] watchlist add+list: {tickers}")
+
+        add_watchlist_ticker(TEST_WATCHLIST_CLIENT_ID, TEST_WATCHLIST_TICKER)
+        tickers_after_dup = list_watchlist_tickers(TEST_WATCHLIST_CLIENT_ID)
+        assert tickers_after_dup == [TEST_WATCHLIST_TICKER], (
+            f"duplicate add must be a no-op, got {tickers_after_dup!r}"
+        )
+        print(f"[12] watchlist duplicate add is a no-op: {tickers_after_dup}")
+
+        remove_watchlist_ticker(TEST_WATCHLIST_CLIENT_ID, TEST_WATCHLIST_TICKER)
+        tickers_after_remove = list_watchlist_tickers(TEST_WATCHLIST_CLIENT_ID)
+        assert tickers_after_remove == [], f"expected empty watchlist after remove, got {tickers_after_remove!r}"
+        print("[12] watchlist remove: list is empty again")
     finally:
         # Step 9 — cleanup (runs even on error to avoid orphaned test records)
         try:
@@ -178,6 +206,11 @@ def main() -> None:
                 print("[9] Cleanup: test x_posts row deleted")
             except Exception as exc:
                 print(f"[9] WARNING: x_posts cleanup failed ({exc}) — delete manually: {x_post_id}")
+        try:
+            remove_watchlist_ticker(TEST_WATCHLIST_CLIENT_ID, TEST_WATCHLIST_TICKER)
+            print("[12] Cleanup: test watchlist row removed (no-op if already removed)")
+        except Exception as exc:
+            print(f"[12] WARNING: watchlist cleanup failed ({exc}) — remove manually: {TEST_WATCHLIST_CLIENT_ID}")
 
     print("\nAll steps passed.")
 

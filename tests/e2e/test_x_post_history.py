@@ -22,10 +22,11 @@ def test_menu_shows_x_history_above_wyloguj_for_admin(page: Page, live_server_ur
     _login(page, live_server_url)
     page.get_by_role("button", name="admin").click()
     menu_items = page.get_by_role("menuitem")
-    expect(menu_items).to_have_count(3)
-    expect(menu_items.nth(0)).to_have_text("Historia postów X")
-    expect(menu_items.nth(1)).to_have_text("Treemapa portfela")
-    expect(menu_items.nth(2)).to_have_text("Wyloguj")
+    expect(menu_items).to_have_count(4)
+    expect(menu_items.nth(0)).to_have_text("Obserwowane")
+    expect(menu_items.nth(1)).to_have_text("Historia postów X")
+    expect(menu_items.nth(2)).to_have_text("Treemapa portfela")
+    expect(menu_items.nth(3)).to_have_text("Wyloguj")
 
 
 def test_clicking_menu_item_renders_x_posts_table(page: Page, live_server_url: str):

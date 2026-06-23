@@ -417,3 +417,114 @@ def test_root_route_still_serves_html_after_static_mount(api_client):
     r = api_client.get("/")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
+
+
+# ── watchlist endpoints (PUL-28 my-wallet-watchlist) ──────────────────────────
+
+_CLIENT_ID = "11111111-1111-1111-1111-111111111111"
+
+
+def test_get_watchlist_missing_client_id_returns_400(api_client):
+    r = api_client.get("/watchlist", headers={"X-API-Key": _USER_KEY})
+    assert r.status_code == 400
+
+
+def test_get_watchlist_returns_tickers(api_client):
+    with patch("src.api.list_watchlist_tickers", return_value=["PKO", "CDR"]):
+        r = api_client.get(
+            "/watchlist", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        )
+    assert r.status_code == 200
+    assert r.json() == {"tickers": ["PKO", "CDR"]}
+
+
+def test_post_watchlist_missing_client_id_returns_400(api_client):
+    r = api_client.post("/watchlist/PKO", headers={"X-API-Key": _USER_KEY})
+    assert r.status_code == 400
+
+
+def test_post_watchlist_unknown_ticker_returns_422(api_client):
+    with patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]):
+        r = api_client.post(
+            "/watchlist/NOPE", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        )
+    assert r.status_code == 422
+
+
+def test_post_watchlist_known_ticker_returns_200(api_client):
+    with (
+        patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]),
+        patch("src.api.add_watchlist_ticker", return_value=None) as mock_add,
+    ):
+        r = api_client.post(
+            "/watchlist/PKO", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        )
+    assert r.status_code == 200
+    assert r.json() == {"ticker": "PKO", "added": True}
+    mock_add.assert_called_once_with(_CLIENT_ID, "PKO")
+
+
+def test_post_watchlist_duplicate_add_is_no_op(api_client):
+    with (
+        patch("src.api.list_distinct_tickers", return_value=["PKO"]),
+        patch("src.api.add_watchlist_ticker", return_value=None) as mock_add,
+    ):
+        api_client.post("/watchlist/PKO", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID})
+        r = api_client.post(
+            "/watchlist/PKO", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        )
+    assert r.status_code == 200
+    assert mock_add.call_count == 2
+
+
+def test_delete_watchlist_missing_client_id_returns_400(api_client):
+    r = api_client.delete("/watchlist/PKO", headers={"X-API-Key": _USER_KEY})
+    assert r.status_code == 400
+
+
+def test_delete_watchlist_nonexistent_ticker_returns_204(api_client):
+    with patch("src.api.remove_watchlist_ticker", return_value=None) as mock_remove:
+        r = api_client.delete(
+            "/watchlist/NEVERADDED", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        )
+    assert r.status_code == 204
+    mock_remove.assert_called_once_with(_CLIENT_ID, "NEVERADDED")
+
+
+def test_watchlist_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with patch("src.api.list_watchlist_tickers", side_effect=BigQueryError("boom")):
+        r = api_client.get(
+            "/watchlist", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        )
+    assert r.status_code == 500
+
+
+def test_announcements_my_wallet_missing_client_id_returns_400(api_client):
+    r = api_client.get("/announcements/my-wallet", headers={"X-API-Key": _USER_KEY})
+    assert r.status_code == 400
+
+
+def test_announcements_my_wallet_returns_filtered_announcements(api_client):
+    mock_rows = [{"company": "PKO", "ticker": "PKO", "event_type": "ESPI",
+                  "structured_analysis": None, "published_at": "2024-01-01T00:00:00"}]
+    with patch("src.api.list_announcements_for_watchlist", return_value=mock_rows) as mock_fn:
+        r = api_client.get(
+            "/announcements/my-wallet",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1 and data[0]["ticker"] == "PKO"
+    mock_fn.assert_called_once()
+    assert mock_fn.call_args.args[0] == _CLIENT_ID
+
+
+def test_announcements_my_wallet_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with patch("src.api.list_announcements_for_watchlist", side_effect=BigQueryError("boom")):
+        r = api_client.get(
+            "/announcements/my-wallet",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 500

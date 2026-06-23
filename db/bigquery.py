@@ -348,6 +348,118 @@ def get_latest_snapshot_for_wallet(wallet: str) -> dict | None:
     }
 
 
+_WATCHLIST_TABLE_NAME = "watchlist"
+
+_WATCHLIST_SCHEMA = [
+    bigquery.SchemaField("client_id", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("ticker", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("added_at", "TIMESTAMP", mode="REQUIRED"),
+]
+
+
+def create_watchlist_table_if_not_exists() -> None:
+    """Create the watchlist table in BigQuery if it does not already exist."""
+    client = _get_client()
+    table_id = _table_ref(client, _WATCHLIST_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_WATCHLIST_SCHEMA)
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_watchlist_schema_current() -> None:
+    """Migrate the watchlist table — add any missing schema columns.
+
+    Thin binding over `ensure_schema_current()`; idempotent and safe to call on
+    every API service startup (cold start of every Cloud Run instance).
+    """
+    ensure_schema_current(_WATCHLIST_TABLE_NAME, _WATCHLIST_SCHEMA)
+
+
+def add_watchlist_ticker(client_id: str, ticker: str) -> None:
+    """Add `ticker` to `client_id`'s watchlist; silent no-op if already present.
+
+    Raises BigQueryError if the query job fails.
+    """
+    client = _get_client()
+    query = f"""
+        INSERT INTO `{_table_ref(client, _WATCHLIST_TABLE_NAME)}` (client_id, ticker, added_at)
+        SELECT @client_id, @ticker, CURRENT_TIMESTAMP()
+        FROM (SELECT 1)
+        WHERE NOT EXISTS (
+            SELECT 1 FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
+            WHERE client_id = @client_id AND ticker = @ticker
+        )
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+            bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"add_watchlist_ticker failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"add_watchlist_ticker failed: {job.errors}")
+    logger.debug("add_watchlist_ticker: client_id=%s ticker=%s", client_id, ticker)
+
+
+def remove_watchlist_ticker(client_id: str, ticker: str) -> None:
+    """Remove `ticker` from `client_id`'s watchlist; no-op if not present.
+
+    Raises BigQueryError if the query job fails.
+    """
+    client = _get_client()
+    query = f"""
+        DELETE FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
+        WHERE client_id = @client_id AND ticker = @ticker
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+            bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"remove_watchlist_ticker failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"remove_watchlist_ticker failed: {job.errors}")
+    logger.debug("remove_watchlist_ticker: client_id=%s ticker=%s", client_id, ticker)
+
+
+def list_watchlist_tickers(client_id: str) -> list[str]:
+    """Return `client_id`'s watchlisted tickers, most recently added first.
+
+    Raises BigQueryError if the query job fails.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT ticker
+        FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
+        WHERE client_id = @client_id
+        ORDER BY added_at DESC
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_watchlist_tickers failed: {exc}") from exc
+    return [row.ticker for row in rows]
+
+
 def is_processed(url: str) -> bool:
     """Return True if the announcement URL has already been inserted."""
     client = _get_client()
@@ -780,6 +892,65 @@ def list_announcements_user(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"list_announcements_user failed: {exc}") from exc
+    return [
+        {
+            "company": row.company,
+            "ticker": row.ticker,
+            "event_type": row.event_type,
+            "structured_analysis": row.structured_analysis,
+            "published_at": row.published_at,
+        }
+        for row in rows
+    ]
+
+
+def list_announcements_for_watchlist(
+    client_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    from_dt: datetime | None = None,
+    to_dt: datetime | None = None,
+) -> list[dict]:
+    """Return approved announcements for tickers in `client_id`'s watchlist.
+
+    Same returned column set as `list_announcements_user`. The watchlist
+    subquery is bounded to 200 tickers per client — a defensive guardrail,
+    not a user-facing limit. Raises BigQueryError on query failure.
+    """
+    if page < 1:
+        raise ValueError(f"page must be >= 1, got {page}")
+    client = _get_client()
+    offset = (page - 1) * page_size
+    where, filter_params = _build_filter_clauses(
+        approved_only=True,
+        from_dt=from_dt,
+        to_dt=to_dt,
+    )
+    query = f"""
+        SELECT
+            a.company, a.ticker, a.event_type, a.structured_analysis,
+            a.published_at
+        FROM `{_table_ref(client)}` AS a
+        INNER JOIN (
+            SELECT ticker FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
+            WHERE client_id = @client_id LIMIT 200
+        ) AS w ON a.ticker = w.ticker
+        {where}
+        ORDER BY a.published_at DESC
+        LIMIT @page_size OFFSET @offset
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+            bigquery.ScalarQueryParameter("page_size", "INT64", page_size),
+            bigquery.ScalarQueryParameter("offset", "INT64", offset),
+            *filter_params,
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_announcements_for_watchlist failed: {exc}") from exc
     return [
         {
             "company": row.company,
