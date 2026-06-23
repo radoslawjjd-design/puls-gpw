@@ -1,7 +1,7 @@
 ---
 change_id: my-wallet-watchlist
 title: My Wallet — personal watchlist on a lightweight client identity
-status: plan_reviewed
+status: implementing
 created: 2026-06-22
 updated: 2026-06-22
 tracking:

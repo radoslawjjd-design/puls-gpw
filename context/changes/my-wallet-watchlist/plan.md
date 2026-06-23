@@ -507,13 +507,13 @@ backfill. No changes to the `announcements` or `x_posts` schemas.
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py`
-- [ ] 1.2 Full suite passes: `uv run pytest`
-- [ ] 1.3 Watchlist round-trip succeeds: `uv run python scripts/test_bq.py`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py`
+- [x] 1.2 Full suite passes: `uv run pytest`
+- [x] 1.3 Watchlist round-trip succeeds: `uv run python scripts/test_bq.py`
 
 #### Manual
 
-- [ ] 1.4 Inspect BigQuery console — `watchlist` table has expected schema
+- [x] 1.4 Inspect BigQuery console — `watchlist` table has expected schema
 
 ### Phase 2: API Layer
 

@@ -4,9 +4,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from db.bigquery import (
+    _WATCHLIST_SCHEMA,
     _X_POSTS_SCHEMA,
     _build_filter_clauses,
+    add_watchlist_ticker,
     create_portfolio_snapshots_table_if_not_exists,
+    create_watchlist_table_if_not_exists,
     create_x_posts_table_if_not_exists,
     delete_announcement,
     fetch_top_n_for_window,
@@ -14,10 +17,13 @@ from db.bigquery import (
     get_latest_snapshot_for_wallet,
     insert_announcement,
     list_announcements_admin,
+    list_announcements_for_watchlist,
     list_announcements_user,
     list_distinct_companies,
     list_distinct_tickers,
+    list_watchlist_tickers,
     list_x_posts_admin,
+    remove_watchlist_ticker,
     save_analysis_result,
     save_portfolio_snapshot,
     save_x_post,
@@ -688,3 +694,101 @@ def test_list_distinct_companies_empty_result():
     with patch("db.bigquery._get_client", return_value=mock):
         result = list_distinct_companies()
     assert result == []
+
+
+# ── watchlist table + CRUD (PUL-28 my-wallet-watchlist) ───────────────────────
+
+def test_create_watchlist_table_creates_on_not_found():
+    """create_watchlist_table_if_not_exists must create the table when get_table raises NotFound."""
+    from google.cloud.exceptions import NotFound
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.side_effect = NotFound("missing")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_watchlist_table_if_not_exists()
+
+    assert client.create_table.called
+    created_table = client.create_table.call_args[0][0]
+    assert "watchlist" in str(created_table.reference) or "watchlist" in str(created_table)
+
+
+def test_watchlist_schema_has_required_columns():
+    """_WATCHLIST_SCHEMA must define client_id, ticker, added_at — all REQUIRED."""
+    names = {f.name: f for f in _WATCHLIST_SCHEMA}
+    assert set(names) == {"client_id", "ticker", "added_at"}
+    assert all(f.mode == "REQUIRED" for f in names.values())
+
+
+def test_add_watchlist_ticker_inserts_with_not_exists_guard():
+    """INSERT must be guarded by WHERE NOT EXISTS so re-adding is a silent no-op."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        add_watchlist_ticker("client1", "PKO")
+
+    query_str = client.query.call_args[0][0]
+    job_config = client.query.call_args.kwargs["job_config"]
+    params = {p.name: p.value for p in job_config.query_parameters}
+    assert "INSERT INTO" in query_str and "watchlist" in query_str
+    assert "WHERE NOT EXISTS" in query_str
+    assert "CURRENT_TIMESTAMP()" in query_str
+    assert params["client_id"] == "client1"
+    assert params["ticker"] == "PKO"
+
+
+def test_remove_watchlist_ticker_deletes_by_composite_key():
+    """remove_watchlist_ticker must DELETE filtered by client_id AND ticker; 0 rows is not an error."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client(affected_rows=0)) as mock_get:
+        client = mock_get.return_value
+        remove_watchlist_ticker("client1", "NEVER_ADDED")
+
+    query_str = client.query.call_args[0][0]
+    assert "DELETE FROM" in query_str
+    assert "client_id = @client_id AND ticker = @ticker" in query_str
+
+
+def test_list_watchlist_tickers_returns_only_calling_clients_rows():
+    """list_watchlist_tickers must filter by client_id and order by added_at DESC."""
+    rows = [{"ticker": "XTB"}, {"ticker": "PKO"}]
+    mock = _mock_bq_client_with_rows(rows)
+    with patch("db.bigquery._get_client", return_value=mock) as mock_get:
+        client = mock_get.return_value
+        result = list_watchlist_tickers("client1")
+
+    assert result == ["XTB", "PKO"]
+    query_str = client.query.call_args[0][0]
+    job_config = client.query.call_args.kwargs["job_config"]
+    params = {p.name: p.value for p in job_config.query_parameters}
+    assert "WHERE client_id = @client_id" in query_str
+    assert "ORDER BY added_at DESC" in query_str
+    assert params["client_id"] == "client1"
+
+
+def test_list_announcements_for_watchlist_includes_bounded_join():
+    """The watchlist-filtered query must INNER JOIN a watchlist subquery bounded to 200 tickers."""
+    mock = _mock_bq_client_with_rows([{"company": "PKO Bank", "ticker": "PKO"}])
+    with patch("db.bigquery._get_client", return_value=mock) as mock_get:
+        client = mock_get.return_value
+        rows = list_announcements_for_watchlist("client1", page=1, page_size=10)
+
+    query_str = client.query.call_args[0][0]
+    job_config = client.query.call_args.kwargs["job_config"]
+    params = {p.name: p.value for p in job_config.query_parameters}
+    assert "INNER JOIN" in query_str
+    assert "LIMIT 200" in query_str
+    assert "a.ticker = w.ticker" in query_str
+    assert "analysis_approved = TRUE" in query_str
+    assert params["client_id"] == "client1"
+    assert len(rows) == 1 and rows[0]["ticker"] == "PKO"
+
+
+def test_list_announcements_for_watchlist_offset_math():
+    """page=3, page_size=20 must produce OFFSET 40 in the BQ query parameters."""
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        list_announcements_for_watchlist("client1", page=3, page_size=20)
+    job_config = mock.query.call_args.kwargs["job_config"]
+    params_by_name = {p.name: p.value for p in job_config.query_parameters}
+    assert params_by_name["page_size"] == 20
+    assert params_by_name["offset"] == 40
