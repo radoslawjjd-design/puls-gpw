@@ -212,6 +212,8 @@
 
     /* Mobile: chowamy Score i Analizę — zostaje Data/Spółka/Ticker/Typ + Usuń (admin) */
     .col-score, .col-analysis, .col-url { display: none; }
+    /* Mobile: chowamy Post ID/Tweets ID/Próby w historii x-postów — dostępne w popupie */
+    .col-post-id, .col-tweet-ids, .col-attempts { display: none; }
 
     th, td { padding: .45rem .5rem; font-size: .82rem; }
   }
@@ -1082,24 +1084,34 @@ async function fetchXPosts(push = true) {
     btnNext.disabled = data.length < Number(pageSize);
     _writeUrl('x-history', params, push);
   } catch (e) {
-    $('xp-table-body').innerHTML = `<tr><td colspan="4" class="empty">Błąd ładowania danych</td></tr>`;
+    $('xp-table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
     btnPrev.disabled = xpPage === 1;
     btnNext.disabled = false;
   }
 }
 
 // ── x-posts: render ───────────────────────────────────────────────────────
-// Post ID / Tweets ID / Próby moved into the modal (data-* below) to keep the
-// mobile table to 4 columns instead of 7 — see openModal's xpost branch.
-const _X_HISTORY_COLS = ['Data', 'Okno', 'Status', 'Treść'];
+// Post ID / Tweets ID / Próby stay in the table on desktop but are hidden on
+// mobile (.col-post-id/.col-tweet-ids/.col-attempts, see the @media rule
+// above) — they're also mirrored into the modal so mobile users can still
+// reach them via the popup.
+const _X_HISTORY_COLS = [
+  { label: 'Data', cls: '' },
+  { label: 'Okno', cls: '' },
+  { label: 'Status', cls: '' },
+  { label: 'Post ID', cls: 'col-post-id' },
+  { label: 'Tweets ID', cls: 'col-tweet-ids' },
+  { label: 'Próby', cls: 'col-attempts' },
+  { label: 'Treść', cls: '' },
+];
 
 function renderXPostsTable(data) {
   $('xp-table-head').innerHTML =
-    '<tr>' + _X_HISTORY_COLS.map(c => `<th>${c}</th>`).join('') + '</tr>';
+    '<tr>' + _X_HISTORY_COLS.map(c => `<th class="${c.cls}">${c.label}</th>`).join('') + '</tr>';
 
   const tbody = $('xp-table-body');
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="4" class="empty">Brak wyników</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">Brak wyników</td></tr>`;
     return;
   }
 
@@ -1125,6 +1137,9 @@ function renderXPostsTable(data) {
       <td>${date}</td>
       <td>${esc(windowLabel)}</td>
       <td>${esc(statusLabel)}</td>
+      <td class="col-post-id">${esc(row.x_post_id || '—')}</td>
+      <td class="col-tweet-ids">${esc(row.tweet_ids || '—')}</td>
+      <td class="col-attempts">${esc(row.supervisor_attempts != null ? String(row.supervisor_attempts) : '—')}</td>
       <td>${esc(preview)}</td>
     </tr>`;
   }).join('');
