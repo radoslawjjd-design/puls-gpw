@@ -507,26 +507,26 @@ backfill. No changes to the `announcements` or `x_posts` schemas.
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py`
-- [x] 1.2 Full suite passes: `uv run pytest`
-- [x] 1.3 Watchlist round-trip succeeds: `uv run python scripts/test_bq.py`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py` — 6ae5653
+- [x] 1.2 Full suite passes: `uv run pytest` — 6ae5653
+- [x] 1.3 Watchlist round-trip succeeds: `uv run python scripts/test_bq.py` — 6ae5653
 
 #### Manual
 
-- [x] 1.4 Inspect BigQuery console — `watchlist` table has expected schema
+- [x] 1.4 Inspect BigQuery console — `watchlist` table has expected schema — 6ae5653
 
 ### Phase 2: API Layer
 
 #### Automated
 
-- [ ] 2.1 Unit tests pass: `uv run pytest tests/test_api.py`
-- [ ] 2.2 Full suite passes: `uv run pytest`
-- [ ] 2.3 Type/compile check passes: `uv run python -m py_compile src/api.py`
-- [ ] 2.4 E2E test server boots without a live BigQuery call: `uv run pytest tests/e2e/`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_api.py`
+- [x] 2.2 Full suite passes: `uv run pytest`
+- [x] 2.3 Type/compile check passes: `uv run python -m py_compile src/api.py`
+- [x] 2.4 E2E test server boots without a live BigQuery call: `uv run pytest tests/e2e/`
 
 #### Manual
 
-- [ ] 2.5 curl/dev-tools check: missing header 400, unknown ticker 422, duplicate add no-op, remove-nonexistent no-op
+- [x] 2.5 curl/dev-tools check: missing header 400, unknown ticker 422, duplicate add no-op, remove-nonexistent no-op
 
 ### Phase 3: Frontend — My Wallet View
 

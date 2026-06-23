@@ -16,14 +16,20 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from db.bigquery import BigQueryError  # type: ignore[attr-defined]
 from db.bigquery import (
+    add_watchlist_ticker,
+    create_watchlist_table_if_not_exists,
     delete_announcement,
+    ensure_watchlist_schema_current,
     get_latest_snapshot_before,
     get_latest_snapshot_for_wallet,
     list_announcements_admin,
+    list_announcements_for_watchlist,
     list_announcements_user,
     list_distinct_companies,
     list_distinct_tickers,
+    list_watchlist_tickers,
     list_x_posts_admin,
+    remove_watchlist_ticker,
 )
 from src.portfolio_treemap import compute_treemap_positions
 
@@ -43,6 +49,7 @@ def _ac_set(key: str, data: list[str]) -> None:
     _AC_CACHE[key] = (data, time.time())
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+_CLIENT_ID_HEADER = APIKeyHeader(name="X-Client-Id", auto_error=False)
 Role = Literal["admin", "user"]
 
 
@@ -58,6 +65,12 @@ def _require_admin(role: Role = Depends(_get_role)) -> Role:
     if role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return role
+
+
+def _get_client_id(client_id: str | None = Security(_CLIENT_ID_HEADER)) -> str:
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Missing X-Client-Id header")
+    return client_id
 
 
 def _parse_structured_analysis(raw: str | None) -> dict | None:
@@ -129,6 +142,11 @@ def create_app() -> FastAPI:
     ui_html = pathlib.Path("static/index.html").read_text(encoding="utf-8")
 
     app = FastAPI()
+
+    @app.on_event("startup")
+    async def _create_watchlist_table():
+        create_watchlist_table_if_not_exists()
+        ensure_watchlist_schema_current()
 
     @app.get("/health")
     async def health():
@@ -211,6 +229,72 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=str(exc))
         _ac_set("companies", data)
         return data
+
+    @app.get("/watchlist")
+    async def get_watchlist(
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        try:
+            tickers = list_watchlist_tickers(client_id)
+        except BigQueryError as exc:
+            logger.error("BQ error in GET /watchlist: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        return {"tickers": tickers}
+
+    @app.post("/watchlist/{ticker}")
+    async def post_watchlist(
+        ticker: str,
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        try:
+            known_tickers = list_distinct_tickers()
+            if ticker not in known_tickers:
+                raise HTTPException(status_code=422, detail="Unknown ticker")
+            add_watchlist_ticker(client_id, ticker)
+        except BigQueryError as exc:
+            logger.error("BQ error in POST /watchlist/%s: %s", ticker, exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        return {"ticker": ticker, "added": True}
+
+    @app.delete("/watchlist/{ticker}", status_code=204)
+    async def delete_watchlist(
+        ticker: str,
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        try:
+            remove_watchlist_ticker(client_id, ticker)
+        except BigQueryError as exc:
+            logger.error("BQ error in DELETE /watchlist/%s: %s", ticker, exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/announcements/my-wallet")
+    async def announcements_my_wallet(
+        page: int = Query(1, ge=1),
+        page_size: int = Query(20, ge=1, le=100),
+        from_dt: datetime | None = Query(None, alias="from"),
+        to_dt: datetime | None = Query(None, alias="to"),
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        try:
+            rows = list_announcements_for_watchlist(
+                client_id, page=page, page_size=page_size, from_dt=from_dt, to_dt=to_dt,
+            )
+            result = []
+            for r in rows:
+                structured_analysis = _parse_structured_analysis(r.get("structured_analysis"))
+                if structured_analysis is not None:
+                    structured_analysis.pop("sentiment", None)
+                result.append(
+                    AnnouncementUser(**{**r, "structured_analysis": structured_analysis}).model_dump()
+                )
+            return result
+        except BigQueryError as exc:
+            logger.error("BQ error in /announcements/my-wallet: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
 
     @app.get("/admin/x-posts")
     async def admin_x_posts(
