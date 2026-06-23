@@ -26,6 +26,7 @@ dev = [
     "pytest>=8.0",
     "respx>=0.21",
     "pytest-playwright>=0.6",
+    "ruff>=0.15.18",
 ]
 
 [tool.pytest.ini_options]
@@ -33,4 +34,11 @@ pythonpath = ["."]
 markers = [
     "gdpr: tests that need the real GDPR banner (skip the auto-accept fixture)",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Entry points call load_dotenv()/configure_logging() before importing modules
+# that read env vars at import time (GCP clients, BIGQUERY_DATASET, etc.) —
+# see the GCP client initialization lesson in context/foundation/lessons.md.
+"main.py" = ["E402"]
+"src/api.py" = ["E402"]
 

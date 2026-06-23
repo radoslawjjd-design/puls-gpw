@@ -355,6 +355,13 @@ nor the E2E suite ever hits a real BigQuery client for the new functions.
 new best-effort `try/except` swallows a `BigQueryError` from `upsert_company`
 without propagating (mirrors any existing best-effort assertion pattern in
 this file, e.g. around `save_analysis_result`). `tests/e2e/conftest.py` —
+
+**Addendum (impl-review phase 3)**: landed in a new `tests/test_main.py`
+instead, not `tests/test_bigquery.py` — `test_bigquery.py`'s pattern mocks
+`db.bigquery._get_client` only, which can't reach `main.py`'s local
+`try/except` block. Proving the swallow requires mocking `main.py`'s own
+module-level collaborators and calling `main.main()` directly, which only a
+dedicated `tests/test_main.py` can do.
 add `patch("src.api.create_companies_table_if_not_exists")` and
 `patch("src.api.ensure_companies_schema_current")` to the `live_server_url`
 fixture's patch block (`tests/e2e/conftest.py:216-217` area), matching the
@@ -553,14 +560,14 @@ assume `companies` is a superset.
 
 #### Automated
 
-- [x] 3.1 Full unit suite passes: `uv run pytest tests/test_bigquery.py`
-- [x] 3.2 Full E2E suite passes: `uv run pytest tests/e2e`
-- [x] 3.3 Lint passes: `uv run ruff check main.py src/api.py tests/test_bigquery.py tests/e2e/conftest.py`
+- [x] 3.1 Full unit suite passes: `uv run pytest tests/test_bigquery.py` — a6884d5
+- [x] 3.2 Full E2E suite passes: `uv run pytest tests/e2e` — a6884d5
+- [x] 3.3 Lint passes: `uv run ruff check main.py src/api.py tests/test_bigquery.py tests/e2e/conftest.py` — a6884d5
 
 #### Manual
 
-- [x] 3.4 Real pipeline run produces a `companies` row
-- [x] 3.5 Forced `upsert_company` failure does not abort the pipeline
+- [x] 3.4 Real pipeline run produces a `companies` row — a6884d5
+- [x] 3.5 Forced `upsert_company` failure does not abort the pipeline — a6884d5
 
 ### Phase 4: Phase B — one-off full-GPW seed script
 

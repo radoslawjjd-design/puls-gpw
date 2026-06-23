@@ -4,7 +4,6 @@ import time
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-import httpx
 import pytest
 import uvicorn
 
