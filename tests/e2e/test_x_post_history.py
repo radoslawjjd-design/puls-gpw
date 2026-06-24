@@ -57,7 +57,7 @@ def test_clicking_topbar_heading_returns_to_announcements(page: Page, live_serve
     _open_x_history(page)
     expect(page.get_by_role("row", name=re.compile("Ranek"))).to_be_visible()
 
-    page.get_by_role("heading", name="puls-gpw").click()
+    page.get_by_role("heading", name="Faro").click()
 
     expect(page.locator("#page-label")).to_be_visible()
     expect(page.get_by_role("row", name=re.compile("Ranek"))).not_to_be_visible()

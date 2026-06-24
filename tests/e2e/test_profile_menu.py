@@ -43,5 +43,5 @@ def test_clicking_outside_closes_menu_without_the_opening_click_closing_it(
     # outside-click-closes handler — it has to stay open right after opening.
     expect(menu).to_be_visible()
 
-    page.get_by_role("heading", name="puls-gpw").click()
+    page.get_by_role("heading", name="Faro").click()
     expect(menu).to_be_hidden()

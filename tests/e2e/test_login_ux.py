@@ -6,7 +6,7 @@ _ADMIN_KEY = "e2e-admin-key"
 def test_login_screen_has_brand_and_hint(page: Page, live_server_url: str):
     page.goto(live_server_url)
     expect(page.locator(".login-brand")).to_be_visible()
-    expect(page.locator(".login-brand h1")).to_have_text("puls-gpw")
+    expect(page.locator(".login-brand h1")).to_have_text("Faro")
     expect(page.locator(".login-brand p")).to_be_visible()
     expect(page.locator(".login-hint")).to_be_visible()
     expect(page.locator(".login-hint")).to_contain_text("Klucz API")
