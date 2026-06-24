@@ -658,15 +658,15 @@ def test_list_x_posts_admin_offset_math():
 # ── autocomplete BQ functions (PUL-25 panel-ui-redesign) ──────────────────────
 
 def test_list_distinct_tickers_returns_sorted_list():
-    """list_distinct_tickers must return sorted list of ticker strings."""
+    """list_distinct_tickers must read from companies, not announcements."""
     rows = [{"ticker": "PKO"}, {"ticker": "CDR"}, {"ticker": "XTB"}]
     mock = _mock_bq_client_with_rows(rows)
     with patch("db.bigquery._get_client", return_value=mock):
         result = list_distinct_tickers()
     assert result == ["PKO", "CDR", "XTB"]
     query_str = mock.query.call_args[0][0]
-    assert "SELECT DISTINCT ticker" in query_str
-    assert "ticker IS NOT NULL" in query_str
+    assert "FROM" in query_str
+    assert "companies" in query_str
     assert "ORDER BY ticker" in query_str
 
 
@@ -678,18 +678,18 @@ def test_list_distinct_tickers_empty_result():
     assert result == []
 
 
-def test_list_distinct_companies_returns_sorted_list_with_limit():
-    """list_distinct_companies must return company strings and apply LIMIT 500."""
-    rows = [{"company": "Alior Bank SA"}, {"company": "PKO Bank Polski SA"}]
+def test_list_distinct_companies_returns_sorted_list():
+    """list_distinct_companies must read names from companies, with no LIMIT clause."""
+    rows = [{"name": "Alior Bank SA"}, {"name": "PKO Bank Polski SA"}]
     mock = _mock_bq_client_with_rows(rows)
     with patch("db.bigquery._get_client", return_value=mock):
         result = list_distinct_companies()
     assert result == ["Alior Bank SA", "PKO Bank Polski SA"]
     query_str = mock.query.call_args[0][0]
-    assert "SELECT DISTINCT company" in query_str
-    assert "company IS NOT NULL" in query_str
-    assert "ORDER BY company" in query_str
-    assert "LIMIT 500" in query_str
+    assert "companies" in query_str
+    assert "name IS NOT NULL" in query_str
+    assert "ORDER BY name" in query_str
+    assert "LIMIT" not in query_str
 
 
 def test_list_distinct_companies_empty_result():

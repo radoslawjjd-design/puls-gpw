@@ -431,29 +431,29 @@ to stop depending on for the read path.
 
 #### Automated
 
-- [x] 2.1 New test passes: `uv run pytest tests/test_company_profile.py -k profile_url_for_ticker`
-- [x] 2.2 Full test suite still passes: `uv run pytest`
-- [x] 2.3 Lint passes: `uv run ruff check src/company_profile.py scripts/backfill_companies.py tests/test_company_profile.py`
+- [x] 2.1 New test passes: `uv run pytest tests/test_company_profile.py -k profile_url_for_ticker` — 205d1fd
+- [x] 2.2 Full test suite still passes: `uv run pytest` — 205d1fd
+- [x] 2.3 Lint passes: `uv run ruff check src/company_profile.py scripts/backfill_companies.py tests/test_company_profile.py` — 205d1fd
 
 #### Manual
 
-- [x] 2.4 `--dry-run` count/sample looks correct against real bankier.pl
-- [x] 2.5 Real run populates previously-missing tickers in `companies`
-- [x] 2.6 Coverage gap closes to 0 (`list_tickers_missing_from_companies()` returns empty)
-- [x] 2.7 `PKP` row spot-checked directly in BigQuery — matches live bankier.pl profile
+- [x] 2.4 `--dry-run` count/sample looks correct against real bankier.pl — 205d1fd
+- [x] 2.5 Real run populates previously-missing tickers in `companies` — 205d1fd
+- [x] 2.6 Coverage gap closes to 0 (`list_tickers_missing_from_companies()` returns empty) — 205d1fd
+- [x] 2.7 `PKP` row spot-checked directly in BigQuery — matches live bankier.pl profile — 205d1fd
 
 ### Phase 3: Switch the read path + drop the LIMIT cap
 
 #### Automated
 
-- [ ] 3.1 Updated/full unit suite passes: `uv run pytest tests/test_bigquery.py`
-- [ ] 3.2 Full E2E suite passes: `uv run pytest tests/e2e`
-- [ ] 3.3 Full suite passes: `uv run pytest`
-- [ ] 3.4 Lint passes: `uv run ruff check db/bigquery.py tests/test_bigquery.py`
+- [x] 3.1 Updated/full unit suite passes: `uv run pytest tests/test_bigquery.py`
+- [x] 3.2 Full E2E suite passes: `uv run pytest tests/e2e`
+- [x] 3.3 Full suite passes: `uv run pytest`
+- [x] 3.4 Lint passes: `uv run ruff check db/bigquery.py tests/test_bigquery.py`
 
 #### Manual
 
-- [ ] 3.5 `list_distinct_tickers()`/`list_distinct_companies()` round-tripped against real BigQuery
-- [ ] 3.6 `GET /autocomplete/tickers` includes `PKP`
-- [ ] 3.7 `POST /watchlist/PKP` returns 200 (not 422)
-- [ ] 3.8 `GET /autocomplete/companies` exceeds 500 entries and includes a zero-history PUL-53 company
+- [x] 3.5 `list_distinct_tickers()`/`list_distinct_companies()` round-tripped against real BigQuery
+- [x] 3.6 `GET /autocomplete/tickers` includes `PKP`
+- [x] 3.7 `POST /watchlist/PKP` returns 200 (not 422)
+- [x] 3.8 `GET /autocomplete/companies` exceeds 500 entries and includes a zero-history PUL-53 company

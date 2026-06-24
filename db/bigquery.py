@@ -1187,12 +1187,11 @@ def x_post_already_published(window: str, day: date | None = None) -> bool:
 
 
 def list_distinct_tickers() -> list[str]:
-    """Return sorted list of all distinct non-null tickers in the announcements table."""
+    """Return sorted list of all tickers in the companies dimension table."""
     client = _get_client()
     query = f"""
-        SELECT DISTINCT ticker
-        FROM `{_table_ref(client)}`
-        WHERE ticker IS NOT NULL
+        SELECT ticker
+        FROM `{_table_ref(client, _COMPANIES_TABLE_NAME)}`
         ORDER BY ticker
     """
     try:
@@ -1203,20 +1202,19 @@ def list_distinct_tickers() -> list[str]:
 
 
 def list_distinct_companies() -> list[str]:
-    """Return sorted list of up to 500 distinct non-null company names."""
+    """Return sorted list of all non-null company names in the companies dimension table."""
     client = _get_client()
     query = f"""
-        SELECT DISTINCT company
-        FROM `{_table_ref(client)}`
-        WHERE company IS NOT NULL
-        ORDER BY company
-        LIMIT 500
+        SELECT name
+        FROM `{_table_ref(client, _COMPANIES_TABLE_NAME)}`
+        WHERE name IS NOT NULL
+        ORDER BY name
     """
     try:
         rows = list(client.query(query).result())
     except Exception as exc:
         raise BigQueryError(f"list_distinct_companies failed: {exc}") from exc
-    return [row.company for row in rows]
+    return [row.name for row in rows]
 
 
 def list_tickers_missing_from_companies() -> list[tuple[str, str | None]]:
