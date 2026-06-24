@@ -71,3 +71,18 @@ def test_extract_company_profile_links_dedupes_preserving_order():
         "https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=ECHO",
         "https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=MOL",
     ]
+
+
+def test_extract_company_profile_links_empty_html_returns_empty_list():
+    assert extract_company_profile_links("") == []
+
+
+def test_extract_company_profile_links_absolute_href_passes_through_unchanged():
+    html = """\
+<!DOCTYPE html><html><body>
+<a href="https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=ABS">Absolute</a>
+</body></html>"""
+
+    links = extract_company_profile_links(html)
+
+    assert links == ["https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=ABS"]

@@ -21,7 +21,7 @@ import logging
 
 from db.bigquery import create_companies_table_if_not_exists, ensure_companies_schema_current, upsert_company
 from src.company_profile import extract_company_profile_links, fetch_company_profile
-from src.exceptions import BigQueryError
+from src.exceptions import BigQueryError, ScraperError
 from src.http_client import get
 from src.logging_setup import configure_logging
 
@@ -39,7 +39,12 @@ def main() -> None:
     create_companies_table_if_not_exists()
     ensure_companies_schema_current()
 
-    resp = get(_LISTING_URL)
+    try:
+        resp = get(_LISTING_URL)
+    except ScraperError as exc:
+        logger.error("Failed to fetch listing page %s: %s", _LISTING_URL, exc)
+        sys.exit(1)
+
     links = extract_company_profile_links(resp.text)
     logger.info("Found %d company profile links on the listing page", len(links))
 

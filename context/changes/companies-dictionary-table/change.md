@@ -1,9 +1,9 @@
 ---
 change_id: companies-dictionary-table
 title: Companies dictionary table (ticker, name, hop URL)
-status: implementing
+status: impl_reviewed
 created: 2026-06-23
-updated: 2026-06-23
+updated: 2026-06-24
 tracking:
   linear: PUL-53
   github: 84
