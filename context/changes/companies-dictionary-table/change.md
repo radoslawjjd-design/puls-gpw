@@ -1,7 +1,7 @@
 ---
 change_id: companies-dictionary-table
 title: Companies dictionary table (ticker, name, hop URL)
-status: impl_reviewed
+status: implementing
 created: 2026-06-23
 updated: 2026-06-23
 tracking:

@@ -1,6 +1,7 @@
 import logging
 import re
 from dataclasses import dataclass
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
@@ -54,3 +55,26 @@ def _extract_isin(soup: BeautifulSoup) -> str | None:
     if not section:
         return None
     return section.get("data-isin") or None
+
+
+_BANKIER_BASE_URL = "https://www.bankier.pl"
+
+
+def extract_company_profile_links(listing_html: str) -> list[str]:
+    """Extract every company profile link from the bankier.pl listing page.
+
+    De-duplicates while preserving order. Relative hrefs are resolved against
+    `_BANKIER_BASE_URL`.
+    """
+    soup = BeautifulSoup(listing_html, "html5lib")
+    links: list[str] = []
+    seen: set[str] = set()
+    for anchor in soup.find_all("a", href=True):
+        href = anchor["href"]
+        if "profile/quote.html" not in href:
+            continue
+        resolved = urljoin(_BANKIER_BASE_URL, href)
+        if resolved not in seen:
+            seen.add(resolved)
+            links.append(resolved)
+    return links

@@ -573,12 +573,12 @@ assume `companies` is a superset.
 
 #### Automated
 
-- [ ] 4.1 Link-extraction test passes: `uv run pytest tests/test_company_profile.py -k extract_company_profile_links`
-- [ ] 4.2 Full test suite passes: `uv run pytest`
-- [ ] 4.3 Lint passes: `uv run ruff check scripts/seed_companies.py src/company_profile.py`
+- [x] 4.1 Link-extraction test passes: `uv run pytest tests/test_company_profile.py -k extract_company_profile_links`
+- [x] 4.2 Full test suite passes: `uv run pytest`
+- [x] 4.3 Lint passes: `uv run ruff check scripts/seed_companies.py src/company_profile.py`
 
 #### Manual
 
-- [ ] 4.4 `--dry-run` count/sample looks correct against real bankier.pl
-- [ ] 4.5 Real run populates pre-ESPI companies with zero `announcements` rows
-- [ ] 4.6 Spot-checked `isin` values match bankier.pl profile pages
+- [x] 4.4 `--dry-run` count/sample looks correct against real bankier.pl — verified via direct BigQuery query (263 rows, 100% hop_url/isin coverage, no dupes)
+- [x] 4.5 Real run populates pre-ESPI companies with zero `announcements` rows — 86/263 seeded companies have zero rows in `announcements`
+- [x] 4.6 Spot-checked `isin` values match bankier.pl profile pages — OPM/OND/NTT all match live `data-isin` attribute

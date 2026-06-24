@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from src.company_profile import fetch_company_profile
+from src.company_profile import extract_company_profile_links, fetch_company_profile
 from src.exceptions import ScraperError
 
 _PROFILE_URL = "https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=TST"
@@ -51,3 +51,23 @@ def test_fetch_company_profile_http_failure_returns_none():
         profile = fetch_company_profile(_PROFILE_URL)
 
     assert profile is None
+
+
+_HTML_LISTING_PAGE = """\
+<!DOCTYPE html><html><body>
+<table>
+<tr><td><a href="/inwestowanie/profile/quote.html?symbol=ECHO">Echo Investment</a></td></tr>
+<tr><td><a href="/inwestowanie/profile/quote.html?symbol=MOL">Molecure</a></td></tr>
+<tr><td><a href="/inwestowanie/profile/quote.html?symbol=ECHO">Echo Investment (duplicate row)</a></td></tr>
+<tr><td><a href="/inwestowanie/notowania/akcje">Not a profile link</a></td></tr>
+</table>
+</body></html>"""
+
+
+def test_extract_company_profile_links_dedupes_preserving_order():
+    links = extract_company_profile_links(_HTML_LISTING_PAGE)
+
+    assert links == [
+        "https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=ECHO",
+        "https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=MOL",
+    ]
