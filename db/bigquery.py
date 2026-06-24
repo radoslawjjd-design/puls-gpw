@@ -1219,6 +1219,30 @@ def list_distinct_companies() -> list[str]:
     return [row.company for row in rows]
 
 
+def list_tickers_missing_from_companies() -> list[tuple[str, str | None]]:
+    """Return (ticker, fallback_name) for every announcements ticker absent from companies.
+
+    fallback_name is the most recent non-null `company` value for that ticker in
+    announcements, for use as a backfill fallback when the bankier.pl hop fails.
+    Raises BigQueryError if the query job fails.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT a.ticker AS ticker,
+               ARRAY_AGG(a.company IGNORE NULLS ORDER BY a.published_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS fallback_name
+        FROM `{_table_ref(client)}` a
+        WHERE a.ticker IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM `{_table_ref(client, _COMPANIES_TABLE_NAME)}` c WHERE c.ticker = a.ticker)
+        GROUP BY a.ticker
+        ORDER BY a.ticker
+    """
+    try:
+        rows = list(client.query(query).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_tickers_missing_from_companies failed: {exc}") from exc
+    return [(row.ticker, row.fallback_name) for row in rows]
+
+
 def delete_announcement(announcement_id: str) -> None:
     """Delete a single announcement row by its ID.
 
