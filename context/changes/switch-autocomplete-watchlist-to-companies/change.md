@@ -1,7 +1,7 @@
 ---
 change_id: switch-autocomplete-watchlist-to-companies
 title: Switch autocomplete watchlist to companies
-status: implementing
+status: implemented
 created: 2026-06-24
 updated: 2026-06-24
 archived_at: null

@@ -446,14 +446,14 @@ to stop depending on for the read path.
 
 #### Automated
 
-- [x] 3.1 Updated/full unit suite passes: `uv run pytest tests/test_bigquery.py`
-- [x] 3.2 Full E2E suite passes: `uv run pytest tests/e2e`
-- [x] 3.3 Full suite passes: `uv run pytest`
-- [x] 3.4 Lint passes: `uv run ruff check db/bigquery.py tests/test_bigquery.py`
+- [x] 3.1 Updated/full unit suite passes: `uv run pytest tests/test_bigquery.py` — a34c13a
+- [x] 3.2 Full E2E suite passes: `uv run pytest tests/e2e` — a34c13a
+- [x] 3.3 Full suite passes: `uv run pytest` — a34c13a
+- [x] 3.4 Lint passes: `uv run ruff check db/bigquery.py tests/test_bigquery.py` — a34c13a
 
 #### Manual
 
-- [x] 3.5 `list_distinct_tickers()`/`list_distinct_companies()` round-tripped against real BigQuery
-- [x] 3.6 `GET /autocomplete/tickers` includes `PKP`
-- [x] 3.7 `POST /watchlist/PKP` returns 200 (not 422)
-- [x] 3.8 `GET /autocomplete/companies` exceeds 500 entries and includes a zero-history PUL-53 company
+- [x] 3.5 `list_distinct_tickers()`/`list_distinct_companies()` round-tripped against real BigQuery — a34c13a
+- [x] 3.6 `GET /autocomplete/tickers` includes `PKP` — a34c13a
+- [x] 3.7 `POST /watchlist/PKP` returns 200 (not 422) — a34c13a
+- [x] 3.8 `GET /autocomplete/companies` exceeds 500 entries and includes a zero-history PUL-53 company — a34c13a
