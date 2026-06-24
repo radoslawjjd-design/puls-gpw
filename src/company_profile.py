@@ -60,6 +60,15 @@ def _extract_isin(soup: BeautifulSoup) -> str | None:
 _BANKIER_BASE_URL = "https://www.bankier.pl"
 
 
+def profile_url_for_ticker(ticker: str) -> str:
+    """Build a bankier.pl profile URL directly from a known real ticker.
+
+    Verified live that bankier.pl's `?symbol=` lookup accepts the real ticker
+    directly, bypassing listing-page link extraction.
+    """
+    return urljoin(_BANKIER_BASE_URL, f"/inwestowanie/profile/quote.html?symbol={ticker}")
+
+
 def extract_company_profile_links(listing_html: str) -> list[str]:
     """Extract every company profile link from the bankier.pl listing page.
 

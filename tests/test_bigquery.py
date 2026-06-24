@@ -23,6 +23,7 @@ from db.bigquery import (
     list_announcements_user,
     list_distinct_companies,
     list_distinct_tickers,
+    list_tickers_missing_from_companies,
     list_watchlist_tickers,
     list_x_posts_admin,
     remove_watchlist_ticker,
@@ -657,15 +658,15 @@ def test_list_x_posts_admin_offset_math():
 # ── autocomplete BQ functions (PUL-25 panel-ui-redesign) ──────────────────────
 
 def test_list_distinct_tickers_returns_sorted_list():
-    """list_distinct_tickers must return sorted list of ticker strings."""
+    """list_distinct_tickers must read from companies, not announcements."""
     rows = [{"ticker": "PKO"}, {"ticker": "CDR"}, {"ticker": "XTB"}]
     mock = _mock_bq_client_with_rows(rows)
     with patch("db.bigquery._get_client", return_value=mock):
         result = list_distinct_tickers()
     assert result == ["PKO", "CDR", "XTB"]
     query_str = mock.query.call_args[0][0]
-    assert "SELECT DISTINCT ticker" in query_str
-    assert "ticker IS NOT NULL" in query_str
+    assert "FROM" in query_str
+    assert "companies" in query_str
     assert "ORDER BY ticker" in query_str
 
 
@@ -677,18 +678,18 @@ def test_list_distinct_tickers_empty_result():
     assert result == []
 
 
-def test_list_distinct_companies_returns_sorted_list_with_limit():
-    """list_distinct_companies must return company strings and apply LIMIT 500."""
-    rows = [{"company": "Alior Bank SA"}, {"company": "PKO Bank Polski SA"}]
+def test_list_distinct_companies_returns_sorted_list():
+    """list_distinct_companies must read names from companies, with no LIMIT clause."""
+    rows = [{"name": "Alior Bank SA"}, {"name": "PKO Bank Polski SA"}]
     mock = _mock_bq_client_with_rows(rows)
     with patch("db.bigquery._get_client", return_value=mock):
         result = list_distinct_companies()
     assert result == ["Alior Bank SA", "PKO Bank Polski SA"]
     query_str = mock.query.call_args[0][0]
-    assert "SELECT DISTINCT company" in query_str
-    assert "company IS NOT NULL" in query_str
-    assert "ORDER BY company" in query_str
-    assert "LIMIT 500" in query_str
+    assert "companies" in query_str
+    assert "name IS NOT NULL" in query_str
+    assert "ORDER BY name" in query_str
+    assert "LIMIT" not in query_str
 
 
 def test_list_distinct_companies_empty_result():
@@ -842,3 +843,24 @@ def test_upsert_company_sends_merge_with_all_fields():
     assert params["name"] == "Echo Investment SA"
     assert params["hop_url"] == "https://example.com/profile"
     assert params["isin"] == "PLECHPS00019"
+
+
+def test_list_tickers_missing_from_companies_returns_pairs():
+    """Must return (ticker, fallback_name) tuples and reference both tables via NOT EXISTS."""
+    rows = [{"ticker": "PKP", "fallback_name": "PKP Cargo SA"}, {"ticker": "ROB", "fallback_name": None}]
+    mock = _mock_bq_client_with_rows(rows)
+    with patch("db.bigquery._get_client", return_value=mock):
+        result = list_tickers_missing_from_companies()
+    assert result == [("PKP", "PKP Cargo SA"), ("ROB", None)]
+    query_str = mock.query.call_args[0][0]
+    assert "NOT EXISTS" in query_str
+    assert "announcements" in query_str
+    assert "companies" in query_str
+
+
+def test_list_tickers_missing_from_companies_empty_result():
+    """Must return an empty list when every announcements ticker already has a companies row."""
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        result = list_tickers_missing_from_companies()
+    assert result == []

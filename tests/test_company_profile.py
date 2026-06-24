@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from src.company_profile import extract_company_profile_links, fetch_company_profile
+from src.company_profile import extract_company_profile_links, fetch_company_profile, profile_url_for_ticker
 from src.exceptions import ScraperError
 
 _PROFILE_URL = "https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=TST"
@@ -86,3 +86,7 @@ def test_extract_company_profile_links_absolute_href_passes_through_unchanged():
     links = extract_company_profile_links(html)
 
     assert links == ["https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=ABS"]
+
+
+def test_profile_url_for_ticker_builds_symbol_query_url():
+    assert profile_url_for_ticker("PKP") == "https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=PKP"
