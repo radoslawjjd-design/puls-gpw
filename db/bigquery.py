@@ -460,6 +460,81 @@ def list_watchlist_tickers(client_id: str) -> list[str]:
     return [row.ticker for row in rows]
 
 
+_COMPANIES_TABLE_NAME = "companies"
+
+_COMPANIES_SCHEMA = [
+    bigquery.SchemaField("ticker", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("name", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("hop_url", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("isin", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("created_at", "TIMESTAMP", mode="REQUIRED"),
+    bigquery.SchemaField("updated_at", "TIMESTAMP", mode="REQUIRED"),
+]
+
+
+def create_companies_table_if_not_exists() -> None:
+    """Create the companies table in BigQuery if it does not already exist."""
+    client = _get_client()
+    table_id = _table_ref(client, _COMPANIES_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_COMPANIES_SCHEMA)
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_companies_schema_current() -> None:
+    """Migrate the companies table — add any missing schema columns.
+
+    Thin binding over `ensure_schema_current()`; idempotent and safe to call on
+    every API/pipeline startup, matching the watchlist/x_posts migration convention.
+    """
+    ensure_schema_current(_COMPANIES_TABLE_NAME, _COMPANIES_SCHEMA)
+
+
+def upsert_company(
+    ticker: str,
+    name: str | None,
+    hop_url: str | None,
+    isin: str | None,
+) -> None:
+    """Insert-or-update one companies row keyed on `ticker`.
+
+    Last-write-wins on conflict: both write paths (parser hop, seed script) parse
+    the same bankier profile page format, so neither produces a partial row worth
+    protecting against overwrite. Raises BigQueryError if the MERGE fails.
+    """
+    client = _get_client()
+    query = f"""
+        MERGE `{_table_ref(client, _COMPANIES_TABLE_NAME)}` T
+        USING (SELECT @ticker AS ticker, @name AS name, @hop_url AS hop_url, @isin AS isin) S
+        ON T.ticker = S.ticker
+        WHEN MATCHED THEN
+          UPDATE SET name = S.name, hop_url = S.hop_url, isin = S.isin, updated_at = CURRENT_TIMESTAMP()
+        WHEN NOT MATCHED THEN
+          INSERT (ticker, name, hop_url, isin, created_at, updated_at)
+          VALUES (S.ticker, S.name, S.hop_url, S.isin, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
+            bigquery.ScalarQueryParameter("name", "STRING", name),
+            bigquery.ScalarQueryParameter("hop_url", "STRING", hop_url),
+            bigquery.ScalarQueryParameter("isin", "STRING", isin),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"upsert_company failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"upsert_company failed: {job.errors}")
+    logger.debug("upsert_company: ticker=%s", ticker)
+
+
 def is_processed(url: str) -> bool:
     """Return True if the announcement URL has already been inserted."""
     client = _get_client()

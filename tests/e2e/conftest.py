@@ -4,7 +4,6 @@ import time
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-import httpx
 import pytest
 import uvicorn
 
@@ -215,6 +214,8 @@ def live_server_url():
         patch("src.api.get_latest_snapshot_before", side_effect=_fake_get_latest_snapshot_before),
         patch("src.api.create_watchlist_table_if_not_exists"),
         patch("src.api.ensure_watchlist_schema_current"),
+        patch("src.api.create_companies_table_if_not_exists"),
+        patch("src.api.ensure_companies_schema_current"),
         patch("src.api.add_watchlist_ticker", side_effect=_fake_add_watchlist_ticker),
         patch("src.api.remove_watchlist_ticker", side_effect=_fake_remove_watchlist_ticker),
         patch("src.api.list_watchlist_tickers", side_effect=_fake_list_watchlist_tickers),

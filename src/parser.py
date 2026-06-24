@@ -9,6 +9,7 @@ from urllib.parse import urljoin
 import pypdf
 from bs4 import BeautifulSoup
 
+from src.company_profile import fetch_company_profile
 from src.exceptions import ScraperError
 from src.http_client import download_binary, get
 from src.scraper import Announcement
@@ -33,6 +34,8 @@ class ParsedContent:
     parsed_content: str | None
     ticker: str | None
     company: str | None
+    hop_url: str | None
+    isin: str | None
 
 
 def parse_announcement(ann: Announcement, announcement_id: str) -> ParsedContent:
@@ -44,10 +47,10 @@ def parse_announcement(ann: Announcement, announcement_id: str) -> ParsedContent
         resp = get(ann.bankier_url)
     except ScraperError:
         logger.warning("parse_announcement: HTTP failed for %s", ann.bankier_url)
-        return ParsedContent(announcement_id, None, None, None)
+        return ParsedContent(announcement_id, None, None, None, None, None)
 
     soup = BeautifulSoup(resp.text, "html5lib")
-    ticker, company = _extract_ticker_company(soup, ann.bankier_url)
+    ticker, company, hop_url, isin = _extract_ticker_company(soup, ann.bankier_url)
 
     seauid2_text = _extract_seauid2(soup)
     pdf_links = _find_pdf_links(soup, ann.bankier_url)
@@ -68,9 +71,9 @@ def parse_announcement(ann: Announcement, announcement_id: str) -> ParsedContent
             if pdf_text.strip():
                 combined = (seauid2_text + "\n\n" + pdf_text).strip()
                 logger.info("Parser: seauid2+pdf for %s", ann.bankier_url)
-                return ParsedContent(announcement_id, combined[:_MAX_CHARS], ticker, company)
+                return ParsedContent(announcement_id, combined[:_MAX_CHARS], ticker, company, hop_url, isin)
         logger.info("Parser: seauid2 for %s", ann.bankier_url)
-        return ParsedContent(announcement_id, seauid2_text[:_MAX_CHARS], ticker, company)
+        return ParsedContent(announcement_id, seauid2_text[:_MAX_CHARS], ticker, company, hop_url, isin)
 
     if pdf_links:
         all_text = ""
@@ -82,15 +85,15 @@ def parse_announcement(ann: Announcement, announcement_id: str) -> ParsedContent
                 break
         if all_text.strip():
             logger.info("Parser: pdf for %s", ann.bankier_url)
-            return ParsedContent(announcement_id, all_text[:_MAX_CHARS], ticker, company)
+            return ParsedContent(announcement_id, all_text[:_MAX_CHARS], ticker, company, hop_url, isin)
 
     text = _extract_html_fallback(soup)
     if text:
         logger.info("Parser: html for %s", ann.bankier_url)
-        return ParsedContent(announcement_id, text[:_MAX_CHARS], ticker, company)
+        return ParsedContent(announcement_id, text[:_MAX_CHARS], ticker, company, hop_url, isin)
 
     logger.warning("Parser: none for %s", ann.bankier_url)
-    return ParsedContent(announcement_id, None, ticker, company)
+    return ParsedContent(announcement_id, None, ticker, company, hop_url, isin)
 
 
 def _extract_seauid2(soup: BeautifulSoup) -> str | None:
@@ -172,30 +175,21 @@ def _extract_html_fallback(soup: BeautifulSoup) -> str | None:
     return text if text and len(text) >= 50 else None
 
 
-def _extract_ticker_company(soup: BeautifulSoup, base_url: str) -> tuple[str | None, str | None]:
+def _extract_ticker_company(
+    soup: BeautifulSoup, base_url: str
+) -> tuple[str | None, str | None, str | None, str | None]:
     # Use -stock anchor first: sidebar indices also have profile/quote.html links and appear
     # earlier in the DOM, so the generic href search would pick up GIK/WIG instead of the company.
     link = soup.select_one("a.m-quote-list__anchor.-stock")
     if not link:
         link = soup.find("a", href=lambda h: h and "profile/quote.html" in h)
     if not link:
-        return None, None
+        return None, None, None, None
     profile_url = link["href"]
     if not profile_url.startswith("http"):
         profile_url = urljoin(base_url, profile_url)
-    try:
-        profile_resp = get(profile_url)
-    except ScraperError:
-        logger.debug("_extract_ticker_company: HTTP failed for %s", profile_url)
-        return None, None
-    profile_soup = BeautifulSoup(profile_resp.text, "html5lib")
-    heading = profile_soup.select_one("span.a-heading__suffix.-blue.-with-dot")
-    if not heading:
-        return None, None
-    raw = heading.get_text(strip=True)
-    m = re.search(r"\(([^)]+)\)", raw)
-    if not m:
-        return None, None
-    ticker = m.group(1).strip()
-    company = raw[: m.start()].strip() or None
-    return ticker, company
+
+    profile = fetch_company_profile(profile_url)
+    if not profile:
+        return None, None, None, None
+    return profile.ticker, profile.company, profile.hop_url, profile.isin
