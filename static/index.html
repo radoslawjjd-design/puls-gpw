@@ -19,11 +19,12 @@
     min-height: 100vh;
   }
   .login-box {
-    background: #fff; border-radius: 12px; padding: 2.5rem;
-    box-shadow: 0 4px 24px rgba(0,0,0,.1); width: 100%; max-width: 420px;
+    background: #fff; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,.1); width: 100%; max-width: 528px;
   }
-  .login-brand { margin-bottom: 1.75rem; }
-  .login-brand h1 { font-size: 2rem; color: #2563eb; margin-bottom: 0.25rem; font-weight: 700; }
+  .login-banner { width: 100%; height: auto; aspect-ratio: 1280 / 720; display: block; }
+  .login-box-body { padding: 2rem 2.5rem 2.5rem; }
+  .login-brand { margin-bottom: 1.5rem; }
   .login-brand p { font-size: 0.85rem; color: #6b7280; }
   .login-box label { display: block; font-size: .85rem; margin-bottom: .3rem; color: #555; }
   .login-box input {
@@ -312,15 +313,17 @@
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <div class="login-brand">
-      <h1>Faro</h1>
-      <p>Analizator komunikatów ESPI / EBI</p>
+    <img class="login-banner" src="/static/img/faro-banner.jpg" alt="">
+    <div class="login-box-body">
+      <div class="login-brand">
+        <p>Analizator komunikatów ESPI / EBI</p>
+      </div>
+      <label for="api-key-input">Klucz API</label>
+      <input id="api-key-input" type="password" placeholder="Wpisz klucz API" autocomplete="current-password">
+      <p class="login-hint">Klucz API otrzymasz od administratora systemu.</p>
+      <button id="login-btn">Zaloguj się</button>
+      <div id="login-error" style="display:none">Nieprawidłowy klucz API</div>
     </div>
-    <label for="api-key-input">Klucz API</label>
-    <input id="api-key-input" type="password" placeholder="Wpisz klucz API" autocomplete="current-password">
-    <p class="login-hint">Klucz API otrzymasz od administratora systemu.</p>
-    <button id="login-btn">Zaloguj się</button>
-    <div id="login-error" style="display:none">Nieprawidłowy klucz API</div>
   </div>
 </div>
 
