@@ -48,7 +48,7 @@ jobs:
         run: |
           gcloud run jobs update puls-gpw \
             --image="${{ env.IMAGE }}:${{ github.sha }}" \
-            --command=uv --args="run,python,main.py" \
+            --command=uv --args="run,--no-dev,python,main.py" \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }}
 
@@ -56,7 +56,7 @@ jobs:
         run: |
           gcloud run jobs update puls-gpw-post \
             --image="${{ env.IMAGE }}:${{ github.sha }}" \
-            --command=uv --args="run,python,post_main.py" \
+            --command=uv --args="run,--no-dev,python,post_main.py" \
             --update-secrets="X_API_KEY=x-api-key:latest,X_API_SECRET=x-api-secret:latest,X_ACCESS_TOKEN=x-access-token:latest,X_ACCESS_SECRET=x-access-secret:latest" \
             --update-env-vars="X_AUTO_PUBLISH=true,GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},BIGQUERY_DATASET=espi_ebi" \
             --region=${{ env.REGION }} \
@@ -66,7 +66,7 @@ jobs:
         run: |
           gcloud run deploy puls-gpw-api \
             --image="${{ env.IMAGE }}:${{ github.sha }}" \
-            --command=uv --args="run,python,api_main.py" \
+            --command=uv --args="run,--no-dev,python,api_main.py" \
             --port=8080 \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }} \
