@@ -45,7 +45,7 @@ def test_view_switch_sequence_updates_url_and_is_back_navigable(
     _open_x_history(page)
     expect(page).to_have_url(re.compile(r"view=x-history"))
 
-    page.get_by_role("heading", name="puls-gpw").click()
+    page.get_by_role("heading", name="Faro").click()
     expect(page).to_have_url(re.compile(r"/$"))
     expect(page.locator("#announcements-view")).to_be_visible()
 
