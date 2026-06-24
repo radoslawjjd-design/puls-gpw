@@ -1,7 +1,7 @@
 ---
 change_id: faro-graphics-integration
 title: Faro graphics integration
-status: implementing
+status: implemented
 created: 2026-06-24
 updated: 2026-06-24
 archived_at: null

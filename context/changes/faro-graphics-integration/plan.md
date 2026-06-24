@@ -153,14 +153,14 @@ The banner is served as-is (349KB JPEG, no compression or resizing pass — expl
 
 #### Automated
 
-- [x] 1.1 E2E login tests pass: `uv run pytest tests/e2e/test_login_ux.py`
-- [x] 1.2 No regression in adjacent E2E suites (`test_idle_timeout.py`, `test_url_routing.py`, `test_x_post_history.py`, `test_profile_menu.py`)
-- [x] 1.3 Full E2E suite green: `uv run pytest tests/e2e/`
+- [x] 1.1 E2E login tests pass: `uv run pytest tests/e2e/test_login_ux.py` — b487532
+- [x] 1.2 No regression in adjacent E2E suites (`test_idle_timeout.py`, `test_url_routing.py`, `test_x_post_history.py`, `test_profile_menu.py`) — b487532
+- [x] 1.3 Full E2E suite green: `uv run pytest tests/e2e/` — b487532
 
 #### Manual
 
-- [x] 1.4 Banner renders correctly at desktop width
-- [x] 1.5 Banner scales correctly at narrow/mobile width without overflow or overlap
-- [x] 1.6 Box corners remain rounded (banner doesn't bleed past border-radius)
-- [x] 1.7 Login flow (valid key + invalid key error) still works end-to-end
-- [x] 1.8 No console errors related to the new image
+- [x] 1.4 Banner renders correctly at desktop width — b487532
+- [x] 1.5 Banner scales correctly at narrow/mobile width without overflow or overlap — b487532
+- [x] 1.6 Box corners remain rounded (banner doesn't bleed past border-radius) — b487532
+- [x] 1.7 Login flow (valid key + invalid key error) still works end-to-end — b487532
+- [x] 1.8 No console errors related to the new image — b487532
