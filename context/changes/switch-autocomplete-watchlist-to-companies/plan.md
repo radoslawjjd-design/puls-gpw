@@ -419,28 +419,28 @@ to stop depending on for the read path.
 
 #### Automated
 
-- [x] 1.1 New unit tests pass: `uv run pytest tests/test_bigquery.py -k missing_from_companies`
-- [x] 1.2 Full unit suite still passes: `uv run pytest tests/test_bigquery.py`
-- [x] 1.3 Lint passes: `uv run ruff check db/bigquery.py tests/test_bigquery.py`
+- [x] 1.1 New unit tests pass: `uv run pytest tests/test_bigquery.py -k missing_from_companies` — 6cdc51d
+- [x] 1.2 Full unit suite still passes: `uv run pytest tests/test_bigquery.py` — 6cdc51d
+- [x] 1.3 Lint passes: `uv run ruff check db/bigquery.py tests/test_bigquery.py` — 6cdc51d
 
 #### Manual
 
-- [x] 1.4 `list_tickers_missing_from_companies()` round-tripped against real BigQuery, count in expected range
+- [x] 1.4 `list_tickers_missing_from_companies()` round-tripped against real BigQuery, count in expected range — 6cdc51d
 
 ### Phase 2: Backfill execution — close the gap
 
 #### Automated
 
-- [ ] 2.1 New test passes: `uv run pytest tests/test_company_profile.py -k profile_url_for_ticker`
-- [ ] 2.2 Full test suite still passes: `uv run pytest`
-- [ ] 2.3 Lint passes: `uv run ruff check src/company_profile.py scripts/backfill_companies.py tests/test_company_profile.py`
+- [x] 2.1 New test passes: `uv run pytest tests/test_company_profile.py -k profile_url_for_ticker`
+- [x] 2.2 Full test suite still passes: `uv run pytest`
+- [x] 2.3 Lint passes: `uv run ruff check src/company_profile.py scripts/backfill_companies.py tests/test_company_profile.py`
 
 #### Manual
 
-- [ ] 2.4 `--dry-run` count/sample looks correct against real bankier.pl
-- [ ] 2.5 Real run populates previously-missing tickers in `companies`
-- [ ] 2.6 Coverage gap closes to 0 (`list_tickers_missing_from_companies()` returns empty)
-- [ ] 2.7 `PKP` row spot-checked directly in BigQuery — matches live bankier.pl profile
+- [x] 2.4 `--dry-run` count/sample looks correct against real bankier.pl
+- [x] 2.5 Real run populates previously-missing tickers in `companies`
+- [x] 2.6 Coverage gap closes to 0 (`list_tickers_missing_from_companies()` returns empty)
+- [x] 2.7 `PKP` row spot-checked directly in BigQuery — matches live bankier.pl profile
 
 ### Phase 3: Switch the read path + drop the LIMIT cap
 
