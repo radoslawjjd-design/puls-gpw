@@ -84,7 +84,7 @@ Add the banner image to `.login-box`, restructure CSS so the image sits edge-to-
 ```css
 .login-box {
   background: #fff; border-radius: 12px; overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0,0,0,.1); width: 100%; max-width: 480px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.1); width: 100%; max-width: 528px;
 }
 .login-banner { width: 100%; height: auto; aspect-ratio: 1280 / 720; display: block; }
 .login-box-body { padding: 2rem 2.5rem 2.5rem; }

@@ -1,9 +1,9 @@
 ---
 change_id: faro-graphics-integration
 title: Faro graphics integration
-status: implemented
+status: impl_reviewed
 created: 2026-06-24
-updated: 2026-06-24
+updated: 2026-06-25
 archived_at: null
 tracking:
   linear: PUL-58
@@ -42,3 +42,25 @@ max-width` raised from the plan's `480px` to `528px` (480 × 1.1). Banner scales
 via `width: 100%`, so it grows proportionally. `tests/e2e/test_login_ux.py` reverted to
 asserting `.login-banner` visibility (as in the original plan contract, not the pivot-#1
 background-image assertion).
+
+### Out-of-plan addendum — nav restructure, mobile grid, treemap as-of (2026-06-25)
+
+Three commits beyond the plan's single Phase 1 scope landed in the same PR (#96):
+
+- `fcff425` — ad-hoc UI color rebrand (navy palette sampled from the banner) across login
+  button, profile menu, filters, treemap, watchlist, and the topbar `#topbar-home` heading.
+  Self-disclosed in its own commit message as "outside the formal plan scope." Note: this
+  touches `#topbar-home`, which the plan's "What We're NOT Doing" section explicitly
+  excludes — disclosed but not reconciled against that boundary until now.
+- `86f54fe` — promotes admin-only nav items (Historia postów X, Treemapa portfela) from the
+  profile dropdown into the topbar nav bar; adds a responsive 2x2 grid layout for
+  `.topbar-nav` on screens ≤640px (topbar height 217px → 140px); adds an `as_of` snapshot
+  date field to the `/admin/portfolio/treemap` API response (`src/api.py`).
+
+None of this was in plan.md's scope or "Changes Required," and the plan's `## Progress`
+ledger only tracks Phase 1 (`b487532`) — it was never extended to cover these. Flagged by
+`/10x-impl-review` (`reviews/impl-review.md`, F1/F2) as a documentation gap, not a
+functional defect: both pieces were independently verified safe (role-gated DOM insertion
+preserved for admin nav items; no XSS; consistent BQ error handling for the new `as_of`
+field; full E2E + API suite green, 327/327). Recorded here as the source of truth for what
+shipped beyond the original plan.
