@@ -14,8 +14,7 @@ def _login(page: Page, base_url: str, key: str = _ADMIN_KEY) -> None:
 
 
 def _open_treemap(page: Page) -> None:
-    page.get_by_role("button", name="admin").click()
-    page.get_by_role("menuitem", name="Treemapa portfela").click()
+    page.get_by_role("button", name="Treemapa portfela").click()
 
 
 def test_admin_can_open_treemap_and_see_positions_rendered_with_pl_deltas(
@@ -64,7 +63,7 @@ def test_resizing_window_reflows_treemap_layout_without_reopening_view(
 
 def test_user_role_has_no_treemap_menu_item_or_dom_node(page: Page, live_server_url: str):
     _login(page, live_server_url, key=_USER_KEY)
-    page.get_by_role("button", name="user").click()
+    page.get_by_role("button", name="Użytkownik").click()
 
     expect(page.get_by_role("menuitem", name="Treemapa portfela")).not_to_be_attached()
     expect(page.locator("#treemap-btn")).not_to_be_attached()

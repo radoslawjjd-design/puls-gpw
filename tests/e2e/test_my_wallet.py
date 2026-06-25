@@ -11,8 +11,7 @@ def _login(page: Page, base_url: str) -> None:
 
 
 def _open_my_wallet(page: Page) -> None:
-    page.get_by_role("button", name="user").click()
-    page.get_by_role("menuitem", name="Obserwowane").click()
+    page.get_by_role("button", name="Obserwowane").click()
 
 
 def test_added_ticker_persists_across_reload_and_filters_announcements(

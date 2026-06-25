@@ -311,7 +311,8 @@ def test_admin_treemap_admin_returns_both_wallets_keyed_with_deltas(api_client):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
     body = r.json()
-    assert list(body.keys()) == ["main", "ikze"]
+    assert list(body.keys()) == ["main", "ikze", "as_of"]
+    assert body["as_of"] == "2026-06-19"
     assert body["main"] == [
         pytest.approx({
             "ticker": "PKO",
@@ -355,7 +356,7 @@ def test_admin_treemap_no_snapshots_returns_empty_lists_for_both_wallets(api_cli
     with patch("src.api.get_latest_snapshot_for_wallet", return_value=None):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
-    assert r.json() == {"main": [], "ikze": []}
+    assert r.json() == {"main": [], "ikze": [], "as_of": None}
 
 
 def test_admin_treemap_user_returns_403(api_client):

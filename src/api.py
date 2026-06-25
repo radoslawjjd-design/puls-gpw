@@ -2,7 +2,7 @@ import logging
 import os
 import pathlib
 import time
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 logger = logging.getLogger(__name__)
@@ -325,12 +325,14 @@ def create_app() -> FastAPI:
     @app.get("/admin/portfolio/treemap")
     async def admin_portfolio_treemap(role: Role = Depends(_require_admin)):
         try:
-            result: dict[str, list[dict]] = {}
+            result: dict[str, list[dict] | str | None] = {}
+            snapshot_dates: list[date] = []
             for wallet in _TREEMAP_WALLETS:
                 latest = get_latest_snapshot_for_wallet(wallet)
                 if latest is None:
                     result[wallet] = []
                     continue
+                snapshot_dates.append(latest["snapshot_date"])
                 prior = get_latest_snapshot_before(wallet, latest["snapshot_date"])
                 positions = compute_treemap_positions(
                     latest["positions_json"],
@@ -338,6 +340,11 @@ def create_app() -> FastAPI:
                     latest["total_value"],
                 )
                 result[wallet] = [TreemapPosition(**p).model_dump() for p in positions]
+            if snapshot_dates:
+                latest_date = max(snapshot_dates)
+                result["as_of"] = latest_date.isoformat() if hasattr(latest_date, "isoformat") else str(latest_date)
+            else:
+                result["as_of"] = None
             return result
         except BigQueryError as exc:
             logger.error("BQ error in /admin/portfolio/treemap: %s", exc)

@@ -13,13 +13,11 @@ def _login(page: Page, base_url: str) -> None:
 
 
 def _open_treemap(page: Page) -> None:
-    page.get_by_role("button", name="admin").click()
-    page.get_by_role("menuitem", name="Treemapa portfela").click()
+    page.get_by_role("button", name="Treemapa portfela").click()
 
 
 def _open_x_history(page: Page) -> None:
-    page.get_by_role("button", name="admin").click()
-    page.get_by_role("menuitem", name="Historia postów X").click()
+    page.get_by_role("button", name="Historia postów X").click()
 
 
 def _persist_session_across_goto(page: Page) -> None:
