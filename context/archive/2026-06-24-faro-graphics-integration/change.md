@@ -1,10 +1,10 @@
 ---
 change_id: faro-graphics-integration
 title: Faro graphics integration
-status: impl_reviewed
+status: archived
 created: 2026-06-24
 updated: 2026-06-25
-archived_at: null
+archived_at: 2026-06-25T11:40:02Z
 tracking:
   linear: PUL-58
   github: null
