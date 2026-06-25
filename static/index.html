@@ -4,20 +4,37 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Faro — Wskazuje drogę w gąszczu raportów</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
-<link rel="shortcut icon" href="/static/img/favicon.ico">
-<link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
-<link rel="manifest" href="/static/img/site.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png?v=2">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png?v=2">
+<link rel="shortcut icon" href="/static/img/favicon.ico?v=2">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png?v=2">
+<link rel="manifest" href="/static/img/site.webmanifest?v=2">
 <style>
   :root {
     --brand: #14304a;
     --brand-dark: #0a1c2c;
     --brand-tint: #eef2f5;
     --gold: #e0cb98;
+    --gold-mid: #c9a86a;
+    --gold-dark: #8a6d23;
+    --bg: #f3f2ee;
+    --border: #e6e3d8;
+    --fill: #ece9df;
+    --text-muted: #6b7280;
+    --positive: #1d7a46;
+    --negative: #b3261e;
+    --neutral-warm: #aca28e;
+    --radius-sm: 8px;
+    --radius-md: 16px;
+    --radius-pill: 999px;
+    --shadow-1: 0 1px 2px rgba(20,48,74,.05);
+    --shadow-2: 0 8px 24px rgba(20,48,74,.14);
+    --shadow-3: 0 12px 40px rgba(20,48,74,.20);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; background: #f4f6f8; color: #1a1a1a; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: #1a1a1a; }
+  a { color: var(--brand); }
+  a:hover { color: var(--brand-dark); }
 
   /* Login */
   #login-screen {
@@ -25,8 +42,8 @@
     min-height: 100vh;
   }
   .login-box {
-    background: #fff; border-radius: 12px; overflow: hidden;
-    box-shadow: 0 4px 24px rgba(0,0,0,.1); width: 100%; max-width: 528px;
+    background: #fff; border-radius: var(--radius-md); overflow: hidden;
+    box-shadow: var(--shadow-3); width: 100%; max-width: 528px;
   }
   .login-banner { width: 100%; height: auto; aspect-ratio: 1280 / 720; display: block; }
   .login-box-body { padding: 2rem 2.5rem 2.5rem; }
@@ -35,7 +52,7 @@
   .login-box label { display: block; font-size: .85rem; margin-bottom: .3rem; color: #555; }
   .login-box input {
     width: 100%; padding: .75rem; border: 1.5px solid #d1d5db;
-    border-radius: 8px; font-size: 1rem; margin-bottom: .5rem;
+    border-radius: var(--radius-sm); font-size: 1rem; margin-bottom: .5rem;
     outline: none; transition: border-color .15s, box-shadow .15s;
   }
   .login-box input:focus {
@@ -44,73 +61,138 @@
   .login-hint { font-size: 0.8rem; color: #6b7280; margin-top: -0.25rem; margin-bottom: 1.25rem; }
   .login-box button {
     width: 100%; padding: .75rem; background: var(--brand); color: #fff;
-    border: none; border-radius: 8px; font-size: 1rem; cursor: pointer;
+    border: none; border-radius: var(--radius-pill); font-size: 1rem; cursor: pointer;
     box-shadow: 0 2px 8px rgba(20,48,74,.25); transition: background .15s, box-shadow .15s;
   }
   .login-box button:hover { background: var(--brand-dark); box-shadow: 0 4px 14px rgba(20,48,74,.35); }
   #login-error {
-    color: #dc2626; font-size: .85rem; margin-top: .75rem; display: none;
-    background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: .5rem .75rem;
+    color: var(--negative); font-size: .85rem; margin-top: .75rem; display: none;
+    background: #fef2f2; border: 1px solid #fca5a5; border-radius: var(--radius-sm); padding: .5rem .75rem;
   }
 
   /* GDPR banner */
   #gdpr-banner {
     position: fixed; bottom: 0; left: 0; right: 0;
-    background: #1e293b; color: #e2e8f0;
+    background: var(--brand-dark); color: #e2e8f0;
     display: flex; justify-content: space-between; align-items: center;
     padding: .75rem 1.5rem; z-index: 200; font-size: .85rem; gap: 1rem;
   }
   #gdpr-accept {
     background: transparent; border: 1px solid #94a3b8; color: #e2e8f0;
-    padding: .3rem .9rem; border-radius: 6px; cursor: pointer;
+    padding: .3rem .9rem; border-radius: var(--radius-sm); cursor: pointer;
     font-size: .8rem; white-space: nowrap; flex-shrink: 0;
     transition: background .15s;
   }
   #gdpr-accept:hover { background: rgba(255,255,255,.1); }
 
   /* Dashboard */
-  #dashboard-screen { display: none; padding: 1.5rem; }
+  #dashboard-screen { display: none; padding: 1.5rem; min-height: 100vh; background: var(--bg); }
+  #announcements-view, #my-wallet-view, #x-history-view, #treemap-view {
+    max-width: 1400px; margin: 0 auto;
+  }
   .topbar {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 1.5rem; position: sticky; top: 0; z-index: 60;
-    background: #f4f6f8; padding: .6rem 0;
+    margin: -1.5rem -1.5rem 1.5rem; position: sticky; top: 0; z-index: 60;
+    background: #fff; padding: .85rem 1.5rem; border-bottom: 1px solid var(--border);
   }
-  .topbar h1 { font-size: 1.2rem; cursor: pointer; color: var(--brand); }
-  .topbar span { font-size: .85rem; color: #555; margin-right: 1rem; }
+  .topbar h1 {
+    font-size: 1.2rem; cursor: pointer; color: var(--brand); line-height: normal;
+    display: flex; align-items: center;
+  }
+  .topbar-logo { height: 36px; width: auto; display: block; cursor: pointer; }
+  .topbar-wordmark {
+    font-size: 1.2rem; font-weight: 800; letter-spacing: .01em; color: var(--brand);
+    margin-left: -8px;
+  }
+
+  /* Topbar nav */
+  .topbar-nav { display: flex; align-items: center; gap: .15rem; margin-left: 1.75rem; flex: 1 1 auto; }
+  .nav-item {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .65rem .85rem; background: none; border: none; cursor: pointer;
+    font-size: .88rem; font-weight: 600; color: var(--text-muted);
+    border-bottom: 2px solid transparent; transition: color .15s, border-color .15s;
+  }
+  .nav-item:hover { color: var(--brand); }
+  .nav-item.active, .nav-item.active:hover {
+    color: #fff; background: var(--brand); border-bottom-color: var(--brand);
+    border-radius: var(--radius-pill);
+  }
+  .nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
+  @media (max-width: 640px) {
+    .topbar-nav {
+      flex: 1 1 100%; order: 3; margin-left: 0;
+      display: grid; grid-template-columns: 1fr 1fr; gap: .3rem;
+    }
+    .nav-item {
+      justify-content: center; border: 1px solid var(--border);
+      border-radius: 8px; padding: .55rem .5rem; font-size: .8rem; white-space: nowrap;
+    }
+    .nav-item.active, .nav-item.active:hover {
+      background: var(--brand); color: #fff; border-color: var(--brand);
+      border-bottom: 1px solid var(--brand);
+    }
+  }
   .topbar button {
-    padding: .4rem .9rem; background: #e5e7eb; border: none;
-    border-radius: 5px; cursor: pointer; font-size: .9rem; color: var(--brand);
+    display: inline-flex; align-items: center; gap: .45rem;
+    padding: .5rem .9rem .5rem 1.05rem; background: var(--fill); border: none;
+    border-radius: var(--radius-pill); cursor: pointer; font-size: .85rem; color: var(--brand);
+    font-weight: 600; transition: background .15s;
   }
-  .topbar button:hover { background: #d1d5db; }
+  .topbar button:hover { background: #e1ddcd; }
+  .role-icon { width: 20px; height: 20px; display: block; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+  .chevron-icon {
+    width: 0; height: 0; margin-left: .1rem;
+    border-left: 4px solid transparent; border-right: 4px solid transparent;
+    border-top: 5px solid var(--brand); transition: transform .15s;
+  }
+  .profile-menu-wrap[data-open="true"] .chevron-icon { transform: rotate(180deg); }
 
   /* Profile menu dropdown */
   .profile-menu-wrap { position: relative; }
   .profile-menu {
-    position: absolute; top: 100%; right: 0; margin-top: 2px;
-    background: #fff; border: 1.5px solid #d1d5db; border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0,0,0,.1);
-    list-style: none; min-width: 160px; z-index: 50;
+    position: absolute; top: 100%; right: 0; margin-top: 8px;
+    background: #fff; border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2); padding: .4rem;
+    list-style: none; min-width: 180px; z-index: 50;
   }
   .profile-menu button {
-    width: 100%; text-align: left; padding: .55rem .8rem;
-    background: none; border: none; border-radius: 0;
+    width: 100%; text-align: left; padding: .6rem .75rem;
+    background: none; border: none; border-radius: var(--radius-sm);
     cursor: pointer; font-size: .9rem;
   }
   .profile-menu button:hover { background: var(--brand-tint); color: var(--brand); }
 
   /* Filters */
   .filters {
-    display: flex; flex-wrap: wrap; gap: .5rem;
-    background: #fff; padding: 1rem; border-radius: 8px;
-    margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
+    background: #fff; padding: 1rem; border-radius: var(--radius-md);
+    margin-bottom: 1rem; border: 1px solid var(--border);
+    box-shadow: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
   }
-  .filters input, .filters select {
-    padding: .45rem .65rem; border: 1.5px solid #d1d5db; border-radius: 6px;
-    font-size: .9rem; min-width: 120px;
+  .filters input, .filters select, #wl-add-form input {
+    padding: .55rem .8rem; border: none; background: var(--fill); border-radius: var(--radius-sm);
+    font-size: .9rem; min-width: 120px; transition: background .15s, box-shadow .15s; outline: none;
   }
+  .filters input:focus, .filters select:focus, #wl-add-form input:focus {
+    background: #fff; box-shadow: 0 0 0 2px var(--brand);
+  }
+  .filters-date-group {
+    display: flex; align-items: center; gap: .4rem;
+    background: var(--fill); border-radius: var(--radius-sm); padding: 0 .6rem;
+    transition: box-shadow .15s;
+  }
+  .filters-date-group input { border: none; background: transparent; min-width: 130px; }
+  .filters-date-group input:focus { box-shadow: none; }
+  .filters-date-group:focus-within { box-shadow: 0 0 0 2px var(--brand); }
+  .filters-date-sep { color: var(--text-muted); font-size: .85rem; }
   .filters button {
-    padding: .4rem 1rem; background: var(--brand); color: #fff;
-    border: none; border-radius: 5px; cursor: pointer; font-size: .9rem;
+    padding: .55rem 1.15rem; background: var(--brand); color: #fff;
+    border: none; border-radius: var(--radius-pill); cursor: pointer; font-size: .9rem; font-weight: 600;
   }
   .filters button::before { content: '⌕  '; }
   .filters button:hover { background: var(--brand-dark); }
@@ -119,33 +201,39 @@
   .ac-wrap { position: relative; min-width: 120px; }
   .ac-wrap input { min-width: 0; width: 100%; }
   .ac-dropdown {
-    position: absolute; top: 100%; left: 0; right: 0; margin-top: 2px;
-    background: #fff; border: 1.5px solid #d1d5db; border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0,0,0,.1);
+    position: absolute; top: 100%; left: 0; right: 0; margin-top: 6px;
+    background: #fff; border-radius: var(--radius-sm);
+    border: 1px solid rgb(209, 205, 190);
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, .10),
+      0 10px 20px -5px rgba(0, 0, 0, .07);
     max-height: 13.5rem; overflow-y: auto; z-index: 50;
   }
   .ac-item {
     padding: .45rem .65rem; cursor: pointer; font-size: .9rem;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .ac-item + .ac-item { border-top: 1px solid rgb(232, 229, 220); }
   .ac-item:hover { background: var(--brand-tint); color: var(--brand); }
 
   /* Table */
   .table-wrap {
-    background: #fff; border-radius: 8px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.06); overflow-x: auto;
+    background: #fff; border-radius: var(--radius-md);
+    border: 1px solid var(--border); overflow-x: auto;
+    box-shadow: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
   }
-  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
   th {
-    background: #f9fafb; text-align: left; padding: .6rem .8rem;
-    border-bottom: 2px solid #e5e7eb; white-space: nowrap;
+    background: transparent; text-align: left; padding: .75rem .9rem;
+    border-bottom: 1px solid #E8E5DC; white-space: nowrap;
+    font-size: .8rem; font-weight: 600; color: var(--text-muted);
   }
-  td { padding: .6rem .75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  td { padding: .8rem .9rem; border-bottom: 1px solid var(--border); vertical-align: middle; text-align: left; }
+  th.col-score, td.col-score, th.col-url, td.col-url { text-align: center; }
   tr:last-child td { border-bottom: none; }
-  tbody tr:nth-child(even) td { background: #f8fafc; }
-  tr:hover td { background: #f9fafb; }
+  tr:hover td { background: rgb(245, 243, 238); }
   tr.clickable { cursor: pointer; }
-  tr.clickable:active td { background: #eff6ff; }
+  tr.clickable:active td { background: var(--brand-tint); }
 
   /* Modal */
   .modal-overlay {
@@ -154,7 +242,7 @@
     z-index: 1000; padding: 1.5rem;
   }
   .modal-box {
-    background: #fff; border-radius: 12px;
+    background: #fff; border-radius: var(--radius-md); box-shadow: var(--shadow-3);
     width: 100%; max-width: 560px; max-height: 85vh;
     display: flex; flex-direction: column;
   }
@@ -164,19 +252,19 @@
   }
   .modal-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 1rem 1.25rem .75rem; border-bottom: 1px solid #e5e7eb;
+    padding: 1rem 1.25rem .75rem; border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
   .modal-header strong { font-size: 1rem; }
   .modal-close {
-    background: #f3f4f6; border: none; border-radius: 50%;
+    background: var(--fill); border: none; border-radius: 50%;
     width: 32px; height: 32px; font-size: 1rem; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
   }
   .modal-meta {
-    padding: .6rem 1.25rem; font-size: .8rem; color: #6b7280;
-    border-bottom: 1px solid #f0f0f0; flex-shrink: 0;
+    padding: .6rem 1.25rem; font-size: .8rem; color: var(--text-muted);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
   .modal-body {
     padding: 1rem 1.25rem 1.5rem; overflow-y: auto;
@@ -189,7 +277,7 @@
   #idle-countdown { font-weight: 600; }
   #idle-stay-btn {
     margin-top: 1rem; padding: .6rem 1.5rem; background: var(--brand); color: #fff;
-    border: none; border-radius: 8px; font-size: .95rem; cursor: pointer;
+    border: none; border-radius: var(--radius-pill); font-size: .95rem; cursor: pointer;
   }
   #idle-stay-btn:hover { background: var(--brand-dark); }
 
@@ -197,29 +285,49 @@
   .modal-section h4 { font-size: .75rem; text-transform: uppercase; color: #6b7280; margin-bottom: .25rem; }
   .sentiment-badge { display: inline-block; padding: .2rem .6rem; border-radius: 999px; font-size: .8rem; background: #e2e8f0; }
 
-  .score { font-weight: 600; }
-  .score.high { color: #16a34a; }
-  .score.mid  { color: #d97706; }
-  .score.low  { color: #dc2626; }
-  .btn-del {
-    padding: .25rem .6rem; background: #fee2e2; color: #dc2626;
-    border: 1px solid #fca5a5; border-radius: 4px; cursor: pointer;
-    font-size: .8rem;
+  .score {
+    font-weight: 700; font-variant-numeric: tabular-nums;
+    display: inline-block; padding: .15rem .55rem; border-radius: var(--radius-pill);
   }
-  .btn-del:hover { background: #fecaca; }
+  .score.high    { color: var(--positive); background: #D1FAE5; }
+  .score.mid     { color: var(--gold-dark); background: #FEF3C7; }
+  .score.low     { color: var(--negative); background: #FEE2E2; }
+  .score.neutral { color: #6b7280; background: #e5e7eb; }
+  .type-badge {
+    display: inline-block; padding: .15rem .55rem; border-radius: var(--radius-pill);
+    font-size: .82rem; background: #E8E5DC; color: var(--brand);
+  }
+  .btn-del {
+    padding: .3rem .5rem; background: transparent; color: var(--negative);
+    border: none; border-radius: var(--radius-pill); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity .15s, background .15s;
+  }
+  tr:hover .btn-del, .btn-del:focus-visible { opacity: 1; }
+  .btn-del:hover { background: #fee2e2; }
+  .btn-del svg { width: 18px; height: 18px; display: block; }
+  .url-link { display: inline-flex; text-decoration: none; color: var(--brand); cursor: pointer; }
+  .url-link:hover { color: var(--brand-dark); text-decoration: underline; }
+  .url-link svg { width: 32px; height: 32px; display: block; }
   .empty { text-align: center; color: #9ca3af; padding: 2rem; }
-  .analysis-summary { max-width: 320px; font-size: .83rem; color: #374151; }
+  .analysis-summary { max-width: 320px; font-size: .83rem; color: #374151; line-height: 1.4; }
+  .sentiment-pozytywny { background: #e3f3e9; color: var(--positive); }
+  .sentiment-negatywny { background: #fbe5e3; color: var(--negative); }
+  .sentiment-neutralny { background: var(--gold); color: var(--brand-dark); }
 
   /* ── Responsive ────────────────────────────────────────────────── */
   @media (max-width: 640px) {
     #dashboard-screen { padding: .75rem; }
 
-    .topbar { flex-wrap: wrap; gap: .4rem; }
-    .topbar h1 { flex: 1 1 100%; }
-    .profile-menu-wrap { margin-left: auto; }
+    .topbar { margin: -.75rem -.75rem 1.5rem; padding: .75rem; flex-wrap: wrap; gap: .3rem 0; align-items: center; }
+    .topbar h1 { flex: 1 1 auto; order: 1; }
+    .profile-menu-wrap { margin-left: auto; order: 2; flex: 0 0 auto; }
 
     .filters { gap: .4rem; }
     .filters input, .filters select, .filters .ac-wrap { flex: 1 1 calc(50% - .2rem); min-width: 0; }
+    .filters-date-group { flex: 1 1 100%; flex-wrap: wrap; padding: .5rem .6rem; }
+    .filters-date-group input { min-width: 0; flex: 1 1 100%; width: 100%; }
+    .filters-date-sep { flex: 1 1 100%; text-align: center; }
     .filters button { width: 100%; }
 
     /* Mobile: chowamy Score i Analizę — zostaje Data/Spółka/Ticker/Typ + Usuń (admin) */
@@ -233,22 +341,47 @@
   /* Pagination */
   .pagination-bar {
     display: flex; align-items: center; justify-content: center; gap: 1rem;
-    padding: .75rem; background: #fff; border-top: 1px solid #e5e7eb;
-    border-radius: 0 0 8px 8px;
+    padding: .85rem; background: #fff; border-top: 1px solid var(--border);
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
   }
   .pagination-bar button {
-    padding: .4rem 1rem; background: #e5e7eb; border: none;
-    border-radius: 999px; cursor: pointer; font-size: .9rem; font-weight: 500;
+    padding: .45rem 1.1rem; background: #fff; border: 1px solid #D1CDBE; color: var(--brand);
+    border-radius: var(--radius-pill); cursor: pointer; font-size: .9rem; font-weight: 600;
   }
-  .pagination-bar button:hover:not(:disabled) { background: #d1d5db; }
-  .pagination-bar button:disabled { opacity: .35; cursor: not-allowed; }
-  #page-label, #xp-page-label { font-size: .875rem; color: #64748b; font-weight: 500; }
+  .pagination-bar button:hover:not(:disabled) { background: var(--brand-tint); }
+  .pagination-bar button:disabled {
+    cursor: not-allowed; color: #9CA3AF; border-color: #E5E7EB;
+  }
+  #page-label, #xp-page-label { font-size: .875rem; color: var(--text-muted); font-weight: 500; }
+
+  /* View headers */
+  .view-header { padding-top: 24px; }
+  .view-header h2 { font-size: 1.15rem; color: var(--brand); font-weight: 700; margin-bottom: 16px; }
+  .view-header-meta { font-size: .85rem; font-weight: 400; color: var(--text-muted); }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+    background: var(--brand-dark); color: #fff; padding: .65rem 1.25rem;
+    border-radius: var(--radius-pill); font-size: .88rem; box-shadow: var(--shadow-2);
+    z-index: 300; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none;
+  }
+  .toast.toast-show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
 
   /* Treemap */
   .treemap-wallets { display: flex; gap: 1rem; }
-  .treemap-wallet { flex: 1 1 50%; min-width: 0; }
-  .treemap-wallet h3 { margin: 0 0 .5rem; font-size: 1rem; color: var(--brand); }
-  .treemap-container { position: relative; min-height: 600px; background: #fff; border-radius: 8px; }
+  .treemap-wallet {
+    flex: 1 1 50%; min-width: 0; background: #fff; border-radius: var(--radius-md);
+    border: 1px solid var(--border); box-shadow: 0 1px 4px rgba(0,0,0,.08); padding: 1rem;
+  }
+  .treemap-wallet h3 { margin: 0 0 .75rem; font-size: 1rem; color: var(--brand); }
+  .treemap-container { position: relative; min-height: 600px; background: #fff; }
+  .treemap-legend {
+    margin-top: 1rem; font-size: .8rem; color: var(--text-muted);
+    background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md);
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    padding: .75rem 1rem;
+  }
   @media (max-width: 768px) {
     .treemap-wallets { flex-direction: column; }
   }
@@ -256,15 +389,16 @@
     position: absolute; box-sizing: border-box; overflow: hidden;
     border: 1px solid rgba(255,255,255,.6); padding: .25rem .4rem;
     color: #fff; font-size: .8rem; touch-action: manipulation;
+    font-variant-numeric: tabular-nums;
   }
   .treemap-cell .tc-ticker,
   .treemap-cell .tc-detail { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .treemap-cell .tc-ticker { font-weight: 600; }
   .treemap-cell .tc-detail { font-size: .75rem; opacity: .9; }
-  .treemap-cell.positive { background: #16a34a; }
-  .treemap-cell.negative { background: #dc2626; }
-  .treemap-cell.neutral  { background: #9ca3af; }
-  .treemap-cell.no-data  { background: #9ca3af; border: 1px dashed #4b5563; }
+  .treemap-cell.positive { background: var(--positive); }
+  .treemap-cell.negative { background: var(--negative); }
+  .treemap-cell.neutral  { background: var(--neutral-warm); }
+  .treemap-cell.no-data  { background: var(--neutral-warm); border: 1px dashed rgba(255,255,255,.7); }
   .treemap-cell:hover { outline: 3px solid #fff; outline-offset: -3px; cursor: pointer; }
   .tc-popup-backdrop {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5);
@@ -272,43 +406,43 @@
   }
   .tc-popup-backdrop.tc-popup-open { display: flex; }
   .tc-popup {
-    position: relative; background: #fff; border-radius: 8px; padding: 1.5rem;
-    min-width: 280px; max-width: 90vw; box-shadow: 0 4px 24px rgba(0,0,0,.3);
+    position: relative; background: #fff; border-radius: var(--radius-md); padding: 1.5rem;
+    min-width: 280px; max-width: 90vw; box-shadow: var(--shadow-3);
   }
   .tc-popup-close {
     position: absolute; top: .4rem; right: .6rem; background: none; border: none;
     font-size: 1.4rem; line-height: 1; cursor: pointer; color: #4b5563; padding: .25rem;
   }
   .tc-popup h3 { margin-bottom: .75rem; padding-right: 1.5rem; }
-  .tc-popup-line { margin-bottom: .4rem; font-size: .9rem; }
+  .tc-popup-line { margin-bottom: .4rem; font-size: .9rem; font-variant-numeric: tabular-nums; }
   .tc-popup-btn {
-    margin-top: 1rem; padding: .5rem 1rem; background: var(--brand); color: #fff;
-    border: none; border-radius: 6px; cursor: pointer; font-size: .9rem;
+    margin-top: 1rem; padding: .55rem 1.2rem; background: var(--brand); color: #fff;
+    border: none; border-radius: var(--radius-pill); cursor: pointer; font-size: .9rem; font-weight: 600;
   }
   .tc-popup-btn:hover { background: var(--brand-dark); }
 
   /* My Wallet */
   #wl-add-form {
-    display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
-    background: #fff; padding: 1rem; border-radius: 8px;
-    margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
+    background: #fff; padding: 1rem; border-radius: var(--radius-md);
+    margin-bottom: 1rem; border: 1px solid var(--border);
   }
   #wl-add-form .ac-wrap { flex: 0 1 220px; }
-  #wl-add-form-or { color: #9ca3af; font-size: .85rem; }
+  #wl-add-form-or { color: var(--text-muted); font-size: .85rem; }
   #wl-add-btn {
-    padding: .4rem 1rem; background: var(--brand); color: #fff;
-    border: none; border-radius: 5px; cursor: pointer; font-size: .9rem;
+    padding: .55rem 1.15rem; background: var(--brand); color: #fff;
+    border: none; border-radius: var(--radius-pill); cursor: pointer; font-size: .9rem; font-weight: 600;
   }
   #wl-add-btn:hover { background: var(--brand-dark); }
-  #wl-error { color: #dc2626; font-size: .85rem; margin-bottom: .75rem; }
+  #wl-error { color: var(--negative); font-size: .85rem; margin-bottom: .75rem; }
   .wl-tickers-list { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
   .wl-chip {
     display: inline-flex; align-items: center; gap: .4rem;
-    background: var(--brand-tint); border: 1px solid #c2cdd6; border-radius: 999px;
-    padding: .3rem .7rem; font-size: .85rem;
+    background: var(--brand-tint); border-radius: var(--radius-pill);
+    padding: .35rem .8rem; font-size: .85rem;
   }
   .wl-remove-btn {
-    background: none; border: none; color: #dc2626; cursor: pointer;
+    background: none; border: none; color: var(--negative); cursor: pointer;
     font-size: 1rem; line-height: 1; padding: 0;
   }
   .wl-remove-btn:hover { color: #b91c1c; }
@@ -322,7 +456,7 @@
     <img class="login-banner" src="/static/img/faro-banner.jpg" alt="">
     <div class="login-box-body">
       <div class="login-brand">
-        <p>Analizator komunikatów ESPI / EBI</p>
+        <p>Jasne treści komunikatów ESPI/EBI</p>
       </div>
       <label for="api-key-input">Klucz API</label>
       <input id="api-key-input" type="password" placeholder="Wpisz klucz API" autocomplete="current-password">
@@ -336,19 +470,27 @@
 <!-- DASHBOARD -->
 <div id="dashboard-screen">
   <div class="topbar">
-    <h1 id="topbar-home">Faro</h1>
+    <h1 id="topbar-home" aria-label="Faro"><img class="topbar-logo" src="/static/img/faro-mark.png" alt="" aria-hidden="true"><span class="topbar-wordmark" aria-hidden="true">aro</span></h1>
+    <nav class="topbar-nav" id="topbar-nav" aria-label="Główna nawigacja">
+      <button type="button" class="nav-item" id="nav-announcements-btn" data-view="announcements"><svg class="nav-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+  <path stroke-linecap="round" stroke-linejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 0 1-2.25 2.25M16.5 7.5V18a2.25 2.25 0 0 0 2.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 0 0 2.25 2.25h13.5M6 7.5h3v3H6v-3Z" />
+</svg> Ogłoszenia</button>
+      <button type="button" class="nav-item" id="nav-my-wallet-btn" data-view="my-wallet"><svg class="nav-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="m480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 22t81 62q34-40 81-62t99-22q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q771-395 705-329T538-172l-58 52Zm0-108q96-86 158-147.5t98-107q36-45.5 50-81t14-70.5q0-60-40-100t-100-40q-47 0-87 26.5T518-680h-76q-15-41-55-67.5T300-774q-60 0-100 40t-40 100q0 35 14 70.5t50 81q36 45.5 98 107T480-228Zm0-273Z"/></svg> Obserwowane</button>
+    </nav>
     <div class="profile-menu-wrap">
       <button id="profile-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="profile-menu">
-        <span id="role-badge"></span> ☰
+        <span id="role-icon" class="role-icon" aria-hidden="true"></span>
+        <span id="role-badge" class="role-badge sr-only"></span>
+        <span class="chevron-icon" aria-hidden="true"></span>
       </button>
       <ul id="profile-menu" class="profile-menu" role="menu" hidden>
-        <li role="none"><button id="my-wallet-btn" role="menuitem">Obserwowane</button></li>
         <li role="none"><button id="logout-btn" role="menuitem">Wyloguj</button></li>
       </ul>
     </div>
   </div>
 
   <div id="announcements-view">
+  <div class="view-header"><h2>Ogłoszenia</h2></div>
   <form class="filters" id="filter-form">
     <div class="ac-wrap">
       <input type="text" id="f-ticker" placeholder="Ticker (np. PKO)" autocomplete="off">
@@ -365,8 +507,11 @@
       <div id="ac-event-type" class="ac-dropdown" style="display:none"></div>
     </div>
     <datalist id="dl-event-types"></datalist>
-    <input type="text" id="f-from" placeholder="Analizy od" class="date-toggle">
-    <input type="text" id="f-to"   placeholder="Analizy do" class="date-toggle">
+    <div class="filters-date-group">
+      <input type="text" id="f-from" placeholder="Analizy od" class="date-toggle">
+      <span class="filters-date-sep">–</span>
+      <input type="text" id="f-to"   placeholder="Analizy do" class="date-toggle">
+    </div>
     <select id="f-page-size" aria-label="Rozmiar strony"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
     <button type="submit">Filtruj</button>
   </form>
@@ -417,6 +562,9 @@
   <span>Ta strona używa sessionStorage do przechowywania klucza sesji. Nie stosujemy plików cookie ani śledzenia.</span>
   <button id="gdpr-accept">Rozumiem</button>
 </div>
+
+<!-- TOAST -->
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="/static/js/treemap-layout.js"></script>
 <script>
@@ -642,17 +790,28 @@ $('logout-btn').addEventListener('click', () => {
   doLogout();
 });
 
-$('my-wallet-btn').addEventListener('click', () => _navigateToView('my-wallet'));
+$('nav-announcements-btn').addEventListener('click', () => _navigateToView('announcements'));
+$('nav-my-wallet-btn').addEventListener('click', () => _navigateToView('my-wallet'));
+
+// Highlights the nav-item matching the active view; called whenever a view
+// becomes visible (navigate or URL restore) so the topbar stays in sync.
+function _setActiveNavItem(view) {
+  $('topbar-nav').querySelectorAll('.nav-item').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === view);
+  });
+}
 
 // ── profile menu ──────────────────────────────────────────────────────
 function openProfileMenu() {
   $('profile-menu').hidden = false;
   $('profile-menu-btn').setAttribute('aria-expanded', 'true');
+  $('profile-menu-btn').closest('.profile-menu-wrap').dataset.open = 'true';
   $('logout-btn').focus();
 }
 function closeProfileMenu() {
   $('profile-menu').hidden = true;
   $('profile-menu-btn').setAttribute('aria-expanded', 'false');
+  $('profile-menu-btn').closest('.profile-menu-wrap').dataset.open = 'false';
   $('profile-menu-btn').focus();
 }
 $('profile-menu-btn').addEventListener('click', () => {
@@ -691,12 +850,13 @@ $('f-page-size').addEventListener('change', () => {
 });
 
 $('btn-prev').addEventListener('click', () => {
-  if (currentPage > 1) { currentPage--; fetchAnnouncements(); }
+  if (currentPage > 1) { currentPage--; fetchAnnouncements(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 });
 
 $('btn-next').addEventListener('click', () => {
   currentPage++;
   fetchAnnouncements();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
 // ── views ──────────────────────────────────────────────────────────────
@@ -710,10 +870,16 @@ function showLoginError() {
   $('login-error').style.display = 'block';
 }
 
+const _ROLE_ICONS = {
+  admin: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M380.5-480.5Q340-521 340-580t40.5-99.5Q421-720 480-720t99.5 40.5Q620-639 620-580t-40.5 99.5Q539-440 480-440t-99.5-40.5ZM523-537q17-17 17-43t-17-43q-17-17-43-17t-43 17q-17 17-17 43t17 43q17 17 43 17t43-17ZM480-80q-139-35-229.5-159.5T160-516v-244l320-120 320 120v244q0 152-90.5 276.5T480-80Zm0-400Zm0-315-240 90v189q0 54 15 105t41 96q42-21 88-33t96-12q50 0 96 12t88 33q26-45 41-96t15-105v-189l-240-90Zm-70 523q-34 8-65 22 29 30 63 52t72 34q38-12 72-34t63-52q-31-14-65-22t-70-8q-36 0-70 8Z"/></svg>',
+  user: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 15H7a4 4 0 0 0-4 4v2"/><path d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/><circle cx="10" cy="7" r="4"/></svg>',
+};
+
 function showDashboard(r) {
   $('login-screen').style.display    = 'none';
   $('dashboard-screen').style.display = 'block';
-  $('role-badge').textContent = r === 'admin' ? '👤 admin' : '👤 user';
+  $('role-badge').textContent = r === 'admin' ? 'Admin' : 'Użytkownik';
+  $('role-icon').innerHTML = r === 'admin' ? _ROLE_ICONS.admin : _ROLE_ICONS.user;
   $('data-table').classList.toggle('admin-table', r === 'admin');
   renderHeaders(r);
   injectAdminOnlyChrome(r);
@@ -723,6 +889,8 @@ function showDashboard(r) {
 }
 
 // ── table headers ──────────────────────────────────────────────────────
+const _SRC_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="m242-246-42-42 412-412H234v-60h480v480h-60v-378L242-246Z"/></svg>';
+const _DEL_ICON = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>';
 const _ADMIN_COLS = [
   { label: 'Data',    cls: '' },
   { label: 'Spółka',  cls: '' },
@@ -730,7 +898,7 @@ const _ADMIN_COLS = [
   { label: 'Typ',     cls: '' },
   { label: 'Score',   cls: 'col-score' },
   { label: 'Analiza', cls: 'col-analysis' },
-  { label: 'URL',     cls: 'col-url' },
+  { label: 'Źródło',  cls: 'col-url' },
   { label: '',        cls: '' },
 ];
 const _USER_COLS = [
@@ -756,6 +924,7 @@ let _xHistoryViewBuilt = false;
 
 function _buildXHistoryViewContent(view) {
   view.innerHTML = `
+    <div class="view-header"><h2>Historia postów X</h2></div>
     <form class="filters" id="xp-filter-form">
       <select id="xp-f-window" aria-label="Okno">
         <option value="">Wszystkie okna</option>
@@ -771,8 +940,11 @@ function _buildXHistoryViewContent(view) {
         <option value="partial">Częściowy</option>
       </select>
       <input type="text" id="xp-f-post-text" placeholder="Treść posta" autocomplete="off">
-      <input type="text" id="xp-f-from" placeholder="Od" class="date-toggle">
-      <input type="text" id="xp-f-to"   placeholder="Do"  class="date-toggle">
+      <div class="filters-date-group">
+        <input type="text" id="xp-f-from" placeholder="Od" class="date-toggle">
+        <span class="filters-date-sep">–</span>
+        <input type="text" id="xp-f-to"   placeholder="Do"  class="date-toggle">
+      </div>
       <select id="xp-f-page-size" aria-label="Rozmiar strony"><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select>
       <button type="submit">Filtruj</button>
     </form>
@@ -800,36 +972,41 @@ function _buildXHistoryViewContent(view) {
     fetchXPosts();
   });
   $('xp-btn-prev').addEventListener('click', () => {
-    if (xpPage > 1) { xpPage--; fetchXPosts(); }
+    if (xpPage > 1) { xpPage--; fetchXPosts(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   });
   $('xp-btn-next').addEventListener('click', () => {
     xpPage++;
     fetchXPosts();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
   view.querySelectorAll('.date-toggle').forEach(bindDateToggle);
 }
 
 function injectAdminOnlyChrome(r) {
   const existingBtn  = $('x-history-btn');
-  if (existingBtn) existingBtn.closest('li').remove();
+  if (existingBtn) existingBtn.remove();
   const existingView = $('x-history-view');
   if (existingView) existingView.remove();
   const existingTreemapBtn = $('treemap-btn');
-  if (existingTreemapBtn) existingTreemapBtn.closest('li').remove();
+  if (existingTreemapBtn) existingTreemapBtn.remove();
   const existingTreemapView = $('treemap-view');
   if (existingTreemapView) existingTreemapView.remove();
 
   if (r !== 'admin') return;
 
-  const profileMenu  = $('profile-menu');
-  const logoutLi     = $('logout-btn') && $('logout-btn').closest('li');
+  const topbarNav    = $('topbar-nav');
   const announceView = $('announcements-view');
-  if (!profileMenu || !logoutLi || !announceView) return;
+  if (!topbarNav || !announceView) return;
 
-  const menuItem = document.createElement('li');
-  menuItem.setAttribute('role', 'none');
-  menuItem.innerHTML = '<button id="x-history-btn" role="menuitem">Historia postów X</button>';
-  profileMenu.insertBefore(menuItem, logoutLi);
+  const xHistoryBtn = document.createElement('button');
+  xHistoryBtn.type = 'button';
+  xHistoryBtn.id = 'x-history-btn';
+  xHistoryBtn.className = 'nav-item';
+  xHistoryBtn.dataset.view = 'x-history';
+  xHistoryBtn.innerHTML = `<svg class="nav-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+  <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+</svg> Historia postów X`;
+  topbarNav.appendChild(xHistoryBtn);
 
   const view = document.createElement('div');
   view.id = 'x-history-view';
@@ -839,15 +1016,19 @@ function injectAdminOnlyChrome(r) {
 
   $('x-history-btn').addEventListener('click', () => _navigateToView('x-history'));
 
-  const treemapItem = document.createElement('li');
-  treemapItem.setAttribute('role', 'none');
-  treemapItem.innerHTML = '<button id="treemap-btn" role="menuitem">Treemapa portfela</button>';
-  profileMenu.insertBefore(treemapItem, logoutLi);
+  const treemapBtn = document.createElement('button');
+  treemapBtn.type = 'button';
+  treemapBtn.id = 'treemap-btn';
+  treemapBtn.className = 'nav-item';
+  treemapBtn.dataset.view = 'treemap';
+  treemapBtn.innerHTML = `<svg class="nav-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M120-200v-240h320v240H120Zm400 0v-240h320v240H520Zm-320-80h160v-80H200v80Zm400 0h160v-80H600v80ZM120-520v-240h320v240H120Zm400 0v-240h320v240H520Zm-320-80h160v-80H200v80Zm80 280Zm400 0ZM280-640Z"/></svg> Treemapa portfela`;
+  topbarNav.appendChild(treemapBtn);
 
   const treemapView = document.createElement('div');
   treemapView.id = 'treemap-view';
   treemapView.style.display = 'none';
   treemapView.innerHTML = `
+    <div class="view-header"><h2>Treemapa portfela <span id="treemap-as-of" class="view-header-meta"></span></h2></div>
     <div class="treemap-wallets">
       <div class="treemap-wallet">
         <h3>Portfel główny</h3>
@@ -857,6 +1038,11 @@ function injectAdminOnlyChrome(r) {
         <h3>IKZE</h3>
         <div id="treemap-ikze" class="treemap-container"></div>
       </div>
+    </div>
+    <div class="treemap-legend">
+      <strong>D/D</strong> — zmiana dzienna wartości pozycji ·
+      <strong>Total</strong> — udział w portfelu i wartość pozycji ·
+      <strong>Zakup</strong> — wynik od momentu zakupu
     </div>
     <div id="treemap-popup-backdrop" class="tc-popup-backdrop">
       <div class="tc-popup" role="dialog" aria-modal="true" aria-labelledby="tc-popup-ticker">
@@ -926,6 +1112,7 @@ function showAnnouncementsView() {
   if (tView) tView.style.display = 'none';
   $('my-wallet-view').style.display = 'none';
   stopTreemapResizeTracking();
+  _setActiveNavItem('announcements');
 }
 
 // DOM-only half of showXHistoryView() — split out so _applyUrlState() can
@@ -944,6 +1131,7 @@ function _showXHistoryViewDom() {
   $('my-wallet-view').style.display = 'none';
   stopTreemapResizeTracking();
   closeProfileMenu();
+  _setActiveNavItem('x-history');
 }
 
 function showXHistoryView(push = true) {
@@ -957,6 +1145,7 @@ let _myWalletViewBuilt = false;
 
 function _buildMyWalletViewContent(view) {
   view.innerHTML = `
+    <div class="view-header"><h2>Obserwowane</h2></div>
     <form id="wl-add-form">
       <div class="ac-wrap">
         <input type="text" id="wl-ticker-input" placeholder="Ticker (np. PKO)" autocomplete="off">
@@ -997,11 +1186,12 @@ function _buildMyWalletViewContent(view) {
     addWatchlistTicker();
   });
   $('wl-btn-prev').addEventListener('click', () => {
-    if (wlPage > 1) { wlPage--; fetchMyWalletAnnouncements(); }
+    if (wlPage > 1) { wlPage--; fetchMyWalletAnnouncements(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   });
   $('wl-btn-next').addEventListener('click', () => {
     wlPage++;
     fetchMyWalletAnnouncements();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 }
 
@@ -1019,6 +1209,7 @@ function _showMyWalletViewDom() {
   view.style.display = '';
   stopTreemapResizeTracking();
   closeProfileMenu();
+  _setActiveNavItem('my-wallet');
 }
 
 function showMyWalletView(push = true) {
@@ -1035,6 +1226,7 @@ function showTreemapView() {
   closeProfileMenu();
   fetchTreemap();
   startTreemapResizeTracking();
+  _setActiveNavItem('treemap');
 }
 
 // ── routing ────────────────────────────────────────────────────────────
@@ -1372,6 +1564,7 @@ async function addWatchlistTicker() {
     wlPage = 1;
     await fetchWatchlistTickers();
     await fetchMyWalletAnnouncements();
+    showToast(`Dodano ${ticker} do obserwowanych`);
   } catch (e) {
     $('wl-error').textContent = 'Błąd dodawania tickera.';
     $('wl-error').style.display = 'block';
@@ -1407,7 +1600,7 @@ const _X_HISTORY_COLS = [
   { label: 'Okno', cls: '' },
   { label: 'Status', cls: '' },
   { label: 'Post ID', cls: 'col-post-id' },
-  { label: 'Tweets ID', cls: 'col-tweet-ids' },
+  { label: 'Tweety', cls: 'col-tweet-ids' },
   { label: 'Próby', cls: 'col-attempts' },
   { label: 'Treść', cls: '' },
 ];
@@ -1434,6 +1627,11 @@ function renderXPostsTable(data) {
       const firstLine = row.post_text.split('\n\n')[0].trim();
       preview = firstLine.length > 100 ? firstLine.slice(0, 100) + '…' : firstLine;
     }
+    const postIdShort = row.x_post_id ? row.x_post_id.slice(0, 8) : '—';
+    const tweetIdList = row.tweet_ids ? row.tweet_ids.split(',').filter(Boolean) : [];
+    const tweetCountText = tweetIdList.length
+      ? `${tweetIdList.length} ${tweetIdList.length === 1 ? 'tweet' : 'tweetów'}`
+      : '—';
 
     const modalAttrs = `data-kind="xpost" data-window="${esc(windowLabel)}" data-date="${esc(date)}" `
       + `data-status="${esc(statusLabel)}" data-post-id="${esc(row.x_post_id || '')}" `
@@ -1444,8 +1642,8 @@ function renderXPostsTable(data) {
       <td>${date}</td>
       <td>${esc(windowLabel)}</td>
       <td>${esc(statusLabel)}</td>
-      <td class="col-post-id">${esc(row.x_post_id || '—')}</td>
-      <td class="col-tweet-ids">${esc(row.tweet_ids || '—')}</td>
+      <td class="col-post-id" title="${esc(row.x_post_id || '')}">${esc(postIdShort)}</td>
+      <td class="col-tweet-ids">${esc(tweetCountText)}</td>
       <td class="col-attempts">${esc(row.supervisor_attempts != null ? String(row.supervisor_attempts) : '—')}</td>
       <td>${esc(preview)}</td>
     </tr>`;
@@ -1471,6 +1669,14 @@ function _renderTreemapWallets(data) {
   });
 }
 
+function _renderTreemapAsOf(asOf) {
+  const el = $('treemap-as-of');
+  if (!el) return;
+  const [y, m, d] = asOf ? asOf.split('-') : [];
+  const display = (y && m && d) ? `${d}-${m}-${y}` : asOf;
+  el.textContent = asOf ? `(stan na dzień: ${display})` : '';
+}
+
 async function fetchTreemap() {
   try {
     const r = await fetch('/admin/portfolio/treemap', {
@@ -1481,8 +1687,10 @@ async function fetchTreemap() {
     const data = await r.json();
     _treemapData = data;
     _renderTreemapWallets(data);
+    _renderTreemapAsOf(data.as_of);
   } catch (e) {
     _treemapData = null;
+    _renderTreemapAsOf(null);
     _TREEMAP_WALLET_CONTAINERS.forEach(([, containerId]) => {
       $(containerId).innerHTML = `<div class="empty">Błąd ładowania danych</div>`;
     });
@@ -1546,8 +1754,9 @@ function renderTreemap(data, container) {
     }
 
     const style = `left:${cell.x}px;top:${cell.y}px;width:${cell.width}px;height:${cell.height}px`;
+    const tooltip = `${item.ticker}\n${dailyText}\n${shareText}\n${sincePurchaseText}`;
     const attrs = `data-ticker="${esc(item.ticker)}" data-daily="${esc(dailyText)}" `
-      + `data-total="${esc(shareText)}" data-since="${esc(sincePurchaseText)}"`;
+      + `data-total="${esc(shareText)}" data-since="${esc(sincePurchaseText)}" title="${esc(tooltip)}"`;
     return `<div class="treemap-cell ${cls}" style="${style}" ${attrs}>`
       + `<span class="tc-ticker">${esc(item.ticker)}</span>${detail}</div>`;
   }).join('');
@@ -1567,10 +1776,23 @@ function renderTable(data, r, containerId = 'table-body') {
       timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit'
     }) : '—';
-    const score   = row.analysis_score != null ? row.analysis_score.toFixed(2) : '—';
-    const sc      = row.analysis_score >= 0.7 ? 'high' : row.analysis_score >= 0.4 ? 'mid' : 'low';
+    const score   = row.analysis_score != null
+      ? (Number.isInteger(row.analysis_score) ? String(row.analysis_score) : row.analysis_score.toFixed(2))
+      : '—';
+    // analysis_score is an unbounded points total (~20-160, see
+    // src/analyzer.py:_compute_score), not a 0-1 probability — bucket
+    // against that scale, with a neutral grey when no score exists.
+    const sc      = row.analysis_score == null ? 'neutral'
+                  : row.analysis_score >= 90 ? 'high'
+                  : row.analysis_score >= 50 ? 'mid' : 'low';
     const summary = row.structured_analysis?.summary_pl || '';
     const summaryEsc = esc(summary || '—');
+    // The full summary stays in data-analysis for the modal; the table cell
+    // only ever needs a short preview — CSS line-clamp doesn't reliably clip
+    // text inside a <td> across browsers, so truncate the string itself.
+    const summaryPreview = summary.length > 140 ? summary.slice(0, 140).trimEnd() + '…' : summary;
+    const summaryPreviewEsc = esc(summaryPreview || '—');
+    const eventLabel = row.event_type ? (EVENT_TYPE_LABELS[row.event_type] || _toLabel(row.event_type)) : '—';
 
     const modalAttrs = `data-company="${esc(row.company||'')}" data-ticker="${esc(row.ticker||'')}" `
       + `data-date="${esc(date)}" data-event="${esc(row.event_type||'')}" `
@@ -1583,20 +1805,19 @@ function renderTable(data, r, containerId = 'table-body') {
         <td>${date}</td>
         <td>${esc(row.company || '—')}</td>
         <td>${esc(row.ticker || '—')}</td>
-        <td>${esc(row.event_type || '—')}</td>
+        <td><span class="type-badge">${esc(eventLabel)}</span></td>
         <td class="col-score"><span class="score ${sc}">${score}</span></td>
-        <td class="col-analysis analysis-summary">${summaryEsc}</td>
-        <td class="col-url">${(row.url && /^https?:\/\//.test(row.url)) ? `<a href="${esc(row.url)}" target="_blank">link</a>` : (row.url ? esc(row.url) : '—')}</td>
-        <td><button class="btn-del" data-id="${esc(row.announcement_id)}">Usuń</button></td>
+        <td class="col-analysis analysis-summary">${summaryPreviewEsc}</td>
+        <td class="col-url">${(row.url && /^https?:\/\//.test(row.url)) ? `<a class="url-link" href="${esc(row.url)}" target="_blank" title="Otwórz źródło" aria-label="Otwórz źródło">${_SRC_ICON}</a>` : (row.url ? esc(row.url) : '—')}</td>
+        <td><button class="btn-del" data-id="${esc(row.announcement_id)}" title="Usuń ogłoszenie" aria-label="Usuń ogłoszenie">${_DEL_ICON}</button></td>
       </tr>`;
     } else {
-      const eventLabel = row.event_type ? _toLabel(row.event_type) : '—';
       return `<tr class="clickable" ${modalAttrs}>
         <td>${date}</td>
         <td>${esc(row.company || '—')}</td>
         <td>${esc(row.ticker || '—')}</td>
-        <td>${esc(eventLabel)}</td>
-        <td class="col-analysis analysis-summary">${summaryEsc}</td>
+        <td><span class="type-badge">${esc(eventLabel)}</span></td>
+        <td class="col-analysis analysis-summary">${summaryPreviewEsc}</td>
       </tr>`;
     }
   }).join('');
@@ -1693,6 +1914,16 @@ document.addEventListener('keydown', e => {
     if (!$('profile-menu').hidden) closeProfileMenu();
   }
 });
+
+// ── toast ──────────────────────────────────────────────────────────────
+let _toastTimer = null;
+function showToast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.add('toast-show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('toast-show'), 2500);
+}
 
 // ── util ───────────────────────────────────────────────────────────────
 function esc(s) {

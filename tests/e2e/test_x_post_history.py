@@ -14,19 +14,22 @@ def _login(page: Page, base_url: str, key: str = _ADMIN_KEY) -> None:
 
 
 def _open_x_history(page: Page) -> None:
-    page.get_by_role("button", name="admin").click()
-    page.get_by_role("menuitem", name="Historia postów X").click()
+    page.get_by_role("button", name="Historia postów X").click()
 
 
-def test_menu_shows_x_history_above_wyloguj_for_admin(page: Page, live_server_url: str):
+def test_topbar_nav_shows_x_history_and_treemap_for_admin(page: Page, live_server_url: str):
     _login(page, live_server_url)
+    nav_items = page.locator("#topbar-nav .nav-item")
+    expect(nav_items).to_have_count(4)
+    expect(nav_items.nth(0)).to_contain_text("Ogłoszenia")
+    expect(nav_items.nth(1)).to_contain_text("Obserwowane")
+    expect(nav_items.nth(2)).to_contain_text("Historia postów X")
+    expect(nav_items.nth(3)).to_contain_text("Treemapa portfela")
+
     page.get_by_role("button", name="admin").click()
     menu_items = page.get_by_role("menuitem")
-    expect(menu_items).to_have_count(4)
-    expect(menu_items.nth(0)).to_have_text("Obserwowane")
-    expect(menu_items.nth(1)).to_have_text("Historia postów X")
-    expect(menu_items.nth(2)).to_have_text("Treemapa portfela")
-    expect(menu_items.nth(3)).to_have_text("Wyloguj")
+    expect(menu_items).to_have_count(1)
+    expect(menu_items.nth(0)).to_have_text("Wyloguj")
 
 
 def test_clicking_menu_item_renders_x_posts_table(page: Page, live_server_url: str):
@@ -116,7 +119,7 @@ def test_clicking_failed_row_shows_brak_treci_fallback(page: Page, live_server_u
 
 def test_user_role_has_no_x_history_menu_item_or_dom_node(page: Page, live_server_url: str):
     _login(page, live_server_url, key=_USER_KEY)
-    page.get_by_role("button", name="user").click()
+    page.get_by_role("button", name="Użytkownik").click()
 
     expect(page.get_by_role("menuitem", name="Historia postów X")).not_to_be_attached()
     expect(page.locator("#x-history-btn")).not_to_be_attached()
