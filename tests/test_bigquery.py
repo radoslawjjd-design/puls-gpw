@@ -5,11 +5,13 @@ import pytest
 
 from db.bigquery import (
     _COMPANIES_SCHEMA,
+    _COMPANY_DAILY_STATS_SCHEMA,
     _WATCHLIST_SCHEMA,
     _X_POSTS_SCHEMA,
     _build_filter_clauses,
     add_watchlist_ticker,
     create_companies_table_if_not_exists,
+    create_company_daily_stats_table_if_not_exists,
     create_portfolio_snapshots_table_if_not_exists,
     create_watchlist_table_if_not_exists,
     create_x_posts_table_if_not_exists,
@@ -18,9 +20,11 @@ from db.bigquery import (
     get_latest_snapshot_before,
     get_latest_snapshot_for_wallet,
     insert_announcement,
+    insert_company_daily_stats,
     list_announcements_admin,
     list_announcements_for_watchlist,
     list_announcements_user,
+    list_companies_with_hop_info,
     list_distinct_companies,
     list_distinct_tickers,
     list_tickers_missing_from_companies,
@@ -864,3 +868,141 @@ def test_list_tickers_missing_from_companies_empty_result():
     with patch("db.bigquery._get_client", return_value=mock):
         result = list_tickers_missing_from_companies()
     assert result == []
+
+
+# ── company_daily_stats table (PUL-54) ────────────────────────────────────────
+
+def test_company_daily_stats_schema_has_required_columns():
+    """_COMPANY_DAILY_STATS_SCHEMA must define all expected fields with correct modes."""
+    names = {f.name: f for f in _COMPANY_DAILY_STATS_SCHEMA}
+    assert set(names) == {
+        "ticker", "snapshot_date", "kurs_odniesienia", "kurs_otwarcia",
+        "kurs_min", "kurs_max", "wolumen_obrotu", "wartosc_obrotu",
+        "liczba_transakcji", "stopa_zwrotu_1r", "kapitalizacja",
+        "rynek", "system", "fetched_at",
+    }
+    assert names["ticker"].mode == "REQUIRED"
+    assert names["snapshot_date"].mode == "REQUIRED"
+    assert names["fetched_at"].mode == "REQUIRED"
+    assert names["kurs_odniesienia"].mode == "NULLABLE"
+    assert names["wolumen_obrotu"].field_type in ("INTEGER", "INT64")
+    assert names["liczba_transakcji"].field_type in ("INTEGER", "INT64")
+    assert names["snapshot_date"].field_type == "DATE"
+    assert names["fetched_at"].field_type == "TIMESTAMP"
+
+
+def test_create_company_daily_stats_table_creates_with_partitioning_and_clustering():
+    """create_company_daily_stats_table_if_not_exists must set time_partitioning + clustering."""
+    from google.cloud.exceptions import NotFound
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.side_effect = NotFound("missing")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_company_daily_stats_table_if_not_exists()
+
+    assert client.create_table.called
+    created_table = client.create_table.call_args[0][0]
+    assert "company_daily_stats" in str(created_table.reference) or "company_daily_stats" in str(created_table)
+    assert created_table.time_partitioning is not None
+    assert created_table.time_partitioning.field == "snapshot_date"
+    assert created_table.clustering_fields == ["ticker"]
+
+
+def test_create_company_daily_stats_table_no_op_if_exists():
+    """create_company_daily_stats_table_if_not_exists must not call create_table when table exists."""
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.return_value = MagicMock()
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_company_daily_stats_table_if_not_exists()
+
+    assert not client.create_table.called
+
+
+def test_list_companies_with_hop_info_returns_dicts():
+    """list_companies_with_hop_info must return list of dicts with ticker/name/hop_url/isin."""
+    rows = [
+        {"ticker": "ECH", "name": "Echo Investment SA", "hop_url": "https://bankier.pl/echo", "isin": "PLECHPS00019"},
+        {"ticker": "PKO", "name": "PKO Bank Polski SA", "hop_url": None, "isin": "PLPKO0000016"},
+    ]
+    mock = _mock_bq_client_with_rows(rows)
+    with patch("db.bigquery._get_client", return_value=mock):
+        result = list_companies_with_hop_info()
+
+    assert len(result) == 2
+    assert result[0] == {"ticker": "ECH", "name": "Echo Investment SA", "hop_url": "https://bankier.pl/echo", "isin": "PLECHPS00019"}
+    assert result[1] == {"ticker": "PKO", "name": "PKO Bank Polski SA", "hop_url": None, "isin": "PLPKO0000016"}
+    query_str = mock.query.call_args[0][0]
+    assert "companies" in query_str
+    assert "ticker" in query_str and "hop_url" in query_str and "isin" in query_str
+    assert "WHERE" not in query_str
+
+
+def test_list_companies_with_hop_info_empty():
+    """list_companies_with_hop_info must return empty list when companies table is empty."""
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        result = list_companies_with_hop_info()
+    assert result == []
+
+
+def test_insert_company_daily_stats_inserts_with_not_exists_guard():
+    """INSERT must be guarded by WHERE NOT EXISTS on (ticker, snapshot_date)."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        insert_company_daily_stats(
+            ticker="ECH",
+            snapshot_date=date(2026, 6, 26),
+            kurs_odniesienia=8.5,
+            kurs_otwarcia=8.6,
+            kurs_min=8.4,
+            kurs_max=8.7,
+            wolumen_obrotu=12345,
+            wartosc_obrotu=105000.0,
+            liczba_transakcji=42,
+            stopa_zwrotu_1r=0.15,
+            kapitalizacja=500000000.0,
+            rynek="GPW",
+            system="CONT",
+        )
+
+    query_str = client.query.call_args[0][0]
+    job_config = client.query.call_args.kwargs["job_config"]
+    params = {p.name: p.value for p in job_config.query_parameters}
+
+    assert "INSERT INTO" in query_str and "company_daily_stats" in query_str
+    assert "WHERE NOT EXISTS" in query_str
+    assert "ticker = @ticker AND snapshot_date = @snapshot_date" in query_str
+    assert "CURRENT_TIMESTAMP()" in query_str
+    assert "`system`" in query_str
+
+    assert params["ticker"] == "ECH"
+    assert params["snapshot_date"] == date(2026, 6, 26)
+    assert params["kurs_odniesienia"] == 8.5
+    assert params["wolumen_obrotu"] == 12345
+    assert params["liczba_transakcji"] == 42
+    assert params["rynek"] == "GPW"
+    assert params["system"] == "CONT"
+
+
+def test_insert_company_daily_stats_nullable_fields_accepted():
+    """insert_company_daily_stats must accept None for all nullable metric fields."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()):
+        insert_company_daily_stats(
+            ticker="XYZ",
+            snapshot_date=date(2026, 6, 26),
+            kurs_odniesienia=None,
+            kurs_otwarcia=None,
+            kurs_min=None,
+            kurs_max=None,
+            wolumen_obrotu=None,
+            wartosc_obrotu=None,
+            liczba_transakcji=None,
+            stopa_zwrotu_1r=None,
+            kapitalizacja=None,
+            rynek=None,
+            system=None,
+        )

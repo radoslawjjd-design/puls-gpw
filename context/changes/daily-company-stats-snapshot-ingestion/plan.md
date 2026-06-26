@@ -394,9 +394,9 @@ scheduled run onward).
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -k company_daily_stats`
-- [ ] 1.2 Full suite still green: `uv run pytest`
-- [ ] 1.3 Lint passes: `uv run ruff check .`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -k company_daily_stats`
+- [x] 1.2 Full suite still green: `uv run pytest`
+- [x] 1.3 Lint passes: `uv run ruff check .`
 
 ### Phase 2: `src/bankier_metrics.py` — JSON fetch+parse module
 

@@ -1,7 +1,7 @@
 ---
 change_id: daily-company-stats-snapshot-ingestion
 title: Daily company-stats snapshot ingestion (append-only, per-ticker trading data)
-status: plan_reviewed
+status: implementing
 created: 2026-06-25
 updated: 2026-06-25
 archived_at: null
