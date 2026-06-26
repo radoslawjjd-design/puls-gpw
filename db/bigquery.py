@@ -1276,3 +1276,115 @@ def get_processed_ids_since(cutoff: datetime) -> set[str]:
     except Exception as exc:
         raise BigQueryError(f"get_processed_ids_since failed: {exc}") from exc
     return {row.announcement_id for row in rows}
+
+
+_COMPANY_DAILY_STATS_TABLE_NAME = "company_daily_stats"
+
+# Any field added after initial table creation must be NULLABLE — ensure_schema_current()'s
+# additive ALTER TABLE ADD COLUMN path only succeeds for NULLABLE columns in BigQuery.
+_COMPANY_DAILY_STATS_SCHEMA = [
+    bigquery.SchemaField("ticker", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("snapshot_date", "DATE", mode="REQUIRED"),
+    bigquery.SchemaField("kurs_zamkniecia", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("zmiana_procentowa", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("zmiana_kwotowa", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_otwarcia", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_min", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_max", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("wartosc_obrotu", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("liczba_transakcji", "INTEGER", mode="NULLABLE"),
+    bigquery.SchemaField("fetched_at", "TIMESTAMP", mode="REQUIRED"),
+]
+
+
+def create_company_daily_stats_table_if_not_exists() -> None:
+    """Create the company_daily_stats table in BigQuery if it does not already exist.
+
+    Partitioned by snapshot_date (DAY), clustered by ticker.
+    """
+    client = _get_client()
+    table_id = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_COMPANY_DAILY_STATS_SCHEMA)
+        table.time_partitioning = bigquery.TimePartitioning(
+            type_=bigquery.TimePartitioningType.DAY,
+            field="snapshot_date",
+        )
+        table.clustering_fields = ["ticker"]
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_company_daily_stats_schema_current() -> None:
+    """Migrate the company_daily_stats table — add any missing schema columns.
+
+    Thin binding over `ensure_schema_current()`; idempotent and safe to call on
+    every company-stats job startup.
+    """
+    ensure_schema_current(_COMPANY_DAILY_STATS_TABLE_NAME, _COMPANY_DAILY_STATS_SCHEMA)
+
+
+def list_companies_with_hop_info() -> list[dict]:
+    """Return all companies rows as dicts with ticker, name, hop_url, isin.
+
+    No WHERE filter — the missing-hop_url skip+log decision happens in the caller's loop.
+    Raises BigQueryError if the query job fails.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT ticker, name, hop_url, isin
+        FROM `{_table_ref(client, _COMPANIES_TABLE_NAME)}`
+        ORDER BY ticker
+    """
+    try:
+        rows = list(client.query(query).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_companies_with_hop_info failed: {exc}") from exc
+    return [
+        {"ticker": row.ticker, "name": row.name, "hop_url": row.hop_url, "isin": row.isin}
+        for row in rows
+    ]
+
+
+def delete_company_daily_stats_for_date(snapshot_date: date) -> None:
+    """Delete all company_daily_stats rows for snapshot_date.
+
+    Called at job start so a re-run for the same day is always a clean replace.
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    table = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    query = f"DELETE FROM `{table}` WHERE snapshot_date = @snapshot_date"
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date)]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"delete_company_daily_stats_for_date failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"delete_company_daily_stats_for_date failed: {job.errors}")
+    logger.info("delete_company_daily_stats_for_date: deleted rows for %s", snapshot_date)
+
+
+def batch_insert_company_daily_stats(rows: list[dict]) -> None:
+    """Batch-insert company_daily_stats rows via BQ streaming insert (insert_rows_json).
+
+    Each row dict must contain ticker, snapshot_date (YYYY-MM-DD string), fetched_at
+    (ISO timestamp string), and the trading fields. One API call for all rows —
+    orders of magnitude faster than per-row DML queries.
+    Raises BigQueryError if BQ reports any row errors.
+    """
+    if not rows:
+        logger.info("batch_insert_company_daily_stats: no rows to insert")
+        return
+    client = _get_client()
+    table_id = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    errors = client.insert_rows_json(table_id, rows)
+    if errors:
+        raise BigQueryError(f"batch_insert_company_daily_stats failed: {errors}")
+    logger.info("batch_insert_company_daily_stats: inserted %d rows", len(rows))
