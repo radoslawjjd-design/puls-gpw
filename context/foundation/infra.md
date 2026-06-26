@@ -82,7 +82,7 @@ gcloud run jobs create puls-gpw-company-stats \
   --cpu=1 --memory=1Gi \
   --task-timeout=300s
 
-# 2. Utwórz trigger Cloud Scheduler (17:05 Pon–Pt, czas warszawski)
+# 2. Utwórz trigger Cloud Scheduler (co godz. 9:01–17:01, Pon–Pt, czas warszawski)
 gcloud scheduler jobs create http puls-gpw-company-stats-trigger \
   --schedule="1 9-17 * * 1-5" \
   --time-zone="Europe/Warsaw" \
