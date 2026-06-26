@@ -9,9 +9,10 @@ GCP project: `puls-gpw` | Region: `europe-central2` | Service account: `puls-gpw
 | Job | Obraz | CMD | Opis |
 |-----|-------|-----|------|
 | `puls-gpw` | `puls-gpw:<sha>` | `uv run python main.py` | Scraper — pobiera ESPI/EBI z Bankier, parsuje, analizuje przez Gemini, zapisuje do BQ |
-| `puls-gpw-post` | `puls-gpw:latest` | `uv run python post_main.py` | Post generator — pobiera top-N z BQ, generuje wątek X przez Gemini, waliduje supervisorem, wysyła email |
+| `puls-gpw-post` | `puls-gpw:<sha>` | `uv run python post_main.py` | Post generator — pobiera top-N z BQ, generuje wątek X przez Gemini, waliduje supervisorem, wysyła email |
+| `puls-gpw-company-stats` | `puls-gpw:<sha>` | `uv run python company_stats_main.py` | Daily stats snapshot — pobiera dane z Bankier listing pages (GPW + NewConnect), mapuje na companies, zapisuje do company_daily_stats |
 
-Oba joby używają tego samego obrazu Docker z Artifact Registry:
+Wszystkie trzy joby używają tego samego obrazu Docker z Artifact Registry:
 `europe-central2-docker.pkg.dev/puls-gpw/puls-gpw/puls-gpw`
 
 CI/CD (`.github/workflows/deploy.yml`) aktualizuje oba joby przy każdym push na `master`.
@@ -58,8 +59,43 @@ Job `puls-gpw-post` akceptuje `--window {ranek,poludnie,wieczor}`. Bez flagi aut
 | `puls-gpw-post-ranek` | `30 8 * * 1-5` | `puls-gpw-post` | Pon–Pt 08:30 |
 | `puls-gpw-post-poludnie` | `0 13 * * 1-5` | `puls-gpw-post` | Pon–Pt 13:00 |
 | `puls-gpw-post-wieczor` | `30 17 * * 1-5` | `puls-gpw-post` | Pon–Pt 17:30 |
+| `puls-gpw-company-stats-trigger` | `5 17 * * 1-5` | `puls-gpw-company-stats` | Pon–Pt 17:05 (tuż po zamknięciu GPW) |
 
 Wszystkie schedulery używają OAuth z service account `puls-gpw-runner` do wywołania Cloud Run Jobs API.
+
+### One-time provisioning runbook — `puls-gpw-company-stats`
+
+> **HUMAN-ONLY** (per CLAUDE.md). Wykonaj raz przed pierwszym pushiem do `master` z nowym krokiem w `deploy.yml`.
+> CPU/RAM/sekrety/env vars identyczne z istniejącą wspólną konfiguracją — ten job nie wymaga nowych sekretów.
+> Timeout: **300 s** (job działa ~6 s — 2 fetche listing pages + 1 BQ streaming insert; standard budżet w pełni wystarczy).
+
+```bash
+# 1. Utwórz job
+gcloud run jobs create puls-gpw-company-stats \
+  --image=europe-central2-docker.pkg.dev/puls-gpw/puls-gpw/puls-gpw:latest \
+  --command=uv --args="run,--no-dev,python,company_stats_main.py" \
+  --region=europe-central2 \
+  --project=puls-gpw \
+  --service-account=puls-gpw-runner@puls-gpw.iam.gserviceaccount.com \
+  --set-secrets="GEMINI_API_KEY=gemini-api-key:latest,SMTP_HOST=smtp-host:latest,SMTP_PORT=smtp-port:latest,SMTP_USER=smtp-user:latest,SMTP_PASSWORD=smtp-password:latest,OWNER_EMAIL=owner-email:latest" \
+  --set-env-vars="GOOGLE_CLOUD_PROJECT=puls-gpw,BIGQUERY_DATASET=espi_ebi" \
+  --cpu=1 --memory=1Gi \
+  --task-timeout=300s
+
+# 2. Utwórz trigger Cloud Scheduler (17:05 Pon–Pt, czas warszawski)
+gcloud scheduler jobs create http puls-gpw-company-stats-trigger \
+  --schedule="5 17 * * 1-5" \
+  --time-zone="Europe/Warsaw" \
+  --uri="https://europe-central2-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/puls-gpw/jobs/puls-gpw-company-stats:run" \
+  --http-method=POST \
+  --oauth-service-account-email=puls-gpw-runner@puls-gpw.iam.gserviceaccount.com \
+  --location=europe-central2 \
+  --project=puls-gpw
+
+# 3. Weryfikacja
+gcloud run jobs list --region=europe-central2 --project=puls-gpw
+gcloud scheduler jobs list --location=europe-central2 --project=puls-gpw
+```
 
 ---
 

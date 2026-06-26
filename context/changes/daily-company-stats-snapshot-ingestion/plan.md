@@ -456,7 +456,7 @@ scheduled run onward).
 
 #### Automated
 
-- [ ] 4.1 `deploy.yml` is valid YAML and the new step matches the existing job-update steps
+- [x] 4.1 `deploy.yml` is valid YAML and the new step matches the existing job-update steps
 
 #### Manual
 
