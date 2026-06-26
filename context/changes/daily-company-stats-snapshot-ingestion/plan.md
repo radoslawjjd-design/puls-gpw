@@ -394,21 +394,21 @@ scheduled run onward).
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -k company_daily_stats`
-- [x] 1.2 Full suite still green: `uv run pytest`
-- [x] 1.3 Lint passes: `uv run ruff check .`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -k company_daily_stats` — 21aed8d
+- [x] 1.2 Full suite still green: `uv run pytest` — 21aed8d
+- [x] 1.3 Lint passes: `uv run ruff check .` — 21aed8d
 
 ### Phase 2: `src/bankier_metrics.py` — JSON fetch+parse module
 
 #### Automated
 
-- [ ] 2.1 Unit tests pass: `uv run pytest tests/test_bankier_metrics.py`
-- [ ] 2.2 Full suite still green: `uv run pytest`
-- [ ] 2.3 Lint passes: `uv run ruff check .`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_bankier_metrics.py`
+- [x] 2.2 Full suite still green: `uv run pytest`
+- [x] 2.3 Lint passes: `uv run ruff check .`
 
 #### Manual
 
-- [ ] 2.4 Hit the real bankier endpoint for 2-3 live tickers to reconfirm field-name mapping
+- [x] 2.4 Hit the real bankier endpoint for 2-3 live tickers to reconfirm field-name mapping
 
 ### Phase 3: `company_stats_main.py` — Cloud Run Job entrypoint
 

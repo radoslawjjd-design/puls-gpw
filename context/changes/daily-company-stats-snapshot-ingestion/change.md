@@ -3,7 +3,7 @@ change_id: daily-company-stats-snapshot-ingestion
 title: Daily company-stats snapshot ingestion (append-only, per-ticker trading data)
 status: implementing
 created: 2026-06-25
-updated: 2026-06-25
+updated: 2026-06-26
 archived_at: null
 tracking:
   linear: PUL-54

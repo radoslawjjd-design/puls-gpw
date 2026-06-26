@@ -1006,3 +1006,43 @@ def test_insert_company_daily_stats_nullable_fields_accepted():
             rynek=None,
             system=None,
         )
+
+
+def test_insert_company_daily_stats_raises_bigquery_error_on_failure():
+    """insert_company_daily_stats must raise BigQueryError when the BQ query raises."""
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = Exception("simulated BQ failure")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="insert_company_daily_stats failed"):
+            insert_company_daily_stats(
+                ticker="ECH",
+                snapshot_date=date(2026, 6, 26),
+                kurs_odniesienia=None,
+                kurs_otwarcia=None,
+                kurs_min=None,
+                kurs_max=None,
+                wolumen_obrotu=None,
+                wartosc_obrotu=None,
+                liczba_transakcji=None,
+                stopa_zwrotu_1r=None,
+                kapitalizacja=None,
+                rynek=None,
+                system=None,
+            )
+
+
+def test_list_companies_with_hop_info_raises_bigquery_error_on_failure():
+    """list_companies_with_hop_info must raise BigQueryError when the BQ query raises."""
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = Exception("simulated BQ failure")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="list_companies_with_hop_info failed"):
+            list_companies_with_hop_info()
