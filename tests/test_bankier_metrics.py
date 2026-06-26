@@ -103,6 +103,15 @@ def test_fetch_daily_stats_scraper_error_returns_none():
     assert result is None
 
 
+def test_fetch_daily_stats_json_decode_error_returns_none():
+    m = MagicMock()
+    m.json.side_effect = ValueError("bad json")
+    with patch("src.bankier_metrics.get", return_value=m):
+        result = fetch_daily_stats(_ISIN_ECHO, _SYMBOL_ECHO)
+
+    assert result is None
+
+
 def test_fetch_daily_stats_profile_data_missing_returns_none():
     with patch("src.bankier_metrics.get", return_value=_mock_resp({"symbol": "ECHO"})):
         result = fetch_daily_stats(_ISIN_ECHO, _SYMBOL_ECHO)

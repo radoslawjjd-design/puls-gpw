@@ -52,8 +52,13 @@ def fetch_daily_stats(isin: str, symbol: str) -> dict | None:
         logger.warning("fetch_daily_stats: HTTP failed for isin=%s symbol=%s", isin, symbol)
         return None
 
-    data = resp.json()
-    metrics = data.get("profile_data")
+    try:
+        data = resp.json()
+    except (ValueError, AttributeError):
+        logger.warning("fetch_daily_stats: invalid JSON for isin=%s symbol=%s", isin, symbol)
+        return None
+
+    metrics = data.get("profile_data") if isinstance(data, dict) else None
     if metrics is None:
         logger.warning(
             "fetch_daily_stats: profile_data missing in response for isin=%s symbol=%s", isin, symbol
