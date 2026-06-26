@@ -460,11 +460,11 @@ scheduled run onward).
 
 #### Manual
 
-- [ ] 4.2 Confirm current `companies` row count before provisioning, to size
-  `--task-timeout` headroom (plan defaults to 1800s)
-- [ ] 4.3 Human runs the one-time `gcloud run jobs create` (with `--task-timeout=1800s`) +
+- [x] 4.2 Confirm current `companies` row count before provisioning, to size
+  `--task-timeout` headroom (plan defaults to 1800s) — 008baa2 (batch approach: 300s sufficient)
+- [x] 4.3 Human runs the one-time `gcloud run jobs create` (with `--task-timeout=300s`) +
   `gcloud scheduler jobs create http` commands; job and scheduler entry confirmed via
-  `gcloud ... list`
+  `gcloud ... list` — job updated + scheduler `1 9-17 * * 1-5` Europe/Warsaw created
 - [ ] 4.4 Next push to `master` updates the new job's image via CI without erroring
 - [ ] 4.5 First real (or manually triggered) 17:05 run populates `company_daily_stats`; run
   duration checked against the 1800s budget
