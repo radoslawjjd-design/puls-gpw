@@ -402,26 +402,26 @@ scheduled run onward).
 
 #### Automated
 
-- [x] 2.1 Unit tests pass: `uv run pytest tests/test_bankier_metrics.py`
-- [x] 2.2 Full suite still green: `uv run pytest`
-- [x] 2.3 Lint passes: `uv run ruff check .`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_bankier_metrics.py` — 165b143
+- [x] 2.2 Full suite still green: `uv run pytest` — 165b143
+- [x] 2.3 Lint passes: `uv run ruff check .` — 165b143
 
 #### Manual
 
-- [x] 2.4 Hit the real bankier endpoint for 2-3 live tickers to reconfirm field-name mapping
+- [x] 2.4 Hit the real bankier endpoint for 2-3 live tickers to reconfirm field-name mapping — 165b143
 
 ### Phase 3: `company_stats_main.py` — Cloud Run Job entrypoint
 
 #### Automated
 
-- [ ] 3.1 Unit tests pass: `uv run pytest tests/test_company_stats_main.py`
-- [ ] 3.2 Full suite still green: `uv run pytest`
-- [ ] 3.3 Lint passes: `uv run ruff check .`
+- [x] 3.1 Unit tests pass: `uv run pytest tests/test_company_stats_main.py`
+- [x] 3.2 Full suite still green: `uv run pytest`
+- [x] 3.3 Lint passes: `uv run ruff check .`
 
 #### Manual
 
-- [ ] 3.4 Local run against real/sandbox BQ dataset produces sane rows for known tickers
-- [ ] 3.5 A broken `hop_url`/unreachable network for one ticker doesn't stop the rest of the run
+- [x] 3.4 Local run against real/sandbox BQ dataset produces sane rows for known tickers
+- [x] 3.5 A broken `hop_url`/unreachable network for one ticker doesn't stop the rest of the run
 
 ### Phase 4: Deployment wiring
 
