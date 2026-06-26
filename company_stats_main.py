@@ -14,7 +14,6 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 from db.bigquery import (
-    BigQueryError,
     batch_insert_company_daily_stats,
     create_company_daily_stats_table_if_not_exists,
     delete_company_daily_stats_for_date,
@@ -80,6 +79,11 @@ def main() -> None:
                 "fetched_at": fetched_at,
                 **stats,
             })
+
+        if not rows:
+            raise RuntimeError(
+                f"no rows built for {snapshot_date} — aborting to preserve existing data"
+            )
 
         # Delete today's rows first (safe re-run), then batch-insert all at once
         delete_company_daily_stats_for_date(snapshot_date)

@@ -26,6 +26,13 @@ _COMPANY_PKO = {
     "isin": "PLPKOBP00016",
 }
 
+_COMPANY_CDR = {
+    "ticker": "CDR",
+    "name": "CD Projekt",
+    "hop_url": "https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=CDR",
+    "isin": "PLCDN0000017",
+}
+
 
 @pytest.fixture
 def m(monkeypatch):
@@ -82,24 +89,58 @@ def test_happy_path_row_contains_snapshot_date_and_fetched_at(m):
 # ── skip paths ────────────────────────────────────────────────────────────────
 
 def test_missing_hop_url_skips_ticker(m):
+    """Company with no hop_url is skipped; other companies still processed."""
     m["list_co"].return_value = [
-        {"ticker": "NOURL", "name": "X", "hop_url": None, "isin": "PL000000001"}
+        {"ticker": "NOURL", "name": "X", "hop_url": None, "isin": "PL000000001"},
+        _COMPANY_PKO,
     ]
+    # sym called once for PKO (NOURL is skipped before sym)
+
     company_stats_main.main()
+
     rows = m["batch"].call_args[0][0]
-    assert rows == []
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "PKO"
+    m["alert"].assert_not_called()
 
 
 def test_none_symbol_skips_ticker(m):
-    m["sym"].return_value = None
+    """Company with no parseable symbol is skipped; others still processed."""
+    m["list_co"].return_value = [_COMPANY_PKO, _COMPANY_CDR]
+    m["sym"].side_effect = ["PKO", None]  # PKO valid, CDR has no symbol
+
     company_stats_main.main()
-    assert m["batch"].call_args[0][0] == []
+
+    rows = m["batch"].call_args[0][0]
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "PKO"
+    m["alert"].assert_not_called()
 
 
 def test_ticker_not_in_listing_skips(m):
-    m["listing"].side_effect = [{}, {}]
+    """Company whose symbol is absent from the listing is skipped; others processed."""
+    m["list_co"].return_value = [_COMPANY_PKO, _COMPANY_CDR]
+    m["sym"].side_effect = ["PKO", "CDR"]
+    # default fixture listing = {PKO: ...} — CDR is absent
+
     company_stats_main.main()
-    assert m["batch"].call_args[0][0] == []
+
+    rows = m["batch"].call_args[0][0]
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "PKO"
+    m["alert"].assert_not_called()
+
+
+def test_all_companies_skipped_triggers_alert_and_exits(m):
+    """Total scrape failure (rows empty) must alert and exit 1 without deleting."""
+    m["listing"].side_effect = [{}, {}]  # both markets return nothing
+
+    with pytest.raises(SystemExit) as exc_info:
+        company_stats_main.main()
+
+    assert exc_info.value.code == 1
+    m["alert"].assert_called_once()
+    m["delete"].assert_not_called()
 
 
 # ── batch insert failure ──────────────────────────────────────────────────────

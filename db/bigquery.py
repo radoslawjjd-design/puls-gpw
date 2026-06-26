@@ -1362,9 +1362,12 @@ def delete_company_daily_stats_for_date(snapshot_date: date) -> None:
         query_parameters=[bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date)]
     )
     try:
-        client.query(query, job_config=job_config).result()
+        job = client.query(query, job_config=job_config)
+        job.result()
     except Exception as exc:
         raise BigQueryError(f"delete_company_daily_stats_for_date failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"delete_company_daily_stats_for_date failed: {job.errors}")
     logger.info("delete_company_daily_stats_for_date: deleted rows for %s", snapshot_date)
 
 

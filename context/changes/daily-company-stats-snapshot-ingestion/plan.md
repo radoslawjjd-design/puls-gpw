@@ -2,12 +2,20 @@
 
 ## Overview
 
-A daily Cloud Run Job (17:05 weekdays, Warsaw time — right after GPW close) that, for every
-company in the `companies` dimension table, hops to its `hop_url`, fetches trading-data metrics
-from bankier's public JSON API, and appends one row per (ticker, day) to a new
-`company_daily_stats` table. This supersedes PUL-54's original "watchlist ∪ portfolio"
-active-ticker-set design with a simpler "every known company" scope (explicit user decision),
-which also removes the ticker drop-in/drop-out problem entirely.
+A daily Cloud Run Job (17:05 weekdays, Warsaw time — right after GPW close) that fetches
+trading-data snapshots from bankier's HTML listing pages (one request each for GPW and
+NewConnect), maps results to companies in the `companies` dimension table via the `symbol` param
+in each company's `hop_url`, and writes all matched rows to `company_daily_stats` via a
+delete-for-date + streaming batch insert. Runtime: ~6 seconds.
+
+> **Implemented architecture note** (post-phase pivot): the original plan described a
+> per-company bankier JSON API approach (`api.bankier.pl/quotes/.../{ISIN}/`). During
+> implementation it was discovered that: (a) the JSON API returns empty `profile_data` for
+> ~31% of companies that didn't trade that day, (b) the listing pages provide closing price +
+> change fields not available in the JSON API, and (c) a listing-page approach reduces runtime
+> from ~15 min (566 sequential DML queries) to ~6 seconds (2 HTTP fetches + 1 batch
+> insert). The implemented schema and write strategy differ from the plan's Phase 1–2
+> contracts — see the "Implemented Architecture" section below.
 
 ## Current State Analysis
 
@@ -62,13 +70,42 @@ confirming one row per company with a valid `hop_url`.
   `companies` gets fetched daily (user decision; removes the ticker drop-in/drop-out problem).
 - Not touching `portfolio_snapshots` or the admin treemap — this is pure data ingestion;
   treemap price-refresh is a separate, unrelated ticket (PUL-61, Backlog).
-- Not building same-day retry/overwrite for partial failures — a bad fetch is skipped and
-  logged; the next scheduled run produces a fresh row the following day.
-  `company_daily_stats` stays strictly append-only, per the ticket's original design.
-- Not building shared code with PUL-61 beyond `bankier_metrics.py`'s full-field return shape —
-  no PUL-61 code exists or is touched in this plan.
+- Not building shared code with PUL-61 beyond `bankier_metrics.py` — no PUL-61 code exists
+  or is touched in this plan.
 - Not provisioning the live Cloud Run Job / Cloud Scheduler resources — per `CLAUDE.md`, new
   infra creation is human-only; this plan documents the exact one-time commands as a runbook.
+
+> **Pivot from original**: the original plan said `company_daily_stats` stays "strictly
+> append-only." The implemented write strategy is **delete-for-date + batch insert** (clean
+> replace): on each run, today's existing rows are deleted first, then all new rows are
+> inserted via `insert_rows_json`. This is idempotent (same-day re-run produces the same
+> result) but not append-only. The pivot was driven by the switch to a bulk listing-page
+> fetch — the per-row `WHERE NOT EXISTS` guard is incompatible with batch streaming insert.
+
+## Implemented Architecture
+
+> This section documents the actual implementation, which diverged from Phases 1–2 contracts
+> during development.
+
+**Data source**: `https://www.bankier.pl/gielda/notowania/akcje` (GPW, ~404 symbols) and
+`/new-connect` (NewConnect, ~335 symbols) — static HTML, 2 requests total. Symbol matched
+via the `symbol` query param in each company's `hop_url`.
+
+**Schema** (10 columns, down from the planned 14): `ticker` (REQUIRED), `snapshot_date`
+(DATE, REQUIRED), `kurs_zamkniecia`, `zmiana_procentowa`, `zmiana_kwotowa`, `kurs_otwarcia`,
+`kurs_min`, `kurs_max`, `wartosc_obrotu`, `liczba_transakcji`, `fetched_at` (TIMESTAMP,
+REQUIRED). Partitioned by `snapshot_date`, clustered by `ticker`. Dropped from original plan:
+`kurs_odniesienia`, `wolumen_obrotu`, `stopa_zwrotu_1r`, `kapitalizacja`, `rynek`, `system`
+(not available from listing pages).
+
+**Write strategy**: `delete_company_daily_stats_for_date(snapshot_date)` followed by
+`batch_insert_company_daily_stats(rows)` via `insert_rows_json`. Guard: if `rows` is empty
+(total scrape failure), raise `RuntimeError` before the delete so existing data is preserved.
+
+**Coverage**: ~394 companies with data per day (~70%); ~176 companies don't appear on the
+listing page on a given day (no trades, suspended, or low liquidity NC stocks). Query pattern
+for "latest data per company" must use `ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY
+snapshot_date DESC)` rather than `WHERE snapshot_date = CURRENT_DATE()`.
 
 ## Implementation Approach
 
@@ -293,13 +330,10 @@ doc.
 image, `uv run python company_stats_main.py`) and new row in the "Cloud Scheduler" table
 (`puls-gpw-company-stats-trigger`, cron `5 17 * * 1-5`, Warsaw time, weekdays). Note inline that
 CPU/RAM/secrets/env vars follow the existing common-config section verbatim (this job needs no
-new secrets) — **except timeout**: the `gcloud run jobs create` command must pass
-`--task-timeout=1800s`, not the existing jobs' 300s. This job's loop does one HTTP fetch + one
-synchronous BQ insert per company sequentially (no batching/concurrency, per the Performance
-Considerations section) — at a few hundred companies that can approach or exceed 300s, and a
-Cloud Run timeout kill bypasses the job's own alerting (`send_alert`), so the run would fail
-silently. Before picking a final number, confirm the current `companies` row count
-(`SELECT COUNT(*) FROM companies`) to size the headroom.
+new secrets). Use the **standard `--task-timeout=300s`** (same as existing jobs) — the
+implemented batch approach runs in ~6 seconds (2 HTTP fetches + 1 BQ streaming insert), well
+within the existing 300s budget. The original plan called for 1800s due to a planned
+per-company sequential DML loop (~15 min); that approach was not implemented.
 
 ### Success Criteria:
 
@@ -359,15 +393,10 @@ silently. Before picking a final number, confirm the current `companies` row cou
 
 ## Performance Considerations
 
-The job does one batch read, then N sequential (HTTP fetch + BQ insert) round-trips — one per
-company. At GPW's scale (a few hundred companies, growing slowly via the existing scraper) this
-is not guaranteed to fit the existing per-job 300s Cloud Run timeout
-(`context/foundation/infra.md:21`): each synchronous BQ DML query carries its own job-overhead
-latency on top of the HTTP fetch, and a few hundred sequential round-trips can approach or
-exceed 300s. No batching/concurrency redesign for v1 — instead, Phase 4's provisioning runbook
-sets this job's `--task-timeout` to 1800s (not the existing jobs' 300s) to give the sequential
-loop real headroom. Re-evaluate (batch the BQ writes, or fetch concurrently) if a real run
-approaches the new ceiling.
+The implemented job: 2 HTTP fetches (listing pages, ~1s total) + in-memory dict lookup for
+~570 companies + 1 DELETE DML (~1s) + 1 `insert_rows_json` batch call (~0.5s) = **~6 seconds
+total**. Standard 300s Cloud Run timeout is more than sufficient. The original concern about
+per-company sequential DML latency (~15 min) was resolved by the listing-page batch approach.
 
 ## Migration Notes
 
@@ -414,14 +443,14 @@ scheduled run onward).
 
 #### Automated
 
-- [x] 3.1 Unit tests pass: `uv run pytest tests/test_company_stats_main.py`
-- [x] 3.2 Full suite still green: `uv run pytest`
-- [x] 3.3 Lint passes: `uv run ruff check .`
+- [x] 3.1 Unit tests pass: `uv run pytest tests/test_company_stats_main.py` — be06fb8
+- [x] 3.2 Full suite still green: `uv run pytest` — be06fb8
+- [x] 3.3 Lint passes: `uv run ruff check .` — be06fb8
 
 #### Manual
 
-- [x] 3.4 Local run against real/sandbox BQ dataset produces sane rows for known tickers
-- [x] 3.5 A broken `hop_url`/unreachable network for one ticker doesn't stop the rest of the run
+- [x] 3.4 Local run against real/sandbox BQ dataset produces sane rows for known tickers — be06fb8
+- [x] 3.5 A broken `hop_url`/unreachable network for one ticker doesn't stop the rest of the run — be06fb8
 
 ### Phase 4: Deployment wiring
 
