@@ -465,6 +465,6 @@ scheduled run onward).
 - [x] 4.3 Human runs the one-time `gcloud run jobs create` (with `--task-timeout=300s`) +
   `gcloud scheduler jobs create http` commands; job and scheduler entry confirmed via
   `gcloud ... list` — job updated + scheduler `1 9-17 * * 1-5` Europe/Warsaw created
-- [ ] 4.4 Next push to `master` updates the new job's image via CI without erroring
+- [x] 4.4 Next push to `master` updates the new job's image via CI without erroring — d8a9b4f
 - [ ] 4.5 First real (or manually triggered) 17:05 run populates `company_daily_stats`; run
   duration checked against the 1800s budget
