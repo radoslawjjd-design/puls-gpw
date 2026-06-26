@@ -39,6 +39,11 @@ def m(monkeypatch):
     list_co = MagicMock(name="list_companies_with_hop_info", return_value=[_COMPANY_PKO])
     sym = MagicMock(name="symbol_from_hop_url", return_value="PKO")
     fetch = MagicMock(name="fetch_daily_stats", return_value=_FAKE_STATS)
+    fetch_profile = MagicMock(name="fetch_profile_price", return_value={
+        "kurs_zamkniecia": 50.2,
+        "zmiana_procentowa": -0.5,
+        "zmiana_kwotowa": -0.25,
+    })
     insert = MagicMock(name="insert_company_daily_stats")
     alert = MagicMock(name="send_alert")
 
@@ -47,12 +52,14 @@ def m(monkeypatch):
     monkeypatch.setattr(company_stats_main, "list_companies_with_hop_info", list_co)
     monkeypatch.setattr(company_stats_main, "symbol_from_hop_url", sym)
     monkeypatch.setattr(company_stats_main, "fetch_daily_stats", fetch)
+    monkeypatch.setattr(company_stats_main, "fetch_profile_price", fetch_profile)
     monkeypatch.setattr(company_stats_main, "insert_company_daily_stats", insert)
     monkeypatch.setattr(company_stats_main, "send_alert", alert)
 
     return {
         "create": create, "ensure": ensure, "list_co": list_co,
-        "sym": sym, "fetch": fetch, "insert": insert, "alert": alert,
+        "sym": sym, "fetch": fetch, "fetch_profile": fetch_profile,
+        "insert": insert, "alert": alert,
     }
 
 
@@ -66,11 +73,14 @@ def test_happy_path_calls_all_collaborators_in_order(m):
     m["list_co"].assert_called_once()
     m["sym"].assert_called_once_with(_COMPANY_PKO["hop_url"])
     m["fetch"].assert_called_once_with(_COMPANY_PKO["isin"], "PKO")
+    m["fetch_profile"].assert_called_once_with(_COMPANY_PKO["hop_url"])
     m["insert"].assert_called_once()
     kw = m["insert"].call_args.kwargs
     assert kw["ticker"] == "PKO"
     assert kw["kurs_odniesienia"] == 50.0
     assert kw["wolumen_obrotu"] == 1_000_000
+    assert kw["kurs_zamkniecia"] == 50.2
+    assert kw["zmiana_procentowa"] == -0.5
     m["alert"].assert_not_called()
 
 
@@ -106,6 +116,19 @@ def test_fetch_failure_skips_ticker(m):
 
     m["insert"].assert_not_called()
     m["alert"].assert_not_called()
+
+
+def test_profile_price_failure_does_not_skip_insert(m):
+    """fetch_profile_price returning None must not block the insert — fields land as NULL."""
+    m["fetch_profile"].return_value = None
+
+    company_stats_main.main()
+
+    m["insert"].assert_called_once()
+    kw = m["insert"].call_args.kwargs
+    assert kw["kurs_zamkniecia"] is None
+    assert kw["zmiana_procentowa"] is None
+    assert kw["zmiana_kwotowa"] is None
 
 
 # ── per-ticker BigQueryError on insert ───────────────────────────────────────

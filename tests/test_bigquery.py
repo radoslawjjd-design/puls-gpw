@@ -879,7 +879,8 @@ def test_company_daily_stats_schema_has_required_columns():
         "ticker", "snapshot_date", "kurs_odniesienia", "kurs_otwarcia",
         "kurs_min", "kurs_max", "wolumen_obrotu", "wartosc_obrotu",
         "liczba_transakcji", "stopa_zwrotu_1r", "kapitalizacja",
-        "rynek", "system", "fetched_at",
+        "rynek", "system", "kurs_zamkniecia", "zmiana_procentowa",
+        "zmiana_kwotowa", "fetched_at",
     }
     assert names["ticker"].mode == "REQUIRED"
     assert names["snapshot_date"].mode == "REQUIRED"
@@ -967,6 +968,9 @@ def test_insert_company_daily_stats_inserts_with_not_exists_guard():
             kapitalizacja=500000000.0,
             rynek="GPW",
             system="CONT",
+            kurs_zamkniecia=8.65,
+            zmiana_procentowa=0.58,
+            zmiana_kwotowa=0.05,
         )
 
     query_str = client.query.call_args[0][0]
@@ -978,6 +982,9 @@ def test_insert_company_daily_stats_inserts_with_not_exists_guard():
     assert "ticker = @ticker AND snapshot_date = @snapshot_date" in query_str
     assert "CURRENT_TIMESTAMP()" in query_str
     assert "`system`" in query_str
+    assert "kurs_zamkniecia" in query_str
+    assert "zmiana_procentowa" in query_str
+    assert "zmiana_kwotowa" in query_str
 
     assert params["ticker"] == "ECH"
     assert params["snapshot_date"] == date(2026, 6, 26)
@@ -986,6 +993,9 @@ def test_insert_company_daily_stats_inserts_with_not_exists_guard():
     assert params["liczba_transakcji"] == 42
     assert params["rynek"] == "GPW"
     assert params["system"] == "CONT"
+    assert params["kurs_zamkniecia"] == 8.65
+    assert params["zmiana_procentowa"] == 0.58
+    assert params["zmiana_kwotowa"] == 0.05
 
 
 def test_insert_company_daily_stats_nullable_fields_accepted():
@@ -1005,6 +1015,9 @@ def test_insert_company_daily_stats_nullable_fields_accepted():
             kapitalizacja=None,
             rynek=None,
             system=None,
+            kurs_zamkniecia=None,
+            zmiana_procentowa=None,
+            zmiana_kwotowa=None,
         )
 
 
@@ -1032,6 +1045,9 @@ def test_insert_company_daily_stats_raises_bigquery_error_on_failure():
                 kapitalizacja=None,
                 rynek=None,
                 system=None,
+                kurs_zamkniecia=None,
+                zmiana_procentowa=None,
+                zmiana_kwotowa=None,
             )
 
 

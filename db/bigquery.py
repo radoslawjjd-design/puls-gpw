@@ -1296,6 +1296,9 @@ _COMPANY_DAILY_STATS_SCHEMA = [
     bigquery.SchemaField("kapitalizacja", "FLOAT64", mode="NULLABLE"),
     bigquery.SchemaField("rynek", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("system", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_zamkniecia", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("zmiana_procentowa", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("zmiana_kwotowa", "FLOAT64", mode="NULLABLE"),
     bigquery.SchemaField("fetched_at", "TIMESTAMP", mode="REQUIRED"),
 ]
 
@@ -1366,6 +1369,9 @@ def insert_company_daily_stats(
     kapitalizacja: float | None,
     rynek: str | None,
     system: str | None,
+    kurs_zamkniecia: float | None = None,
+    zmiana_procentowa: float | None = None,
+    zmiana_kwotowa: float | None = None,
 ) -> None:
     """Append one company_daily_stats row; silent no-op if (ticker, snapshot_date) already exists.
 
@@ -1377,10 +1383,12 @@ def insert_company_daily_stats(
         INSERT INTO `{table}`
             (ticker, snapshot_date, kurs_odniesienia, kurs_otwarcia, kurs_min, kurs_max,
              wolumen_obrotu, wartosc_obrotu, liczba_transakcji, stopa_zwrotu_1r,
-             kapitalizacja, rynek, `system`, fetched_at)
+             kapitalizacja, rynek, `system`, kurs_zamkniecia, zmiana_procentowa,
+             zmiana_kwotowa, fetched_at)
         SELECT @ticker, @snapshot_date, @kurs_odniesienia, @kurs_otwarcia, @kurs_min, @kurs_max,
                @wolumen_obrotu, @wartosc_obrotu, @liczba_transakcji, @stopa_zwrotu_1r,
-               @kapitalizacja, @rynek, @system, CURRENT_TIMESTAMP()
+               @kapitalizacja, @rynek, @system, @kurs_zamkniecia, @zmiana_procentowa,
+               @zmiana_kwotowa, CURRENT_TIMESTAMP()
         FROM (SELECT 1)
         WHERE NOT EXISTS (
             SELECT 1 FROM `{table}`
@@ -1402,6 +1410,9 @@ def insert_company_daily_stats(
             bigquery.ScalarQueryParameter("kapitalizacja", "FLOAT64", kapitalizacja),
             bigquery.ScalarQueryParameter("rynek", "STRING", rynek),
             bigquery.ScalarQueryParameter("system", "STRING", system),
+            bigquery.ScalarQueryParameter("kurs_zamkniecia", "FLOAT64", kurs_zamkniecia),
+            bigquery.ScalarQueryParameter("zmiana_procentowa", "FLOAT64", zmiana_procentowa),
+            bigquery.ScalarQueryParameter("zmiana_kwotowa", "FLOAT64", zmiana_kwotowa),
         ]
     )
     try:

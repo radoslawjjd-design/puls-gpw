@@ -1,6 +1,8 @@
 import logging
 from urllib.parse import parse_qs, urlparse
 
+from bs4 import BeautifulSoup
+
 from src.exceptions import ScraperError
 from src.http_client import get
 
@@ -36,6 +38,67 @@ def symbol_from_hop_url(hop_url: str) -> str | None:
             return None
         return values[0] or None
     except Exception:
+        return None
+
+
+def _parse_polish_float(text: str) -> float | None:
+    """Parse a Polish-formatted number (comma decimal, 'zł' unit or '%') to float."""
+    try:
+        cleaned = (
+            text.replace("\xa0", "").replace("zł", "").replace("%", "").strip()
+        )
+        return float(cleaned.replace(",", ".")) if cleaned else None
+    except (ValueError, AttributeError):
+        return None
+
+
+def fetch_profile_price(hop_url: str) -> dict | None:
+    """Scrape kurs_zamkniecia, zmiana_procentowa, zmiana_kwotowa from the profile page.
+
+    Returns a dict with those keys (values may be None if individual fields fail to
+    parse), or None on HTTP failure or missing price box — callers treat None as
+    "insert NULLs for these fields" rather than a skip.
+    """
+    try:
+        resp = get(hop_url)
+    except ScraperError:
+        logger.warning("fetch_profile_price: HTTP failed for %s", hop_url)
+        return None
+
+    try:
+        soup = BeautifulSoup(resp.text, "html.parser")
+        box = soup.find("div", class_="o-quotes-profile-header-box__numbers")
+        if box is None:
+            logger.warning("fetch_profile_price: price box not found for %s", hop_url)
+            return None
+
+        price_div = box.find("div", class_="o-quotes-profile-header-box__price")
+        change_div = box.find("div", class_="o-quotes-profile-header-box__change")
+
+        kurs_zamkniecia = None
+        zmiana_procentowa = None
+        zmiana_kwotowa = None
+
+        if price_div:
+            el = price_div.find("span", class_="-value")
+            if el:
+                kurs_zamkniecia = _parse_polish_float(el.get_text())
+
+        if change_div:
+            el = change_div.find("span", class_="-percentage-change")
+            if el:
+                zmiana_procentowa = _parse_polish_float(el.get_text())
+            el = change_div.find("span", class_="-value-change")
+            if el:
+                zmiana_kwotowa = _parse_polish_float(el.get_text())
+
+        return {
+            "kurs_zamkniecia": kurs_zamkniecia,
+            "zmiana_procentowa": zmiana_procentowa,
+            "zmiana_kwotowa": zmiana_kwotowa,
+        }
+    except Exception:
+        logger.warning("fetch_profile_price: parse failed for %s", hop_url, exc_info=True)
         return None
 
 

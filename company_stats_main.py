@@ -20,7 +20,7 @@ from db.bigquery import (
     insert_company_daily_stats,
     list_companies_with_hop_info,
 )
-from src.bankier_metrics import fetch_daily_stats, symbol_from_hop_url
+from src.bankier_metrics import fetch_daily_stats, fetch_profile_price, symbol_from_hop_url
 from src.notifier import send_alert
 
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -62,6 +62,9 @@ def main() -> None:
                 skipped += 1
                 continue
 
+            # fetch_profile_price failure is non-fatal — those fields land as NULL
+            profile = fetch_profile_price(hop_url)
+
             try:
                 insert_company_daily_stats(
                     ticker=ticker,
@@ -77,6 +80,9 @@ def main() -> None:
                     kapitalizacja=stats.get("kapitalizacja"),
                     rynek=stats.get("rynek"),
                     system=stats.get("system"),
+                    kurs_zamkniecia=profile.get("kurs_zamkniecia") if profile else None,
+                    zmiana_procentowa=profile.get("zmiana_procentowa") if profile else None,
+                    zmiana_kwotowa=profile.get("zmiana_kwotowa") if profile else None,
                 )
                 processed += 1
             except BigQueryError:
