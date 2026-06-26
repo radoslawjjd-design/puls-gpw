@@ -1,7 +1,4 @@
-"""Unit tests for company_stats_main.py — entrypoint orchestration.
-
-All BigQuery/HTTP side effects are mocked; no network, no real creds.
-"""
+"""Unit tests for company_stats_main.py — entrypoint orchestration."""
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,18 +6,17 @@ import pytest
 import company_stats_main
 from db.bigquery import BigQueryError
 
-_FAKE_STATS = {
-    "kurs_odniesienia": 50.0,
-    "kurs_otwarcia": 50.5,
-    "kurs_min": 49.0,
-    "kurs_max": 51.0,
-    "wolumen_obrotu": 1_000_000,
-    "wartosc_obrotu": 50_000_000.0,
-    "liczba_transakcji": 5_000,
-    "stopa_zwrotu_1r": 0.15,
-    "kapitalizacja": 60_000_000_000.0,
-    "rynek": "GPW",
-    "system": "WARSET",
+_FAKE_LISTING = {
+    "PKO": {
+        "kurs_zamkniecia": 103.62,
+        "zmiana_procentowa": -0.56,
+        "zmiana_kwotowa": -0.58,
+        "kurs_otwarcia": 104.0,
+        "kurs_min": 103.4,
+        "kurs_max": 104.2,
+        "wartosc_obrotu": 51_810_000.0,
+        "liczba_transakcji": 5_000,
+    }
 }
 
 _COMPANY_PKO = {
@@ -33,37 +29,32 @@ _COMPANY_PKO = {
 
 @pytest.fixture
 def m(monkeypatch):
-    """Patch all I/O collaborators on company_stats_main; return the mocks."""
     create = MagicMock(name="create_company_daily_stats_table_if_not_exists")
     ensure = MagicMock(name="ensure_company_daily_stats_schema_current")
     list_co = MagicMock(name="list_companies_with_hop_info", return_value=[_COMPANY_PKO])
+    listing = MagicMock(name="fetch_listing_page", side_effect=[_FAKE_LISTING, {}])
     sym = MagicMock(name="symbol_from_hop_url", return_value="PKO")
-    fetch = MagicMock(name="fetch_daily_stats", return_value=_FAKE_STATS)
-    fetch_profile = MagicMock(name="fetch_profile_price", return_value={
-        "kurs_zamkniecia": 50.2,
-        "zmiana_procentowa": -0.5,
-        "zmiana_kwotowa": -0.25,
-    })
-    insert = MagicMock(name="insert_company_daily_stats")
+    delete = MagicMock(name="delete_company_daily_stats_for_date")
+    batch = MagicMock(name="batch_insert_company_daily_stats")
     alert = MagicMock(name="send_alert")
 
     monkeypatch.setattr(company_stats_main, "create_company_daily_stats_table_if_not_exists", create)
     monkeypatch.setattr(company_stats_main, "ensure_company_daily_stats_schema_current", ensure)
     monkeypatch.setattr(company_stats_main, "list_companies_with_hop_info", list_co)
+    monkeypatch.setattr(company_stats_main, "fetch_listing_page", listing)
     monkeypatch.setattr(company_stats_main, "symbol_from_hop_url", sym)
-    monkeypatch.setattr(company_stats_main, "fetch_daily_stats", fetch)
-    monkeypatch.setattr(company_stats_main, "fetch_profile_price", fetch_profile)
-    monkeypatch.setattr(company_stats_main, "insert_company_daily_stats", insert)
+    monkeypatch.setattr(company_stats_main, "delete_company_daily_stats_for_date", delete)
+    monkeypatch.setattr(company_stats_main, "batch_insert_company_daily_stats", batch)
     monkeypatch.setattr(company_stats_main, "send_alert", alert)
 
     return {
         "create": create, "ensure": ensure, "list_co": list_co,
-        "sym": sym, "fetch": fetch, "fetch_profile": fetch_profile,
-        "insert": insert, "alert": alert,
+        "listing": listing, "sym": sym,
+        "delete": delete, "batch": batch, "alert": alert,
     }
 
 
-# ── happy path ────────────────────────────────────────────────────────────────
+# ── happy path ────────────────────────────────────────────────────────────��───
 
 def test_happy_path_calls_all_collaborators_in_order(m):
     company_stats_main.main()
@@ -71,91 +62,63 @@ def test_happy_path_calls_all_collaborators_in_order(m):
     m["create"].assert_called_once()
     m["ensure"].assert_called_once()
     m["list_co"].assert_called_once()
-    m["sym"].assert_called_once_with(_COMPANY_PKO["hop_url"])
-    m["fetch"].assert_called_once_with(_COMPANY_PKO["isin"], "PKO")
-    m["fetch_profile"].assert_called_once_with(_COMPANY_PKO["hop_url"])
-    m["insert"].assert_called_once()
-    kw = m["insert"].call_args.kwargs
-    assert kw["ticker"] == "PKO"
-    assert kw["kurs_odniesienia"] == 50.0
-    assert kw["wolumen_obrotu"] == 1_000_000
-    assert kw["kurs_zamkniecia"] == 50.2
-    assert kw["zmiana_procentowa"] == -0.5
+    assert m["listing"].call_count == 2
+    m["delete"].assert_called_once()
+    m["batch"].assert_called_once()
+    rows = m["batch"].call_args[0][0]
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "PKO"
+    assert rows[0]["kurs_zamkniecia"] == pytest.approx(103.62)
     m["alert"].assert_not_called()
+
+
+def test_happy_path_row_contains_snapshot_date_and_fetched_at(m):
+    company_stats_main.main()
+    rows = m["batch"].call_args[0][0]
+    assert "snapshot_date" in rows[0]
+    assert "fetched_at" in rows[0]
 
 
 # ── skip paths ────────────────────────────────────────────────────────────────
 
 def test_missing_hop_url_skips_ticker(m):
     m["list_co"].return_value = [
-        {"ticker": "NOURL", "name": "No URL Co", "hop_url": None, "isin": "PL000000001"}
+        {"ticker": "NOURL", "name": "X", "hop_url": None, "isin": "PL000000001"}
     ]
-
     company_stats_main.main()
-
-    m["sym"].assert_not_called()
-    m["fetch"].assert_not_called()
-    m["insert"].assert_not_called()
-    m["alert"].assert_not_called()
+    rows = m["batch"].call_args[0][0]
+    assert rows == []
 
 
 def test_none_symbol_skips_ticker(m):
     m["sym"].return_value = None
-
     company_stats_main.main()
-
-    m["fetch"].assert_not_called()
-    m["insert"].assert_not_called()
-    m["alert"].assert_not_called()
+    assert m["batch"].call_args[0][0] == []
 
 
-def test_fetch_failure_skips_ticker(m):
-    m["fetch"].return_value = None
-
+def test_ticker_not_in_listing_skips(m):
+    m["listing"].side_effect = [{}, {}]
     company_stats_main.main()
-
-    m["insert"].assert_not_called()
-    m["alert"].assert_not_called()
+    assert m["batch"].call_args[0][0] == []
 
 
-def test_profile_price_failure_does_not_skip_insert(m):
-    """fetch_profile_price returning None must not block the insert — fields land as NULL."""
-    m["fetch_profile"].return_value = None
+# ── batch insert failure ──────────────────────────────────────────────────────
 
-    company_stats_main.main()
+def test_batch_insert_failure_triggers_alert_and_exit(m):
+    """BigQueryError from batch_insert must trigger send_alert + sys.exit(1)."""
+    m["batch"].side_effect = BigQueryError("streaming insert failed")
 
-    m["insert"].assert_called_once()
-    kw = m["insert"].call_args.kwargs
-    assert kw["kurs_zamkniecia"] is None
-    assert kw["zmiana_procentowa"] is None
-    assert kw["zmiana_kwotowa"] is None
+    with pytest.raises(SystemExit) as exc_info:
+        company_stats_main.main()
 
-
-# ── per-ticker BigQueryError on insert ───────────────────────────────────────
-
-def test_bq_insert_failure_skips_and_continues(m):
-    """A BigQueryError on insert for one ticker must not stop the loop for others."""
-    cdp = {
-        "ticker": "CDR",
-        "name": "CD Projekt",
-        "hop_url": "https://www.bankier.pl/inwestowanie/profile/quote.html?symbol=CDR",
-        "isin": "PLCDN0000017",
-    }
-    m["list_co"].return_value = [_COMPANY_PKO, cdp]
-    m["sym"].side_effect = ["PKO", "CDR"]
-    m["fetch"].return_value = _FAKE_STATS
-    m["insert"].side_effect = [BigQueryError("bq fail"), None]
-
-    company_stats_main.main()
-
-    assert m["insert"].call_count == 2
-    m["alert"].assert_not_called()
+    assert exc_info.value.code == 1
+    m["alert"].assert_called_once()
 
 
 # ── catastrophic failure ──────────────────────────────────────────────────────
 
 def test_catastrophic_failure_sends_alert_and_exits(m):
-    m["list_co"].side_effect = BigQueryError("cannot read companies table")
+    m["list_co"].side_effect = BigQueryError("cannot read companies")
 
     with pytest.raises(SystemExit) as exc_info:
         company_stats_main.main()

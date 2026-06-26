@@ -8,20 +8,9 @@ from src.http_client import get
 
 logger = logging.getLogger(__name__)
 
-_BANKIER_API_URL = "https://api.bankier.pl/quotes/public/company-profile-chart/{isin}/?symbols={symbol}&metrics=true&today=true"
-
-_FIELD_MAP = {
-    "kurs_odniesienia": "Kurs_odniesienia",
-    "kurs_otwarcia": "Kurs_otwarcia",
-    "kurs_min": "Minimum",
-    "kurs_max": "Maximum",
-    "wolumen_obrotu": "Wolumen_obrotu_szt",
-    "wartosc_obrotu": "Wartosc_obrotu_zl",
-    "liczba_transakcji": "Liczba_transakcji",
-    "stopa_zwrotu_1r": "Stopa_zwrotu_1R",
-    "kapitalizacja": "Kapitalizacja",
-    "rynek": "Rynek",
-    "system": "System_notowan",
+_LISTING_URLS = {
+    "akcje": "https://www.bankier.pl/gielda/notowania/akcje",
+    "new-connect": "https://www.bankier.pl/gielda/notowania/new-connect",
 }
 
 
@@ -42,90 +31,82 @@ def symbol_from_hop_url(hop_url: str) -> str | None:
 
 
 def _parse_polish_float(text: str) -> float | None:
-    """Parse a Polish-formatted number (comma decimal, 'zł' unit or '%') to float."""
+    """Parse a Polish-formatted number (comma decimal, space thousands separator) to float."""
     try:
         cleaned = (
-            text.replace("\xa0", "").replace("zł", "").replace("%", "").strip()
+            text.replace("\xa0", "")
+                .replace("zł", "")
+                .replace("%", "")
+                .replace(" ", "")
+                .strip()
         )
         return float(cleaned.replace(",", ".")) if cleaned else None
     except (ValueError, AttributeError):
         return None
 
 
-def fetch_profile_price(hop_url: str) -> dict | None:
-    """Scrape kurs_zamkniecia, zmiana_procentowa, zmiana_kwotowa from the profile page.
-
-    Returns a dict with those keys (values may be None if individual fields fail to
-    parse), or None on HTTP failure or missing price box — callers treat None as
-    "insert NULLs for these fields" rather than a skip.
-    """
+def _parse_int(text: str) -> int | None:
+    """Parse a Polish-formatted integer (space thousands separator) to int."""
     try:
-        resp = get(hop_url)
-    except ScraperError:
-        logger.warning("fetch_profile_price: HTTP failed for %s", hop_url)
-        return None
-
-    try:
-        soup = BeautifulSoup(resp.text, "html.parser")
-        box = soup.find("div", class_="o-quotes-profile-header-box__numbers")
-        if box is None:
-            logger.warning("fetch_profile_price: price box not found for %s", hop_url)
-            return None
-
-        price_div = box.find("div", class_="o-quotes-profile-header-box__price")
-        change_div = box.find("div", class_="o-quotes-profile-header-box__change")
-
-        kurs_zamkniecia = None
-        zmiana_procentowa = None
-        zmiana_kwotowa = None
-
-        if price_div:
-            el = price_div.find("span", class_="-value")
-            if el:
-                kurs_zamkniecia = _parse_polish_float(el.get_text())
-
-        if change_div:
-            el = change_div.find("span", class_="-percentage-change")
-            if el:
-                zmiana_procentowa = _parse_polish_float(el.get_text())
-            el = change_div.find("span", class_="-value-change")
-            if el:
-                zmiana_kwotowa = _parse_polish_float(el.get_text())
-
-        return {
-            "kurs_zamkniecia": kurs_zamkniecia,
-            "zmiana_procentowa": zmiana_procentowa,
-            "zmiana_kwotowa": zmiana_kwotowa,
-        }
-    except Exception:
-        logger.warning("fetch_profile_price: parse failed for %s", hop_url, exc_info=True)
+        cleaned = text.replace("\xa0", "").replace(" ", "").strip()
+        return int(cleaned) if cleaned else None
+    except (ValueError, AttributeError):
         return None
 
 
-def fetch_daily_stats(isin: str, symbol: str) -> dict | None:
-    """Fetch today's trading-data snapshot from bankier's public JSON API.
+def fetch_listing_page(market: str) -> dict[str, dict]:
+    """Fetch the bankier notowania listing page for a market.
 
-    Returns a dict with normalised snake_case keys, or None on HTTP failure
-    (ScraperError from http_client) — callers skip+log on None.
+    market: 'akcje' (GPW main) or 'new-connect' (NewConnect)
+
+    Returns a dict keyed by bankier symbol with trading-data fields, or an
+    empty dict on HTTP failure or missing table — callers log the gap and skip
+    those tickers.
     """
-    url = _BANKIER_API_URL.format(isin=isin, symbol=symbol)
+    url = _LISTING_URLS.get(market)
+    if not url:
+        logger.warning("fetch_listing_page: unknown market=%s", market)
+        return {}
+
     try:
         resp = get(url)
     except ScraperError:
-        logger.warning("fetch_daily_stats: HTTP failed for isin=%s symbol=%s", isin, symbol)
-        return None
+        logger.warning("fetch_listing_page: HTTP failed for market=%s", market)
+        return {}
 
     try:
-        data = resp.json()
-    except (ValueError, AttributeError):
-        logger.warning("fetch_daily_stats: invalid JSON for isin=%s symbol=%s", isin, symbol)
-        return None
+        soup = BeautifulSoup(resp.text, "html.parser")
+        table = soup.find("table", class_="m-quotes-data-table")
+        if not table:
+            logger.warning("fetch_listing_page: table not found for market=%s", market)
+            return {}
 
-    metrics = data.get("profile_data") if isinstance(data, dict) else None
-    if metrics is None:
-        logger.warning(
-            "fetch_daily_stats: profile_data missing in response for isin=%s symbol=%s", isin, symbol
-        )
-        return None
+        result: dict[str, dict] = {}
+        for row in table.find_all("tr")[1:]:  # skip header row
+            cells = row.find_all("td")
+            if len(cells) < 9:
+                continue
+            a = cells[0].find("a")
+            if not a:
+                continue
+            href = a.get("href", "")
+            symbol = parse_qs(urlparse(href).query).get("symbol", [None])[0]
+            if not symbol:
+                continue
+            result[symbol] = {
+                "kurs_zamkniecia": _parse_polish_float(cells[1].get_text()),
+                "zmiana_procentowa": _parse_polish_float(cells[2].get_text()),
+                "zmiana_kwotowa": _parse_polish_float(cells[3].get_text()),
+                "liczba_transakcji": _parse_int(cells[4].get_text()),
+                "wartosc_obrotu": _parse_polish_float(cells[5].get_text()),
+                "kurs_otwarcia": _parse_polish_float(cells[6].get_text()),
+                "kurs_max": _parse_polish_float(cells[7].get_text()),
+                "kurs_min": _parse_polish_float(cells[8].get_text()),
+            }
 
-    return {key: metrics.get(api_key) for key, api_key in _FIELD_MAP.items()}
+        logger.info("fetch_listing_page: market=%s loaded %d symbols", market, len(result))
+        return result
+
+    except Exception:
+        logger.warning("fetch_listing_page: parse failed for market=%s", market, exc_info=True)
+        return {}

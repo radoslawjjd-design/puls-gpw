@@ -1,7 +1,7 @@
 """Cloud Run Job entrypoint for the daily company-stats snapshot ingestion pipeline."""
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -15,12 +15,13 @@ logger = logging.getLogger(__name__)
 
 from db.bigquery import (
     BigQueryError,
+    batch_insert_company_daily_stats,
     create_company_daily_stats_table_if_not_exists,
+    delete_company_daily_stats_for_date,
     ensure_company_daily_stats_schema_current,
-    insert_company_daily_stats,
     list_companies_with_hop_info,
 )
-from src.bankier_metrics import fetch_daily_stats, fetch_profile_price, symbol_from_hop_url
+from src.bankier_metrics import fetch_listing_page, symbol_from_hop_url
 from src.notifier import send_alert
 
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -32,14 +33,22 @@ def main() -> None:
         ensure_company_daily_stats_schema_current()
         companies = list_companies_with_hop_info()
 
+        gpw = fetch_listing_page("akcje")
+        nc = fetch_listing_page("new-connect")
+        listing = {**gpw, **nc}
+        logger.info(
+            "company_stats_main: listing loaded — %d symbols (GPW=%d NC=%d)",
+            len(listing), len(gpw), len(nc),
+        )
+
         snapshot_date = datetime.now(WARSAW).date()
-        processed = 0
+        fetched_at = datetime.now(timezone.utc).isoformat()
+        rows = []
         skipped = 0
 
         for company in companies:
             ticker = company["ticker"]
             hop_url = company.get("hop_url")
-            isin = company.get("isin")
 
             if not hop_url:
                 logger.warning(
@@ -56,44 +65,29 @@ def main() -> None:
                 skipped += 1
                 continue
 
-            stats = fetch_daily_stats(isin, symbol)
+            stats = listing.get(symbol)
             if stats is None:
-                # fetch_daily_stats already logs the failure at WARNING level
+                logger.warning(
+                    "company_stats_main: no listing data for ticker=%s symbol=%s — skipping",
+                    ticker, symbol,
+                )
                 skipped += 1
                 continue
 
-            # fetch_profile_price failure is non-fatal — those fields land as NULL
-            profile = fetch_profile_price(hop_url)
+            rows.append({
+                "ticker": ticker,
+                "snapshot_date": snapshot_date.isoformat(),
+                "fetched_at": fetched_at,
+                **stats,
+            })
 
-            try:
-                insert_company_daily_stats(
-                    ticker=ticker,
-                    snapshot_date=snapshot_date,
-                    kurs_odniesienia=stats.get("kurs_odniesienia"),
-                    kurs_otwarcia=stats.get("kurs_otwarcia"),
-                    kurs_min=stats.get("kurs_min"),
-                    kurs_max=stats.get("kurs_max"),
-                    wolumen_obrotu=stats.get("wolumen_obrotu"),
-                    wartosc_obrotu=stats.get("wartosc_obrotu"),
-                    liczba_transakcji=stats.get("liczba_transakcji"),
-                    stopa_zwrotu_1r=stats.get("stopa_zwrotu_1r"),
-                    kapitalizacja=stats.get("kapitalizacja"),
-                    rynek=stats.get("rynek"),
-                    system=stats.get("system"),
-                    kurs_zamkniecia=profile.get("kurs_zamkniecia") if profile else None,
-                    zmiana_procentowa=profile.get("zmiana_procentowa") if profile else None,
-                    zmiana_kwotowa=profile.get("zmiana_kwotowa") if profile else None,
-                )
-                processed += 1
-            except BigQueryError:
-                logger.warning(
-                    "company_stats_main: BQ insert failed for ticker=%s — skipping", ticker
-                )
-                skipped += 1
+        # Delete today's rows first (safe re-run), then batch-insert all at once
+        delete_company_daily_stats_for_date(snapshot_date)
+        batch_insert_company_daily_stats(rows)
 
         logger.info(
             "company_stats_main: done — processed=%d skipped=%d total=%d",
-            processed, skipped, len(companies),
+            len(rows), skipped, len(companies),
         )
 
     except Exception as exc:

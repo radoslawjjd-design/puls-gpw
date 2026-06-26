@@ -11,8 +11,10 @@ from db.bigquery import (
     _build_filter_clauses,
     add_watchlist_ticker,
     create_companies_table_if_not_exists,
+    batch_insert_company_daily_stats,
     create_company_daily_stats_table_if_not_exists,
     create_portfolio_snapshots_table_if_not_exists,
+    delete_company_daily_stats_for_date,
     create_watchlist_table_if_not_exists,
     create_x_posts_table_if_not_exists,
     delete_announcement,
@@ -20,7 +22,6 @@ from db.bigquery import (
     get_latest_snapshot_before,
     get_latest_snapshot_for_wallet,
     insert_announcement,
-    insert_company_daily_stats,
     list_announcements_admin,
     list_announcements_for_watchlist,
     list_announcements_user,
@@ -876,17 +877,15 @@ def test_company_daily_stats_schema_has_required_columns():
     """_COMPANY_DAILY_STATS_SCHEMA must define all expected fields with correct modes."""
     names = {f.name: f for f in _COMPANY_DAILY_STATS_SCHEMA}
     assert set(names) == {
-        "ticker", "snapshot_date", "kurs_odniesienia", "kurs_otwarcia",
-        "kurs_min", "kurs_max", "wolumen_obrotu", "wartosc_obrotu",
-        "liczba_transakcji", "stopa_zwrotu_1r", "kapitalizacja",
-        "rynek", "system", "kurs_zamkniecia", "zmiana_procentowa",
-        "zmiana_kwotowa", "fetched_at",
+        "ticker", "snapshot_date",
+        "kurs_zamkniecia", "zmiana_procentowa", "zmiana_kwotowa",
+        "kurs_otwarcia", "kurs_min", "kurs_max",
+        "wartosc_obrotu", "liczba_transakcji", "fetched_at",
     }
     assert names["ticker"].mode == "REQUIRED"
     assert names["snapshot_date"].mode == "REQUIRED"
     assert names["fetched_at"].mode == "REQUIRED"
-    assert names["kurs_odniesienia"].mode == "NULLABLE"
-    assert names["wolumen_obrotu"].field_type in ("INTEGER", "INT64")
+    assert names["kurs_zamkniecia"].mode == "NULLABLE"
     assert names["liczba_transakcji"].field_type in ("INTEGER", "INT64")
     assert names["snapshot_date"].field_type == "DATE"
     assert names["fetched_at"].field_type == "TIMESTAMP"
@@ -950,105 +949,68 @@ def test_list_companies_with_hop_info_empty():
     assert result == []
 
 
-def test_insert_company_daily_stats_inserts_with_not_exists_guard():
-    """INSERT must be guarded by WHERE NOT EXISTS on (ticker, snapshot_date)."""
+def test_delete_company_daily_stats_for_date_issues_delete():
+    """delete_company_daily_stats_for_date must issue DELETE for the given date."""
     with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
         client = mock_get.return_value
-        insert_company_daily_stats(
-            ticker="ECH",
-            snapshot_date=date(2026, 6, 26),
-            kurs_odniesienia=8.5,
-            kurs_otwarcia=8.6,
-            kurs_min=8.4,
-            kurs_max=8.7,
-            wolumen_obrotu=12345,
-            wartosc_obrotu=105000.0,
-            liczba_transakcji=42,
-            stopa_zwrotu_1r=0.15,
-            kapitalizacja=500000000.0,
-            rynek="GPW",
-            system="CONT",
-            kurs_zamkniecia=8.65,
-            zmiana_procentowa=0.58,
-            zmiana_kwotowa=0.05,
-        )
+        delete_company_daily_stats_for_date(date(2026, 6, 26))
 
     query_str = client.query.call_args[0][0]
-    job_config = client.query.call_args.kwargs["job_config"]
-    params = {p.name: p.value for p in job_config.query_parameters}
-
-    assert "INSERT INTO" in query_str and "company_daily_stats" in query_str
-    assert "WHERE NOT EXISTS" in query_str
-    assert "ticker = @ticker AND snapshot_date = @snapshot_date" in query_str
-    assert "CURRENT_TIMESTAMP()" in query_str
-    assert "`system`" in query_str
-    assert "kurs_zamkniecia" in query_str
-    assert "zmiana_procentowa" in query_str
-    assert "zmiana_kwotowa" in query_str
-
-    assert params["ticker"] == "ECH"
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert "DELETE FROM" in query_str and "company_daily_stats" in query_str
     assert params["snapshot_date"] == date(2026, 6, 26)
-    assert params["kurs_odniesienia"] == 8.5
-    assert params["wolumen_obrotu"] == 12345
-    assert params["liczba_transakcji"] == 42
-    assert params["rynek"] == "GPW"
-    assert params["system"] == "CONT"
-    assert params["kurs_zamkniecia"] == 8.65
-    assert params["zmiana_procentowa"] == 0.58
-    assert params["zmiana_kwotowa"] == 0.05
 
 
-def test_insert_company_daily_stats_nullable_fields_accepted():
-    """insert_company_daily_stats must accept None for all nullable metric fields."""
-    with patch("db.bigquery._get_client", return_value=_mock_bq_client()):
-        insert_company_daily_stats(
-            ticker="XYZ",
-            snapshot_date=date(2026, 6, 26),
-            kurs_odniesienia=None,
-            kurs_otwarcia=None,
-            kurs_min=None,
-            kurs_max=None,
-            wolumen_obrotu=None,
-            wartosc_obrotu=None,
-            liczba_transakcji=None,
-            stopa_zwrotu_1r=None,
-            kapitalizacja=None,
-            rynek=None,
-            system=None,
-            kurs_zamkniecia=None,
-            zmiana_procentowa=None,
-            zmiana_kwotowa=None,
-        )
-
-
-def test_insert_company_daily_stats_raises_bigquery_error_on_failure():
-    """insert_company_daily_stats must raise BigQueryError when the BQ query raises."""
+def test_delete_company_daily_stats_raises_bigquery_error_on_failure():
     from src.exceptions import BigQueryError
 
     client = MagicMock()
     client.project = "test-project"
-    client.query.side_effect = Exception("simulated BQ failure")
+    client.query.side_effect = Exception("bq down")
 
     with patch("db.bigquery._get_client", return_value=client):
-        with pytest.raises(BigQueryError, match="insert_company_daily_stats failed"):
-            insert_company_daily_stats(
-                ticker="ECH",
-                snapshot_date=date(2026, 6, 26),
-                kurs_odniesienia=None,
-                kurs_otwarcia=None,
-                kurs_min=None,
-                kurs_max=None,
-                wolumen_obrotu=None,
-                wartosc_obrotu=None,
-                liczba_transakcji=None,
-                stopa_zwrotu_1r=None,
-                kapitalizacja=None,
-                rynek=None,
-                system=None,
-                kurs_zamkniecia=None,
-                zmiana_procentowa=None,
-                zmiana_kwotowa=None,
-            )
+        with pytest.raises(BigQueryError, match="delete_company_daily_stats_for_date failed"):
+            delete_company_daily_stats_for_date(date(2026, 6, 26))
+
+
+def test_batch_insert_company_daily_stats_calls_insert_rows_json():
+    """batch_insert_company_daily_stats must call insert_rows_json with all rows."""
+    rows = [
+        {"ticker": "PKO", "snapshot_date": "2026-06-26", "kurs_zamkniecia": 103.62,
+         "fetched_at": "2026-06-26T17:00:00+00:00"},
+        {"ticker": "CDR", "snapshot_date": "2026-06-26", "kurs_zamkniecia": 217.4,
+         "fetched_at": "2026-06-26T17:00:00+00:00"},
+    ]
+    client = MagicMock()
+    client.project = "test-project"
+    client.insert_rows_json.return_value = []
+
+    with patch("db.bigquery._get_client", return_value=client):
+        batch_insert_company_daily_stats(rows)
+
+    client.insert_rows_json.assert_called_once()
+    called_rows = client.insert_rows_json.call_args[0][1]
+    assert len(called_rows) == 2
+    assert called_rows[0]["ticker"] == "PKO"
+
+
+def test_batch_insert_company_daily_stats_empty_rows_is_noop():
+    client = MagicMock()
+    with patch("db.bigquery._get_client", return_value=client):
+        batch_insert_company_daily_stats([])
+    client.insert_rows_json.assert_not_called()
+
+
+def test_batch_insert_company_daily_stats_raises_on_row_errors():
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.insert_rows_json.return_value = [{"errors": [{"reason": "invalid"}], "index": 0}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="batch_insert_company_daily_stats failed"):
+            batch_insert_company_daily_stats([{"ticker": "X", "snapshot_date": "2026-06-26"}])
 
 
 def test_list_companies_with_hop_info_raises_bigquery_error_on_failure():

@@ -1285,20 +1285,14 @@ _COMPANY_DAILY_STATS_TABLE_NAME = "company_daily_stats"
 _COMPANY_DAILY_STATS_SCHEMA = [
     bigquery.SchemaField("ticker", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("snapshot_date", "DATE", mode="REQUIRED"),
-    bigquery.SchemaField("kurs_odniesienia", "FLOAT64", mode="NULLABLE"),
-    bigquery.SchemaField("kurs_otwarcia", "FLOAT64", mode="NULLABLE"),
-    bigquery.SchemaField("kurs_min", "FLOAT64", mode="NULLABLE"),
-    bigquery.SchemaField("kurs_max", "FLOAT64", mode="NULLABLE"),
-    bigquery.SchemaField("wolumen_obrotu", "INTEGER", mode="NULLABLE"),
-    bigquery.SchemaField("wartosc_obrotu", "FLOAT64", mode="NULLABLE"),
-    bigquery.SchemaField("liczba_transakcji", "INTEGER", mode="NULLABLE"),
-    bigquery.SchemaField("stopa_zwrotu_1r", "FLOAT64", mode="NULLABLE"),
-    bigquery.SchemaField("kapitalizacja", "FLOAT64", mode="NULLABLE"),
-    bigquery.SchemaField("rynek", "STRING", mode="NULLABLE"),
-    bigquery.SchemaField("system", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("kurs_zamkniecia", "FLOAT64", mode="NULLABLE"),
     bigquery.SchemaField("zmiana_procentowa", "FLOAT64", mode="NULLABLE"),
     bigquery.SchemaField("zmiana_kwotowa", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_otwarcia", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_min", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_max", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("wartosc_obrotu", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("liczba_transakcji", "INTEGER", mode="NULLABLE"),
     bigquery.SchemaField("fetched_at", "TIMESTAMP", mode="REQUIRED"),
 ]
 
@@ -1355,71 +1349,39 @@ def list_companies_with_hop_info() -> list[dict]:
     ]
 
 
-def insert_company_daily_stats(
-    ticker: str,
-    snapshot_date: date,
-    kurs_odniesienia: float | None,
-    kurs_otwarcia: float | None,
-    kurs_min: float | None,
-    kurs_max: float | None,
-    wolumen_obrotu: int | None,
-    wartosc_obrotu: float | None,
-    liczba_transakcji: int | None,
-    stopa_zwrotu_1r: float | None,
-    kapitalizacja: float | None,
-    rynek: str | None,
-    system: str | None,
-    kurs_zamkniecia: float | None = None,
-    zmiana_procentowa: float | None = None,
-    zmiana_kwotowa: float | None = None,
-) -> None:
-    """Append one company_daily_stats row; silent no-op if (ticker, snapshot_date) already exists.
+def delete_company_daily_stats_for_date(snapshot_date: date) -> None:
+    """Delete all company_daily_stats rows for snapshot_date.
 
+    Called at job start so a re-run for the same day is always a clean replace.
     Raises BigQueryError on query failure.
     """
     client = _get_client()
     table = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
-    query = f"""
-        INSERT INTO `{table}`
-            (ticker, snapshot_date, kurs_odniesienia, kurs_otwarcia, kurs_min, kurs_max,
-             wolumen_obrotu, wartosc_obrotu, liczba_transakcji, stopa_zwrotu_1r,
-             kapitalizacja, rynek, `system`, kurs_zamkniecia, zmiana_procentowa,
-             zmiana_kwotowa, fetched_at)
-        SELECT @ticker, @snapshot_date, @kurs_odniesienia, @kurs_otwarcia, @kurs_min, @kurs_max,
-               @wolumen_obrotu, @wartosc_obrotu, @liczba_transakcji, @stopa_zwrotu_1r,
-               @kapitalizacja, @rynek, @system, @kurs_zamkniecia, @zmiana_procentowa,
-               @zmiana_kwotowa, CURRENT_TIMESTAMP()
-        FROM (SELECT 1)
-        WHERE NOT EXISTS (
-            SELECT 1 FROM `{table}`
-            WHERE ticker = @ticker AND snapshot_date = @snapshot_date
-        )
-    """
+    query = f"DELETE FROM `{table}` WHERE snapshot_date = @snapshot_date"
     job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
-            bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date),
-            bigquery.ScalarQueryParameter("kurs_odniesienia", "FLOAT64", kurs_odniesienia),
-            bigquery.ScalarQueryParameter("kurs_otwarcia", "FLOAT64", kurs_otwarcia),
-            bigquery.ScalarQueryParameter("kurs_min", "FLOAT64", kurs_min),
-            bigquery.ScalarQueryParameter("kurs_max", "FLOAT64", kurs_max),
-            bigquery.ScalarQueryParameter("wolumen_obrotu", "INTEGER", wolumen_obrotu),
-            bigquery.ScalarQueryParameter("wartosc_obrotu", "FLOAT64", wartosc_obrotu),
-            bigquery.ScalarQueryParameter("liczba_transakcji", "INTEGER", liczba_transakcji),
-            bigquery.ScalarQueryParameter("stopa_zwrotu_1r", "FLOAT64", stopa_zwrotu_1r),
-            bigquery.ScalarQueryParameter("kapitalizacja", "FLOAT64", kapitalizacja),
-            bigquery.ScalarQueryParameter("rynek", "STRING", rynek),
-            bigquery.ScalarQueryParameter("system", "STRING", system),
-            bigquery.ScalarQueryParameter("kurs_zamkniecia", "FLOAT64", kurs_zamkniecia),
-            bigquery.ScalarQueryParameter("zmiana_procentowa", "FLOAT64", zmiana_procentowa),
-            bigquery.ScalarQueryParameter("zmiana_kwotowa", "FLOAT64", zmiana_kwotowa),
-        ]
+        query_parameters=[bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date)]
     )
     try:
-        job = client.query(query, job_config=job_config)
-        job.result()
+        client.query(query, job_config=job_config).result()
     except Exception as exc:
-        raise BigQueryError(f"insert_company_daily_stats failed: {exc}") from exc
-    if job.errors:
-        raise BigQueryError(f"insert_company_daily_stats failed: {job.errors}")
-    logger.debug("insert_company_daily_stats: ticker=%s snapshot_date=%s", ticker, snapshot_date)
+        raise BigQueryError(f"delete_company_daily_stats_for_date failed: {exc}") from exc
+    logger.info("delete_company_daily_stats_for_date: deleted rows for %s", snapshot_date)
+
+
+def batch_insert_company_daily_stats(rows: list[dict]) -> None:
+    """Batch-insert company_daily_stats rows via BQ streaming insert (insert_rows_json).
+
+    Each row dict must contain ticker, snapshot_date (YYYY-MM-DD string), fetched_at
+    (ISO timestamp string), and the trading fields. One API call for all rows —
+    orders of magnitude faster than per-row DML queries.
+    Raises BigQueryError if BQ reports any row errors.
+    """
+    if not rows:
+        logger.info("batch_insert_company_daily_stats: no rows to insert")
+        return
+    client = _get_client()
+    table_id = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    errors = client.insert_rows_json(table_id, rows)
+    if errors:
+        raise BigQueryError(f"batch_insert_company_daily_stats failed: {errors}")
+    logger.info("batch_insert_company_daily_stats: inserted %d rows", len(rows))
