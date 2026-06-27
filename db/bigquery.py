@@ -24,7 +24,7 @@ import logging
 import os
 import threading
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -1388,3 +1388,70 @@ def batch_insert_company_daily_stats(rows: list[dict]) -> None:
     if errors:
         raise BigQueryError(f"batch_insert_company_daily_stats failed: {errors}")
     logger.info("batch_insert_company_daily_stats: inserted %d rows", len(rows))
+
+
+def merge_company_daily_stats(rows: list[dict]) -> None:
+    """Atomically upsert company_daily_stats rows via BigQuery MERGE.
+
+    Uses a temp table as the MERGE source so the target table always has data —
+    no deletion window between a DELETE and re-INSERT on hourly re-runs.
+    Raises BigQueryError on load job or MERGE job failure.
+    """
+    if not rows:
+        logger.info("merge_company_daily_stats: no rows to merge")
+        return
+
+    client = _get_client()
+    target = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    tmp_table_id = _table_ref(client, f"{_COMPANY_DAILY_STATS_TABLE_NAME}_tmp")
+
+    try:
+        job_config = bigquery.LoadJobConfig(
+            schema=_COMPANY_DAILY_STATS_SCHEMA,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
+        )
+        tmp_table = bigquery.Table(tmp_table_id, schema=_COMPANY_DAILY_STATS_SCHEMA)
+        from datetime import timezone as _tz
+        tmp_table.expires = datetime.now(_tz.utc) + timedelta(hours=24)
+        client.create_table(tmp_table, exists_ok=True)
+
+        load_job = client.load_table_from_json(rows, tmp_table_id, job_config=job_config)
+        load_job.result()
+        if load_job.errors:
+            raise BigQueryError(f"merge_company_daily_stats load failed: {load_job.errors}")
+
+        merge_sql = f"""
+            MERGE `{target}` T
+            USING `{tmp_table_id}` S
+            ON T.ticker = S.ticker AND T.snapshot_date = S.snapshot_date
+            WHEN MATCHED THEN
+              UPDATE SET
+                kurs_zamkniecia = S.kurs_zamkniecia,
+                zmiana_procentowa = S.zmiana_procentowa,
+                zmiana_kwotowa = S.zmiana_kwotowa,
+                kurs_otwarcia = S.kurs_otwarcia,
+                kurs_min = S.kurs_min,
+                kurs_max = S.kurs_max,
+                wartosc_obrotu = S.wartosc_obrotu,
+                liczba_transakcji = S.liczba_transakcji,
+                fetched_at = S.fetched_at
+            WHEN NOT MATCHED THEN
+              INSERT (ticker, snapshot_date, kurs_zamkniecia, zmiana_procentowa,
+                      zmiana_kwotowa, kurs_otwarcia, kurs_min, kurs_max,
+                      wartosc_obrotu, liczba_transakcji, fetched_at)
+              VALUES (S.ticker, S.snapshot_date, S.kurs_zamkniecia, S.zmiana_procentowa,
+                      S.zmiana_kwotowa, S.kurs_otwarcia, S.kurs_min, S.kurs_max,
+                      S.wartosc_obrotu, S.liczba_transakcji, S.fetched_at)
+        """
+        try:
+            merge_job = client.query(merge_sql)
+            merge_job.result()
+        except Exception as exc:
+            raise BigQueryError(f"merge_company_daily_stats MERGE failed: {exc}") from exc
+        if merge_job.errors:
+            raise BigQueryError(f"merge_company_daily_stats MERGE failed: {merge_job.errors}")
+
+        logger.info("merge_company_daily_stats: merged %d rows", len(rows))
+    finally:
+        client.delete_table(tmp_table_id, not_found_ok=True)

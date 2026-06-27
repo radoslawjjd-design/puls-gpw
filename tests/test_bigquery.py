@@ -26,6 +26,7 @@ from db.bigquery import (
     list_announcements_for_watchlist,
     list_announcements_user,
     list_companies_with_hop_info,
+    merge_company_daily_stats,
     list_distinct_companies,
     list_distinct_tickers,
     list_tickers_missing_from_companies,
@@ -1011,6 +1012,90 @@ def test_batch_insert_company_daily_stats_raises_on_row_errors():
     with patch("db.bigquery._get_client", return_value=client):
         with pytest.raises(BigQueryError, match="batch_insert_company_daily_stats failed"):
             batch_insert_company_daily_stats([{"ticker": "X", "snapshot_date": "2026-06-26"}])
+
+
+# ── merge_company_daily_stats (company-stats-upsert) ──────────────────────────
+
+def test_merge_company_daily_stats_happy_path():
+    """merge_company_daily_stats must call load_table_from_json, query (MERGE), and delete_table."""
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    load_job = MagicMock()
+    load_job.result.return_value = None
+    load_job.errors = None
+    client.load_table_from_json.return_value = load_job
+    merge_job = MagicMock()
+    merge_job.result.return_value = None
+    merge_job.errors = None
+    client.query.return_value = merge_job
+
+    rows = [{"ticker": "PKO", "snapshot_date": "2026-06-27", "kurs_zamkniecia": 40.0,
+             "fetched_at": "2026-06-27T09:01:00+00:00"}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        merge_company_daily_stats(rows)
+
+    client.load_table_from_json.assert_called_once()
+    client.query.assert_called_once()
+    merge_sql = client.query.call_args[0][0]
+    assert "MERGE" in merge_sql and "company_daily_stats" in merge_sql
+    client.delete_table.assert_called_once()
+
+
+def test_merge_company_daily_stats_empty_rows_is_noop():
+    """merge_company_daily_stats must return immediately without any BQ calls when rows is empty."""
+    client = MagicMock()
+    client.project = "test-project"
+
+    with patch("db.bigquery._get_client", return_value=client):
+        merge_company_daily_stats([])
+
+    client.load_table_from_json.assert_not_called()
+    client.query.assert_not_called()
+    client.delete_table.assert_not_called()
+
+
+def test_merge_company_daily_stats_load_failure_raises_and_cleans_up():
+    """merge_company_daily_stats must raise BigQueryError and call delete_table if load fails."""
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    load_job = MagicMock()
+    load_job.result.return_value = None
+    load_job.errors = [{"reason": "invalid", "message": "bad data"}]
+    client.load_table_from_json.return_value = load_job
+
+    rows = [{"ticker": "PKO", "snapshot_date": "2026-06-27"}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="load failed"):
+            merge_company_daily_stats(rows)
+
+    client.delete_table.assert_called()
+
+
+def test_merge_company_daily_stats_merge_failure_raises_and_cleans_up():
+    """merge_company_daily_stats must raise BigQueryError and call delete_table if MERGE fails."""
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    load_job = MagicMock()
+    load_job.result.return_value = None
+    load_job.errors = None
+    client.load_table_from_json.return_value = load_job
+    client.query.side_effect = Exception("merge exploded")
+
+    rows = [{"ticker": "PKO", "snapshot_date": "2026-06-27"}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="MERGE failed"):
+            merge_company_daily_stats(rows)
+
+    client.delete_table.assert_called()
 
 
 def test_list_companies_with_hop_info_raises_bigquery_error_on_failure():
