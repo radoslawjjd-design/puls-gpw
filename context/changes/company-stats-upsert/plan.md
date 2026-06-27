@@ -242,5 +242,5 @@ Verify the MERGE SQL syntax and both code paths (INSERT and UPDATE) against the 
 
 #### Manual
 
-- [x] 3.1 `uv run python scripts/test_bq_company_stats_merge.py` exits 0 with `OK: INSERT path OK` and `OK: UPDATE path OK`
-- [x] 3.2 BigQuery Console: no `_TEST_MERGE_` row remains in `company_daily_stats` after script completes
+- [x] 3.1 `uv run python scripts/test_bq_company_stats_merge.py` exits 0 with `OK: INSERT path OK` and `OK: UPDATE path OK` — e8732b9
+- [x] 3.2 BigQuery Console: no `_TEST_MERGE_` row remains in `company_daily_stats` after script completes — e8732b9
