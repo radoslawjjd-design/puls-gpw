@@ -532,6 +532,27 @@
       border-top: 1px solid var(--border);
     }
   }
+  /* Portfolio edit modal */
+  #pp-edit-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; padding: 1rem;
+  }
+  #pp-edit-modal {
+    background: #fff; border-radius: var(--radius-md); width: 100%; max-width: 420px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.18);
+    padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;
+  }
+  #pp-edit-modal h3 { margin: 0; font-size: 1.1rem; }
+  #pp-edit-modal .pp-modal-company { font-size: .85rem; color: var(--text-muted); margin-top: -.5rem; }
+  #pp-edit-modal label { font-size: .82rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: .25rem; }
+  #pp-edit-modal input[type="number"] {
+    width: 100%; box-sizing: border-box;
+    padding: .55rem .75rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: .95rem;
+  }
+  .pp-modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: .25rem; }
+
   .wl-tickers-list { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
   .wl-chip {
     display: inline-flex; align-items: center; gap: .4rem;
@@ -1856,20 +1877,27 @@ function _renderPortfolioTable(positions) {
   tbody.querySelectorAll('.pp-edit-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const { ticker, company, shares, price } = btn.dataset;
-      _ppEditingTicker = ticker;
-      $('pp-ticker-field').innerHTML = `<span id="pp-ticker-label">${esc(ticker)}</span>`;
-      $('pp-company-field').innerHTML = `<span id="pp-company-label">${esc(company)}</span>`;
-      $('pp-shares-input').value = shares;
-      $('pp-price-input').value = price;
-      $('pp-submit-btn').textContent = 'Zapisz zmiany';
-      $('pp-cancel-btn').style.display = '';
-      $('pp-form-wrap').style.display = '';
-      $('pp-add-toggle-btn').style.display = 'none';
+      _ppOpenEditModal(ticker, company, shares, price);
     });
   });
   tbody.querySelectorAll('.pp-del-btn').forEach(btn => {
     btn.addEventListener('click', () => _deletePortfolioPosition(btn.dataset.ticker));
   });
+}
+
+function _ppOpenEditModal(ticker, company, shares, price) {
+  _ppEditingTicker = ticker;
+  $('pp-edit-title').textContent = 'Edytuj: ' + ticker;
+  $('pp-edit-company').textContent = company || '';
+  $('pp-edit-shares').value = shares;
+  $('pp-edit-price').value = price;
+  $('pp-edit-overlay').style.display = '';
+  $('pp-edit-shares').focus();
+}
+
+function _ppCloseEditModal() {
+  _ppEditingTicker = null;
+  $('pp-edit-overlay').style.display = 'none';
 }
 
 function _ppResetToAddMode() {
@@ -1928,6 +1956,26 @@ function _buildPortfolioPositionsViewContent(view) {
       </form>
     </div>
     <div id="pp-error" style="display:none"></div>
+    <div id="pp-edit-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-edit-title">
+      <div id="pp-edit-modal">
+        <div>
+          <h3 id="pp-edit-title">Edytuj pozycję</h3>
+          <div class="pp-modal-company" id="pp-edit-company"></div>
+        </div>
+        <div>
+          <label for="pp-edit-shares">Ilość akcji</label>
+          <input type="number" id="pp-edit-shares" step="any" min="0.001" required>
+        </div>
+        <div>
+          <label for="pp-edit-price">Śr. cena zakupu (PLN)</label>
+          <input type="number" id="pp-edit-price" step="0.01" min="0.01" required>
+        </div>
+        <div class="pp-modal-actions">
+          <button type="button" id="pp-edit-cancel-btn" class="pp-cancel-btn">Anuluj</button>
+          <button type="button" id="pp-edit-save-btn" class="pp-submit-btn">Zapisz zmiany</button>
+        </div>
+      </div>
+    </div>
     <div id="pp-summary" style="display:none">
       <div class="pp-sum-item">
         <span class="pp-sum-label">Wartość portfela</span>
@@ -1976,6 +2024,19 @@ function _buildPortfolioPositionsViewContent(view) {
   });
 
   $('pp-cancel-btn').addEventListener('click', _ppResetToAddMode);
+
+  $('pp-edit-cancel-btn').addEventListener('click', _ppCloseEditModal);
+  $('pp-edit-overlay').addEventListener('click', e => { if (e.target === $('pp-edit-overlay')) _ppCloseEditModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('pp-edit-overlay').style.display !== 'none') _ppCloseEditModal(); });
+
+  $('pp-edit-save-btn').addEventListener('click', () => {
+    const shares = parseFloat($('pp-edit-shares').value);
+    const avgBuyPrice = parseFloat($('pp-edit-price').value);
+    if (!_ppEditingTicker || !(shares > 0) || !(avgBuyPrice > 0)) return;
+    const company = $('pp-edit-company').textContent;
+    _ppCloseEditModal();
+    _upsertPortfolioPosition(_ppEditingTicker, company, shares, avgBuyPrice);
+  });
 }
 
 function showPortfolioPositionsView() {
