@@ -174,11 +174,11 @@
     margin-bottom: 1rem; border: 1px solid var(--border);
     box-shadow: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
   }
-  .filters input, .filters select, #wl-add-form input {
+  .filters input, .filters select, #wl-add-form input, #pp-form input {
     padding: .55rem .8rem; border: none; background: var(--fill); border-radius: var(--radius-sm);
     font-size: .9rem; min-width: 120px; transition: background .15s, box-shadow .15s; outline: none;
   }
-  .filters input:focus, .filters select:focus, #wl-add-form input:focus {
+  .filters input:focus, .filters select:focus, #wl-add-form input:focus, #pp-form input:focus {
     background: #fff; box-shadow: 0 0 0 2px var(--brand);
   }
   .filters-date-group {
@@ -435,6 +435,47 @@
   }
   #wl-add-btn:hover { background: var(--brand-dark); }
   #wl-error { color: var(--negative); font-size: .85rem; margin-bottom: .75rem; }
+
+  /* Portfolio Positions */
+  #pp-add-toggle-btn {
+    padding: .55rem 1.15rem; background: var(--brand); color: #fff;
+    border: none; border-radius: var(--radius-pill); cursor: pointer; font-size: .9rem; font-weight: 600;
+    margin-bottom: 1rem; display: inline-block;
+  }
+  #pp-add-toggle-btn:hover { background: var(--brand-dark); }
+  #pp-form {
+    display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
+    background: #fff; padding: 1rem; border-radius: var(--radius-md);
+    margin-bottom: 1rem; border: 1px solid var(--border);
+    box-shadow: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+  }
+  #pp-form .ac-wrap { flex: 0 1 200px; }
+  #pp-form input[type="number"] { flex: 0 1 150px; min-width: 110px; }
+  #pp-ticker-label, #pp-company-label {
+    padding: .55rem .8rem; background: var(--fill); border-radius: var(--radius-sm);
+    font-size: .9rem; color: var(--text-muted); display: inline-block;
+  }
+  #pp-submit-btn {
+    padding: .55rem 1.15rem; background: var(--brand); color: #fff;
+    border: none; border-radius: var(--radius-pill); cursor: pointer; font-size: .9rem; font-weight: 600;
+  }
+  #pp-submit-btn:hover { background: var(--brand-dark); }
+  #pp-cancel-btn {
+    padding: .55rem 1.15rem; background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: var(--radius-pill); cursor: pointer; font-size: .9rem;
+  }
+  #pp-cancel-btn:hover { background: var(--fill); }
+  #pp-error { color: var(--negative); font-size: .85rem; margin-bottom: .75rem; }
+  .pp-edit-btn, .pp-del-btn {
+    padding: .3rem .7rem; border: none; border-radius: var(--radius-pill);
+    cursor: pointer; font-size: .82rem; font-weight: 500;
+  }
+  .pp-edit-btn { background: var(--brand-tint); color: var(--brand); }
+  .pp-edit-btn:hover { background: var(--brand); color: #fff; }
+  .pp-del-btn { background: #fdecea; color: var(--negative); margin-left: .3rem; }
+  .pp-del-btn:hover { background: var(--negative); color: #fff; }
+  td.positive { color: var(--positive); }
+  td.negative { color: var(--negative); }
   .wl-tickers-list { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
   .wl-chip {
     display: inline-flex; align-items: center; gap: .4rem;
@@ -476,6 +517,7 @@
   <path stroke-linecap="round" stroke-linejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 0 1-2.25 2.25M16.5 7.5V18a2.25 2.25 0 0 0 2.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 0 0 2.25 2.25h13.5M6 7.5h3v3H6v-3Z" />
 </svg> Ogłoszenia</button>
       <button type="button" class="nav-item" id="nav-my-wallet-btn" data-view="my-wallet"><svg class="nav-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="m480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 22t81 62q34-40 81-62t99-22q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q771-395 705-329T538-172l-58 52Zm0-108q96-86 158-147.5t98-107q36-45.5 50-81t14-70.5q0-60-40-100t-100-40q-47 0-87 26.5T518-680h-76q-15-41-55-67.5T300-774q-60 0-100 40t-40 100q0 35 14 70.5t50 81q36 45.5 98 107T480-228Zm0-273Z"/></svg> Obserwowane</button>
+      <button type="button" class="nav-item" id="nav-portfolio-positions-btn" data-view="portfolio-positions"><svg class="nav-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M120-120v-80l80-80v160h-80Zm160 0v-240l80-80v320h-80Zm160 0v-320l80 81v239h-80Zm160 0v-239l80-80v319h-80Zm160 0v-400l80-80v480h-80ZM120-327v-113l260-260 160 160 300-300v113L540-467 380-627 120-327Z"/></svg> Mój portfel</button>
     </nav>
     <div class="profile-menu-wrap">
       <button id="profile-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="profile-menu">
@@ -530,6 +572,7 @@
   </div>
 
   <div id="my-wallet-view" style="display:none"></div>
+  <div id="portfolio-positions-view" style="display:none"></div>
 </div>
 
 <!-- MODAL -->
@@ -664,7 +707,7 @@ function doLogout() {
   showLogin();
 }
 
-function _setupAcInput(inputId, dropId, data) {
+function _setupAcInput(inputId, dropId, data, onSelect = null) {
   const input = $(inputId);
   const drop  = $(dropId);
 
@@ -677,6 +720,7 @@ function _setupAcInput(inputId, dropId, data) {
         e.preventDefault();
         input.value = item.textContent;
         drop.style.display = 'none';
+        if (onSelect) onSelect(item.textContent);
       });
     });
     drop.style.display = 'block';
@@ -792,6 +836,7 @@ $('logout-btn').addEventListener('click', () => {
 
 $('nav-announcements-btn').addEventListener('click', () => _navigateToView('announcements'));
 $('nav-my-wallet-btn').addEventListener('click', () => _navigateToView('my-wallet'));
+$('nav-portfolio-positions-btn').addEventListener('click', () => _navigateToView('portfolio-positions'));
 
 // Highlights the nav-item matching the active view; called whenever a view
 // becomes visible (navigate or URL restore) so the topbar stays in sync.
@@ -1111,6 +1156,7 @@ function showAnnouncementsView() {
   const tView = $('treemap-view');
   if (tView) tView.style.display = 'none';
   $('my-wallet-view').style.display = 'none';
+  $('portfolio-positions-view').style.display = 'none';
   stopTreemapResizeTracking();
   _setActiveNavItem('announcements');
 }
@@ -1129,6 +1175,7 @@ function _showXHistoryViewDom() {
   const tView = $('treemap-view');
   if (tView) tView.style.display = 'none';
   $('my-wallet-view').style.display = 'none';
+  $('portfolio-positions-view').style.display = 'none';
   stopTreemapResizeTracking();
   closeProfileMenu();
   _setActiveNavItem('x-history');
@@ -1206,6 +1253,7 @@ function _showMyWalletViewDom() {
   if (xView) xView.style.display = 'none';
   const tView = $('treemap-view');
   if (tView) tView.style.display = 'none';
+  $('portfolio-positions-view').style.display = 'none';
   view.style.display = '';
   stopTreemapResizeTracking();
   closeProfileMenu();
@@ -1222,6 +1270,7 @@ function showTreemapView() {
   $('announcements-view').style.display = 'none';
   $('x-history-view').style.display = 'none';
   $('my-wallet-view').style.display = 'none';
+  $('portfolio-positions-view').style.display = 'none';
   $('treemap-view').style.display = '';
   closeProfileMenu();
   fetchTreemap();
@@ -1243,6 +1292,8 @@ function _navigateToView(view) {
     showXHistoryView();
   } else if (view === 'my-wallet') {
     showMyWalletView();
+  } else if (view === 'portfolio-positions') {
+    showPortfolioPositionsView();
   } else {
     showAnnouncementsView();
     history.pushState({}, '', '/');
@@ -1525,6 +1576,16 @@ async function _resolveTickerForCompany(companyName) {
   return match ? match.ticker : null;
 }
 
+async function _resolveCompanyForTicker(ticker) {
+  try {
+    const params = new URLSearchParams({ ticker, page_size: '1' });
+    const r = await fetch('/announcements?' + params, { headers: { 'X-API-Key': apiKey } });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return rows.length ? (rows[0].company || null) : null;
+  } catch { return null; }
+}
+
 // Disables the submit button synchronously (before the await), not after —
 // add_watchlist_ticker's INSERT ... WHERE NOT EXISTS does the existence
 // check and insert as two logical steps, so two rapid clicks could both pass
@@ -1588,6 +1649,231 @@ async function removeWatchlistTicker(ticker) {
     $('wl-error').textContent = 'Błąd usuwania tickera.';
     $('wl-error').style.display = 'block';
   }
+}
+
+// ── Portfolio Positions: fetch ────────────────────────────────────────────
+async function fetchPortfolioPositions() {
+  const tbody = $('pp-tbody');
+  if (!tbody) return;
+  try {
+    const r = await fetch('/api/portfolio/positions', {
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const positions = await r.json();
+    _renderPortfolioTable(positions);
+    const errDiv = $('pp-error');
+    if (errDiv) errDiv.style.display = 'none';
+  } catch (e) {
+    const errDiv = $('pp-error');
+    if (errDiv) { errDiv.textContent = 'Błąd ładowania pozycji.'; errDiv.style.display = 'block'; }
+  }
+}
+
+async function _upsertPortfolioPosition(ticker, companyName, shares, avgBuyPrice) {
+  try {
+    const r = await fetch('/api/portfolio/positions', {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker, company_name: companyName, shares, avg_buy_price: avgBuyPrice })
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) {
+      const errDiv = $('pp-error');
+      if (errDiv) { errDiv.textContent = 'Błąd dodawania pozycji (nieprawidłowy ticker lub dane).'; errDiv.style.display = 'block'; }
+      return;
+    }
+    await fetchPortfolioPositions();
+    _ppResetToAddMode();
+  } catch (e) {
+    const errDiv = $('pp-error');
+    if (errDiv) { errDiv.textContent = 'Błąd dodawania pozycji.'; errDiv.style.display = 'block'; }
+  }
+}
+
+async function _deletePortfolioPosition(ticker) {
+  if (!confirm('Czy na pewno usunąć pozycję ' + ticker + ' z portfela?')) return;
+  try {
+    const r = await fetch('/api/portfolio/positions/' + encodeURIComponent(ticker), {
+      method: 'DELETE',
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (r.status !== 204 && !r.ok) throw new Error('HTTP ' + r.status);
+    await fetchPortfolioPositions();
+  } catch (e) {
+    const errDiv = $('pp-error');
+    if (errDiv) { errDiv.textContent = 'Błąd usuwania pozycji.'; errDiv.style.display = 'block'; }
+  }
+}
+
+// ── Portfolio Positions: render ───────────────────────────────────────────
+let _ppEditingTicker = null;
+
+function _renderPortfolioTable(positions) {
+  const tbody = $('pp-tbody');
+  if (!tbody) return;
+  if (!positions.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">Brak pozycji w portfelu</td></tr>';
+    return;
+  }
+  tbody.innerHTML = positions.map(pos => {
+    const ticker = esc(pos.ticker);
+    const company = esc(pos.company_name || '');
+    const shares = pos.shares;
+    const avgPrice = pos.avg_buy_price.toFixed(2);
+    const curPrice = pos.current_price != null ? pos.current_price.toFixed(2) + ' PLN' : '—';
+    const daily = pos.daily_change_pct != null ? pos.daily_change_pct.toFixed(2) + '%' : '—';
+    let pnlText = '—';
+    let pnlClass = '';
+    if (pos.pnl_pln != null) {
+      pnlText = pos.pnl_pln.toFixed(2) + ' PLN (' + pos.pnl_pct.toFixed(2) + '%)';
+      pnlClass = pos.pnl_pln > 0 ? 'positive' : pos.pnl_pln < 0 ? 'negative' : '';
+    }
+    return `<tr>
+      <td>${ticker}</td>
+      <td>${company}</td>
+      <td>${shares}</td>
+      <td>${avgPrice} PLN</td>
+      <td>${curPrice}</td>
+      <td>${daily}</td>
+      <td class="${pnlClass}">${pnlText}</td>
+      <td>
+        <button type="button" class="pp-edit-btn" data-ticker="${ticker}" data-company="${company}" data-shares="${shares}" data-price="${pos.avg_buy_price}">Edytuj</button>
+        <button type="button" class="pp-del-btn" data-ticker="${ticker}">Usuń</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('.pp-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const { ticker, company, shares, price } = btn.dataset;
+      _ppEditingTicker = ticker;
+      $('pp-ticker-field').innerHTML = `<span id="pp-ticker-label">${esc(ticker)}</span>`;
+      $('pp-company-field').innerHTML = `<span id="pp-company-label">${esc(company)}</span>`;
+      $('pp-shares-input').value = shares;
+      $('pp-price-input').value = price;
+      $('pp-submit-btn').textContent = 'Zapisz zmiany';
+      $('pp-cancel-btn').style.display = '';
+      $('pp-form-wrap').style.display = '';
+      $('pp-add-toggle-btn').style.display = 'none';
+    });
+  });
+  tbody.querySelectorAll('.pp-del-btn').forEach(btn => {
+    btn.addEventListener('click', () => _deletePortfolioPosition(btn.dataset.ticker));
+  });
+}
+
+function _ppResetToAddMode() {
+  _ppEditingTicker = null;
+  $('pp-ticker-field').innerHTML =
+    `<div class="ac-wrap"><input type="text" id="pp-ticker-input" placeholder="Ticker (np. PKO)" autocomplete="off"><div id="ac-pp-ticker" class="ac-dropdown" style="display:none"></div></div>`;
+  $('pp-company-field').innerHTML =
+    `<div class="ac-wrap"><input type="text" id="pp-company-input" placeholder="Nazwa spółki" autocomplete="off"><div id="ac-pp-company" class="ac-dropdown" style="display:none"></div></div>`;
+  _ppWireAcCrossFill();
+  $('pp-shares-input').value = '';
+  $('pp-price-input').value = '';
+  $('pp-submit-btn').textContent = 'Dodaj';
+  $('pp-cancel-btn').style.display = 'none';
+  $('pp-form-wrap').style.display = 'none';
+  $('pp-add-toggle-btn').style.display = '';
+}
+
+function _ppWireAcCrossFill() {
+  _setupAcInput('pp-ticker-input', 'ac-pp-ticker', _acTickers, async (ticker) => {
+    const company = await _resolveCompanyForTicker(ticker);
+    const companyInput = $('pp-company-input');
+    if (company && companyInput) companyInput.value = company;
+  });
+  _setupAcInput('pp-company-input', 'ac-pp-company', _acCompanies, async (company) => {
+    try {
+      const ticker = await _resolveTickerForCompany(company);
+      const tickerInput = $('pp-ticker-input');
+      if (ticker && tickerInput) tickerInput.value = ticker;
+    } catch { /* silently ignore — user can type ticker manually */ }
+  });
+}
+
+// ── Portfolio Positions: view ─────────────────────────────────────────────
+function _buildPortfolioPositionsViewContent(view) {
+  view.innerHTML = `
+    <div class="view-header"><h2>Mój portfel</h2></div>
+    <button type="button" id="pp-add-toggle-btn">Dodaj pozycję</button>
+    <div id="pp-form-wrap" style="display:none">
+      <form id="pp-form">
+        <div id="pp-ticker-field">
+          <div class="ac-wrap">
+            <input type="text" id="pp-ticker-input" placeholder="Ticker (np. PKO)" autocomplete="off">
+            <div id="ac-pp-ticker" class="ac-dropdown" style="display:none"></div>
+          </div>
+        </div>
+        <div id="pp-company-field">
+          <div class="ac-wrap">
+            <input type="text" id="pp-company-input" placeholder="Nazwa spółki" autocomplete="off">
+            <div id="ac-pp-company" class="ac-dropdown" style="display:none"></div>
+          </div>
+        </div>
+        <input type="number" id="pp-shares-input" step="any" min="0.001" placeholder="Ilość akcji" required>
+        <input type="number" id="pp-price-input" step="0.01" min="0.01" placeholder="Śr. cena zakupu (PLN)" required>
+        <button type="submit" id="pp-submit-btn">Dodaj</button>
+        <button type="button" id="pp-cancel-btn" style="display:none">Anuluj</button>
+      </form>
+    </div>
+    <div id="pp-error" style="display:none"></div>
+    <div class="table-wrap">
+      <table>
+        <thead id="pp-thead">
+          <tr>
+            <th>Ticker</th><th>Spółka</th><th>Ilość akcji</th><th>Śr. cena zakupu</th>
+            <th>Aktualny kurs</th><th>Zmiana dzienna</th><th>Zysk/strata</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="pp-tbody"></tbody>
+      </table>
+    </div>
+  `;
+
+  _ppEditingTicker = null;
+  _ppWireAcCrossFill();
+
+  $('pp-add-toggle-btn').addEventListener('click', () => {
+    $('pp-form-wrap').style.display = '';
+    $('pp-add-toggle-btn').style.display = 'none';
+  });
+
+  $('pp-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const ticker = _ppEditingTicker || $('pp-ticker-input').value.trim();
+    const companyName = _ppEditingTicker
+      ? ($('pp-company-label') ? $('pp-company-label').textContent : '')
+      : $('pp-company-input').value.trim();
+    const shares = parseFloat($('pp-shares-input').value);
+    const avgBuyPrice = parseFloat($('pp-price-input').value);
+    if (!ticker || !(shares > 0) || !(avgBuyPrice > 0)) return;
+    _upsertPortfolioPosition(ticker, companyName, shares, avgBuyPrice);
+  });
+
+  $('pp-cancel-btn').addEventListener('click', _ppResetToAddMode);
+}
+
+function showPortfolioPositionsView() {
+  $('announcements-view').style.display = 'none';
+  const xView = $('x-history-view');
+  if (xView) xView.style.display = 'none';
+  const tView = $('treemap-view');
+  if (tView) tView.style.display = 'none';
+  $('my-wallet-view').style.display = 'none';
+  const ppView = $('portfolio-positions-view');
+  if (!ppView.dataset.built) {
+    _buildPortfolioPositionsViewContent(ppView);
+    ppView.dataset.built = '1';
+  }
+  ppView.style.display = '';
+  stopTreemapResizeTracking();
+  closeProfileMenu();
+  _setActiveNavItem('portfolio-positions');
+  fetchPortfolioPositions();
 }
 
 // ── x-posts: render ───────────────────────────────────────────────────────

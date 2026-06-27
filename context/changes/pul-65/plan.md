@@ -611,27 +611,27 @@ Use `getByRole` / `getByLabel` / `getByText` locators; no CSS selectors. No `pag
 
 #### Automated
 
-- [x] 2.1 New unit tests pass: `uv run pytest tests/test_api.py -k "portfolio"`
-- [x] 2.2 Full non-E2E suite green: `uv run pytest tests/ -k "not e2e"`
+- [x] 2.1 New unit tests pass: `uv run pytest tests/test_api.py -k "portfolio"` — 53f787b
+- [x] 2.2 Full non-E2E suite green: `uv run pytest tests/ -k "not e2e"` — 53f787b
 
 #### Manual
 
-- [x] 2.3 curl/httpie smoke test: POST → GET → DELETE all return correct shapes on local dev server
+- [x] 2.3 curl/httpie smoke test: POST → GET → DELETE all return correct shapes on local dev server — 53f787b
 
 ### Phase 3: Frontend UI
 
 #### Automated
 
-- [ ] 3.1 No JS console errors on page load and on navigating to "Mój portfel"
+- [x] 3.1 No JS console errors on page load and on navigating to "Mój portfel"
 
 #### Manual
 
-- [ ] 3.2 "Mój portfel" nav item visible for both admin and user roles after login
-- [ ] 3.3 Add position → row appears in table with correct values
-- [ ] 3.4 "—" shown for null-price ticker in all three price-dependent columns
-- [ ] 3.5 "Edytuj" pre-fills form, save updates row, cancel restores add mode
-- [ ] 3.6 "Usuń" → confirm dialog → OK removes row
-- [ ] 3.7 No regression in "Obserwowane" or admin treemap views
+- [x] 3.2 "Mój portfel" nav item visible for both admin and user roles after login
+- [x] 3.3 Add position → row appears in table with correct values
+- [x] 3.4 "—" shown for null-price ticker in all three price-dependent columns
+- [x] 3.5 "Edytuj" pre-fills form, save updates row, cancel restores add mode
+- [x] 3.6 "Usuń" → confirm dialog → OK removes row
+- [x] 3.7 No regression in "Obserwowane" or admin treemap views
 
 ### Phase 4: E2E Tests
 
