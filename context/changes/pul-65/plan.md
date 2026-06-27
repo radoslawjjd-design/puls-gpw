@@ -600,23 +600,23 @@ Use `getByRole` / `getByLabel` / `getByText` locators; no CSS selectors. No `pag
 
 #### Automated
 
-- [x] 1.1 Round-trip script exits 0: `uv run python scripts/test_bq_user_portfolio_positions.py`
-- [x] 1.2 Existing non-E2E tests still pass: `uv run pytest tests/ -k "not e2e"`
+- [x] 1.1 Round-trip script exits 0: `uv run python scripts/test_bq_user_portfolio_positions.py` — cae7900
+- [x] 1.2 Existing non-E2E tests still pass: `uv run pytest tests/ -k "not e2e"` — cae7900
 
 #### Manual
 
-- [x] 1.3 BQ console confirms: table created, upsert idempotent, pricing JOIN returns value for at least one ticker
+- [x] 1.3 BQ console confirms: table created, upsert idempotent, pricing JOIN returns value for at least one ticker — cae7900
 
 ### Phase 2: FastAPI Endpoints + Unit Tests
 
 #### Automated
 
-- [ ] 2.1 New unit tests pass: `uv run pytest tests/test_api.py -k "portfolio"`
-- [ ] 2.2 Full non-E2E suite green: `uv run pytest tests/ -k "not e2e"`
+- [x] 2.1 New unit tests pass: `uv run pytest tests/test_api.py -k "portfolio"`
+- [x] 2.2 Full non-E2E suite green: `uv run pytest tests/ -k "not e2e"`
 
 #### Manual
 
-- [ ] 2.3 curl/httpie smoke test: POST → GET → DELETE all return correct shapes on local dev server
+- [x] 2.3 curl/httpie smoke test: POST → GET → DELETE all return correct shapes on local dev server
 
 ### Phase 3: Frontend UI
 
