@@ -231,16 +231,16 @@ Verify the MERGE SQL syntax and both code paths (INSERT and UPDATE) against the 
 
 #### Automated
 
-- [x] 2.1 `uv run pytest tests/test_company_stats_main.py` — all tests pass
-- [x] 2.2 `uv run pytest` — full suite green
+- [x] 2.1 `uv run pytest tests/test_company_stats_main.py` — all tests pass — 9539407
+- [x] 2.2 `uv run pytest` — full suite green — 9539407
 
 #### Manual
 
-- [x] 2.3 `company_stats_main.py` imports no longer reference `batch_insert_company_daily_stats` or `delete_company_daily_stats_for_date`
+- [x] 2.3 `company_stats_main.py` imports no longer reference `batch_insert_company_daily_stats` or `delete_company_daily_stats_for_date` — 9539407
 
 ### Phase 3: Round-trip verification script
 
 #### Manual
 
-- [ ] 3.1 `uv run python scripts/test_bq_company_stats_merge.py` exits 0 with `✓ INSERT path OK` and `✓ UPDATE path OK`
-- [ ] 3.2 BigQuery Console: no `_TEST_MERGE_` row remains in `company_daily_stats` after script completes
+- [x] 3.1 `uv run python scripts/test_bq_company_stats_merge.py` exits 0 with `OK: INSERT path OK` and `OK: UPDATE path OK`
+- [x] 3.2 BigQuery Console: no `_TEST_MERGE_` row remains in `company_daily_stats` after script completes
