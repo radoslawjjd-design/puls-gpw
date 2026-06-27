@@ -20,11 +20,12 @@ def _open_x_history(page: Page) -> None:
 def test_topbar_nav_shows_x_history_and_treemap_for_admin(page: Page, live_server_url: str):
     _login(page, live_server_url)
     nav_items = page.locator("#topbar-nav .nav-item")
-    expect(nav_items).to_have_count(4)
+    expect(nav_items).to_have_count(5)
     expect(nav_items.nth(0)).to_contain_text("Ogłoszenia")
     expect(nav_items.nth(1)).to_contain_text("Obserwowane")
-    expect(nav_items.nth(2)).to_contain_text("Historia postów X")
-    expect(nav_items.nth(3)).to_contain_text("Treemapa portfela")
+    expect(nav_items.nth(2)).to_contain_text("Mój portfel")
+    expect(nav_items.nth(3)).to_contain_text("Historia postów X")
+    expect(nav_items.nth(4)).to_contain_text("Treemapa portfela")
 
     page.get_by_role("button", name="admin").click()
     menu_items = page.get_by_role("menuitem")

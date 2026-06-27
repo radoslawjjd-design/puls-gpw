@@ -379,6 +379,159 @@ def ensure_watchlist_schema_current() -> None:
     ensure_schema_current(_WATCHLIST_TABLE_NAME, _WATCHLIST_SCHEMA)
 
 
+_USER_PORTFOLIO_POSITIONS_TABLE_NAME = "user_portfolio_positions"
+
+_USER_PORTFOLIO_POSITIONS_SCHEMA = [
+    bigquery.SchemaField("user_id",       "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("ticker",        "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("company_name",  "STRING",    mode="NULLABLE"),
+    bigquery.SchemaField("shares",        "FLOAT64",   mode="REQUIRED"),
+    bigquery.SchemaField("avg_buy_price", "FLOAT64",   mode="REQUIRED"),
+    bigquery.SchemaField("created_at",    "TIMESTAMP", mode="REQUIRED"),
+    bigquery.SchemaField("updated_at",    "TIMESTAMP", mode="REQUIRED"),
+]
+
+
+def create_user_portfolio_positions_table_if_not_exists() -> None:
+    """Create the user_portfolio_positions table in BigQuery if it does not already exist."""
+    client = _get_client()
+    table_id = _table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_USER_PORTFOLIO_POSITIONS_SCHEMA)
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_user_portfolio_positions_schema_current() -> None:
+    """Migrate user_portfolio_positions — add any missing schema columns."""
+    ensure_schema_current(_USER_PORTFOLIO_POSITIONS_TABLE_NAME, _USER_PORTFOLIO_POSITIONS_SCHEMA)
+
+
+def upsert_user_portfolio_position(
+    user_id: str,
+    ticker: str,
+    company_name: str | None,
+    shares: float,
+    avg_buy_price: float,
+) -> None:
+    """Insert-or-update one portfolio position row keyed on (user_id, ticker).
+
+    MATCHED → update company_name, shares, avg_buy_price, updated_at.
+    NOT MATCHED → full INSERT with created_at and updated_at set to now.
+    Raises BigQueryError on failure.
+    """
+    client = _get_client()
+    query = f"""
+        MERGE `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` T
+        USING (
+            SELECT @user_id AS user_id, @ticker AS ticker,
+                   @company_name AS company_name, @shares AS shares,
+                   @avg_buy_price AS avg_buy_price
+        ) S
+        ON T.user_id = S.user_id AND T.ticker = S.ticker
+        WHEN MATCHED THEN
+          UPDATE SET
+            company_name  = S.company_name,
+            shares        = S.shares,
+            avg_buy_price = S.avg_buy_price,
+            updated_at    = CURRENT_TIMESTAMP()
+        WHEN NOT MATCHED THEN
+          INSERT (user_id, ticker, company_name, shares, avg_buy_price, created_at, updated_at)
+          VALUES (S.user_id, S.ticker, S.company_name, S.shares, S.avg_buy_price,
+                  CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id",       "STRING",  user_id),
+            bigquery.ScalarQueryParameter("ticker",        "STRING",  ticker),
+            bigquery.ScalarQueryParameter("company_name",  "STRING",  company_name),
+            bigquery.ScalarQueryParameter("shares",        "FLOAT64", shares),
+            bigquery.ScalarQueryParameter("avg_buy_price", "FLOAT64", avg_buy_price),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"upsert_user_portfolio_position failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"upsert_user_portfolio_position failed: {job.errors}")
+    logger.debug("upsert_user_portfolio_position: user_id=%s ticker=%s", user_id, ticker)
+
+
+def delete_user_portfolio_position(user_id: str, ticker: str) -> None:
+    """Remove one portfolio position; silent no-op if the row does not exist.
+
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        DELETE FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}`
+        WHERE user_id = @user_id AND ticker = @ticker
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("ticker",  "STRING", ticker),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"delete_user_portfolio_position failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"delete_user_portfolio_position failed: {job.errors}")
+    logger.debug("delete_user_portfolio_position: user_id=%s ticker=%s", user_id, ticker)
+
+
+def list_user_portfolio_positions(user_id: str) -> list[dict]:
+    """Return all positions for user_id joined with the latest available close price.
+
+    Uses ROW_NUMBER() OVER PARTITION BY ticker to pick the most recent company_daily_stats
+    entry per ticker, then LEFT JOIN so positions without price data still appear.
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        WITH latest_stats AS (
+          SELECT
+            ticker,
+            kurs_zamkniecia,
+            zmiana_procentowa,
+            CAST(snapshot_date AS STRING) AS price_as_of,
+            ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
+          FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
+        )
+        SELECT
+          p.ticker,
+          p.company_name,
+          p.shares,
+          p.avg_buy_price,
+          ls.kurs_zamkniecia   AS current_price,
+          ls.zmiana_procentowa AS daily_change_pct,
+          ls.price_as_of
+        FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` p
+        LEFT JOIN latest_stats ls
+          ON p.ticker = ls.ticker AND ls.rn = 1
+        WHERE p.user_id = @user_id
+        ORDER BY p.ticker
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_user_portfolio_positions failed: {exc}") from exc
+    return [dict(row) for row in rows]
+
+
 def add_watchlist_ticker(client_id: str, ticker: str) -> None:
     """Add `ticker` to `client_id`'s watchlist; silent no-op if already present.
 
