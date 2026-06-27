@@ -1,10 +1,10 @@
 ---
 change_id: company-stats-upsert
 title: Replace DELETE+INSERT with MERGE upsert in company stats ingestion
-status: impl_reviewed
+status: archived
 created: 2026-06-27
 updated: 2026-06-27
-archived_at: null
+archived_at: 2026-06-27T11:25:22Z
 tracking:
   linear: null
   github: null
