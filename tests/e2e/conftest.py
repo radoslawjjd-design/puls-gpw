@@ -212,6 +212,7 @@ def live_server_url():
         patch("src.api.list_x_posts_admin", side_effect=_fake_list_x_posts_admin),
         patch("src.api.get_latest_snapshot_for_wallet", side_effect=_fake_get_latest_snapshot_for_wallet),
         patch("src.api.get_latest_snapshot_before", side_effect=_fake_get_latest_snapshot_before),
+        patch("src.api.get_latest_company_stats_fetched_at", return_value="2026-06-27T09:01:05+00:00"),
         patch("src.api.create_watchlist_table_if_not_exists"),
         patch("src.api.ensure_watchlist_schema_current"),
         patch("src.api.create_companies_table_if_not_exists"),

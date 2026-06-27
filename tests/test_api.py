@@ -307,12 +307,14 @@ def test_admin_treemap_admin_returns_both_wallets_keyed_with_deltas(api_client):
             ),
         ),
         patch("src.api.get_latest_snapshot_before", return_value=_PRIOR_SNAPSHOT_MAIN),
+        patch("src.api.get_latest_company_stats_fetched_at", return_value="2026-06-19T09:01:05+00:00"),
     ):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
     body = r.json()
-    assert list(body.keys()) == ["main", "ikze", "as_of"]
+    assert list(body.keys()) == ["main", "ikze", "as_of", "stats_fetched_at"]
     assert body["as_of"] == "2026-06-19"
+    assert body["stats_fetched_at"] == "2026-06-19T09:01:05+00:00"
     assert body["main"] == [
         pytest.approx({
             "ticker": "PKO",
@@ -344,6 +346,7 @@ def test_admin_treemap_one_wallet_missing_other_still_renders(api_client):
             side_effect=_snapshot_side_effect({"main": _LATEST_SNAPSHOT_MAIN}),
         ),
         patch("src.api.get_latest_snapshot_before", return_value=_PRIOR_SNAPSHOT_MAIN),
+        patch("src.api.get_latest_company_stats_fetched_at", return_value=None),
     ):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
@@ -356,7 +359,7 @@ def test_admin_treemap_no_snapshots_returns_empty_lists_for_both_wallets(api_cli
     with patch("src.api.get_latest_snapshot_for_wallet", return_value=None):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
-    assert r.json() == {"main": [], "ikze": [], "as_of": None}
+    assert r.json() == {"main": [], "ikze": [], "as_of": None, "stats_fetched_at": None}
 
 
 def test_admin_treemap_user_returns_403(api_client):
