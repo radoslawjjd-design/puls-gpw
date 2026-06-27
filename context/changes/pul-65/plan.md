@@ -637,9 +637,9 @@ Use `getByRole` / `getByLabel` / `getByText` locators; no CSS selectors. No `pag
 
 #### Automated
 
-- [x] 4.1 New E2E tests pass: `uv run pytest tests/e2e/test_portfolio_positions.py -v`
-- [x] 4.2 Full E2E suite still green: `uv run pytest tests/e2e/ -v`
+- [x] 4.1 New E2E tests pass: `uv run pytest tests/e2e/test_portfolio_positions.py -v` — a6f8034
+- [x] 4.2 Full E2E suite still green: `uv run pytest tests/e2e/ -v` — a6f8034
 
 #### Manual
 
-- [x] 4.3 All four E2E test scenarios confirmed passing in CI output
+- [x] 4.3 All four E2E test scenarios confirmed passing in CI output — a6f8034

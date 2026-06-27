@@ -1,7 +1,7 @@
 ---
 change_id: pul-65
 title: User portfolio positions CRUD with treemap pricing from company_daily_stats
-status: implementing
+status: implemented
 created: 2026-06-27
 updated: 2026-06-27
 
