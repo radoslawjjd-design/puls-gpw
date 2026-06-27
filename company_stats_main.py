@@ -14,11 +14,10 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 from db.bigquery import (
-    batch_insert_company_daily_stats,
     create_company_daily_stats_table_if_not_exists,
-    delete_company_daily_stats_for_date,
     ensure_company_daily_stats_schema_current,
     list_companies_with_hop_info,
+    merge_company_daily_stats,
 )
 from src.bankier_metrics import fetch_listing_page, symbol_from_hop_url
 from src.notifier import send_alert
@@ -85,9 +84,7 @@ def main() -> None:
                 f"no rows built for {snapshot_date} — aborting to preserve existing data"
             )
 
-        # Delete today's rows first (safe re-run), then batch-insert all at once
-        delete_company_daily_stats_for_date(snapshot_date)
-        batch_insert_company_daily_stats(rows)
+        merge_company_daily_stats(rows)
 
         logger.info(
             "company_stats_main: done — processed=%d skipped=%d total=%d",

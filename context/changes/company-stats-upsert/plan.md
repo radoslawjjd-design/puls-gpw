@@ -220,23 +220,23 @@ Verify the MERGE SQL syntax and both code paths (INSERT and UPDATE) against the 
 
 #### Automated
 
-- [x] 1.1 `uv run pytest tests/test_bigquery.py -k "company_daily_stats"` — all tests pass including new ones
-- [x] 1.2 `uv run pytest` — full suite green
+- [x] 1.1 `uv run pytest tests/test_bigquery.py -k "company_daily_stats"` — all tests pass including new ones — 452d9aa
+- [x] 1.2 `uv run pytest` — full suite green — 452d9aa
 
 #### Manual
 
-- [x] 1.3 MERGE SQL field list matches `_COMPANY_DAILY_STATS_SCHEMA` column-for-column (manual read)
+- [x] 1.3 MERGE SQL field list matches `_COMPANY_DAILY_STATS_SCHEMA` column-for-column (manual read) — 452d9aa
 
 ### Phase 2: Update company_stats_main.py + tests
 
 #### Automated
 
-- [ ] 2.1 `uv run pytest tests/test_company_stats_main.py` — all tests pass
-- [ ] 2.2 `uv run pytest` — full suite green
+- [x] 2.1 `uv run pytest tests/test_company_stats_main.py` — all tests pass
+- [x] 2.2 `uv run pytest` — full suite green
 
 #### Manual
 
-- [ ] 2.3 `company_stats_main.py` imports no longer reference `batch_insert_company_daily_stats` or `delete_company_daily_stats_for_date`
+- [x] 2.3 `company_stats_main.py` imports no longer reference `batch_insert_company_daily_stats` or `delete_company_daily_stats_for_date`
 
 ### Phase 3: Round-trip verification script
 
