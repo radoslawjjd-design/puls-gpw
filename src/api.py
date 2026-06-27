@@ -22,6 +22,7 @@ from db.bigquery import (
     delete_announcement,
     ensure_companies_schema_current,
     ensure_watchlist_schema_current,
+    get_latest_company_stats_fetched_at,
     get_latest_snapshot_before,
     get_latest_snapshot_for_wallet,
     list_announcements_admin,
@@ -343,8 +344,10 @@ def create_app() -> FastAPI:
             if snapshot_dates:
                 latest_date = max(snapshot_dates)
                 result["as_of"] = latest_date.isoformat() if hasattr(latest_date, "isoformat") else str(latest_date)
+                result["stats_fetched_at"] = get_latest_company_stats_fetched_at(latest_date)
             else:
                 result["as_of"] = None
+                result["stats_fetched_at"] = None
             return result
         except BigQueryError as exc:
             logger.error("BQ error in /admin/portfolio/treemap: %s", exc)

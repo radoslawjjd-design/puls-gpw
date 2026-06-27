@@ -1463,3 +1463,30 @@ def merge_company_daily_stats(rows: list[dict]) -> None:
                 tmp_table_id,
                 exc_info=True,
             )
+
+
+def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
+    """Return fetched_at ISO string for any row in company_daily_stats for snapshot_date.
+
+    Returns None if no data exists for that date.
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    table = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    query = f"""
+        SELECT fetched_at
+        FROM `{table}`
+        WHERE snapshot_date = @snapshot_date
+        LIMIT 1
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date)]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_latest_company_stats_fetched_at failed: {exc}") from exc
+    if not rows:
+        return None
+    val = rows[0].fetched_at
+    return val.isoformat() if hasattr(val, "isoformat") else str(val)

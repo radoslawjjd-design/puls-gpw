@@ -1669,12 +1669,21 @@ function _renderTreemapWallets(data) {
   });
 }
 
-function _renderTreemapAsOf(asOf) {
+function _renderTreemapAsOf(asOf, statsAt) {
   const el = $('treemap-as-of');
   if (!el) return;
-  const [y, m, d] = asOf ? asOf.split('-') : [];
-  const display = (y && m && d) ? `${d}-${m}-${y}` : asOf;
-  el.textContent = asOf ? `(stan na dzień: ${display})` : '';
+  if (!asOf) { el.textContent = ''; return; }
+  const [y, m, d] = asOf.split('-');
+  const datePart = (y && m && d) ? `${d}-${m}-${y}` : asOf;
+  let timePart = '';
+  if (statsAt) {
+    const dt = new Date(statsAt);
+    timePart = dt.toLocaleTimeString('pl-PL', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      timeZone: 'Europe/Warsaw'
+    }) + ' ';
+  }
+  el.textContent = `(stan na dzień: ${timePart}${datePart})`;
 }
 
 async function fetchTreemap() {
@@ -1687,7 +1696,7 @@ async function fetchTreemap() {
     const data = await r.json();
     _treemapData = data;
     _renderTreemapWallets(data);
-    _renderTreemapAsOf(data.as_of);
+    _renderTreemapAsOf(data.as_of, data.stats_fetched_at);
   } catch (e) {
     _treemapData = null;
     _renderTreemapAsOf(null);

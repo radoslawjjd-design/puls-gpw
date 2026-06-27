@@ -25,6 +25,7 @@ from db.bigquery import (
     list_announcements_admin,
     list_announcements_for_watchlist,
     list_announcements_user,
+    get_latest_company_stats_fetched_at,
     list_companies_with_hop_info,
     merge_company_daily_stats,
     list_distinct_companies,
@@ -1100,6 +1101,39 @@ def test_merge_company_daily_stats_merge_failure_raises_and_cleans_up():
     client.delete_table.assert_called_once()
     assert "_tmp_" in client.delete_table.call_args.args[0]
     assert client.delete_table.call_args.kwargs.get("not_found_ok") is True
+
+
+def test_get_latest_company_stats_fetched_at_returns_isoformat_string():
+    """get_latest_company_stats_fetched_at must return the fetched_at isoformat for the date."""
+    from datetime import datetime, timezone
+
+    mock_dt = datetime(2026, 6, 27, 9, 1, 5, tzinfo=timezone.utc)
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([{"fetched_at": mock_dt}])) as mock_get:
+        result = get_latest_company_stats_fetched_at(date(2026, 6, 27))
+
+    assert result == mock_dt.isoformat()
+    query_str = mock_get.return_value.query.call_args[0][0]
+    assert "company_daily_stats" in query_str
+    assert "LIMIT 1" in query_str
+
+
+def test_get_latest_company_stats_fetched_at_returns_none_when_no_rows():
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
+        result = get_latest_company_stats_fetched_at(date(2026, 6, 27))
+    assert result is None
+
+
+def test_get_latest_company_stats_fetched_at_raises_on_bq_failure():
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = Exception("bq down")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="get_latest_company_stats_fetched_at failed"):
+            get_latest_company_stats_fetched_at(date(2026, 6, 27))
 
 
 def test_list_companies_with_hop_info_raises_bigquery_error_on_failure():

@@ -59,7 +59,7 @@ Job `puls-gpw-post` akceptuje `--window {ranek,poludnie,wieczor}`. Bez flagi aut
 | `puls-gpw-post-ranek` | `30 8 * * 1-5` | `puls-gpw-post` | Pon–Pt 08:30 |
 | `puls-gpw-post-poludnie` | `0 13 * * 1-5` | `puls-gpw-post` | Pon–Pt 13:00 |
 | `puls-gpw-post-wieczor` | `30 17 * * 1-5` | `puls-gpw-post` | Pon–Pt 17:30 |
-| `puls-gpw-company-stats-trigger` | `1 9-17 * * 1-5` | `puls-gpw-company-stats` | Pon–Pt co godz. 9:01–17:01 (9 razy/dzień) |
+| `puls-gpw-company-stats-trigger` | `1,31 9-17 * * 1-5` | `puls-gpw-company-stats` | Pon–Pt co 30 min 9:01–17:31 (18 razy/dzień) |
 
 Wszystkie schedulery używają OAuth z service account `puls-gpw-runner` do wywołania Cloud Run Jobs API.
 
@@ -84,7 +84,7 @@ gcloud run jobs create puls-gpw-company-stats \
 
 # 2. Utwórz trigger Cloud Scheduler (co godz. 9:01–17:01, Pon–Pt, czas warszawski)
 gcloud scheduler jobs create http puls-gpw-company-stats-trigger \
-  --schedule="1 9-17 * * 1-5" \
+  --schedule="1,31 9-17 * * 1-5" \
   --time-zone="Europe/Warsaw" \
   --uri="https://europe-central2-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/puls-gpw/jobs/puls-gpw-company-stats:run" \
   --http-method=POST \
