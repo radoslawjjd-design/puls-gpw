@@ -622,24 +622,24 @@ Use `getByRole` / `getByLabel` / `getByText` locators; no CSS selectors. No `pag
 
 #### Automated
 
-- [x] 3.1 No JS console errors on page load and on navigating to "Mój portfel"
+- [x] 3.1 No JS console errors on page load and on navigating to "Mój portfel" — 450b7a6
 
 #### Manual
 
-- [x] 3.2 "Mój portfel" nav item visible for both admin and user roles after login
-- [x] 3.3 Add position → row appears in table with correct values
-- [x] 3.4 "—" shown for null-price ticker in all three price-dependent columns
-- [x] 3.5 "Edytuj" pre-fills form, save updates row, cancel restores add mode
-- [x] 3.6 "Usuń" → confirm dialog → OK removes row
-- [x] 3.7 No regression in "Obserwowane" or admin treemap views
+- [x] 3.2 "Mój portfel" nav item visible for both admin and user roles after login — 450b7a6
+- [x] 3.3 Add position → row appears in table with correct values — 450b7a6
+- [x] 3.4 "—" shown for null-price ticker in all three price-dependent columns — 450b7a6
+- [x] 3.5 "Edytuj" pre-fills form, save updates row, cancel restores add mode — 450b7a6
+- [x] 3.6 "Usuń" → confirm dialog → OK removes row — 450b7a6
+- [x] 3.7 No regression in "Obserwowane" or admin treemap views — 450b7a6
 
 ### Phase 4: E2E Tests
 
 #### Automated
 
-- [ ] 4.1 New E2E tests pass: `uv run pytest tests/e2e/test_portfolio_positions.py -v`
-- [ ] 4.2 Full E2E suite still green: `uv run pytest tests/e2e/ -v`
+- [x] 4.1 New E2E tests pass: `uv run pytest tests/e2e/test_portfolio_positions.py -v`
+- [x] 4.2 Full E2E suite still green: `uv run pytest tests/e2e/ -v`
 
 #### Manual
 
-- [ ] 4.3 All four E2E test scenarios confirmed passing in CI output
+- [x] 4.3 All four E2E test scenarios confirmed passing in CI output
