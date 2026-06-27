@@ -1074,7 +1074,9 @@ def test_merge_company_daily_stats_load_failure_raises_and_cleans_up():
         with pytest.raises(BigQueryError, match="load failed"):
             merge_company_daily_stats(rows)
 
-    client.delete_table.assert_called()
+    client.delete_table.assert_called_once()
+    assert "_tmp_" in client.delete_table.call_args.args[0]
+    assert client.delete_table.call_args.kwargs.get("not_found_ok") is True
 
 
 def test_merge_company_daily_stats_merge_failure_raises_and_cleans_up():
@@ -1095,7 +1097,9 @@ def test_merge_company_daily_stats_merge_failure_raises_and_cleans_up():
         with pytest.raises(BigQueryError, match="MERGE failed"):
             merge_company_daily_stats(rows)
 
-    client.delete_table.assert_called()
+    client.delete_table.assert_called_once()
+    assert "_tmp_" in client.delete_table.call_args.args[0]
+    assert client.delete_table.call_args.kwargs.get("not_found_ok") is True
 
 
 def test_list_companies_with_hop_info_raises_bigquery_error_on_failure():

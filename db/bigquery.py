@@ -1403,7 +1403,7 @@ def merge_company_daily_stats(rows: list[dict]) -> None:
 
     client = _get_client()
     target = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
-    tmp_table_id = _table_ref(client, f"{_COMPANY_DAILY_STATS_TABLE_NAME}_tmp")
+    tmp_table_id = _table_ref(client, f"{_COMPANY_DAILY_STATS_TABLE_NAME}_tmp_{uuid.uuid4().hex[:8]}")
 
     try:
         job_config = bigquery.LoadJobConfig(
@@ -1414,6 +1414,7 @@ def merge_company_daily_stats(rows: list[dict]) -> None:
         tmp_table = bigquery.Table(tmp_table_id, schema=_COMPANY_DAILY_STATS_SCHEMA)
         from datetime import timezone as _tz
         tmp_table.expires = datetime.now(_tz.utc) + timedelta(hours=24)
+        # create_table sets the 24h expiry; CREATE_IF_NEEDED in LoadJobConfig cannot
         client.create_table(tmp_table, exists_ok=True)
 
         load_job = client.load_table_from_json(rows, tmp_table_id, job_config=job_config)
@@ -1454,4 +1455,11 @@ def merge_company_daily_stats(rows: list[dict]) -> None:
 
         logger.info("merge_company_daily_stats: merged %d rows", len(rows))
     finally:
-        client.delete_table(tmp_table_id, not_found_ok=True)
+        try:
+            client.delete_table(tmp_table_id, not_found_ok=True)
+        except Exception:
+            logger.warning(
+                "merge_company_daily_stats: failed to clean up temp table %s",
+                tmp_table_id,
+                exc_info=True,
+            )
