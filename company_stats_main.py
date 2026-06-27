@@ -76,7 +76,7 @@ def main() -> None:
                 "ticker": ticker,
                 "snapshot_date": snapshot_date.isoformat(),
                 "fetched_at": fetched_at,
-                **stats,
+                **{k: v for k, v in stats.items() if k != "company_name"},
             })
 
         if not rows:

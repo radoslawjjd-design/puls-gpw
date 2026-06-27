@@ -688,6 +688,46 @@ def upsert_company(
     logger.debug("upsert_company: ticker=%s", ticker)
 
 
+def insert_company_if_absent(
+    ticker: str,
+    name: str | None,
+    hop_url: str | None,
+    isin: str | None,
+) -> None:
+    """Insert one companies row only when no row exists for that ticker.
+
+    Never touches existing rows — safe to call with partial data (e.g. null name)
+    because it will not overwrite an existing populated name/isin. Use
+    upsert_company() when you have a fresh profile-page fetch and want full
+    last-write-wins semantics. Raises BigQueryError if the MERGE fails.
+    """
+    client = _get_client()
+    query = f"""
+        MERGE `{_table_ref(client, _COMPANIES_TABLE_NAME)}` T
+        USING (SELECT @ticker AS ticker, @name AS name, @hop_url AS hop_url, @isin AS isin) S
+        ON T.ticker = S.ticker
+        WHEN NOT MATCHED THEN
+          INSERT (ticker, name, hop_url, isin, created_at, updated_at)
+          VALUES (S.ticker, S.name, S.hop_url, S.isin, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
+            bigquery.ScalarQueryParameter("name", "STRING", name),
+            bigquery.ScalarQueryParameter("hop_url", "STRING", hop_url),
+            bigquery.ScalarQueryParameter("isin", "STRING", isin),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"insert_company_if_absent failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"insert_company_if_absent failed: {job.errors}")
+    logger.debug("insert_company_if_absent: ticker=%s", ticker)
+
+
 def is_processed(url: str) -> bool:
     """Return True if the announcement URL has already been inserted."""
     client = _get_client()

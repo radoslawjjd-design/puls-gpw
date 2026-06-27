@@ -476,6 +476,62 @@
   .pp-del-btn:hover { background: var(--negative); color: #fff; }
   td.positive { color: var(--positive); }
   td.negative { color: var(--negative); }
+  /* Portfolio: summary strip */
+  #pp-summary {
+    display: flex; flex-wrap: wrap; gap: .75rem;
+    background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: .85rem 1rem; margin-bottom: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,.07);
+  }
+  .pp-sum-item { flex: 1 1 140px; display: flex; flex-direction: column; gap: .15rem; }
+  .pp-sum-label { font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+  .pp-sum-value { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+  .pp-sum-value.positive { color: var(--positive); }
+  .pp-sum-value.negative { color: var(--negative); }
+
+  /* Portfolio: card layout on mobile */
+  @media (max-width: 640px) {
+    #pp-thead { display: none; }
+    .pp-table-wrap { background: none; border: none; box-shadow: none; overflow-x: visible; }
+    #pp-tbody tr {
+      display: block;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-bottom: .75rem;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,.07);
+    }
+    #pp-tbody tr:hover td { background: none; }
+    #pp-tbody td { display: block; border: none; padding: 0; }
+    /* Ticker — card header */
+    #pp-tbody td:nth-child(1) {
+      font-size: 1.1rem; font-weight: 700; color: var(--brand);
+      padding: .65rem .85rem .1rem;
+    }
+    /* Spółka — subtitle */
+    #pp-tbody td:nth-child(2) {
+      font-size: .82rem; color: var(--text-muted);
+      padding: 0 .85rem .55rem;
+      border-bottom: 1px solid var(--border);
+    }
+    /* Data cells: label-value rows */
+    #pp-tbody td:nth-child(n+3):not(:last-child) {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: .32rem .85rem; font-size: .88rem;
+    }
+    #pp-tbody td:nth-child(n+3):not(:last-child)::before {
+      content: attr(data-label);
+      color: var(--text-muted); font-size: .8rem; font-weight: 500;
+      flex-shrink: 0; margin-right: .5rem;
+    }
+    /* Actions — footer strip */
+    #pp-tbody td:last-child {
+      display: flex; justify-content: flex-end; gap: .4rem;
+      padding: .55rem .85rem;
+      border-top: 1px solid var(--border);
+    }
+  }
   .wl-tickers-list { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
   .wl-chip {
     display: inline-flex; align-items: center; gap: .4rem;
@@ -1711,6 +1767,55 @@ async function _deletePortfolioPosition(ticker) {
 // ── Portfolio Positions: render ───────────────────────────────────────────
 let _ppEditingTicker = null;
 
+function _updatePortfolioSummary(positions) {
+  const summary = $('pp-summary');
+  if (!summary) return;
+  if (!positions.length) { summary.style.display = 'none'; return; }
+
+  let totalValue = 0, totalCost = 0, totalPnl = 0, dailyPln = 0;
+  let hasPrice = false, hasPnl = false, hasDaily = false;
+
+  for (const pos of positions) {
+    totalCost += pos.shares * pos.avg_buy_price;
+    if (pos.current_price != null) {
+      totalValue += pos.shares * pos.current_price;
+      hasPrice = true;
+    }
+    if (pos.pnl_pln != null) { totalPnl += pos.pnl_pln; hasPnl = true; }
+    if (pos.current_price != null && pos.daily_change_pct != null) {
+      dailyPln += pos.shares * pos.current_price * (pos.daily_change_pct / 100);
+      hasDaily = true;
+    }
+  }
+
+  const fmt = n => n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sign = n => n > 0 ? '+' : '';
+
+  const valEl = $('pp-sum-value');
+  valEl.textContent = hasPrice ? fmt(totalValue) + ' PLN' : '—';
+  valEl.className = 'pp-sum-value';
+
+  const pnlEl = $('pp-sum-pnl');
+  if (hasPnl) {
+    const pnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+    pnlEl.textContent = sign(totalPnl) + fmt(totalPnl) + ' PLN (' + sign(pnlPct) + pnlPct.toFixed(2) + '%)';
+    pnlEl.className = 'pp-sum-value ' + (totalPnl > 0 ? 'positive' : totalPnl < 0 ? 'negative' : '');
+  } else {
+    pnlEl.textContent = '—'; pnlEl.className = 'pp-sum-value';
+  }
+
+  const dailyEl = $('pp-sum-daily');
+  if (hasDaily) {
+    const dailyPct = totalValue > 0 ? (dailyPln / (totalValue - dailyPln)) * 100 : 0;
+    dailyEl.textContent = sign(dailyPln) + fmt(dailyPln) + ' PLN (' + sign(dailyPct) + dailyPct.toFixed(2) + '%)';
+    dailyEl.className = 'pp-sum-value ' + (dailyPln > 0 ? 'positive' : dailyPln < 0 ? 'negative' : '');
+  } else {
+    dailyEl.textContent = '—'; dailyEl.className = 'pp-sum-value';
+  }
+
+  summary.style.display = '';
+}
+
 function _renderPortfolioTable(positions) {
   const tbody = $('pp-tbody');
   if (!tbody) return;
@@ -1734,17 +1839,19 @@ function _renderPortfolioTable(positions) {
     return `<tr>
       <td>${ticker}</td>
       <td>${company}</td>
-      <td>${shares}</td>
-      <td>${avgPrice} PLN</td>
-      <td>${curPrice}</td>
-      <td>${daily}</td>
-      <td class="${pnlClass}">${pnlText}</td>
+      <td data-label="Ilość akcji">${shares}</td>
+      <td data-label="Śr. cena zakupu">${avgPrice} PLN</td>
+      <td data-label="Aktualny kurs">${curPrice}</td>
+      <td data-label="Zmiana dzienna">${daily}</td>
+      <td class="${pnlClass}" data-label="Zysk/strata">${pnlText}</td>
       <td>
         <button type="button" class="pp-edit-btn" data-ticker="${ticker}" data-company="${company}" data-shares="${shares}" data-price="${pos.avg_buy_price}">Edytuj</button>
         <button type="button" class="pp-del-btn" data-ticker="${ticker}">Usuń</button>
       </td>
     </tr>`;
   }).join('');
+
+  _updatePortfolioSummary(positions);
 
   tbody.querySelectorAll('.pp-edit-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1821,7 +1928,21 @@ function _buildPortfolioPositionsViewContent(view) {
       </form>
     </div>
     <div id="pp-error" style="display:none"></div>
-    <div class="table-wrap">
+    <div id="pp-summary" style="display:none">
+      <div class="pp-sum-item">
+        <span class="pp-sum-label">Wartość portfela</span>
+        <span class="pp-sum-value" id="pp-sum-value">—</span>
+      </div>
+      <div class="pp-sum-item">
+        <span class="pp-sum-label">Zysk / strata</span>
+        <span class="pp-sum-value" id="pp-sum-pnl">—</span>
+      </div>
+      <div class="pp-sum-item">
+        <span class="pp-sum-label">Zmiana dzienna</span>
+        <span class="pp-sum-value" id="pp-sum-daily">—</span>
+      </div>
+    </div>
+    <div class="table-wrap pp-table-wrap">
       <table>
         <thead id="pp-thead">
           <tr>

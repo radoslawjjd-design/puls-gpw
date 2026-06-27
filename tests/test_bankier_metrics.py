@@ -92,6 +92,7 @@ def test_fetch_listing_page_returns_all_expected_keys():
         result = fetch_listing_page("akcje")
 
     expected = {
+        "company_name",
         "kurs_zamkniecia", "zmiana_procentowa", "zmiana_kwotowa",
         "kurs_otwarcia", "kurs_min", "kurs_max", "wartosc_obrotu", "liczba_transakcji",
     }

@@ -94,6 +94,7 @@ def fetch_listing_page(market: str) -> dict[str, dict]:
             if not symbol:
                 continue
             result[symbol] = {
+                "company_name": a.get_text(strip=True) or None,
                 "kurs_zamkniecia": _parse_polish_float(cells[1].get_text()),
                 "zmiana_procentowa": _parse_polish_float(cells[2].get_text()),
                 "zmiana_kwotowa": _parse_polish_float(cells[3].get_text()),
