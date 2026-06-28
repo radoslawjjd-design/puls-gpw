@@ -940,16 +940,16 @@ moves them. No data is lost in any scenario.
 
 #### Automated
 
-- [ ] 2.1 `uv run pytest tests/test_api.py -k wallet` — all pass
-- [ ] 2.2 `uv run mypy src/api.py` — no new errors
-- [ ] 2.3 `uv run ruff check src/` — clean
+- [x] 2.1 `uv run pytest tests/test_api.py -k wallet` — all pass
+- [x] 2.2 `uv run mypy src/api.py` — no new errors
+- [x] 2.3 `uv run ruff check src/` — clean
 
 #### Manual
 
-- [ ] 2.4 `GET /api/portfolio/wallets` with `X-API-Key` → 200 `[]`
-- [ ] 2.5 `POST /api/portfolio/wallets {"portfolio_type":"glowny"}` → 201
-- [ ] 2.6 Second POST with same type → 409
-- [ ] 2.7 `DELETE /api/portfolio/wallets/{id}` → 204
+- [x] 2.4 `GET /api/portfolio/wallets` with `X-API-Key` → 200 `[]`
+- [x] 2.5 `POST /api/portfolio/wallets {"portfolio_type":"glowny"}` → 201
+- [x] 2.6 Second POST with same type → 409
+- [x] 2.7 `DELETE /api/portfolio/wallets/{id}` → 204
 
 ### Phase 3: Positions CRUD update + treemapa endpoint
 

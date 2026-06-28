@@ -728,3 +728,115 @@ def test_delete_portfolio_position_bq_error_returns_500(api_client):
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 500
+
+
+# ── portfolio wallet endpoints (PUL-64 non-admin-portfolio-treemap, Phase 2) ──
+
+_WALLET_ID = "aaaabbbb-0000-1111-2222-ccccddddeeee"
+
+_WALLET_GLOWNY = {
+    "portfolio_id": _WALLET_ID,
+    "portfolio_type": "glowny",
+    "portfolio_name": None,
+    "display_order": 1,
+    "user_id": _CLIENT_ID,
+    "created_at": "2026-01-01T00:00:00+00:00",
+}
+
+_WALLET_INNY_1 = {
+    "portfolio_id": "inny-0001",
+    "portfolio_type": "inny",
+    "portfolio_name": "Mój inny",
+    "display_order": 4,
+    "user_id": _CLIENT_ID,
+    "created_at": "2026-01-02T00:00:00+00:00",
+}
+
+_WALLET_INNY_2 = {
+    "portfolio_id": "inny-0002",
+    "portfolio_type": "inny",
+    "portfolio_name": "Drugi inny",
+    "display_order": 5,
+    "user_id": _CLIENT_ID,
+    "created_at": "2026-01-03T00:00:00+00:00",
+}
+
+_AUTH = {"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+
+
+def test_get_wallets_returns_list(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = api_client.get("/api/portfolio/wallets", headers=_AUTH)
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["portfolio_type"] == "glowny"
+    assert data[0]["portfolio_id"] == _WALLET_ID
+
+
+def test_get_wallets_no_key_returns_401(api_client):
+    r = api_client.get("/api/portfolio/wallets")
+    assert r.status_code == 401
+
+
+def test_post_wallet_glowny_creates_and_assigns_orphans(api_client):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[]),
+        patch("src.api.create_user_portfolio", return_value=_WALLET_ID) as mock_create,
+        patch("src.api.assign_orphan_positions_to_portfolio") as mock_assign,
+    ):
+        r = api_client.post(
+            "/api/portfolio/wallets",
+            json={"portfolio_type": "glowny"},
+            headers=_AUTH,
+        )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["portfolio_id"] == _WALLET_ID
+    assert body["portfolio_type"] == "glowny"
+    mock_create.assert_called_once_with(_CLIENT_ID, "glowny", None)
+    mock_assign.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
+
+
+def test_post_wallet_duplicate_type_returns_409(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = api_client.post(
+            "/api/portfolio/wallets",
+            json={"portfolio_type": "glowny"},
+            headers=_AUTH,
+        )
+    assert r.status_code == 409
+    assert "already exists" in r.json()["detail"]
+
+
+def test_post_wallet_third_inny_returns_409(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_INNY_1, _WALLET_INNY_2]):
+        r = api_client.post(
+            "/api/portfolio/wallets",
+            json={"portfolio_type": "inny", "portfolio_name": "Trzeci"},
+            headers=_AUTH,
+        )
+    assert r.status_code == 409
+    assert "Maximum 2" in r.json()["detail"]
+
+
+def test_delete_wallet_own_returns_204(api_client):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.delete_user_portfolio") as mock_del,
+    ):
+        r = api_client.delete(
+            f"/api/portfolio/wallets/{_WALLET_ID}",
+            headers=_AUTH,
+        )
+    assert r.status_code == 204
+    mock_del.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
+
+
+def test_delete_wallet_wrong_user_returns_404(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[]):
+        r = api_client.delete(
+            "/api/portfolio/wallets/nonexistent-id",
+            headers=_AUTH,
+        )
+    assert r.status_code == 404

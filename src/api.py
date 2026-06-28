@@ -17,13 +17,18 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from db.bigquery import BigQueryError  # type: ignore[attr-defined]
 from db.bigquery import (
     add_watchlist_ticker,
+    assign_orphan_positions_to_portfolio,
     create_companies_table_if_not_exists,
+    create_user_portfolio,
     create_user_portfolio_positions_table_if_not_exists,
+    create_user_portfolios_table_if_not_exists,
     create_watchlist_table_if_not_exists,
     delete_announcement,
+    delete_user_portfolio,
     delete_user_portfolio_position,
     ensure_companies_schema_current,
     ensure_user_portfolio_positions_schema_current,
+    ensure_user_portfolios_schema_current,
     ensure_watchlist_schema_current,
     get_latest_company_stats_fetched_at,
     get_latest_snapshot_before,
@@ -34,6 +39,7 @@ from db.bigquery import (
     list_distinct_companies,
     list_distinct_tickers,
     list_user_portfolio_positions,
+    list_user_portfolios,
     list_watchlist_tickers,
     list_x_posts_admin,
     remove_watchlist_ticker,
@@ -146,6 +152,12 @@ class AnnouncementUser(BaseModel):
     published_at: datetime | None = None
 
 
+class PortfolioWalletCreate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    portfolio_type: Literal["glowny", "ikze", "ike", "ppk", "ppe", "inny"]
+    portfolio_name: str | None = None
+
+
 class PortfolioPositionIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     ticker: str
@@ -180,6 +192,8 @@ def create_app() -> FastAPI:
         ensure_companies_schema_current()
         create_user_portfolio_positions_table_if_not_exists()
         ensure_user_portfolio_positions_schema_current()
+        create_user_portfolios_table_if_not_exists()
+        ensure_user_portfolios_schema_current()
 
     @app.get("/health")
     async def health():
@@ -448,6 +462,58 @@ def create_app() -> FastAPI:
             delete_user_portfolio_position(client_id, ticker)
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /api/portfolio/positions/%s: %s", ticker, exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/api/portfolio/wallets")
+    async def get_portfolio_wallets(
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        try:
+            return list_user_portfolios(client_id)
+        except BigQueryError as exc:
+            logger.error("BQ error in GET /api/portfolio/wallets: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.post("/api/portfolio/wallets", status_code=201)
+    async def post_portfolio_wallet(
+        body: PortfolioWalletCreate,
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        try:
+            existing = list_user_portfolios(client_id)
+        except BigQueryError as exc:
+            logger.error("BQ error listing wallets in POST /api/portfolio/wallets: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        if body.portfolio_type in {"glowny", "ikze", "ike", "ppk", "ppe"}:
+            if any(w["portfolio_type"] == body.portfolio_type for w in existing):
+                raise HTTPException(status_code=409, detail="Wallet type already exists")
+        elif body.portfolio_type == "inny":
+            if sum(1 for w in existing if w["portfolio_type"] == "inny") >= 2:
+                raise HTTPException(status_code=409, detail="Maximum 2 'Inny' wallets allowed")
+        try:
+            portfolio_id = create_user_portfolio(client_id, body.portfolio_type, body.portfolio_name)
+            if body.portfolio_type == "glowny":
+                assign_orphan_positions_to_portfolio(client_id, portfolio_id)
+        except BigQueryError as exc:
+            logger.error("BQ error in POST /api/portfolio/wallets: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        return {"portfolio_id": portfolio_id, "portfolio_type": body.portfolio_type, "portfolio_name": body.portfolio_name}
+
+    @app.delete("/api/portfolio/wallets/{portfolio_id}", status_code=204)
+    async def delete_portfolio_wallet(
+        portfolio_id: str,
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        try:
+            existing = list_user_portfolios(client_id)
+            if not any(w["portfolio_id"] == portfolio_id for w in existing):
+                raise HTTPException(status_code=404, detail="Wallet not found")
+            delete_user_portfolio(client_id, portfolio_id)
+        except BigQueryError as exc:
+            logger.error("BQ error in DELETE /api/portfolio/wallets/%s: %s", portfolio_id, exc)
             raise HTTPException(status_code=500, detail=str(exc))
 
     app.mount("/static", StaticFiles(directory="static"), name="static")
