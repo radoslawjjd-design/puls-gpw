@@ -24,7 +24,7 @@ import logging
 import os
 import threading
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -379,6 +379,159 @@ def ensure_watchlist_schema_current() -> None:
     ensure_schema_current(_WATCHLIST_TABLE_NAME, _WATCHLIST_SCHEMA)
 
 
+_USER_PORTFOLIO_POSITIONS_TABLE_NAME = "user_portfolio_positions"
+
+_USER_PORTFOLIO_POSITIONS_SCHEMA = [
+    bigquery.SchemaField("user_id",       "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("ticker",        "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("company_name",  "STRING",    mode="NULLABLE"),
+    bigquery.SchemaField("shares",        "FLOAT64",   mode="REQUIRED"),
+    bigquery.SchemaField("avg_buy_price", "FLOAT64",   mode="REQUIRED"),
+    bigquery.SchemaField("created_at",    "TIMESTAMP", mode="REQUIRED"),
+    bigquery.SchemaField("updated_at",    "TIMESTAMP", mode="REQUIRED"),
+]
+
+
+def create_user_portfolio_positions_table_if_not_exists() -> None:
+    """Create the user_portfolio_positions table in BigQuery if it does not already exist."""
+    client = _get_client()
+    table_id = _table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_USER_PORTFOLIO_POSITIONS_SCHEMA)
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_user_portfolio_positions_schema_current() -> None:
+    """Migrate user_portfolio_positions — add any missing schema columns."""
+    ensure_schema_current(_USER_PORTFOLIO_POSITIONS_TABLE_NAME, _USER_PORTFOLIO_POSITIONS_SCHEMA)
+
+
+def upsert_user_portfolio_position(
+    user_id: str,
+    ticker: str,
+    company_name: str | None,
+    shares: float,
+    avg_buy_price: float,
+) -> None:
+    """Insert-or-update one portfolio position row keyed on (user_id, ticker).
+
+    MATCHED → update company_name, shares, avg_buy_price, updated_at.
+    NOT MATCHED → full INSERT with created_at and updated_at set to now.
+    Raises BigQueryError on failure.
+    """
+    client = _get_client()
+    query = f"""
+        MERGE `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` T
+        USING (
+            SELECT @user_id AS user_id, @ticker AS ticker,
+                   @company_name AS company_name, @shares AS shares,
+                   @avg_buy_price AS avg_buy_price
+        ) S
+        ON T.user_id = S.user_id AND T.ticker = S.ticker
+        WHEN MATCHED THEN
+          UPDATE SET
+            company_name  = S.company_name,
+            shares        = S.shares,
+            avg_buy_price = S.avg_buy_price,
+            updated_at    = CURRENT_TIMESTAMP()
+        WHEN NOT MATCHED THEN
+          INSERT (user_id, ticker, company_name, shares, avg_buy_price, created_at, updated_at)
+          VALUES (S.user_id, S.ticker, S.company_name, S.shares, S.avg_buy_price,
+                  CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id",       "STRING",  user_id),
+            bigquery.ScalarQueryParameter("ticker",        "STRING",  ticker),
+            bigquery.ScalarQueryParameter("company_name",  "STRING",  company_name),
+            bigquery.ScalarQueryParameter("shares",        "FLOAT64", shares),
+            bigquery.ScalarQueryParameter("avg_buy_price", "FLOAT64", avg_buy_price),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"upsert_user_portfolio_position failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"upsert_user_portfolio_position failed: {job.errors}")
+    logger.debug("upsert_user_portfolio_position: user_id=%s ticker=%s", user_id, ticker)
+
+
+def delete_user_portfolio_position(user_id: str, ticker: str) -> None:
+    """Remove one portfolio position; silent no-op if the row does not exist.
+
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        DELETE FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}`
+        WHERE user_id = @user_id AND ticker = @ticker
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("ticker",  "STRING", ticker),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"delete_user_portfolio_position failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"delete_user_portfolio_position failed: {job.errors}")
+    logger.debug("delete_user_portfolio_position: user_id=%s ticker=%s", user_id, ticker)
+
+
+def list_user_portfolio_positions(user_id: str) -> list[dict]:
+    """Return all positions for user_id joined with the latest available close price.
+
+    Uses ROW_NUMBER() OVER PARTITION BY ticker to pick the most recent company_daily_stats
+    entry per ticker, then LEFT JOIN so positions without price data still appear.
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        WITH latest_stats AS (
+          SELECT
+            ticker,
+            kurs_zamkniecia,
+            zmiana_procentowa,
+            CAST(snapshot_date AS STRING) AS price_as_of,
+            ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
+          FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
+        )
+        SELECT
+          p.ticker,
+          p.company_name,
+          p.shares,
+          p.avg_buy_price,
+          ls.kurs_zamkniecia   AS current_price,
+          ls.zmiana_procentowa AS daily_change_pct,
+          ls.price_as_of
+        FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` p
+        LEFT JOIN latest_stats ls
+          ON p.ticker = ls.ticker AND ls.rn = 1
+        WHERE p.user_id = @user_id
+        ORDER BY p.ticker
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_user_portfolio_positions failed: {exc}") from exc
+    return [dict(row) for row in rows]
+
+
 def add_watchlist_ticker(client_id: str, ticker: str) -> None:
     """Add `ticker` to `client_id`'s watchlist; silent no-op if already present.
 
@@ -533,6 +686,46 @@ def upsert_company(
     if job.errors:
         raise BigQueryError(f"upsert_company failed: {job.errors}")
     logger.debug("upsert_company: ticker=%s", ticker)
+
+
+def insert_company_if_absent(
+    ticker: str,
+    name: str | None,
+    hop_url: str | None,
+    isin: str | None,
+) -> None:
+    """Insert one companies row only when no row exists for that ticker.
+
+    Never touches existing rows — safe to call with partial data (e.g. null name)
+    because it will not overwrite an existing populated name/isin. Use
+    upsert_company() when you have a fresh profile-page fetch and want full
+    last-write-wins semantics. Raises BigQueryError if the MERGE fails.
+    """
+    client = _get_client()
+    query = f"""
+        MERGE `{_table_ref(client, _COMPANIES_TABLE_NAME)}` T
+        USING (SELECT @ticker AS ticker, @name AS name, @hop_url AS hop_url, @isin AS isin) S
+        ON T.ticker = S.ticker
+        WHEN NOT MATCHED THEN
+          INSERT (ticker, name, hop_url, isin, created_at, updated_at)
+          VALUES (S.ticker, S.name, S.hop_url, S.isin, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
+            bigquery.ScalarQueryParameter("name", "STRING", name),
+            bigquery.ScalarQueryParameter("hop_url", "STRING", hop_url),
+            bigquery.ScalarQueryParameter("isin", "STRING", isin),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"insert_company_if_absent failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"insert_company_if_absent failed: {job.errors}")
+    logger.debug("insert_company_if_absent: ticker=%s", ticker)
 
 
 def is_processed(url: str) -> bool:
@@ -1276,3 +1469,217 @@ def get_processed_ids_since(cutoff: datetime) -> set[str]:
     except Exception as exc:
         raise BigQueryError(f"get_processed_ids_since failed: {exc}") from exc
     return {row.announcement_id for row in rows}
+
+
+_COMPANY_DAILY_STATS_TABLE_NAME = "company_daily_stats"
+
+# Any field added after initial table creation must be NULLABLE — ensure_schema_current()'s
+# additive ALTER TABLE ADD COLUMN path only succeeds for NULLABLE columns in BigQuery.
+_COMPANY_DAILY_STATS_SCHEMA = [
+    bigquery.SchemaField("ticker", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("snapshot_date", "DATE", mode="REQUIRED"),
+    bigquery.SchemaField("kurs_zamkniecia", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("zmiana_procentowa", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("zmiana_kwotowa", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_otwarcia", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_min", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_max", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("wartosc_obrotu", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("liczba_transakcji", "INTEGER", mode="NULLABLE"),
+    bigquery.SchemaField("fetched_at", "TIMESTAMP", mode="REQUIRED"),
+]
+
+
+def create_company_daily_stats_table_if_not_exists() -> None:
+    """Create the company_daily_stats table in BigQuery if it does not already exist.
+
+    Partitioned by snapshot_date (DAY), clustered by ticker.
+    """
+    client = _get_client()
+    table_id = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_COMPANY_DAILY_STATS_SCHEMA)
+        table.time_partitioning = bigquery.TimePartitioning(
+            type_=bigquery.TimePartitioningType.DAY,
+            field="snapshot_date",
+        )
+        table.clustering_fields = ["ticker"]
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_company_daily_stats_schema_current() -> None:
+    """Migrate the company_daily_stats table — add any missing schema columns.
+
+    Thin binding over `ensure_schema_current()`; idempotent and safe to call on
+    every company-stats job startup.
+    """
+    ensure_schema_current(_COMPANY_DAILY_STATS_TABLE_NAME, _COMPANY_DAILY_STATS_SCHEMA)
+
+
+def list_companies_with_hop_info() -> list[dict]:
+    """Return all companies rows as dicts with ticker, name, hop_url, isin.
+
+    No WHERE filter — the missing-hop_url skip+log decision happens in the caller's loop.
+    Raises BigQueryError if the query job fails.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT ticker, name, hop_url, isin
+        FROM `{_table_ref(client, _COMPANIES_TABLE_NAME)}`
+        ORDER BY ticker
+    """
+    try:
+        rows = list(client.query(query).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_companies_with_hop_info failed: {exc}") from exc
+    return [
+        {"ticker": row.ticker, "name": row.name, "hop_url": row.hop_url, "isin": row.isin}
+        for row in rows
+    ]
+
+
+def delete_company_daily_stats_for_date(snapshot_date: date) -> None:
+    """Delete all company_daily_stats rows for snapshot_date.
+
+    Called at job start so a re-run for the same day is always a clean replace.
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    table = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    query = f"DELETE FROM `{table}` WHERE snapshot_date = @snapshot_date"
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date)]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"delete_company_daily_stats_for_date failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"delete_company_daily_stats_for_date failed: {job.errors}")
+    logger.info("delete_company_daily_stats_for_date: deleted rows for %s", snapshot_date)
+
+
+def batch_insert_company_daily_stats(rows: list[dict]) -> None:
+    """Batch-insert company_daily_stats rows via BQ streaming insert (insert_rows_json).
+
+    Each row dict must contain ticker, snapshot_date (YYYY-MM-DD string), fetched_at
+    (ISO timestamp string), and the trading fields. One API call for all rows —
+    orders of magnitude faster than per-row DML queries.
+    Raises BigQueryError if BQ reports any row errors.
+    """
+    if not rows:
+        logger.info("batch_insert_company_daily_stats: no rows to insert")
+        return
+    client = _get_client()
+    table_id = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    errors = client.insert_rows_json(table_id, rows)
+    if errors:
+        raise BigQueryError(f"batch_insert_company_daily_stats failed: {errors}")
+    logger.info("batch_insert_company_daily_stats: inserted %d rows", len(rows))
+
+
+def merge_company_daily_stats(rows: list[dict]) -> None:
+    """Atomically upsert company_daily_stats rows via BigQuery MERGE.
+
+    Uses a temp table as the MERGE source so the target table always has data —
+    no deletion window between a DELETE and re-INSERT on hourly re-runs.
+    Raises BigQueryError on load job or MERGE job failure.
+    """
+    if not rows:
+        logger.info("merge_company_daily_stats: no rows to merge")
+        return
+
+    client = _get_client()
+    target = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    tmp_table_id = _table_ref(client, f"{_COMPANY_DAILY_STATS_TABLE_NAME}_tmp_{uuid.uuid4().hex[:8]}")
+
+    try:
+        job_config = bigquery.LoadJobConfig(
+            schema=_COMPANY_DAILY_STATS_SCHEMA,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
+        )
+        tmp_table = bigquery.Table(tmp_table_id, schema=_COMPANY_DAILY_STATS_SCHEMA)
+        from datetime import timezone as _tz
+        tmp_table.expires = datetime.now(_tz.utc) + timedelta(hours=24)
+        # create_table sets the 24h expiry; CREATE_IF_NEEDED in LoadJobConfig cannot
+        client.create_table(tmp_table, exists_ok=True)
+
+        load_job = client.load_table_from_json(rows, tmp_table_id, job_config=job_config)
+        load_job.result()
+        if load_job.errors:
+            raise BigQueryError(f"merge_company_daily_stats load failed: {load_job.errors}")
+
+        merge_sql = f"""
+            MERGE `{target}` T
+            USING `{tmp_table_id}` S
+            ON T.ticker = S.ticker AND T.snapshot_date = S.snapshot_date
+            WHEN MATCHED THEN
+              UPDATE SET
+                kurs_zamkniecia = S.kurs_zamkniecia,
+                zmiana_procentowa = S.zmiana_procentowa,
+                zmiana_kwotowa = S.zmiana_kwotowa,
+                kurs_otwarcia = S.kurs_otwarcia,
+                kurs_min = S.kurs_min,
+                kurs_max = S.kurs_max,
+                wartosc_obrotu = S.wartosc_obrotu,
+                liczba_transakcji = S.liczba_transakcji,
+                fetched_at = S.fetched_at
+            WHEN NOT MATCHED THEN
+              INSERT (ticker, snapshot_date, kurs_zamkniecia, zmiana_procentowa,
+                      zmiana_kwotowa, kurs_otwarcia, kurs_min, kurs_max,
+                      wartosc_obrotu, liczba_transakcji, fetched_at)
+              VALUES (S.ticker, S.snapshot_date, S.kurs_zamkniecia, S.zmiana_procentowa,
+                      S.zmiana_kwotowa, S.kurs_otwarcia, S.kurs_min, S.kurs_max,
+                      S.wartosc_obrotu, S.liczba_transakcji, S.fetched_at)
+        """
+        try:
+            merge_job = client.query(merge_sql)
+            merge_job.result()
+        except Exception as exc:
+            raise BigQueryError(f"merge_company_daily_stats MERGE failed: {exc}") from exc
+        if merge_job.errors:
+            raise BigQueryError(f"merge_company_daily_stats MERGE failed: {merge_job.errors}")
+
+        logger.info("merge_company_daily_stats: merged %d rows", len(rows))
+    finally:
+        try:
+            client.delete_table(tmp_table_id, not_found_ok=True)
+        except Exception:
+            logger.warning(
+                "merge_company_daily_stats: failed to clean up temp table %s",
+                tmp_table_id,
+                exc_info=True,
+            )
+
+
+def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
+    """Return fetched_at ISO string for any row in company_daily_stats for snapshot_date.
+
+    Returns None if no data exists for that date.
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    table = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    query = f"""
+        SELECT fetched_at
+        FROM `{table}`
+        WHERE snapshot_date = @snapshot_date
+        LIMIT 1
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date)]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_latest_company_stats_fetched_at failed: {exc}") from exc
+    if not rows:
+        return None
+    val = rows[0].fetched_at
+    return val.isoformat() if hasattr(val, "isoformat") else str(val)

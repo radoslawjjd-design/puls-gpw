@@ -5,12 +5,16 @@ import pytest
 
 from db.bigquery import (
     _COMPANIES_SCHEMA,
+    _COMPANY_DAILY_STATS_SCHEMA,
     _WATCHLIST_SCHEMA,
     _X_POSTS_SCHEMA,
     _build_filter_clauses,
     add_watchlist_ticker,
     create_companies_table_if_not_exists,
+    batch_insert_company_daily_stats,
+    create_company_daily_stats_table_if_not_exists,
     create_portfolio_snapshots_table_if_not_exists,
+    delete_company_daily_stats_for_date,
     create_watchlist_table_if_not_exists,
     create_x_posts_table_if_not_exists,
     delete_announcement,
@@ -21,6 +25,9 @@ from db.bigquery import (
     list_announcements_admin,
     list_announcements_for_watchlist,
     list_announcements_user,
+    get_latest_company_stats_fetched_at,
+    list_companies_with_hop_info,
+    merge_company_daily_stats,
     list_distinct_companies,
     list_distinct_tickers,
     list_tickers_missing_from_companies,
@@ -864,3 +871,279 @@ def test_list_tickers_missing_from_companies_empty_result():
     with patch("db.bigquery._get_client", return_value=mock):
         result = list_tickers_missing_from_companies()
     assert result == []
+
+
+# ── company_daily_stats table (PUL-54) ────────────────────────────────────────
+
+def test_company_daily_stats_schema_has_required_columns():
+    """_COMPANY_DAILY_STATS_SCHEMA must define all expected fields with correct modes."""
+    names = {f.name: f for f in _COMPANY_DAILY_STATS_SCHEMA}
+    assert set(names) == {
+        "ticker", "snapshot_date",
+        "kurs_zamkniecia", "zmiana_procentowa", "zmiana_kwotowa",
+        "kurs_otwarcia", "kurs_min", "kurs_max",
+        "wartosc_obrotu", "liczba_transakcji", "fetched_at",
+    }
+    assert names["ticker"].mode == "REQUIRED"
+    assert names["snapshot_date"].mode == "REQUIRED"
+    assert names["fetched_at"].mode == "REQUIRED"
+    assert names["kurs_zamkniecia"].mode == "NULLABLE"
+    assert names["liczba_transakcji"].field_type in ("INTEGER", "INT64")
+    assert names["snapshot_date"].field_type == "DATE"
+    assert names["fetched_at"].field_type == "TIMESTAMP"
+
+
+def test_create_company_daily_stats_table_creates_with_partitioning_and_clustering():
+    """create_company_daily_stats_table_if_not_exists must set time_partitioning + clustering."""
+    from google.cloud.exceptions import NotFound
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.side_effect = NotFound("missing")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_company_daily_stats_table_if_not_exists()
+
+    assert client.create_table.called
+    created_table = client.create_table.call_args[0][0]
+    assert "company_daily_stats" in str(created_table.reference) or "company_daily_stats" in str(created_table)
+    assert created_table.time_partitioning is not None
+    assert created_table.time_partitioning.field == "snapshot_date"
+    assert created_table.clustering_fields == ["ticker"]
+
+
+def test_create_company_daily_stats_table_no_op_if_exists():
+    """create_company_daily_stats_table_if_not_exists must not call create_table when table exists."""
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.return_value = MagicMock()
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_company_daily_stats_table_if_not_exists()
+
+    assert not client.create_table.called
+
+
+def test_list_companies_with_hop_info_returns_dicts():
+    """list_companies_with_hop_info must return list of dicts with ticker/name/hop_url/isin."""
+    rows = [
+        {"ticker": "ECH", "name": "Echo Investment SA", "hop_url": "https://bankier.pl/echo", "isin": "PLECHPS00019"},
+        {"ticker": "PKO", "name": "PKO Bank Polski SA", "hop_url": None, "isin": "PLPKO0000016"},
+    ]
+    mock = _mock_bq_client_with_rows(rows)
+    with patch("db.bigquery._get_client", return_value=mock):
+        result = list_companies_with_hop_info()
+
+    assert len(result) == 2
+    assert result[0] == {"ticker": "ECH", "name": "Echo Investment SA", "hop_url": "https://bankier.pl/echo", "isin": "PLECHPS00019"}
+    assert result[1] == {"ticker": "PKO", "name": "PKO Bank Polski SA", "hop_url": None, "isin": "PLPKO0000016"}
+    query_str = mock.query.call_args[0][0]
+    assert "companies" in query_str
+    assert "ticker" in query_str and "hop_url" in query_str and "isin" in query_str
+    assert "WHERE" not in query_str
+
+
+def test_list_companies_with_hop_info_empty():
+    """list_companies_with_hop_info must return empty list when companies table is empty."""
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        result = list_companies_with_hop_info()
+    assert result == []
+
+
+def test_delete_company_daily_stats_for_date_issues_delete():
+    """delete_company_daily_stats_for_date must issue DELETE for the given date."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        delete_company_daily_stats_for_date(date(2026, 6, 26))
+
+    query_str = client.query.call_args[0][0]
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert "DELETE FROM" in query_str and "company_daily_stats" in query_str
+    assert params["snapshot_date"] == date(2026, 6, 26)
+
+
+def test_delete_company_daily_stats_raises_bigquery_error_on_failure():
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = Exception("bq down")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="delete_company_daily_stats_for_date failed"):
+            delete_company_daily_stats_for_date(date(2026, 6, 26))
+
+
+def test_batch_insert_company_daily_stats_calls_insert_rows_json():
+    """batch_insert_company_daily_stats must call insert_rows_json with all rows."""
+    rows = [
+        {"ticker": "PKO", "snapshot_date": "2026-06-26", "kurs_zamkniecia": 103.62,
+         "fetched_at": "2026-06-26T17:00:00+00:00"},
+        {"ticker": "CDR", "snapshot_date": "2026-06-26", "kurs_zamkniecia": 217.4,
+         "fetched_at": "2026-06-26T17:00:00+00:00"},
+    ]
+    client = MagicMock()
+    client.project = "test-project"
+    client.insert_rows_json.return_value = []
+
+    with patch("db.bigquery._get_client", return_value=client):
+        batch_insert_company_daily_stats(rows)
+
+    client.insert_rows_json.assert_called_once()
+    called_rows = client.insert_rows_json.call_args[0][1]
+    assert len(called_rows) == 2
+    assert called_rows[0]["ticker"] == "PKO"
+
+
+def test_batch_insert_company_daily_stats_empty_rows_is_noop():
+    client = MagicMock()
+    with patch("db.bigquery._get_client", return_value=client):
+        batch_insert_company_daily_stats([])
+    client.insert_rows_json.assert_not_called()
+
+
+def test_batch_insert_company_daily_stats_raises_on_row_errors():
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.insert_rows_json.return_value = [{"errors": [{"reason": "invalid"}], "index": 0}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="batch_insert_company_daily_stats failed"):
+            batch_insert_company_daily_stats([{"ticker": "X", "snapshot_date": "2026-06-26"}])
+
+
+# ── merge_company_daily_stats (company-stats-upsert) ──────────────────────────
+
+def test_merge_company_daily_stats_happy_path():
+    """merge_company_daily_stats must call load_table_from_json, query (MERGE), and delete_table."""
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    load_job = MagicMock()
+    load_job.result.return_value = None
+    load_job.errors = None
+    client.load_table_from_json.return_value = load_job
+    merge_job = MagicMock()
+    merge_job.result.return_value = None
+    merge_job.errors = None
+    client.query.return_value = merge_job
+
+    rows = [{"ticker": "PKO", "snapshot_date": "2026-06-27", "kurs_zamkniecia": 40.0,
+             "fetched_at": "2026-06-27T09:01:00+00:00"}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        merge_company_daily_stats(rows)
+
+    client.load_table_from_json.assert_called_once()
+    client.query.assert_called_once()
+    merge_sql = client.query.call_args[0][0]
+    assert "MERGE" in merge_sql and "company_daily_stats" in merge_sql
+    client.delete_table.assert_called_once()
+
+
+def test_merge_company_daily_stats_empty_rows_is_noop():
+    """merge_company_daily_stats must return immediately without any BQ calls when rows is empty."""
+    client = MagicMock()
+    client.project = "test-project"
+
+    with patch("db.bigquery._get_client", return_value=client):
+        merge_company_daily_stats([])
+
+    client.load_table_from_json.assert_not_called()
+    client.query.assert_not_called()
+    client.delete_table.assert_not_called()
+
+
+def test_merge_company_daily_stats_load_failure_raises_and_cleans_up():
+    """merge_company_daily_stats must raise BigQueryError and call delete_table if load fails."""
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    load_job = MagicMock()
+    load_job.result.return_value = None
+    load_job.errors = [{"reason": "invalid", "message": "bad data"}]
+    client.load_table_from_json.return_value = load_job
+
+    rows = [{"ticker": "PKO", "snapshot_date": "2026-06-27"}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="load failed"):
+            merge_company_daily_stats(rows)
+
+    client.delete_table.assert_called_once()
+    assert "_tmp_" in client.delete_table.call_args.args[0]
+    assert client.delete_table.call_args.kwargs.get("not_found_ok") is True
+
+
+def test_merge_company_daily_stats_merge_failure_raises_and_cleans_up():
+    """merge_company_daily_stats must raise BigQueryError and call delete_table if MERGE fails."""
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    load_job = MagicMock()
+    load_job.result.return_value = None
+    load_job.errors = None
+    client.load_table_from_json.return_value = load_job
+    client.query.side_effect = Exception("merge exploded")
+
+    rows = [{"ticker": "PKO", "snapshot_date": "2026-06-27"}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="MERGE failed"):
+            merge_company_daily_stats(rows)
+
+    client.delete_table.assert_called_once()
+    assert "_tmp_" in client.delete_table.call_args.args[0]
+    assert client.delete_table.call_args.kwargs.get("not_found_ok") is True
+
+
+def test_get_latest_company_stats_fetched_at_returns_isoformat_string():
+    """get_latest_company_stats_fetched_at must return the fetched_at isoformat for the date."""
+    from datetime import datetime, timezone
+
+    mock_dt = datetime(2026, 6, 27, 9, 1, 5, tzinfo=timezone.utc)
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([{"fetched_at": mock_dt}])) as mock_get:
+        result = get_latest_company_stats_fetched_at(date(2026, 6, 27))
+
+    assert result == mock_dt.isoformat()
+    query_str = mock_get.return_value.query.call_args[0][0]
+    assert "company_daily_stats" in query_str
+    assert "LIMIT 1" in query_str
+
+
+def test_get_latest_company_stats_fetched_at_returns_none_when_no_rows():
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
+        result = get_latest_company_stats_fetched_at(date(2026, 6, 27))
+    assert result is None
+
+
+def test_get_latest_company_stats_fetched_at_raises_on_bq_failure():
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = Exception("bq down")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="get_latest_company_stats_fetched_at failed"):
+            get_latest_company_stats_fetched_at(date(2026, 6, 27))
+
+
+def test_list_companies_with_hop_info_raises_bigquery_error_on_failure():
+    """list_companies_with_hop_info must raise BigQueryError when the BQ query raises."""
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = Exception("simulated BQ failure")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="list_companies_with_hop_info failed"):
+            list_companies_with_hop_info()

@@ -307,12 +307,14 @@ def test_admin_treemap_admin_returns_both_wallets_keyed_with_deltas(api_client):
             ),
         ),
         patch("src.api.get_latest_snapshot_before", return_value=_PRIOR_SNAPSHOT_MAIN),
+        patch("src.api.get_latest_company_stats_fetched_at", return_value="2026-06-19T09:01:05+00:00"),
     ):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
     body = r.json()
-    assert list(body.keys()) == ["main", "ikze", "as_of"]
+    assert list(body.keys()) == ["main", "ikze", "as_of", "stats_fetched_at"]
     assert body["as_of"] == "2026-06-19"
+    assert body["stats_fetched_at"] == "2026-06-19T09:01:05+00:00"
     assert body["main"] == [
         pytest.approx({
             "ticker": "PKO",
@@ -344,6 +346,7 @@ def test_admin_treemap_one_wallet_missing_other_still_renders(api_client):
             side_effect=_snapshot_side_effect({"main": _LATEST_SNAPSHOT_MAIN}),
         ),
         patch("src.api.get_latest_snapshot_before", return_value=_PRIOR_SNAPSHOT_MAIN),
+        patch("src.api.get_latest_company_stats_fetched_at", return_value=None),
     ):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
@@ -356,7 +359,7 @@ def test_admin_treemap_no_snapshots_returns_empty_lists_for_both_wallets(api_cli
     with patch("src.api.get_latest_snapshot_for_wallet", return_value=None):
         r = api_client.get("/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
-    assert r.json() == {"main": [], "ikze": [], "as_of": None}
+    assert r.json() == {"main": [], "ikze": [], "as_of": None, "stats_fetched_at": None}
 
 
 def test_admin_treemap_user_returns_403(api_client):
@@ -526,6 +529,202 @@ def test_announcements_my_wallet_bq_error_returns_500(api_client):
     with patch("src.api.list_announcements_for_watchlist", side_effect=BigQueryError("boom")):
         r = api_client.get(
             "/announcements/my-wallet",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 500
+
+
+# ── portfolio positions endpoints (PUL-65) ────────────────────────────────────
+
+_POSITION_WITH_PRICE = {
+    "ticker": "PKO",
+    "company_name": "PKO Bank Polski SA",
+    "shares": 10.0,
+    "avg_buy_price": 40.0,
+    "current_price": 52.0,
+    "daily_change_pct": 1.5,
+    "price_as_of": "2026-06-27",
+}
+
+_POSITION_NO_PRICE = {
+    "ticker": "XYZ",
+    "company_name": "Firma XYZ",
+    "shares": 5.0,
+    "avg_buy_price": 30.0,
+    "current_price": None,
+    "daily_change_pct": None,
+    "price_as_of": None,
+}
+
+
+def test_get_portfolio_positions_returns_empty_list(api_client):
+    with patch("src.api.list_user_portfolio_positions", return_value=[]):
+        r = api_client.get(
+            "/api/portfolio/positions",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_get_portfolio_positions_with_price_computes_pnl(api_client):
+    with patch("src.api.list_user_portfolio_positions", return_value=[_POSITION_WITH_PRICE]):
+        r = api_client.get(
+            "/api/portfolio/positions",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    pos = data[0]
+    assert pos["ticker"] == "PKO"
+    assert pos["shares"] == 10.0
+    assert pos["current_price"] == 52.0
+    assert pos["pnl_pln"] == pytest.approx((52.0 - 40.0) * 10.0)
+    assert pos["pnl_pct"] == pytest.approx((52.0 - 40.0) / 40.0 * 100)
+
+
+def test_get_portfolio_positions_without_price_has_null_pnl(api_client):
+    with patch("src.api.list_user_portfolio_positions", return_value=[_POSITION_NO_PRICE]):
+        r = api_client.get(
+            "/api/portfolio/positions",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    pos = data[0]
+    assert pos["current_price"] is None
+    assert pos["pnl_pln"] is None
+    assert pos["pnl_pct"] is None
+
+
+def test_get_portfolio_positions_missing_client_id_returns_400(api_client):
+    r = api_client.get("/api/portfolio/positions", headers={"X-API-Key": _USER_KEY})
+    assert r.status_code == 400
+
+
+def test_get_portfolio_positions_no_key_returns_401(api_client):
+    r = api_client.get("/api/portfolio/positions")
+    assert r.status_code == 401
+
+
+def test_get_portfolio_positions_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with patch("src.api.list_user_portfolio_positions", side_effect=BigQueryError("boom")):
+        r = api_client.get(
+            "/api/portfolio/positions",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 500
+
+
+def test_post_portfolio_position_valid_ticker_returns_200(api_client):
+    with (
+        patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]),
+        patch("src.api.upsert_user_portfolio_position", return_value=None) as mock_upsert,
+    ):
+        r = api_client.post(
+            "/api/portfolio/positions",
+            json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
+                  "shares": 10.0, "avg_buy_price": 40.0},
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 200
+    assert r.json() == {"ticker": "PKO", "upserted": True}
+    mock_upsert.assert_called_once_with(_CLIENT_ID, "PKO", "PKO Bank Polski SA", 10.0, 40.0)
+
+
+def test_post_portfolio_position_unknown_ticker_returns_422(api_client):
+    with patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]):
+        r = api_client.post(
+            "/api/portfolio/positions",
+            json={"ticker": "NOPE", "company_name": "Firma", "shares": 10.0, "avg_buy_price": 40.0},
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 422
+    assert "Unknown ticker" in r.json()["detail"]
+
+
+def test_post_portfolio_position_zero_shares_returns_422(api_client):
+    r = api_client.post(
+        "/api/portfolio/positions",
+        json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
+              "shares": 0.0, "avg_buy_price": 40.0},
+        headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+    )
+    assert r.status_code == 422
+
+
+def test_post_portfolio_position_negative_shares_returns_422(api_client):
+    r = api_client.post(
+        "/api/portfolio/positions",
+        json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
+              "shares": -5.0, "avg_buy_price": 40.0},
+        headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+    )
+    assert r.status_code == 422
+
+
+def test_post_portfolio_position_missing_client_id_returns_400(api_client):
+    r = api_client.post(
+        "/api/portfolio/positions",
+        json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
+              "shares": 10.0, "avg_buy_price": 40.0},
+        headers={"X-API-Key": _USER_KEY},
+    )
+    assert r.status_code == 400
+
+
+def test_post_portfolio_position_no_key_returns_401(api_client):
+    r = api_client.post(
+        "/api/portfolio/positions",
+        json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
+              "shares": 10.0, "avg_buy_price": 40.0},
+    )
+    assert r.status_code == 401
+
+
+def test_post_portfolio_position_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with (
+        patch("src.api.list_distinct_tickers", return_value=["PKO"]),
+        patch("src.api.upsert_user_portfolio_position", side_effect=BigQueryError("boom")),
+    ):
+        r = api_client.post(
+            "/api/portfolio/positions",
+            json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
+                  "shares": 10.0, "avg_buy_price": 40.0},
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 500
+
+
+def test_delete_portfolio_position_returns_204(api_client):
+    with patch("src.api.delete_user_portfolio_position", return_value=None) as mock_del:
+        r = api_client.delete(
+            "/api/portfolio/positions/PKO",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 204
+    mock_del.assert_called_once_with(_CLIENT_ID, "PKO")
+
+
+def test_delete_portfolio_position_missing_client_id_returns_400(api_client):
+    r = api_client.delete("/api/portfolio/positions/PKO", headers={"X-API-Key": _USER_KEY})
+    assert r.status_code == 400
+
+
+def test_delete_portfolio_position_no_key_returns_401(api_client):
+    r = api_client.delete("/api/portfolio/positions/PKO")
+    assert r.status_code == 401
+
+
+def test_delete_portfolio_position_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with patch("src.api.delete_user_portfolio_position", side_effect=BigQueryError("boom")):
+        r = api_client.delete(
+            "/api/portfolio/positions/PKO",
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 500

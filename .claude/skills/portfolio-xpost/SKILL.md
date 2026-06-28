@@ -1,6 +1,6 @@
 ---
 name: portfolio-xpost
-description: Generate and publish portfolio status X threads from XTB broker screenshots in broker_data/ (main/IKZE/short/long wallets)
+description: Generate and publish portfolio status X threads from XTB broker screenshots in broker_data/ (main/IKZE wallets)
 allowed-tools:
   - Read
   - Glob
@@ -10,9 +10,9 @@ allowed-tools:
 
 # /portfolio-xpost — Portfolio status X-post generator
 
-Reads XTB broker screenshots from `broker_data/<wallet>/` (`main`, `ikze`, `short`, `long`),
+Reads XTB broker screenshots from `broker_data/<wallet>/` (`main`, `ikze`),
 extracts portfolio data via Gemini vision, computes day-over-day deltas from the
-`portfolio_snapshots` BigQuery table, drafts two X threads (main+IKZE / short+long),
+`portfolio_snapshots` BigQuery table, drafts one X thread (main+IKZE),
 gets human approval, publishes with the screenshots attached, and archives the processed
 images. See `context/changes/portfolio-xpost-skill/plan.md` for the full design.
 
@@ -26,13 +26,13 @@ this skill never auto-creates `broker_data/<wallet>/` subfolders).
 
 ### Step 1 — Discover screenshots and extract portfolio data
 
-For each wallet in `main`, `ikze`, `short`, `long`:
+For each wallet in `main`, `ikze`:
 
 1. **List screenshots**: `Glob` `broker_data/<wallet>/*` (any image extension).
 
 > **Path safety**: the snippets below interpolate wallet names and screenshot paths
 > directly into a `python -c "..."` string. Wallet names are a fixed enum
-> (`main`/`ikze`/`short`/`long`), but screenshot filenames come from the user's
+> (`main`/`ikze`), but screenshot filenames come from the user's
 > filesystem. Before interpolating a path, confirm it contains no `"` or `\`
 > characters; if one does, rename the file (or copy it to a safe temp path) before
 > proceeding rather than interpolating it as-is.
@@ -118,13 +118,12 @@ For each wallet in `main`, `ikze`, `short`, `long`:
      `day_change_pct = day_change_abs / row['total_value'] * 100` (guard divide-by-zero:
      `None` if `row['total_value'] == 0`).
 
-2. **Draft the two threads.** Thread A covers `main` + `ikze`; Thread B covers `short` +
-   `long`. Each thread is a 2-tweet reply chain — tweet 1 is a combined header (both
-   wallets), tweet 2 is the combined "Liderzy portfela" leaders tweet (per the real legacy
-   format, corrected in plan.md's Phase 3 addendum after the original one-tweet-per-wallet
-   draft was found not to match it). Skip a wallet from its thread if it was marked
-   "already published today" in Step 1; if **both** wallets in a thread are skipped, skip
-   that whole thread's drafting (nothing to approve/publish for it this run).
+2. **Draft the thread.** The thread covers `main` + `ikze`. It is a 2-tweet reply chain —
+   tweet 1 is a combined header (both wallets), tweet 2 is the combined "Liderzy portfela"
+   leaders tweet (per the real legacy format, corrected in plan.md's Phase 3 addendum after
+   the original one-tweet-per-wallet draft was found not to match it). Skip a wallet if it
+   was marked "already published today" in Step 1; if **both** wallets are skipped, skip
+   the thread drafting entirely (nothing to approve/publish for this run).
 
    Compose via the deterministic composer (no Gemini call — the data is already extracted
    and delta-computed in Step 1; an LLM call here would only add paraphrase/rounding risk):
@@ -170,8 +169,7 @@ For each wallet in `main`, `ikze`, `short`, `long`:
      domain-like substring (e.g. a company name ending in `.pl`/`.com`/etc.) so X's
      client-side link detection never auto-renders it as a clickable link.
 
-   Present both drafts (or the single surviving thread) to the user as plain text before
-   moving on to Step 3.
+   Present the draft to the user as plain text before moving on to Step 3.
 
    **Known gaps, deferred** (not blocking, but real and worth knowing about): the
    "Doładowanie" deposit-narrative line (detecting new buys by diffing today's positions
@@ -181,8 +179,7 @@ For each wallet in `main`, `ikze`, `short`, `long`:
 
 ### Step 3 — Approval gate (per thread)
 
-Process each surviving thread (from Step 2.2) independently — a decision on Thread A has no
-effect on Thread B's gate.
+Process the thread (from Step 2.2) if it survived.
 
 For each thread:
 

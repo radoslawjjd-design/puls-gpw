@@ -39,7 +39,13 @@ puls-gpw is a scheduled Python pipeline that fetches ESPI/EBI regulatory announc
 
 ## Testing
 
-No test framework is configured yet. Add `pytest` via `uv add --dev pytest` and place tests under `tests/` when the first testable unit lands. Run with `uv run pytest`. Test priority: duplicate-check logic first, supervisor retry gate second — these are the highest-risk paths in the pipeline.
+`pytest` is configured. Unit/integration tests live under `tests/`; E2E tests (Playwright) under `tests/e2e/`.
+
+- `uv run pytest` — run unit + integration tests
+- `cd tests/e2e && npx playwright test` — run E2E tests
+- `cd tests/e2e && npx playwright test --ui` — interactive Playwright UI
+
+Test priority: duplicate-check logic first, supervisor retry gate second — these are the highest-risk paths in the pipeline.
 
 ## Issue Tracking
 
@@ -55,7 +61,7 @@ Use `null` only when no corresponding issue exists. When `/10x-implement` comple
 
 ## Commit & Pull Request Guidelines
 
-No commit history exists yet. Use Conventional Commits prefixes (`feat:`, `fix:`, `chore:`, `refactor:`) from the first commit. Non-conforming messages will be flagged in PR review.
+Use Conventional Commits prefixes (`feat:`, `fix:`, `chore:`, `refactor:`). Non-conforming messages are flagged in PR review (CI gate: `ai-code-review/verdict`).
 
 <!-- MAINTAINER: Module dependency map (tach.toml):
      main/post_main → src → db

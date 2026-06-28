@@ -18,10 +18,14 @@ from db.bigquery import BigQueryError  # type: ignore[attr-defined]
 from db.bigquery import (
     add_watchlist_ticker,
     create_companies_table_if_not_exists,
+    create_user_portfolio_positions_table_if_not_exists,
     create_watchlist_table_if_not_exists,
     delete_announcement,
+    delete_user_portfolio_position,
     ensure_companies_schema_current,
+    ensure_user_portfolio_positions_schema_current,
     ensure_watchlist_schema_current,
+    get_latest_company_stats_fetched_at,
     get_latest_snapshot_before,
     get_latest_snapshot_for_wallet,
     list_announcements_admin,
@@ -29,9 +33,11 @@ from db.bigquery import (
     list_announcements_user,
     list_distinct_companies,
     list_distinct_tickers,
+    list_user_portfolio_positions,
     list_watchlist_tickers,
     list_x_posts_admin,
     remove_watchlist_ticker,
+    upsert_user_portfolio_position,
 )
 from src.portfolio_treemap import compute_treemap_positions
 
@@ -140,6 +146,27 @@ class AnnouncementUser(BaseModel):
     published_at: datetime | None = None
 
 
+class PortfolioPositionIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    ticker: str
+    company_name: str
+    shares: float
+    avg_buy_price: float
+
+
+class PortfolioPositionOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    ticker: str
+    company_name: str | None
+    shares: float
+    avg_buy_price: float
+    current_price: float | None = None
+    daily_change_pct: float | None = None
+    pnl_pln: float | None = None
+    pnl_pct: float | None = None
+    price_as_of: str | None = None
+
+
 def create_app() -> FastAPI:
     ui_html = pathlib.Path("static/index.html").read_text(encoding="utf-8")
 
@@ -151,6 +178,8 @@ def create_app() -> FastAPI:
         ensure_watchlist_schema_current()
         create_companies_table_if_not_exists()
         ensure_companies_schema_current()
+        create_user_portfolio_positions_table_if_not_exists()
+        ensure_user_portfolio_positions_schema_current()
 
     @app.get("/health")
     async def health():
@@ -343,8 +372,10 @@ def create_app() -> FastAPI:
             if snapshot_dates:
                 latest_date = max(snapshot_dates)
                 result["as_of"] = latest_date.isoformat() if hasattr(latest_date, "isoformat") else str(latest_date)
+                result["stats_fetched_at"] = get_latest_company_stats_fetched_at(latest_date)
             else:
                 result["as_of"] = None
+                result["stats_fetched_at"] = None
             return result
         except BigQueryError as exc:
             logger.error("BQ error in /admin/portfolio/treemap: %s", exc)
@@ -361,6 +392,62 @@ def create_app() -> FastAPI:
             if "no row matched" in str(exc):
                 raise HTTPException(status_code=404, detail="Not found")
             logger.error("BQ error in DELETE /announcements/%s: %s", announcement_id, exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/api/portfolio/positions")
+    async def get_portfolio_positions(
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        try:
+            rows = list_user_portfolio_positions(client_id)
+        except BigQueryError as exc:
+            logger.error("BQ error in GET /api/portfolio/positions: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        result = []
+        for row in rows:
+            current_price = row.get("current_price")
+            avg_buy_price = row.get("avg_buy_price")
+            shares = row.get("shares")
+            pnl_pln = (current_price - avg_buy_price) * shares if current_price is not None else None
+            pnl_pct = (
+                (current_price - avg_buy_price) / avg_buy_price * 100
+                if current_price is not None and avg_buy_price
+                else None
+            )
+            result.append(PortfolioPositionOut(**row, pnl_pln=pnl_pln, pnl_pct=pnl_pct).model_dump())
+        return result
+
+    @app.post("/api/portfolio/positions")
+    async def post_portfolio_position(
+        body: PortfolioPositionIn,
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        if body.shares <= 0 or body.avg_buy_price <= 0:
+            raise HTTPException(status_code=422, detail="shares and avg_buy_price must be > 0")
+        try:
+            known_tickers = list_distinct_tickers()
+            if body.ticker not in known_tickers:
+                raise HTTPException(status_code=422, detail="Unknown ticker")
+            upsert_user_portfolio_position(
+                client_id, body.ticker, body.company_name, body.shares, body.avg_buy_price
+            )
+        except BigQueryError as exc:
+            logger.error("BQ error in POST /api/portfolio/positions: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        return {"ticker": body.ticker, "upserted": True}
+
+    @app.delete("/api/portfolio/positions/{ticker}", status_code=204)
+    async def delete_portfolio_position(
+        ticker: str,
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        try:
+            delete_user_portfolio_position(client_id, ticker)
+        except BigQueryError as exc:
+            logger.error("BQ error in DELETE /api/portfolio/positions/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
 
     app.mount("/static", StaticFiles(directory="static"), name="static")

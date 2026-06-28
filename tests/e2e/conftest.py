@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -163,6 +164,40 @@ def _fake_list_watchlist_tickers(client_id):
     return list(_watchlist_store.get(client_id, []))
 
 
+_portfolio_positions_store: dict[str, list[dict]] = {}
+
+
+def _fake_create_user_portfolio_positions_table_if_not_exists():
+    pass
+
+
+def _fake_ensure_user_portfolio_positions_schema_current():
+    pass
+
+
+def _fake_upsert_user_portfolio_position(user_id, ticker, company_name, shares, avg_buy_price):
+    positions = _portfolio_positions_store.setdefault(user_id, [])
+    for p in positions:
+        if p["ticker"] == ticker:
+            p.update({"company_name": company_name, "shares": shares, "avg_buy_price": avg_buy_price})
+            return
+    positions.append({
+        "ticker": ticker, "company_name": company_name,
+        "shares": shares, "avg_buy_price": avg_buy_price,
+        "current_price": 52.0, "daily_change_pct": 1.5,
+        "price_as_of": "2026-06-27",
+    })
+
+
+def _fake_delete_user_portfolio_position(user_id, ticker):
+    store = _portfolio_positions_store.get(user_id, [])
+    _portfolio_positions_store[user_id] = [p for p in store if p["ticker"] != ticker]
+
+
+def _fake_list_user_portfolio_positions(user_id):
+    return list(_portfolio_positions_store.get(user_id, []))
+
+
 def _fake_list_announcements_for_watchlist(client_id, page=1, page_size=20, from_dt=None, to_dt=None):
     if "PKO" in _watchlist_store.get(client_id, []):
         return [_FAKE_WATCHLIST_ANNOUNCEMENT]
@@ -204,7 +239,7 @@ def live_server_url():
     os.environ["ADMIN_API_KEY"] = _ADMIN_KEY
     os.environ["USER_API_KEY"]  = _USER_KEY
 
-    with (
+    _patches = [
         patch("src.api.list_announcements_admin", return_value=_FAKE_ADMIN_ROWS),
         patch("src.api.list_announcements_user", return_value=[]),
         patch("src.api.list_distinct_tickers",   return_value=["PKO", "CDR", "XTB"]),
@@ -212,6 +247,7 @@ def live_server_url():
         patch("src.api.list_x_posts_admin", side_effect=_fake_list_x_posts_admin),
         patch("src.api.get_latest_snapshot_for_wallet", side_effect=_fake_get_latest_snapshot_for_wallet),
         patch("src.api.get_latest_snapshot_before", side_effect=_fake_get_latest_snapshot_before),
+        patch("src.api.get_latest_company_stats_fetched_at", return_value="2026-06-27T09:01:05+00:00"),
         patch("src.api.create_watchlist_table_if_not_exists"),
         patch("src.api.ensure_watchlist_schema_current"),
         patch("src.api.create_companies_table_if_not_exists"),
@@ -220,7 +256,22 @@ def live_server_url():
         patch("src.api.remove_watchlist_ticker", side_effect=_fake_remove_watchlist_ticker),
         patch("src.api.list_watchlist_tickers", side_effect=_fake_list_watchlist_tickers),
         patch("src.api.list_announcements_for_watchlist", side_effect=_fake_list_announcements_for_watchlist),
-    ):
+        patch(
+            "src.api.create_user_portfolio_positions_table_if_not_exists",
+            side_effect=_fake_create_user_portfolio_positions_table_if_not_exists,
+        ),
+        patch(
+            "src.api.ensure_user_portfolio_positions_schema_current",
+            side_effect=_fake_ensure_user_portfolio_positions_schema_current,
+        ),
+        patch("src.api.upsert_user_portfolio_position", side_effect=_fake_upsert_user_portfolio_position),
+        patch("src.api.delete_user_portfolio_position", side_effect=_fake_delete_user_portfolio_position),
+        patch("src.api.list_user_portfolio_positions", side_effect=_fake_list_user_portfolio_positions),
+    ]
+
+    with ExitStack() as stack:
+        for p in _patches:
+            stack.enter_context(p)
         server = uvicorn.Server(
             uvicorn.Config(create_app(), host="127.0.0.1", port=0, log_level="error")
         )
