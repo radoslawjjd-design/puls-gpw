@@ -496,7 +496,8 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
     """Return positions for user_id joined with the latest available close price.
 
     When portfolio_id is provided, results are scoped to that wallet. Without it,
-    all positions for the user are returned (used by the treemap endpoint).
+    all positions for the user are returned (used by the treemap endpoint for a
+    single-call batch fetch, grouped by portfolio_id in Python).
     Uses ROW_NUMBER() OVER PARTITION BY ticker to pick the most recent company_daily_stats
     entry per ticker, then LEFT JOIN so positions without price data still appear.
     Raises BigQueryError on query failure.

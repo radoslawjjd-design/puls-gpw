@@ -1000,9 +1000,9 @@ moves them. No data is lost in any scenario.
 
 #### Automated
 
-- [x] 6.1 `uv run pytest tests/e2e/test_portfolio_wallets.py` — all 5 pass
-- [x] 6.2 `uv run pytest tests/e2e/test_user_portfolio_treemap.py` — all 6 pass
-- [x] 6.3 `uv run pytest tests/e2e/` — full suite passes (no regressions)
+- [x] 6.1 `uv run pytest tests/e2e/test_portfolio_wallets.py` — all 5 pass — 20d5d88
+- [x] 6.2 `uv run pytest tests/e2e/test_user_portfolio_treemap.py` — all 6 pass — 20d5d88
+- [x] 6.3 `uv run pytest tests/e2e/` — full suite passes (no regressions) — 20d5d88
 
 #### Manual
 

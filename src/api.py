@@ -561,15 +561,19 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=str(exc))
         if not wallets:
             return {"portfolios": [], "as_of": None}
+        try:
+            all_rows = list_user_portfolio_positions(client_id)
+        except BigQueryError as exc:
+            logger.error("BQ error fetching positions in GET /api/portfolio/treemap: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        rows_by_portfolio: dict[str, list[dict]] = {}
+        for row in all_rows:
+            rows_by_portfolio.setdefault(row.get("portfolio_id") or "", []).append(row)
         portfolios = []
         price_as_of_values: list[str] = []
         for wallet in wallets:
             pid = wallet["portfolio_id"]
-            try:
-                rows = list_user_portfolio_positions(client_id, pid)
-            except BigQueryError as exc:
-                logger.error("BQ error fetching positions for wallet %s in GET /api/portfolio/treemap: %s", pid, exc)
-                raise HTTPException(status_code=500, detail=str(exc))
+            rows = rows_by_portfolio.get(pid, [])
             for row in rows:
                 if row.get("price_as_of") is not None:
                     price_as_of_values.append(str(row["price_as_of"]))
