@@ -969,24 +969,24 @@ moves them. No data is lost in any scenario.
 
 #### Automated
 
-- [x] 4.1 Browser console: 0 JS errors on page load (user role) — wallet management flows
-- [x] 4.2 `uv run ruff check src/` — clean
+- [x] 4.1 Browser console: 0 JS errors on page load (user role) — wallet management flows — 86e2ad4
+- [x] 4.2 `uv run ruff check src/` — clean — 86e2ad4
 
 #### Manual
 
-- [x] 4.3 Any role: "Mój portfel" shows portfolio tabs (or "Utwórz portfel" prompt)
-- [x] 4.4 "Dodaj portfel" → creates Główny → existing positions auto-assigned → tab appears
-- [x] 4.5 Portfolio tab switch filters positions table to that wallet
-- [x] 4.6 "Dodaj pozycję" → position appears in active wallet tab
-- [x] 4.7 "Tabela | Treemapa" toggle visible in view
+- [x] 4.3 Any role: "Mój portfel" shows portfolio tabs (or "Utwórz portfel" prompt) — 86e2ad4
+- [x] 4.4 "Dodaj portfel" → creates Główny → existing positions auto-assigned → tab appears — 86e2ad4
+- [x] 4.5 Portfolio tab switch filters positions table to that wallet — 86e2ad4
+- [x] 4.6 "Dodaj pozycję" → position appears in active wallet tab — 86e2ad4
+- [x] 4.7 "Tabela | Treemapa" toggle visible in view — 86e2ad4
 
 ### Phase 5: Frontend — treemap tab + admin cleanup
 
 #### Automated
 
-- [ ] 5.1 Browser console: 0 JS errors on page load (user role)
-- [ ] 5.2 Browser console: 0 JS errors on page load (admin role)
-- [ ] 5.3 `uv run ruff check src/` — clean
+- [x] 5.1 Browser console: 0 JS errors on page load (user role)
+- [x] 5.2 Browser console: 0 JS errors on page load (admin role)
+- [x] 5.3 `uv run ruff check src/` — clean
 
 #### Manual
 

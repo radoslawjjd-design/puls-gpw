@@ -369,13 +369,13 @@
   .toast.toast-show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
 
   /* Treemap */
-  .treemap-wallets { display: flex; gap: 1rem; }
+  .treemap-wallets { display: flex; flex-wrap: wrap; gap: 1rem; }
   .treemap-wallet {
-    flex: 1 1 50%; min-width: 0; background: #fff; border-radius: var(--radius-md);
+    flex: 1 1 calc(50% - 0.5rem); min-width: 0; background: #fff; border-radius: var(--radius-md);
     border: 1px solid var(--border); box-shadow: 0 1px 4px rgba(0,0,0,.08); padding: 1rem;
   }
   .treemap-wallet h3 { margin: 0 0 .75rem; font-size: 1rem; color: var(--brand); }
-  .treemap-container { position: relative; min-height: 600px; background: #fff; }
+  .treemap-container { position: relative; min-height: 600px; background: #fff; overflow: hidden; }
   .treemap-legend {
     margin-top: 1rem; font-size: .8rem; color: var(--text-muted);
     background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md);
@@ -383,7 +383,8 @@
     padding: .75rem 1rem;
   }
   @media (max-width: 768px) {
-    .treemap-wallets { flex-direction: column; }
+    .treemap-wallets { flex-direction: column; flex-wrap: nowrap; }
+    .treemap-wallet { flex: 1 1 auto; }
   }
   .treemap-cell {
     position: absolute; box-sizing: border-box; overflow: hidden;
@@ -551,9 +552,13 @@
     padding: .4rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-pill);
     background: #fff; color: var(--text-muted); cursor: pointer; font-size: .875rem; font-weight: 500;
     transition: background .12s, color .12s;
+    display: inline-flex; align-items: center; gap: .35rem;
   }
   .pp-portfolio-tab.active { background: var(--brand); color: #fff; border-color: var(--brand); }
   .pp-portfolio-tab:hover:not(.active) { background: var(--brand-tint); color: var(--brand); }
+  .pp-tab-del-icon { font-size: .85rem; opacity: .45; line-height: 1; transition: opacity .12s, color .12s; }
+  .pp-portfolio-tab:hover .pp-tab-del-icon { opacity: .8; }
+  .pp-tab-del-icon:hover { opacity: 1 !important; color: var(--negative); }
   #pp-add-portfolio-btn {
     padding: .4rem .9rem; border: 1px dashed var(--border); border-radius: var(--radius-pill);
     background: transparent; color: var(--text-muted); cursor: pointer; font-size: .85rem; white-space: nowrap;
@@ -805,7 +810,7 @@ $('idle-stay-btn').addEventListener('click', () => {
 // ── auth: shared logout exit path ───────────────────────────────────────
 function doLogout() {
   stopIdleTracking();
-  stopTreemapResizeTracking();
+  stopPortfolioTreemapResize();
   closeModal();
   sessionStorage.clear();
   apiKey = null; role = null;
@@ -1143,10 +1148,6 @@ function injectAdminOnlyChrome(r) {
   if (existingBtn) existingBtn.remove();
   const existingView = $('x-history-view');
   if (existingView) existingView.remove();
-  const existingTreemapBtn = $('treemap-btn');
-  if (existingTreemapBtn) existingTreemapBtn.remove();
-  const existingTreemapView = $('treemap-view');
-  if (existingTreemapView) existingTreemapView.remove();
 
   if (r !== 'admin') return;
 
@@ -1171,78 +1172,6 @@ function injectAdminOnlyChrome(r) {
   _xHistoryViewBuilt = false;
 
   $('x-history-btn').addEventListener('click', () => _navigateToView('x-history'));
-
-  const treemapBtn = document.createElement('button');
-  treemapBtn.type = 'button';
-  treemapBtn.id = 'treemap-btn';
-  treemapBtn.className = 'nav-item';
-  treemapBtn.dataset.view = 'treemap';
-  treemapBtn.innerHTML = `<svg class="nav-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M120-200v-240h320v240H120Zm400 0v-240h320v240H520Zm-320-80h160v-80H200v80Zm400 0h160v-80H600v80ZM120-520v-240h320v240H120Zm400 0v-240h320v240H520Zm-320-80h160v-80H200v80Zm80 280Zm400 0ZM280-640Z"/></svg> Treemapa portfela`;
-  topbarNav.appendChild(treemapBtn);
-
-  const treemapView = document.createElement('div');
-  treemapView.id = 'treemap-view';
-  treemapView.style.display = 'none';
-  treemapView.innerHTML = `
-    <div class="view-header"><h2>Treemapa portfela <span id="treemap-as-of" class="view-header-meta"></span></h2></div>
-    <div class="treemap-wallets">
-      <div class="treemap-wallet">
-        <h3>Portfel główny</h3>
-        <div id="treemap-main" class="treemap-container"></div>
-      </div>
-      <div class="treemap-wallet">
-        <h3>IKZE</h3>
-        <div id="treemap-ikze" class="treemap-container"></div>
-      </div>
-    </div>
-    <div class="treemap-legend">
-      <strong>D/D</strong> — zmiana dzienna wartości pozycji ·
-      <strong>Total</strong> — udział w portfelu i wartość pozycji ·
-      <strong>Zakup</strong> — wynik od momentu zakupu
-    </div>
-    <div id="treemap-popup-backdrop" class="tc-popup-backdrop">
-      <div class="tc-popup" role="dialog" aria-modal="true" aria-labelledby="tc-popup-ticker">
-        <button id="tc-popup-close" class="tc-popup-close" aria-label="Zamknij">&times;</button>
-        <h3 id="tc-popup-ticker"></h3>
-        <div class="tc-popup-line" id="tc-popup-daily"></div>
-        <div class="tc-popup-line" id="tc-popup-total"></div>
-        <div class="tc-popup-line" id="tc-popup-since"></div>
-        <button id="tc-popup-goto" class="tc-popup-btn">Ostatnie podsumowania</button>
-      </div>
-    </div>
-  `;
-  view.insertAdjacentElement('afterend', treemapView);
-
-  $('treemap-btn').addEventListener('click', () => _navigateToView('treemap'));
-
-  ['treemap-main', 'treemap-ikze'].forEach(id => {
-    $(id).addEventListener('click', e => {
-      const cell = e.target.closest('.treemap-cell');
-      if (cell) _openTreemapPopup(cell);
-    });
-  });
-  $('tc-popup-close').addEventListener('click', _closeTreemapPopup);
-  $('treemap-popup-backdrop').addEventListener('click', e => {
-    if (e.target.id === 'treemap-popup-backdrop') _closeTreemapPopup();
-  });
-  $('tc-popup-goto').addEventListener('click', () => {
-    // The treemap's "ticker" field is actually the company display name (e.g. "Toya"),
-    // sourced from XTB screenshot OCR — it doesn't match announcements' exact-match
-    // `ticker` column (e.g. "TOA"), only the partial-match `company` column.
-    const companyName = $('tc-popup-goto').dataset.ticker;
-    _closeTreemapPopup();
-    $('f-company').value = companyName;
-    currentPage = 1;
-    showAnnouncementsView();
-    fetchAnnouncements();
-  });
-
-  if (!_treemapEscBound) {
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') _closeTreemapPopup();
-    });
-    _treemapEscBound = true;
-  }
 }
 
 function _openTreemapPopup(cellEl) {
@@ -1264,11 +1193,9 @@ function showAnnouncementsView() {
   $('announcements-view').style.display = '';
   const xView = $('x-history-view');
   if (xView) xView.style.display = 'none';
-  const tView = $('treemap-view');
-  if (tView) tView.style.display = 'none';
   $('my-wallet-view').style.display = 'none';
   $('portfolio-positions-view').style.display = 'none';
-  stopTreemapResizeTracking();
+  stopPortfolioTreemapResize();
   _setActiveNavItem('announcements');
 }
 
@@ -1283,11 +1210,9 @@ function _showXHistoryViewDom() {
   }
   $('announcements-view').style.display = 'none';
   view.style.display = '';
-  const tView = $('treemap-view');
-  if (tView) tView.style.display = 'none';
   $('my-wallet-view').style.display = 'none';
   $('portfolio-positions-view').style.display = 'none';
-  stopTreemapResizeTracking();
+  stopPortfolioTreemapResize();
   closeProfileMenu();
   _setActiveNavItem('x-history');
 }
@@ -1362,11 +1287,9 @@ function _showMyWalletViewDom() {
   $('announcements-view').style.display = 'none';
   const xView = $('x-history-view');
   if (xView) xView.style.display = 'none';
-  const tView = $('treemap-view');
-  if (tView) tView.style.display = 'none';
   $('portfolio-positions-view').style.display = 'none';
   view.style.display = '';
-  stopTreemapResizeTracking();
+  stopPortfolioTreemapResize();
   closeProfileMenu();
   _setActiveNavItem('my-wallet');
 }
@@ -1377,17 +1300,6 @@ function showMyWalletView(push = true) {
   fetchMyWalletAnnouncements(push);
 }
 
-function showTreemapView() {
-  $('announcements-view').style.display = 'none';
-  $('x-history-view').style.display = 'none';
-  $('my-wallet-view').style.display = 'none';
-  $('portfolio-positions-view').style.display = 'none';
-  $('treemap-view').style.display = '';
-  closeProfileMenu();
-  fetchTreemap();
-  startTreemapResizeTracking();
-  _setActiveNavItem('treemap');
-}
 
 // ── routing ────────────────────────────────────────────────────────────
 // Single dispatcher for view switches: sets currentView, shows the view, and
@@ -1396,10 +1308,7 @@ function showTreemapView() {
 // fetches on show, announcements doesn't) — see plan's sequencing rule.
 function _navigateToView(view) {
   currentView = view;
-  if (view === 'treemap') {
-    showTreemapView();
-    history.pushState({ view: 'treemap' }, '', '?view=treemap');
-  } else if (view === 'x-history') {
+  if (view === 'x-history') {
     showXHistoryView();
   } else if (view === 'my-wallet') {
     showMyWalletView();
@@ -1462,9 +1371,9 @@ function _applyMyWalletParams(params) {
 function _applyUrlState() {
   const params = new URLSearchParams(location.search);
   const view = params.get('view');
-  if (view === 'treemap' && role === 'admin') {
-    currentView = 'treemap';
-    showTreemapView();
+  if (view === 'portfolio-positions') {
+    currentView = 'portfolio-positions';
+    showPortfolioPositionsView();
   } else if (view === 'x-history' && role === 'admin') {
     currentView = 'x-history';
     _showXHistoryViewDom();
@@ -1828,6 +1737,7 @@ async function _deletePortfolioPosition(ticker) {
 let _ppEditingTicker = null;
 let _activePortfolioId = null;
 let _portfoliosFetched = false;
+let _ppTreemapData = null;
 const _PORTFOLIO_TYPE_LABELS = {
   glowny: 'Główny', ikze: 'IKZE', ike: 'IKE', ppk: 'PPK', ppe: 'PPE', inny: 'Inny'
 };
@@ -1984,7 +1894,20 @@ function _renderPortfolioTabs(portfolios) {
     btn.type = 'button';
     btn.className = 'pp-portfolio-tab' + (i === 0 ? ' active' : '');
     btn.dataset.portfolioId = p.portfolio_id;
-    btn.textContent = label;
+
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = label;
+    const delSpan = document.createElement('span');
+    delSpan.className = 'pp-tab-del-icon';
+    delSpan.title = `Usuń portfel ${label}`;
+    delSpan.innerHTML = '&times;';
+    delSpan.addEventListener('click', e => {
+      e.stopPropagation();
+      _deletePortfolio(p.portfolio_id, label);
+    });
+    btn.appendChild(labelSpan);
+    btn.appendChild(delSpan);
+
     btn.addEventListener('click', () => {
       tabs.querySelectorAll('.pp-portfolio-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
@@ -2059,10 +1982,27 @@ async function _submitAddPortfolio() {
   }
 }
 
+async function _deletePortfolio(portfolioId, label) {
+  if (!window.confirm(`Czy na pewno chcesz usunąć portfel „${label}"?\nWszystkie pozycje w tym portfelu zostaną trwale usunięte.`)) return;
+  try {
+    const r = await fetch(`/api/portfolio/wallets/${encodeURIComponent(portfolioId)}`, {
+      method: 'DELETE',
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _portfoliosFetched = false;
+    _ppTreemapData = null;
+    await fetchUserPortfolios();
+  } catch (e) {
+    alert('Błąd podczas usuwania portfela. Spróbuj ponownie.');
+  }
+}
+
 // ── Portfolio Positions: view ─────────────────────────────────────────────
 function _buildPortfolioPositionsViewContent(view) {
   view.innerHTML = `
-    <div class="view-header"><h2>Mój portfel</h2></div>
+    <div class="view-header"><h2>Mój portfel <span id="pp-treemap-as-of" class="view-header-meta"></span></h2></div>
     <div id="pp-portfolio-tabs-wrap">
       <div id="pp-portfolio-tabs"></div>
       <button type="button" id="pp-add-portfolio-btn">+ Dodaj portfel</button>
@@ -2120,7 +2060,25 @@ function _buildPortfolioPositionsViewContent(view) {
         </table>
       </div>
     </div>
-    <div id="pp-treemap-wrap" style="display:none"></div>
+    <div id="pp-treemap-wrap" style="display:none">
+      <div id="pp-treemap-no-price-notice" class="pp-notice" style="display:none"></div>
+      <div class="treemap-wallets" id="pp-treemap-wallets"></div>
+      <div class="treemap-legend">
+        <strong>D/D</strong> — zmiana dzienna wartości pozycji ·
+        <strong>Total</strong> — udział w portfelu i wartość pozycji ·
+        <strong>Zakup</strong> — wynik od momentu zakupu
+      </div>
+      <div id="treemap-popup-backdrop" class="tc-popup-backdrop">
+        <div class="tc-popup" role="dialog" aria-modal="true" aria-labelledby="tc-popup-ticker">
+          <button id="tc-popup-close" class="tc-popup-close" aria-label="Zamknij">&times;</button>
+          <h3 id="tc-popup-ticker"></h3>
+          <div class="tc-popup-line" id="tc-popup-daily"></div>
+          <div class="tc-popup-line" id="tc-popup-total"></div>
+          <div class="tc-popup-line" id="tc-popup-since"></div>
+          <button id="tc-popup-goto" class="tc-popup-btn">Ostatnie podsumowania</button>
+        </div>
+      </div>
+    </div>
     <div id="pp-add-portfolio-overlay" style="display:none">
       <div id="pp-add-portfolio-modal">
         <h3>Dodaj portfel</h3>
@@ -2153,9 +2111,37 @@ function _buildPortfolioPositionsViewContent(view) {
       view.querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const mode = btn.dataset.mode;
+      $('pp-portfolio-tabs-wrap').style.display = mode === 'table' ? '' : 'none';
       $('pp-table-wrap').style.display = mode === 'table' ? '' : 'none';
       $('pp-treemap-wrap').style.display = mode === 'treemap' ? '' : 'none';
+      if (mode === 'table') {
+        stopPortfolioTreemapResize();
+      } else {
+        if (!_ppTreemapData) fetchPortfolioTreemap();
+        startPortfolioTreemapResize();
+      }
     });
+  });
+
+  // treemap popup events (wired once lazily here)
+  $('pp-treemap-wallets').addEventListener('click', e => {
+    const cell = e.target.closest('.treemap-cell');
+    if (cell) _openTreemapPopup(cell);
+  });
+  $('tc-popup-close').addEventListener('click', _closeTreemapPopup);
+  $('treemap-popup-backdrop').addEventListener('click', e => {
+    if (e.target.id === 'treemap-popup-backdrop') _closeTreemapPopup();
+  });
+  $('tc-popup-goto').addEventListener('click', () => {
+    const companyName = $('tc-popup-goto').dataset.ticker;
+    _closeTreemapPopup();
+    $('f-company').value = companyName;
+    currentPage = 1;
+    showAnnouncementsView();
+    fetchAnnouncements();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') _closeTreemapPopup();
   });
 
   // add-portfolio modal events
@@ -2195,8 +2181,6 @@ function showPortfolioPositionsView() {
   $('announcements-view').style.display = 'none';
   const xView = $('x-history-view');
   if (xView) xView.style.display = 'none';
-  const tView = $('treemap-view');
-  if (tView) tView.style.display = 'none';
   $('my-wallet-view').style.display = 'none';
   const ppView = $('portfolio-positions-view');
   if (!ppView.dataset.built) {
@@ -2204,7 +2188,7 @@ function showPortfolioPositionsView() {
     ppView.dataset.built = '1';
   }
   ppView.style.display = '';
-  stopTreemapResizeTracking();
+  stopPortfolioTreemapResize();
   closeProfileMenu();
   _setActiveNavItem('portfolio-positions');
   if (!_portfoliosFetched) fetchUserPortfolios();
@@ -2274,73 +2258,88 @@ function renderXPostsTable(data) {
   });
 }
 
-// ── treemap: fetch ──────────────────────────────────────────────────────
-const _TREEMAP_WALLET_CONTAINERS = [['main', 'treemap-main'], ['ikze', 'treemap-ikze']];
-let _treemapData = null;
-let _treemapEscBound = false;
-
-function _renderTreemapWallets(data) {
-  _TREEMAP_WALLET_CONTAINERS.forEach(([wallet, containerId]) => {
-    if (!data[wallet] || !data[wallet].length) {
-      $(containerId).innerHTML = `<div class="empty">Brak danych portfela</div>`;
-    } else {
-      renderTreemap(data[wallet], $(containerId));
-    }
-  });
-}
-
-function _renderTreemapAsOf(asOf, statsAt) {
-  const el = $('treemap-as-of');
-  if (!el) return;
-  if (!asOf) { el.textContent = ''; return; }
-  const [y, m, d] = asOf.split('-');
-  const datePart = (y && m && d) ? `${d}-${m}-${y}` : asOf;
-  let timePart = '';
-  if (statsAt) {
-    const dt = new Date(statsAt);
-    timePart = dt.toLocaleTimeString('pl-PL', {
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      timeZone: 'Europe/Warsaw'
-    }) + ' ';
-  }
-  el.textContent = `(stan na dzień: ${timePart}${datePart})`;
-}
-
-async function fetchTreemap() {
+// ── portfolio treemap: fetch + render ──────────────────────────────────────
+async function fetchPortfolioTreemap() {
   try {
-    const r = await fetch('/admin/portfolio/treemap', {
-      headers: { 'X-API-Key': apiKey }
+    const r = await fetch('/api/portfolio/treemap', {
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    _treemapData = data;
-    _renderTreemapWallets(data);
-    _renderTreemapAsOf(data.as_of, data.stats_fetched_at);
+    _ppTreemapData = data;
+    _renderPortfolioTreemap(data);
   } catch (e) {
-    _treemapData = null;
-    _renderTreemapAsOf(null);
-    _TREEMAP_WALLET_CONTAINERS.forEach(([, containerId]) => {
-      $(containerId).innerHTML = `<div class="empty">Błąd ładowania danych</div>`;
-    });
+    $('pp-treemap-wallets').innerHTML = `<div class="empty">Błąd ładowania danych treemapy</div>`;
   }
 }
 
-// Cell pixel sizes are computed from container width/height at render time;
-// re-render (from cached data, no refetch) on resize so layout never goes
-// stale and overflows its container — e.g. when crossing the 768px breakpoint.
-let _treemapResizeTimer = null;
-function _onTreemapResize() {
-  if (!_treemapData) return;
-  clearTimeout(_treemapResizeTimer);
-  _treemapResizeTimer = setTimeout(() => _renderTreemapWallets(_treemapData), 150);
+function _renderPortfolioTreemap(data) {
+  const walletsEl = $('pp-treemap-wallets');
+  walletsEl.innerHTML = '';
+  const unpricedTickers = [];
+  const renderQueue = [];
+
+  // First pass: append all wallet divs so flex layout stabilizes before reading clientWidth
+  for (const portfolio of data.portfolios) {
+    const label = portfolio.portfolio_type === 'inny'
+      ? (portfolio.portfolio_name || 'Inny')
+      : (_PORTFOLIO_TYPE_LABELS[portfolio.portfolio_type] || portfolio.portfolio_type);
+    const containerId = `pp-treemap-${portfolio.portfolio_id}`;
+    const walletDiv = document.createElement('div');
+    walletDiv.className = 'treemap-wallet';
+    walletDiv.innerHTML = `<h3>${label}</h3><div class="treemap-container" id="${containerId}"></div>`;
+    walletsEl.appendChild(walletDiv);
+
+    const pricedPositions = portfolio.positions.filter(p => p.position_value_pln !== null);
+    portfolio.positions
+      .filter(p => p.position_value_pln === null)
+      .forEach(p => unpricedTickers.push(p.ticker));
+
+    renderQueue.push({ containerId, pricedPositions });
+  }
+
+  // Second pass: render after all wallets are in DOM so clientWidth is correct for each
+  for (const { containerId, pricedPositions } of renderQueue) {
+    if (pricedPositions.length) {
+      renderTreemap(pricedPositions, $(containerId));
+    } else {
+      $(containerId).innerHTML = '<div class="empty">Brak wycenionych pozycji</div>';
+    }
+  }
+
+  const notice = $('pp-treemap-no-price-notice');
+  if (unpricedTickers.length) {
+    notice.textContent = `Brak aktualnej ceny dla: ${unpricedTickers.join(', ')}`;
+    notice.style.display = '';
+  } else {
+    notice.style.display = 'none';
+  }
+
+  const asOfEl = $('pp-treemap-as-of');
+  if (asOfEl) {
+    if (data.as_of) {
+      const [y, m, d] = data.as_of.split('-');
+      asOfEl.textContent = `(stan na dzień: ${d}-${m}-${y})`;
+    } else {
+      asOfEl.textContent = '';
+    }
+  }
 }
-function startTreemapResizeTracking() {
-  window.addEventListener('resize', _onTreemapResize);
+
+// Re-render from cached data on resize so layout never goes stale
+let _ppTreemapResizeTimer = null;
+function _onPortfolioTreemapResize() {
+  if (!_ppTreemapData) return;
+  clearTimeout(_ppTreemapResizeTimer);
+  _ppTreemapResizeTimer = setTimeout(() => _renderPortfolioTreemap(_ppTreemapData), 150);
 }
-function stopTreemapResizeTracking() {
-  window.removeEventListener('resize', _onTreemapResize);
-  clearTimeout(_treemapResizeTimer);
+function startPortfolioTreemapResize() {
+  window.addEventListener('resize', _onPortfolioTreemapResize);
+}
+function stopPortfolioTreemapResize() {
+  window.removeEventListener('resize', _onPortfolioTreemapResize);
+  clearTimeout(_ppTreemapResizeTimer);
 }
 
 // ── treemap: render ─────────────────────────────────────────────────────
