@@ -601,35 +601,58 @@ def create_user_portfolio(
 ) -> str:
     """Insert a new wallet and return its portfolio_id (UUID).
 
-    Display order is determined by type; for "inny", queries existing count
-    to assign 4 (first) or 5 (second).
-    Raises BigQueryError on failure.
+    Uses conditional INSERT (SELECT … WHERE …) so the uniqueness check is atomic
+    at the BQ layer — prevents duplicate wallets from concurrent requests.
+    Raises BigQueryError on BQ failure or constraint violation (0 rows inserted).
     """
-    if portfolio_type == "inny":
-        existing = list_user_portfolios(user_id)
-        inny_count = sum(1 for p in existing if p["portfolio_type"] == "inny")
-        display_order = 4 if inny_count == 0 else 5
-    else:
-        display_order = _PORTFOLIO_DISPLAY_ORDER.get(portfolio_type, 99)
-
     portfolio_id = str(uuid.uuid4())
     client = _get_client()
-    query = f"""
-        INSERT INTO `{_table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)}`
-          (user_id, portfolio_id, portfolio_type, portfolio_name, display_order, created_at)
-        VALUES
-          (@user_id, @portfolio_id, @portfolio_type, @portfolio_name, @display_order,
-           CURRENT_TIMESTAMP())
-    """
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
+    table = _table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)
+
+    if portfolio_type == "inny":
+        # Compute display_order (4 or 5) and enforce max-2 in the same round-trip.
+        query = f"""
+            INSERT INTO `{table}`
+              (user_id, portfolio_id, portfolio_type, portfolio_name, display_order, created_at)
+            SELECT
+              @user_id, @portfolio_id, 'inny', @portfolio_name,
+              CASE WHEN inny_count = 0 THEN 4 ELSE 5 END,
+              CURRENT_TIMESTAMP()
+            FROM (
+              SELECT COUNT(*) AS inny_count
+              FROM `{table}`
+              WHERE user_id = @user_id AND portfolio_type = 'inny'
+            )
+            WHERE inny_count < 2
+        """
+        params: list[bigquery.ScalarQueryParameter] = [
+            bigquery.ScalarQueryParameter("user_id",        "STRING", user_id),
+            bigquery.ScalarQueryParameter("portfolio_id",   "STRING", portfolio_id),
+            bigquery.ScalarQueryParameter("portfolio_name", "STRING", portfolio_name),
+        ]
+        constraint_msg = "Maximum 2 'Inny' wallets allowed"
+    else:
+        display_order = _PORTFOLIO_DISPLAY_ORDER.get(portfolio_type, 99)
+        query = f"""
+            INSERT INTO `{table}`
+              (user_id, portfolio_id, portfolio_type, portfolio_name, display_order, created_at)
+            SELECT @user_id, @portfolio_id, @portfolio_type, @portfolio_name, @display_order,
+                   CURRENT_TIMESTAMP()
+            WHERE NOT EXISTS (
+              SELECT 1 FROM `{table}`
+              WHERE user_id = @user_id AND portfolio_type = @portfolio_type
+            )
+        """
+        params = [
             bigquery.ScalarQueryParameter("user_id",        "STRING",  user_id),
             bigquery.ScalarQueryParameter("portfolio_id",   "STRING",  portfolio_id),
             bigquery.ScalarQueryParameter("portfolio_type", "STRING",  portfolio_type),
             bigquery.ScalarQueryParameter("portfolio_name", "STRING",  portfolio_name),
             bigquery.ScalarQueryParameter("display_order",  "INTEGER", display_order),
         ]
-    )
+        constraint_msg = "Wallet type already exists"
+
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
     try:
         job = client.query(query, job_config=job_config)
         job.result()
@@ -637,6 +660,8 @@ def create_user_portfolio(
         raise BigQueryError(f"create_user_portfolio failed: {exc}") from exc
     if job.errors:
         raise BigQueryError(f"create_user_portfolio failed: {job.errors}")
+    if job.num_dml_affected_rows == 0:
+        raise BigQueryError(f"create_user_portfolio: {constraint_msg}")
     logger.debug("create_user_portfolio: user_id=%s portfolio_id=%s type=%s", user_id, portfolio_id, portfolio_type)
     return portfolio_id
 

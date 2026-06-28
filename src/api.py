@@ -497,8 +497,13 @@ def create_app() -> FastAPI:
             if body.portfolio_type == "glowny":
                 assign_orphan_positions_to_portfolio(client_id, portfolio_id)
         except BigQueryError as exc:
+            err = str(exc)
+            if "Wallet type already exists" in err:
+                raise HTTPException(status_code=409, detail="Wallet type already exists")
+            if "Maximum 2" in err:
+                raise HTTPException(status_code=409, detail="Maximum 2 'Inny' wallets allowed")
             logger.error("BQ error in POST /api/portfolio/wallets: %s", exc)
-            raise HTTPException(status_code=500, detail=str(exc))
+            raise HTTPException(status_code=500, detail=err)
         return {"portfolio_id": portfolio_id, "portfolio_type": body.portfolio_type, "portfolio_name": body.portfolio_name}
 
     @app.delete("/api/portfolio/wallets/{portfolio_id}", status_code=204)
@@ -509,8 +514,12 @@ def create_app() -> FastAPI:
     ):
         try:
             existing = list_user_portfolios(client_id)
-            if not any(w["portfolio_id"] == portfolio_id for w in existing):
-                raise HTTPException(status_code=404, detail="Wallet not found")
+        except BigQueryError as exc:
+            logger.error("BQ error listing wallets in DELETE /api/portfolio/wallets/%s: %s", portfolio_id, exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        if not any(w["portfolio_id"] == portfolio_id for w in existing):
+            raise HTTPException(status_code=404, detail="Wallet not found")
+        try:
             delete_user_portfolio(client_id, portfolio_id)
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /api/portfolio/wallets/%s: %s", portfolio_id, exc)

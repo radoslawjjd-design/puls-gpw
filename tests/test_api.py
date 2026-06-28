@@ -840,3 +840,30 @@ def test_delete_wallet_wrong_user_returns_404(api_client):
             headers=_AUTH,
         )
     assert r.status_code == 404
+
+
+def test_post_wallet_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with (
+        patch("src.api.list_user_portfolios", return_value=[]),
+        patch("src.api.create_user_portfolio", side_effect=BigQueryError("bq down")),
+    ):
+        r = api_client.post(
+            "/api/portfolio/wallets",
+            json={"portfolio_type": "glowny"},
+            headers=_AUTH,
+        )
+    assert r.status_code == 500
+
+
+def test_delete_wallet_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.delete_user_portfolio", side_effect=BigQueryError("bq down")),
+    ):
+        r = api_client.delete(
+            f"/api/portfolio/wallets/{_WALLET_ID}",
+            headers=_AUTH,
+        )
+    assert r.status_code == 500
