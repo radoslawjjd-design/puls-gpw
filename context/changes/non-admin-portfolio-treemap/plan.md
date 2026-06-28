@@ -955,9 +955,9 @@ moves them. No data is lost in any scenario.
 
 #### Automated
 
-- [x] 3.1 `uv run pytest tests/test_api.py tests/test_portfolio_treemap.py` — all pass
-- [x] 3.2 `uv run mypy src/api.py src/portfolio_treemap.py` — no new errors
-- [x] 3.3 `uv run ruff check src/` — clean
+- [x] 3.1 `uv run pytest tests/test_api.py tests/test_portfolio_treemap.py` — all pass — 83061b0
+- [x] 3.2 `uv run mypy src/api.py src/portfolio_treemap.py` — no new errors — 83061b0
+- [x] 3.3 `uv run ruff check src/` — clean — 83061b0
 
 #### Manual
 
@@ -969,16 +969,16 @@ moves them. No data is lost in any scenario.
 
 #### Automated
 
-- [ ] 4.1 Browser console: 0 JS errors on page load (user role) — wallet management flows
-- [ ] 4.2 `uv run ruff check src/` — clean
+- [x] 4.1 Browser console: 0 JS errors on page load (user role) — wallet management flows
+- [x] 4.2 `uv run ruff check src/` — clean
 
 #### Manual
 
-- [ ] 4.3 Any role: "Mój portfel" shows portfolio tabs (or "Utwórz portfel" prompt)
-- [ ] 4.4 "Dodaj portfel" → creates Główny → existing positions auto-assigned → tab appears
-- [ ] 4.5 Portfolio tab switch filters positions table to that wallet
-- [ ] 4.6 "Dodaj pozycję" → position appears in active wallet tab
-- [ ] 4.7 "Tabela | Treemapa" toggle visible in view
+- [x] 4.3 Any role: "Mój portfel" shows portfolio tabs (or "Utwórz portfel" prompt)
+- [x] 4.4 "Dodaj portfel" → creates Główny → existing positions auto-assigned → tab appears
+- [x] 4.5 Portfolio tab switch filters positions table to that wallet
+- [x] 4.6 "Dodaj pozycję" → position appears in active wallet tab
+- [x] 4.7 "Tabela | Treemapa" toggle visible in view
 
 ### Phase 5: Frontend — treemap tab + admin cleanup
 

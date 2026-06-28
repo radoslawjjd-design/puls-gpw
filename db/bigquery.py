@@ -638,6 +638,7 @@ def create_user_portfolio(
               (user_id, portfolio_id, portfolio_type, portfolio_name, display_order, created_at)
             SELECT @user_id, @portfolio_id, @portfolio_type, @portfolio_name, @display_order,
                    CURRENT_TIMESTAMP()
+            FROM (SELECT 1)
             WHERE NOT EXISTS (
               SELECT 1 FROM `{table}`
               WHERE user_id = @user_id AND portfolio_type = @portfolio_type

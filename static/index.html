@@ -543,6 +543,61 @@
     font-size: 1rem; line-height: 1; padding: 0;
   }
   .wl-remove-btn:hover { color: #b91c1c; }
+
+  /* Portfolio: wallet tabs */
+  #pp-portfolio-tabs-wrap { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; }
+  #pp-portfolio-tabs { display: flex; gap: .4rem; flex-wrap: wrap; flex: 1; }
+  .pp-portfolio-tab {
+    padding: .4rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-pill);
+    background: #fff; color: var(--text-muted); cursor: pointer; font-size: .875rem; font-weight: 500;
+    transition: background .12s, color .12s;
+  }
+  .pp-portfolio-tab.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .pp-portfolio-tab:hover:not(.active) { background: var(--brand-tint); color: var(--brand); }
+  #pp-add-portfolio-btn {
+    padding: .4rem .9rem; border: 1px dashed var(--border); border-radius: var(--radius-pill);
+    background: transparent; color: var(--text-muted); cursor: pointer; font-size: .85rem; white-space: nowrap;
+  }
+  #pp-add-portfolio-btn:hover { border-color: var(--brand); color: var(--brand); }
+  /* Portfolio: view tabs (Tabela | Treemapa) */
+  #pp-view-tabs { display: flex; gap: .25rem; margin-bottom: .75rem; }
+  .pp-view-tab {
+    padding: .35rem .9rem; border: 1px solid var(--border); border-radius: var(--radius-pill);
+    background: #fff; color: var(--text-muted); cursor: pointer; font-size: .875rem;
+  }
+  .pp-view-tab.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .pp-view-tab:hover:not(.active) { background: var(--brand-tint); color: var(--brand); }
+  /* Portfolio: notices */
+  .pp-notice { font-size: .875rem; color: var(--text-muted); padding: .4rem 0; }
+  /* Portfolio: add-portfolio modal */
+  #pp-add-portfolio-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1.5rem;
+  }
+  #pp-add-portfolio-modal {
+    background: #fff; border-radius: var(--radius-md); box-shadow: 0 8px 32px rgba(0,0,0,.18);
+    width: 100%; max-width: 420px; padding: 1.5rem;
+  }
+  #pp-add-portfolio-modal h3 { margin: 0 0 1rem; font-size: 1rem; font-weight: 700; }
+  #pp-add-portfolio-modal select,
+  #pp-add-portfolio-modal input[type="text"] {
+    width: 100%; padding: .55rem .75rem; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); font-size: .95rem; margin-bottom: .75rem; box-sizing: border-box;
+  }
+  #pp-add-portfolio-modal select:focus,
+  #pp-add-portfolio-modal input[type="text"]:focus { outline: none; border-color: var(--brand); }
+  #pp-portfolio-modal-error { color: var(--negative); font-size: .85rem; margin-bottom: .75rem; }
+  .pp-modal-actions { display: flex; gap: .5rem; justify-content: flex-end; }
+  #pp-portfolio-modal-save {
+    padding: .5rem 1.1rem; background: var(--brand); color: #fff;
+    border: none; border-radius: var(--radius-pill); cursor: pointer; font-weight: 600;
+  }
+  #pp-portfolio-modal-save:hover { background: var(--brand-dark); }
+  #pp-portfolio-modal-cancel {
+    padding: .5rem 1.1rem; background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: var(--radius-pill); cursor: pointer;
+  }
+  #pp-portfolio-modal-cancel:hover { background: var(--fill); }
 </style>
 </head>
 <body>
@@ -1350,6 +1405,7 @@ function _navigateToView(view) {
     showMyWalletView();
   } else if (view === 'portfolio-positions') {
     showPortfolioPositionsView();
+    history.pushState({ view: 'portfolio-positions' }, '', '?view=portfolio-positions');
   } else {
     showAnnouncementsView();
     history.pushState({}, '', '/');
@@ -1711,8 +1767,12 @@ async function removeWatchlistTicker(ticker) {
 async function fetchPortfolioPositions() {
   const tbody = $('pp-tbody');
   if (!tbody) return;
+  if (_activePortfolioId === null) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">Wybierz portfel powyżej.</td></tr>';
+    return;
+  }
   try {
-    const r = await fetch('/api/portfolio/positions', {
+    const r = await fetch('/api/portfolio/positions?portfolio_id=' + encodeURIComponent(_activePortfolioId), {
       headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
     });
     if (r.status === 401) { doLogout(); return; }
@@ -1732,7 +1792,7 @@ async function _upsertPortfolioPosition(ticker, companyName, shares, avgBuyPrice
     const r = await fetch('/api/portfolio/positions', {
       method: 'POST',
       headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker, company_name: companyName, shares, avg_buy_price: avgBuyPrice })
+      body: JSON.stringify({ ticker, company_name: companyName, shares, avg_buy_price: avgBuyPrice, portfolio_id: _activePortfolioId })
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) {
@@ -1751,7 +1811,7 @@ async function _upsertPortfolioPosition(ticker, companyName, shares, avgBuyPrice
 async function _deletePortfolioPosition(ticker) {
   if (!confirm('Czy na pewno usunąć pozycję ' + ticker + ' z portfela?')) return;
   try {
-    const r = await fetch('/api/portfolio/positions/' + encodeURIComponent(ticker), {
+    const r = await fetch('/api/portfolio/positions/' + encodeURIComponent(ticker) + '?portfolio_id=' + encodeURIComponent(_activePortfolioId || ''), {
       method: 'DELETE',
       headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
     });
@@ -1766,6 +1826,11 @@ async function _deletePortfolioPosition(ticker) {
 
 // ── Portfolio Positions: render ───────────────────────────────────────────
 let _ppEditingTicker = null;
+let _activePortfolioId = null;
+let _portfoliosFetched = false;
+const _PORTFOLIO_TYPE_LABELS = {
+  glowny: 'Główny', ikze: 'IKZE', ike: 'IKE', ppk: 'PPK', ppe: 'PPE', inny: 'Inny'
+};
 
 function _updatePortfolioSummary(positions) {
   const summary = $('pp-summary');
@@ -1902,62 +1967,210 @@ function _ppWireAcCrossFill() {
   });
 }
 
+// ── Portfolio Positions: wallet management ────────────────────────────────
+function _renderPortfolioTabs(portfolios) {
+  const tabs = $('pp-portfolio-tabs');
+  if (!tabs) return;
+  tabs.innerHTML = '';
+  if (!portfolios.length) {
+    tabs.innerHTML = '<p class="pp-notice">Utwórz swój pierwszy portfel ↑</p>';
+    return;
+  }
+  portfolios.forEach((p, i) => {
+    const label = p.portfolio_type === 'inny'
+      ? (p.portfolio_name || 'Inny')
+      : (_PORTFOLIO_TYPE_LABELS[p.portfolio_type] || p.portfolio_type);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pp-portfolio-tab' + (i === 0 ? ' active' : '');
+    btn.dataset.portfolioId = p.portfolio_id;
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      tabs.querySelectorAll('.pp-portfolio-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _activePortfolioId = p.portfolio_id;
+      fetchPortfolioPositions();
+    });
+    tabs.appendChild(btn);
+  });
+}
+
+async function fetchUserPortfolios() {
+  const tabs = $('pp-portfolio-tabs');
+  if (!tabs) return;
+  try {
+    const r = await fetch('/api/portfolio/wallets', {
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    _activePortfolioId = data.length ? data[0].portfolio_id : null;
+    _renderPortfolioTabs(data);
+    if (_activePortfolioId) fetchPortfolioPositions();
+  } catch (e) {
+    tabs.innerHTML = '<p class="pp-notice" style="color:var(--negative)">Błąd ładowania portfeli.</p>';
+  }
+  _portfoliosFetched = true;
+}
+
+function _openAddPortfolioModal() {
+  const overlay = $('pp-add-portfolio-overlay');
+  if (!overlay) return;
+  $('pp-portfolio-type-select').value = 'glowny';
+  $('pp-portfolio-name-wrap').style.display = 'none';
+  const errDiv = $('pp-portfolio-modal-error');
+  errDiv.style.display = 'none';
+  errDiv.textContent = '';
+  overlay.style.display = 'flex';
+}
+
+function _closeAddPortfolioModal() {
+  const overlay = $('pp-add-portfolio-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function _submitAddPortfolio() {
+  const type = $('pp-portfolio-type-select').value;
+  const name = type === 'inny' ? ($('pp-portfolio-name-input').value.trim() || null) : null;
+  const errDiv = $('pp-portfolio-modal-error');
+  errDiv.style.display = 'none';
+  errDiv.textContent = '';
+  try {
+    const r = await fetch('/api/portfolio/wallets', {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ portfolio_type: type, portfolio_name: name })
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (r.status === 409) {
+      const data = await r.json().catch(() => ({}));
+      errDiv.textContent = data.detail || 'Ten typ portfela już istnieje.';
+      errDiv.style.display = 'block';
+      return;
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _closeAddPortfolioModal();
+    _portfoliosFetched = false;
+    await fetchUserPortfolios();
+  } catch (e) {
+    errDiv.textContent = 'Błąd tworzenia portfela.';
+    errDiv.style.display = 'block';
+  }
+}
+
 // ── Portfolio Positions: view ─────────────────────────────────────────────
 function _buildPortfolioPositionsViewContent(view) {
   view.innerHTML = `
     <div class="view-header"><h2>Mój portfel</h2></div>
-    <button type="button" id="pp-add-toggle-btn">Dodaj pozycję</button>
-    <div id="pp-form-wrap" style="display:none">
-      <form id="pp-form">
-        <div id="pp-ticker-field">
-          <div class="ac-wrap">
-            <input type="text" id="pp-ticker-input" placeholder="Ticker (np. PKO)" autocomplete="off">
-            <div id="ac-pp-ticker" class="ac-dropdown" style="display:none"></div>
-          </div>
-        </div>
-        <div id="pp-company-field">
-          <div class="ac-wrap">
-            <input type="text" id="pp-company-input" placeholder="Nazwa spółki" autocomplete="off">
-            <div id="ac-pp-company" class="ac-dropdown" style="display:none"></div>
-          </div>
-        </div>
-        <input type="number" id="pp-shares-input" step="any" min="0.001" placeholder="Ilość akcji" required>
-        <input type="number" id="pp-price-input" step="0.01" min="0.01" placeholder="Śr. cena zakupu (PLN)" required>
-        <button type="submit" id="pp-submit-btn">Dodaj</button>
-        <button type="button" id="pp-cancel-btn" style="display:none">Anuluj</button>
-      </form>
+    <div id="pp-portfolio-tabs-wrap">
+      <div id="pp-portfolio-tabs"></div>
+      <button type="button" id="pp-add-portfolio-btn">+ Dodaj portfel</button>
     </div>
-    <div id="pp-error" style="display:none"></div>
-    <div id="pp-summary" style="display:none">
-      <div class="pp-sum-item">
-        <span class="pp-sum-label">Wartość portfela</span>
-        <span class="pp-sum-value" id="pp-sum-value">—</span>
+    <div id="pp-view-tabs">
+      <button type="button" class="pp-view-tab active" data-mode="table">Tabela</button>
+      <button type="button" class="pp-view-tab" data-mode="treemap">Treemapa</button>
+    </div>
+    <div id="pp-table-wrap">
+      <button type="button" id="pp-add-toggle-btn">Dodaj pozycję</button>
+      <div id="pp-form-wrap" style="display:none">
+        <form id="pp-form">
+          <div id="pp-ticker-field">
+            <div class="ac-wrap">
+              <input type="text" id="pp-ticker-input" placeholder="Ticker (np. PKO)" autocomplete="off">
+              <div id="ac-pp-ticker" class="ac-dropdown" style="display:none"></div>
+            </div>
+          </div>
+          <div id="pp-company-field">
+            <div class="ac-wrap">
+              <input type="text" id="pp-company-input" placeholder="Nazwa spółki" autocomplete="off">
+              <div id="ac-pp-company" class="ac-dropdown" style="display:none"></div>
+            </div>
+          </div>
+          <input type="number" id="pp-shares-input" step="any" min="0.001" placeholder="Ilość akcji" required>
+          <input type="number" id="pp-price-input" step="0.01" min="0.01" placeholder="Śr. cena zakupu (PLN)" required>
+          <button type="submit" id="pp-submit-btn">Dodaj</button>
+          <button type="button" id="pp-cancel-btn" style="display:none">Anuluj</button>
+        </form>
       </div>
-      <div class="pp-sum-item">
-        <span class="pp-sum-label">Zysk / strata</span>
-        <span class="pp-sum-value" id="pp-sum-pnl">—</span>
+      <div id="pp-error" style="display:none"></div>
+      <div id="pp-summary" style="display:none">
+        <div class="pp-sum-item">
+          <span class="pp-sum-label">Wartość portfela</span>
+          <span class="pp-sum-value" id="pp-sum-value">—</span>
+        </div>
+        <div class="pp-sum-item">
+          <span class="pp-sum-label">Zysk / strata</span>
+          <span class="pp-sum-value" id="pp-sum-pnl">—</span>
+        </div>
+        <div class="pp-sum-item">
+          <span class="pp-sum-label">Zmiana dzienna</span>
+          <span class="pp-sum-value" id="pp-sum-daily">—</span>
+        </div>
       </div>
-      <div class="pp-sum-item">
-        <span class="pp-sum-label">Zmiana dzienna</span>
-        <span class="pp-sum-value" id="pp-sum-daily">—</span>
+      <div class="table-wrap pp-table-wrap">
+        <table>
+          <thead id="pp-thead">
+            <tr>
+              <th>Ticker</th><th>Spółka</th><th>Ilość akcji</th><th>Śr. cena zakupu</th>
+              <th>Aktualny kurs</th><th>Zmiana dzienna</th><th>Zysk/strata</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="pp-tbody"></tbody>
+        </table>
       </div>
     </div>
-    <div class="table-wrap pp-table-wrap">
-      <table>
-        <thead id="pp-thead">
-          <tr>
-            <th>Ticker</th><th>Spółka</th><th>Ilość akcji</th><th>Śr. cena zakupu</th>
-            <th>Aktualny kurs</th><th>Zmiana dzienna</th><th>Zysk/strata</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="pp-tbody"></tbody>
-      </table>
+    <div id="pp-treemap-wrap" style="display:none"></div>
+    <div id="pp-add-portfolio-overlay" style="display:none">
+      <div id="pp-add-portfolio-modal">
+        <h3>Dodaj portfel</h3>
+        <select id="pp-portfolio-type-select">
+          <option value="glowny">Główny</option>
+          <option value="ikze">IKZE</option>
+          <option value="ike">IKE</option>
+          <option value="ppk">PPK</option>
+          <option value="ppe">PPE</option>
+          <option value="inny">Inny</option>
+        </select>
+        <div id="pp-portfolio-name-wrap" style="display:none">
+          <input type="text" id="pp-portfolio-name-input" placeholder="Nazwa portfela">
+        </div>
+        <div id="pp-portfolio-modal-error" style="display:none"></div>
+        <div class="pp-modal-actions">
+          <button type="button" id="pp-portfolio-modal-cancel">Anuluj</button>
+          <button type="button" id="pp-portfolio-modal-save">Zapisz</button>
+        </div>
+      </div>
     </div>
   `;
 
   _ppEditingTicker = null;
   _ppWireAcCrossFill();
 
+  // view tabs toggle (Tabela | Treemapa)
+  view.querySelectorAll('.pp-view-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      view.querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.mode;
+      $('pp-table-wrap').style.display = mode === 'table' ? '' : 'none';
+      $('pp-treemap-wrap').style.display = mode === 'treemap' ? '' : 'none';
+    });
+  });
+
+  // add-portfolio modal events
+  $('pp-add-portfolio-btn').addEventListener('click', _openAddPortfolioModal);
+  $('pp-portfolio-modal-cancel').addEventListener('click', _closeAddPortfolioModal);
+  $('pp-add-portfolio-overlay').addEventListener('click', e => {
+    if (e.target === $('pp-add-portfolio-overlay')) _closeAddPortfolioModal();
+  });
+  $('pp-portfolio-type-select').addEventListener('change', () => {
+    $('pp-portfolio-name-wrap').style.display =
+      $('pp-portfolio-type-select').value === 'inny' ? '' : 'none';
+  });
+  $('pp-portfolio-modal-save').addEventListener('click', _submitAddPortfolio);
+
+  // add-position form
   $('pp-add-toggle-btn').addEventListener('click', () => {
     $('pp-form-wrap').style.display = '';
     $('pp-add-toggle-btn').style.display = 'none';
@@ -1994,7 +2207,7 @@ function showPortfolioPositionsView() {
   stopTreemapResizeTracking();
   closeProfileMenu();
   _setActiveNavItem('portfolio-positions');
-  fetchPortfolioPositions();
+  if (!_portfoliosFetched) fetchUserPortfolios();
 }
 
 // ── x-posts: render ───────────────────────────────────────────────────────
