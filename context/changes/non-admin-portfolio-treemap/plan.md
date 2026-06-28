@@ -984,25 +984,25 @@ moves them. No data is lost in any scenario.
 
 #### Automated
 
-- [x] 5.1 Browser console: 0 JS errors on page load (user role)
-- [x] 5.2 Browser console: 0 JS errors on page load (admin role)
-- [x] 5.3 `uv run ruff check src/` — clean
+- [x] 5.1 Browser console: 0 JS errors on page load (user role) — 6927ac3
+- [x] 5.2 Browser console: 0 JS errors on page load (admin role) — 6927ac3
+- [x] 5.3 `uv run ruff check src/` — clean — 6927ac3
 
 #### Manual
 
-- [ ] 5.4 Admin role: no "Treemapa portfela" nav button in topbar
-- [ ] 5.5 "Treemapa" toggle renders all wallets side-by-side
-- [ ] 5.6 No-price notice shows for positions without kurs_zamkniecia
-- [ ] 5.7 `?view=portfolio-positions` deep-link restores view on refresh
-- [ ] 5.8 Admin "Mój portfel" → same wallet/treemap UI as user role
+- [x] 5.4 Admin role: no "Treemapa portfela" nav button in topbar — 6927ac3
+- [x] 5.5 "Treemapa" toggle renders all wallets side-by-side — 6927ac3
+- [x] 5.6 No-price notice shows for positions without kurs_zamkniecia — 6927ac3
+- [x] 5.7 `?view=portfolio-positions` deep-link restores view on refresh — 6927ac3
+- [x] 5.8 Admin "Mój portfel" → same wallet/treemap UI as user role — 6927ac3
 
 ### Phase 6: E2E Tests
 
 #### Automated
 
-- [ ] 6.1 `uv run pytest tests/e2e/test_portfolio_wallets.py` — all 5 pass
-- [ ] 6.2 `uv run pytest tests/e2e/test_user_portfolio_treemap.py` — all 6 pass
-- [ ] 6.3 `uv run pytest tests/e2e/` — full suite passes (no regressions)
+- [x] 6.1 `uv run pytest tests/e2e/test_portfolio_wallets.py` — all 5 pass
+- [x] 6.2 `uv run pytest tests/e2e/test_user_portfolio_treemap.py` — all 6 pass
+- [x] 6.3 `uv run pytest tests/e2e/` — full suite passes (no regressions)
 
 #### Manual
 
