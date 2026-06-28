@@ -33,11 +33,11 @@ logger = logging.getLogger(__name__)
 # SQL volume while giving select_top_companies enough rows to backfill slots.
 _FETCH_SAFETY_CAP = 200
 
-from google.cloud import bigquery
-from google.cloud.exceptions import NotFound
+from google.cloud import bigquery  # noqa: E402
+from google.cloud.exceptions import NotFound  # noqa: E402
 
-from src.exceptions import BigQueryError
-from src.post_selection import select_top_companies
+from src.exceptions import BigQueryError  # noqa: E402
+from src.post_selection import select_top_companies  # noqa: E402
 
 _DATASET = os.environ.get("BIGQUERY_DATASET", "espi_ebi")
 _TABLE_NAME = "announcements"

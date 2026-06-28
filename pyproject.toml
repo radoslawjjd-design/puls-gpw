@@ -27,6 +27,7 @@ dev = [
     "respx>=0.21",
     "pytest-playwright>=0.6",
     "ruff>=0.15.18",
+    "mypy>=2.1.0",
 ]
 
 [tool.pytest.ini_options]

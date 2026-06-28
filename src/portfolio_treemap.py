@@ -14,7 +14,7 @@ def compute_user_portfolio_treemap_positions(rows: list[dict]) -> list[dict]:
     Pure function — no BQ/network access.
     """
     total_value = sum(
-        row["shares"] * row["current_price"]
+        row.get("shares", 0.0) * row["current_price"]
         for row in rows
         if row.get("current_price") is not None
     )
@@ -32,7 +32,8 @@ def compute_user_portfolio_treemap_positions(rows: list[dict]) -> list[dict]:
             position_value_pln = None
 
         if position_value_pln is not None and d_pct is not None:
-            daily_change_pln: float | None = position_value_pln * d_pct / 100 / (1 + d_pct / 100)
+            _denom = 1 + d_pct / 100
+            daily_change_pln: float | None = position_value_pln * d_pct / 100 / _denom if _denom != 0 else None
         else:
             daily_change_pln = None
 

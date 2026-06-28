@@ -252,3 +252,11 @@ def test_user_compute_no_price_position_excluded_from_share_pct_denominator():
     cdr = next(r for r in result if r["ticker"] == "CDR")
     assert pko["portfolio_share_pct"] == pytest.approx(100.0)  # only PKO in denominator
     assert cdr["portfolio_share_pct"] is None
+
+
+def test_user_compute_daily_change_pct_minus_100_does_not_raise():
+    rows = [_row(current_price=0.01, daily_change_pct=-100.0)]
+    result = compute_user_portfolio_treemap_positions(rows)
+
+    assert len(result) == 1
+    assert result[0]["daily_change_pln"] is None  # denom == 0 → None, not ZeroDivisionError
