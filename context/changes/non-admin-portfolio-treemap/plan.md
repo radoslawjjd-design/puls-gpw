@@ -940,24 +940,24 @@ moves them. No data is lost in any scenario.
 
 #### Automated
 
-- [x] 2.1 `uv run pytest tests/test_api.py -k wallet` — all pass
-- [x] 2.2 `uv run mypy src/api.py` — no new errors
-- [x] 2.3 `uv run ruff check src/` — clean
+- [x] 2.1 `uv run pytest tests/test_api.py -k wallet` — all pass — 7073ef3
+- [x] 2.2 `uv run mypy src/api.py` — no new errors — 7073ef3
+- [x] 2.3 `uv run ruff check src/` — clean — 7073ef3
 
 #### Manual
 
-- [x] 2.4 `GET /api/portfolio/wallets` with `X-API-Key` → 200 `[]`
-- [x] 2.5 `POST /api/portfolio/wallets {"portfolio_type":"glowny"}` → 201
-- [x] 2.6 Second POST with same type → 409
-- [x] 2.7 `DELETE /api/portfolio/wallets/{id}` → 204
+- [x] 2.4 `GET /api/portfolio/wallets` with `X-API-Key` → 200 `[]` — 7073ef3
+- [x] 2.5 `POST /api/portfolio/wallets {"portfolio_type":"glowny"}` → 201 — 7073ef3
+- [x] 2.6 Second POST with same type → 409 — 7073ef3
+- [x] 2.7 `DELETE /api/portfolio/wallets/{id}` → 204 — 7073ef3
 
 ### Phase 3: Positions CRUD update + treemapa endpoint
 
 #### Automated
 
-- [ ] 3.1 `uv run pytest tests/test_api.py tests/test_portfolio_treemap.py` — all pass
-- [ ] 3.2 `uv run mypy src/api.py src/portfolio_treemap.py` — no new errors
-- [ ] 3.3 `uv run ruff check src/` — clean
+- [x] 3.1 `uv run pytest tests/test_api.py tests/test_portfolio_treemap.py` — all pass
+- [x] 3.2 `uv run mypy src/api.py src/portfolio_treemap.py` — no new errors
+- [x] 3.3 `uv run ruff check src/` — clean
 
 #### Manual
 

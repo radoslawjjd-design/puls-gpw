@@ -45,7 +45,7 @@ from db.bigquery import (
     remove_watchlist_ticker,
     upsert_user_portfolio_position,
 )
-from src.portfolio_treemap import compute_treemap_positions
+from src.portfolio_treemap import compute_treemap_positions, compute_user_portfolio_treemap_positions
 
 _AC_CACHE: dict[str, tuple[list[str], float]] = {}
 _AC_TTL = 300  # 5 minutes
@@ -132,7 +132,7 @@ class XPostAdmin(BaseModel):
 class TreemapPosition(BaseModel):
     model_config = ConfigDict(extra="ignore")
     ticker: str
-    position_value_pln: float
+    position_value_pln: float | None = None
     daily_change_pln: float | None = None
     daily_change_pct: float | None = None
     portfolio_share_pct: float | None = None
@@ -160,6 +160,7 @@ class PortfolioWalletCreate(BaseModel):
 
 class PortfolioPositionIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
+    portfolio_id: str
     ticker: str
     company_name: str
     shares: float
@@ -410,11 +411,19 @@ def create_app() -> FastAPI:
 
     @app.get("/api/portfolio/positions")
     async def get_portfolio_positions(
+        portfolio_id: str = Query(...),
         role: Role = Depends(_get_role),
         client_id: str = Depends(_get_client_id),
     ):
         try:
-            rows = list_user_portfolio_positions(client_id)
+            wallets = list_user_portfolios(client_id)
+        except BigQueryError as exc:
+            logger.error("BQ error listing wallets in GET /api/portfolio/positions: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        if not any(w["portfolio_id"] == portfolio_id for w in wallets):
+            raise HTTPException(status_code=404, detail="Wallet not found")
+        try:
+            rows = list_user_portfolio_positions(client_id, portfolio_id)
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/positions: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -441,11 +450,18 @@ def create_app() -> FastAPI:
         if body.shares <= 0 or body.avg_buy_price <= 0:
             raise HTTPException(status_code=422, detail="shares and avg_buy_price must be > 0")
         try:
+            wallets = list_user_portfolios(client_id)
+        except BigQueryError as exc:
+            logger.error("BQ error listing wallets in POST /api/portfolio/positions: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        if not any(w["portfolio_id"] == body.portfolio_id for w in wallets):
+            raise HTTPException(status_code=404, detail="Wallet not found")
+        try:
             known_tickers = list_distinct_tickers()
             if body.ticker not in known_tickers:
                 raise HTTPException(status_code=422, detail="Unknown ticker")
             upsert_user_portfolio_position(
-                client_id, body.ticker, body.company_name, body.shares, body.avg_buy_price
+                client_id, body.portfolio_id, body.ticker, body.company_name, body.shares, body.avg_buy_price
             )
         except BigQueryError as exc:
             logger.error("BQ error in POST /api/portfolio/positions: %s", exc)
@@ -455,11 +471,19 @@ def create_app() -> FastAPI:
     @app.delete("/api/portfolio/positions/{ticker}", status_code=204)
     async def delete_portfolio_position(
         ticker: str,
+        portfolio_id: str = Query(...),
         role: Role = Depends(_get_role),
         client_id: str = Depends(_get_client_id),
     ):
         try:
-            delete_user_portfolio_position(client_id, ticker)
+            wallets = list_user_portfolios(client_id)
+        except BigQueryError as exc:
+            logger.error("BQ error listing wallets in DELETE /api/portfolio/positions/%s: %s", ticker, exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        if not any(w["portfolio_id"] == portfolio_id for w in wallets):
+            raise HTTPException(status_code=404, detail="Wallet not found")
+        try:
+            delete_user_portfolio_position(client_id, portfolio_id, ticker)
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /api/portfolio/positions/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -524,6 +548,41 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /api/portfolio/wallets/%s: %s", portfolio_id, exc)
             raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/api/portfolio/treemap")
+    async def get_portfolio_treemap(
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        try:
+            wallets = list_user_portfolios(client_id)
+        except BigQueryError as exc:
+            logger.error("BQ error listing wallets in GET /api/portfolio/treemap: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        if not wallets:
+            return {"portfolios": [], "as_of": None}
+        portfolios = []
+        price_as_of_values: list[str] = []
+        for wallet in wallets:
+            pid = wallet["portfolio_id"]
+            try:
+                rows = list_user_portfolio_positions(client_id, pid)
+            except BigQueryError as exc:
+                logger.error("BQ error fetching positions for wallet %s in GET /api/portfolio/treemap: %s", pid, exc)
+                raise HTTPException(status_code=500, detail=str(exc))
+            for row in rows:
+                if row.get("price_as_of") is not None:
+                    price_as_of_values.append(str(row["price_as_of"]))
+            computed = compute_user_portfolio_treemap_positions(rows)
+            positions = [TreemapPosition(**p).model_dump() for p in computed]
+            portfolios.append({
+                "portfolio_id": pid,
+                "portfolio_type": wallet["portfolio_type"],
+                "portfolio_name": wallet.get("portfolio_name"),
+                "positions": positions,
+            })
+        as_of = max(price_as_of_values) if price_as_of_values else None
+        return {"portfolios": portfolios, "as_of": as_of}
 
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
