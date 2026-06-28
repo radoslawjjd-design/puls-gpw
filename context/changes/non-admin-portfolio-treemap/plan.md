@@ -37,13 +37,13 @@ All four blockers from `frame.md` are resolved by PRs already merged to master:
 - `renderTreemap(data, container)` (`static/index.html:1718`) is a pure renderer —
   reusable without modification. Same CSS classes and field names apply.
 - The admin-only treemap is entirely inside `injectAdminOnlyChrome()` (lines 985–1090)
-  and `showTreemapView()` (line 1221); both become dead code after Phase 3.
+  and `showTreemapView()` (line 1221); both become dead code after Phase 5.
 - `_applyUrlState()` at line 1302: `view === 'treemap' && role === 'admin'` guard;
-  no `portfolio-positions` case yet — both need updating in Phase 3.
+  no `portfolio-positions` case yet — both need updating in Phase 5.
 - `tests/e2e/conftest.py:202–238`: does NOT yet have portfolio positions mocks
   (PUL-65 will add them); user_portfolios mocks must be added in Phase 1.
 - upsert MERGE key change `(user_id, ticker) → (portfolio_id, ticker)` is a breaking
-  change to the PUL-65 API; Phase 2 frontend update must ship in the same PR.
+  change to the PUL-65 API; Phase 4 frontend update must ship in the same PR.
 
 ## Desired End State
 
@@ -81,38 +81,47 @@ After this plan ships, any authenticated user can:
 ## Implementation Approach
 
 Layer-by-layer, matching the project's established sequencing: BQ schema → BQ functions →
-API endpoints → compute function → frontend → tests. Breaking change (upsert MERGE key)
-ships together with the frontend that passes `portfolio_id`.
+compute function → wallet CRUD API → positions API update + treemap endpoint → frontend
+wallet management → frontend treemap + admin cleanup → E2E tests. Breaking change (upsert
+MERGE key) ships together with the frontend that passes `portfolio_id`.
 
 ## Critical Implementation Details
 
 **Breaking change — upsert MERGE key**: `upsert_user_portfolio_position()` MERGE key
 changes from `(user_id, ticker)` to `(portfolio_id, ticker)` to allow the same ticker
-in multiple wallets. Every caller in `src/api.py` must pass `portfolio_id`. **All three
-phases ship in a single PR** — Phase 1 changes BQ function signatures, Phase 2 updates
-the API callers, and Phase 3 updates the frontend that sends `portfolio_id`; none of
-these can land independently without breaking CI.
+in multiple wallets. Every caller in `src/api.py` must pass `portfolio_id`. **Phases 1–5
+ship in a single PR** — Phase 1 changes BQ function signatures, Phase 3 updates the API
+callers for positions, and Phases 4–5 update the frontend that sends `portfolio_id`; none
+can land independently without breaking CI. Phase 2 (wallet CRUD only, new endpoints) and
+Phase 6 (E2E) are included in the same PR for coherence.
 
 **`as_of` field for treemap response**: Derive as the max non-null `price_as_of` value
 across all positions of all portfolios. `price_as_of` is already returned by
 `list_user_portfolio_positions()` (cast from `snapshot_date`). If all positions have
 null price, `as_of` is null.
 
-**Admin treemap cleanup ordering**: In Phase 3, `injectAdminOnlyChrome()` cleanup of
+**Admin treemap cleanup ordering**: In Phase 5, `injectAdminOnlyChrome()` cleanup of
 `#treemap-btn` and `#treemap-view` at lines 990–993 must also be removed — otherwise
 the function tries to delete elements that no longer exist in the DOM and logs silent
 errors.
 
+**`TreemapPosition.position_value_pln` must be `float | None`**: The existing Pydantic
+model at `src/api.py:122` has `position_value_pln: float`. The compute function returns
+`None` for no-price positions. Update the field to `float | None` in Phase 3 before
+wiring the treemap endpoint — otherwise Pydantic raises `ValidationError` for every
+user with an unpriced position.
+
 ---
 
-## Phase 1: Data Model + BQ Functions + conftest
+## Phase 1: Data Model + BQ Functions + conftest + compute function
 
 ### Overview
 
 Create the `user_portfolios` table, add `portfolio_id` to `user_portfolio_positions`,
-add all BQ CRUD functions for wallet management, and update conftest with new mocks.
-After master merge, verify PUL-65 portfolio position mocks are present before adding
-user_portfolios mocks.
+add all BQ CRUD functions for wallet management, implement the
+`compute_user_portfolio_treemap_positions()` pure function, and update conftest with
+new mocks. After master merge, verify PUL-65 portfolio position mocks are present before
+adding user_portfolios mocks.
 
 ### Changes Required
 
@@ -231,7 +240,7 @@ add `AND p.portfolio_id = @portfolio_id` to the WHERE clause. The LEFT JOIN to
 
 **Intent**: After master merge, verify PUL-65 added portfolio position mocks to the
 `live_server_url` fixture; add user_portfolios function mocks alongside them so
-Phase 4 E2E tests can run against a live server without BQ access.
+Phase 6 E2E tests can run against a live server without BQ access.
 
 **Contract**: Confirm presence (or add if missing) PUL-65 mocks:
 `list_user_portfolio_positions`, `upsert_user_portfolio_position`,
@@ -250,22 +259,43 @@ one test Główny wallet whose positions are in `_FAKE_PORTFOLIO_POSITIONS`);
 **Files**: `src/portfolio_treemap.py`, `tests/test_portfolio_treemap.py`
 
 **Intent**: Implement the pure compute function and establish its correctness contract
-before Phase 2 wires it into the API endpoint. Phase 2 change 1 is a no-op — the
-function is ready to import from Phase 1.
+before Phase 3 wires it into the API endpoint. Phase 3 change 1 imports it — no
+re-implementation needed there.
 
-**Contract**: Min 6 tests covering: position with full price data (verify all 7 output
-fields); position with `current_price=None` (position_value_pln=None, all change fields
-None); empty input → empty output; multiple positions → `portfolio_share_pct` sums to
-~100%; `avg_buy_price=0` → `since_purchase_pct=None` (guard division by zero);
-no-price positions excluded from `portfolio_share_pct` denominator (only priced
-positions contribute to total_value).
+**Contract**: Signature: `compute_user_portfolio_treemap_positions(rows: list[dict]) -> list[dict]`.
+Input per row: `ticker`, `company_name`, `shares`, `avg_buy_price`, `current_price`
+(float | None), `daily_change_pct` (float | None).
+Output per position:
+```
+position_value_pln   = shares * current_price  if current_price else None
+daily_change_pct     = daily_change_pct        (same %)
+daily_change_pln     = position_value_pln * d_pct / 100 / (1 + d_pct / 100)
+                       if (position_value_pln and d_pct) else None
+since_purchase_pct   = (current_price / avg_buy_price - 1) * 100
+                       if (current_price and avg_buy_price) else None
+since_purchase_pln   = (current_price - avg_buy_price) * shares
+                       if current_price else None
+portfolio_share_pct  = position_value_pln / total_value * 100
+                       where total_value = sum of non-None position_value_pln values
+                       None if total_value == 0 or position_value_pln is None
+```
+Positions with `current_price=None` are included in the output (with `position_value_pln=None`)
+so the frontend can show the no-price notice; they are excluded from `portfolio_share_pct`
+denominator. No BQ / network access. Returns `[]` on empty input.
+
+Unit tests (min 6): position with full price data (verify all 7 output fields); position
+with `current_price=None` (position_value_pln=None, all change fields None); empty input
+→ empty output; multiple positions → `portfolio_share_pct` sums to ~100%;
+`avg_buy_price=0` → `since_purchase_pct=None` (guard division by zero); no-price
+positions excluded from `portfolio_share_pct` denominator (only priced positions
+contribute to total_value).
 
 ### Success Criteria
 
 #### Automated Verification
 
 - `uv run pytest tests/test_portfolio_treemap.py` — new compute function tests pass
-- `uv run mypy db/bigquery.py src/portfolio_treemap.py` — no new type errors
+- `uv run mypy db/bigquery.py src/portfolio_treemap.py` — no new errors
 - `uv run ruff check db/ src/portfolio_treemap.py tests/test_portfolio_treemap.py` — clean
 
 #### Manual Verification
@@ -280,40 +310,33 @@ verification before proceeding to Phase 2.**
 
 ---
 
-## Phase 2: Backend API + Treemap Computation
+## Phase 2: Portfolio Wallet CRUD API
 
 ### Overview
 
-Wire all new wallet management endpoints and the treemap endpoint into `src/api.py`,
-update the existing positions endpoints to require `portfolio_id`, and write integration
-tests for all new endpoints. `compute_user_portfolio_treemap_positions()` is already in
-`src/portfolio_treemap.py` from Phase 1 — Phase 2 only imports it.
+Add wallet management endpoints to `src/api.py`: imports, `PortfolioWalletCreate` model,
+`GET/POST/DELETE /api/portfolio/wallets`, and integration tests covering wallet CRUD
+contracts. These are new endpoints with no breaking changes — they can be implemented
+and tested independently of Phase 3's position endpoint updates.
 
 ### Changes Required
 
-#### 1. `compute_user_portfolio_treemap_positions()` — implemented in Phase 1
-
-**No action required.** Function and its full contract are in Phase 1 change 11
-(`src/portfolio_treemap.py`). Import it in Phase 2 change 2 via
-`from src.portfolio_treemap import compute_user_portfolio_treemap_positions`.
-
-#### 2. Update `src/api.py` — imports and startup
+#### 1. Update `src/api.py` — imports and startup (wallet functions)
 
 **File**: `src/api.py`
 
-**Intent**: Import all new BQ functions and wire them into the startup hook so tables
-are created and schemas are migrated on every API boot.
+**Intent**: Import wallet BQ functions and wire startup hooks so the `user_portfolios`
+table is created and its schema migrated on every API boot.
 
 **Contract**: Add to the `from db.bigquery import (...)` block:
 `list_user_portfolios`, `create_user_portfolio`, `delete_user_portfolio`,
 `assign_orphan_positions_to_portfolio`, `create_user_portfolios_table_if_not_exists`,
-`ensure_user_portfolios_schema_current`. Also import
-`compute_user_portfolio_treemap_positions` from `src.portfolio_treemap`.
+`ensure_user_portfolios_schema_current`.
 In the startup hook (where `create_watchlist_table_if_not_exists()` is called): add
 calls to `create_user_portfolios_table_if_not_exists()` and
 `ensure_user_portfolios_schema_current()`.
 
-#### 3. `class PortfolioWalletCreate(BaseModel)`
+#### 2. `class PortfolioWalletCreate(BaseModel)`
 
 **File**: `src/api.py`
 
@@ -322,7 +345,7 @@ calls to `create_user_portfolios_table_if_not_exists()` and
 **Contract**: Fields: `portfolio_type: Literal["glowny", "ikze", "ike", "ppk", "ppe", "inny"]`,
 `portfolio_name: str | None = None`.
 
-#### 4. `GET /api/portfolio/wallets`
+#### 3. `GET /api/portfolio/wallets`
 
 **File**: `src/api.py`
 
@@ -332,7 +355,7 @@ frontend portfolio selector on every view load.
 **Contract**: Auth: `Depends(_get_role)` + `Depends(_get_client_id)`.
 Returns `list_user_portfolios(client_id)` directly (list of dicts). 200 OK.
 
-#### 5. `POST /api/portfolio/wallets`
+#### 4. `POST /api/portfolio/wallets`
 
 **File**: `src/api.py`
 
@@ -348,7 +371,7 @@ already exists → raise `HTTPException(409, "Wallet type already exists")`. If
 If `portfolio_type == "glowny"`: call `assign_orphan_positions_to_portfolio(client_id,
 portfolio_id)`. Return `{"portfolio_id": portfolio_id, "portfolio_type": ..., ...}` 201.
 
-#### 6. `DELETE /api/portfolio/wallets/{portfolio_id}`
+#### 5. `DELETE /api/portfolio/wallets/{portfolio_id}`
 
 **File**: `src/api.py`
 
@@ -358,7 +381,62 @@ portfolio_id)`. Return `{"portfolio_id": portfolio_id, "portfolio_type": ..., ..
 `portfolio_id` appears in `list_user_portfolios(client_id)` → 404 if not.
 Call `delete_user_portfolio(client_id, portfolio_id)`. Return 204.
 
-#### 7. Update `GET /api/portfolio/positions` — require `portfolio_id`
+#### 6. Integration tests for wallet endpoints
+
+**File**: `tests/test_api.py`
+
+**Intent**: Cover wallet management API contracts; follow the pattern at lines 273–421
+(mock BQ functions with `side_effect`, validate response shape).
+
+**Contract**: Min 6 tests:
+- `GET /api/portfolio/wallets` → 200 list; → 401 without API key
+- `POST /api/portfolio/wallets` Główny → 201 + auto-assigns orphans
+- `POST /api/portfolio/wallets` duplicate type → 409
+- `POST /api/portfolio/wallets` third "inny" → 409
+- `DELETE /api/portfolio/wallets/{id}` own wallet → 204
+- `DELETE /api/portfolio/wallets/{id}` wrong user → 404
+
+### Success Criteria
+
+#### Automated Verification
+
+- `uv run pytest tests/test_api.py -k wallet` — all pass
+- `uv run mypy src/api.py` — no new errors
+- `uv run ruff check src/` — clean
+
+#### Manual Verification
+
+- `GET /api/portfolio/wallets` with `X-API-Key` → 200 `[]`
+- `POST /api/portfolio/wallets {"portfolio_type": "glowny"}` → 201
+- Second `POST` with same type → 409
+- `DELETE /api/portfolio/wallets/{id}` → 204
+
+---
+
+## Phase 3: Positions CRUD update + treemapa endpoint
+
+### Overview
+
+Update existing position endpoints to require `portfolio_id`, add
+`GET /api/portfolio/treemap`, fix `TreemapPosition` for nullable values, and write
+integration tests. **Ships in the same PR as all other phases** — the position endpoint
+changes break PUL-65 frontend until Phases 4–5 send `portfolio_id`.
+
+### Changes Required
+
+#### 1. Update `src/api.py` — import compute function + fix `TreemapPosition`
+
+**File**: `src/api.py`
+
+**Intent**: Import the compute function from Phase 1 and update `TreemapPosition` to
+accept nullable `position_value_pln` (required for no-price positions).
+
+**Contract**: Add `from src.portfolio_treemap import compute_user_portfolio_treemap_positions`
+to imports. Update `TreemapPosition.position_value_pln` from `float` to `float | None`
+— the admin endpoint is unaffected (admin compute always produces a float; Pydantic
+accepts `float` for a `float | None` field).
+
+#### 2. Update `GET /api/portfolio/positions` — require `portfolio_id`
 
 **File**: `src/api.py`
 
@@ -370,18 +448,18 @@ portfolio belongs to user (check in `list_user_portfolios(client_id)`) → 404 i
 Pass `portfolio_id` to `list_user_portfolio_positions(client_id, portfolio_id)`.
 Response shape unchanged.
 
-#### 8. Update `POST /api/portfolio/positions` — add `portfolio_id`
+#### 3. Update `POST /api/portfolio/positions` — add `portfolio_id`
 
 **File**: `src/api.py`
 
 **Intent**: Route the new position to the correct wallet; breaking change to PUL-65
-API that ships together with the Phase 3 frontend update.
+API that ships together with the Phase 4–5 frontend update.
 
 **Contract**: Add `portfolio_id: str` field to the existing position request body model
 (alongside ticker, shares, avg_buy_price, etc.). Validate portfolio belongs to user.
 Pass `portfolio_id` to `upsert_user_portfolio_position(client_id, portfolio_id, ...)`.
 
-#### 9. Update `DELETE /api/portfolio/positions/{ticker}` — require `portfolio_id`
+#### 4. Update `DELETE /api/portfolio/positions/{ticker}` — require `portfolio_id`
 
 **File**: `src/api.py`
 
@@ -391,7 +469,7 @@ Pass `portfolio_id` to `upsert_user_portfolio_position(client_id, portfolio_id, 
 portfolio belongs to user. Call `delete_user_portfolio_position(client_id, portfolio_id,
 ticker)`.
 
-#### 10. `GET /api/portfolio/treemap`
+#### 5. `GET /api/portfolio/treemap`
 
 **File**: `src/api.py`
 
@@ -400,7 +478,7 @@ used by `fetchPortfolioTreemap()` in the frontend treemap tab.
 
 **Contract**: Auth: `Depends(_get_role)` + `Depends(_get_client_id)`. For each
 portfolio in `list_user_portfolios(client_id)`: call `list_user_portfolio_positions(
-client_id, portfolio.portfolio_id)`, then `compute_user_portfolio_treemap_positions(rows)`.
+client_id, portfolio["portfolio_id"])`, then `compute_user_portfolio_treemap_positions(rows)`.
 Collect all `price_as_of` values; `as_of = max(non-null price_as_of values) or None`.
 Return:
 ```json
@@ -416,33 +494,22 @@ Return:
   "as_of": "YYYY-MM-DD"
 }
 ```
-Reuse the existing `TreemapPosition` Pydantic model (already defined for the admin
-endpoint) — output field names match exactly. **Before using it here, update
-`TreemapPosition.position_value_pln` to `float | None` in `src/api.py` (currently
-`float`, which rejects `None` for no-price positions and causes Pydantic `ValidationError`).
-The admin endpoint is unaffected — it always produces a float value; Pydantic accepts
-`float` for `float | None` fields.**
-Empty positions list → include portfolio with `"positions": []`.
+Reuse `TreemapPosition` (updated to `float | None` in change 1 above) — output field
+names match exactly. Empty positions list → include portfolio with `"positions": []`.
 Zero portfolios → `{"portfolios": [], "as_of": null}`.
 
-#### 11. Integration tests for all new endpoints
+#### 6. Integration tests for positions + treemap endpoints
 
 **File**: `tests/test_api.py`
 
-**Intent**: Cover the API contracts for wallet management + treemap; follow the pattern
-at lines 273–421 (mock BQ functions with `side_effect`, validate response shape).
+**Intent**: Cover the updated positions API and treemap endpoint contracts.
 
-**Contract**: Min 10 new tests:
-- `GET /api/portfolio/wallets` → 200 list; → 401 without API key
-- `POST /api/portfolio/wallets` Główny → 201 + auto-assigns orphans
-- `POST /api/portfolio/wallets` duplicate type → 409
-- `POST /api/portfolio/wallets` third "inny" → 409
-- `DELETE /api/portfolio/wallets/{id}` own wallet → 204
-- `DELETE /api/portfolio/wallets/{id}` wrong user → 404
+**Contract**: Min 5 tests:
 - `GET /api/portfolio/positions?portfolio_id=...` → 200 scoped
-- `GET /api/portfolio/positions` without portfolio_id → 422
+- `GET /api/portfolio/positions` without `portfolio_id` → 422
 - `GET /api/portfolio/treemap` → 200 with correct shape + no-price positions included
 - `GET /api/portfolio/treemap` zero portfolios → `{"portfolios": [], "as_of": null}`
+- `GET /admin/portfolio/treemap` still returns 200 (endpoint kept in code)
 
 ### Success Criteria
 
@@ -454,23 +521,114 @@ at lines 273–421 (mock BQ functions with `side_effect`, validate response shap
 
 #### Manual Verification
 
-- `GET /api/portfolio/treemap` with `X-API-Key` returns correct JSON structure
-- `POST /api/portfolio/wallets` with `{"portfolio_type": "glowny"}` → 201
-- Second `POST` with same type → 409
-- `GET /admin/portfolio/treemap` still returns 200 (endpoint kept, not removed)
-
-**After passing automated verification and manual spot-checks, confirm before Phase 3.**
+- `GET /api/portfolio/treemap` with `X-API-Key` returns `{portfolios, as_of}`
+- `GET /api/portfolio/positions` without `portfolio_id` → 422
+- `GET /admin/portfolio/treemap` still returns 200
 
 ---
 
-## Phase 3: Frontend — Portfolio-Scoped UI, Wallet Management, Treemap Tab
+## Phase 4: Frontend — wallet management
 
 ### Overview
 
-Remove the admin-only treemap from `injectAdminOnlyChrome()`, replace it with a
-"Treemapa" tab inside `#portfolio-positions-view` for all roles, add portfolio selector
-tabs, wallet management modal, and update all position CRUD calls to pass `portfolio_id`.
-Ships together with Phase 2 (breaking change).
+Add portfolio selector tabs, `fetchUserPortfolios()`, "Dodaj portfel" modal, and update
+all position CRUD calls to pass `portfolio_id`. Ships in the same PR as Phases 1–3
+(position endpoints now require `portfolio_id`).
+
+### Changes Required
+
+#### 1. Portfolio selector tabs + wallet management area
+
+**File**: `static/index.html`
+
+**Intent**: Add a portfolio tabs strip and "Dodaj portfel" button at the top of
+`#portfolio-positions-view`; portfolio switching reloads the table and updates
+`_activePortfolioId`.
+
+**Contract**: Inside `_buildPortfolioPositionsViewContent()` (the PUL-65 lazy builder),
+prepend a `<div id="pp-portfolio-tabs-wrap">` containing:
+- `<div id="pp-portfolio-tabs"></div>` (populated by `_renderPortfolioTabs(portfolios)`)
+- `<button id="pp-add-portfolio-btn">+ Dodaj portfel</button>`
+Module-level variable `let _activePortfolioId = null`.
+`_renderPortfolioTabs(portfolios)`: clears `#pp-portfolio-tabs`, creates one
+`<button class="pp-portfolio-tab" data-portfolio-id="...">` per wallet (label:
+`portfolio_type === 'inny' ? portfolio_name : TYPE_LABELS[portfolio_type]`), marks the
+first as active; if `portfolios` is empty, shows `<p class="pp-notice">Utwórz swój
+pierwszy portfel ↑</p>`. Clicking a tab sets `_activePortfolioId`, removes active class
+from others, calls `fetchPortfolioPositions(_activePortfolioId)`.
+
+#### 2. `fetchUserPortfolios()` function
+
+**File**: `static/index.html`
+
+**Intent**: Fetch wallet list and render tabs; called on first `showPortfolioPositionsView()`
+(lazy, guarded by `_portfoliosFetched` flag), and after any wallet create/delete.
+
+**Contract**: `GET /api/portfolio/wallets` with both auth headers. On success: set
+`_activePortfolioId = data[0]?.portfolio_id ?? null`; call `_renderPortfolioTabs(data)`;
+if `_activePortfolioId` is not null, call `fetchPortfolioPositions(_activePortfolioId)`.
+On error: show error in `#pp-portfolio-tabs`.
+
+#### 3. "Dodaj portfel" modal
+
+**File**: `static/index.html`
+
+**Intent**: Inline modal (overlay pattern matching `#pp-edit-overlay`) for creating a
+new wallet; portfolio_type dropdown collapses to just the permitted types; optional name
+field shown only for "inny".
+
+**Contract**: Modal HTML (static, inside `#portfolio-positions-view`):
+`#pp-add-portfolio-overlay` / `#pp-add-portfolio-modal` with a `<select
+id="pp-portfolio-type-select">` listing all 6 types, a `<div
+id="pp-portfolio-name-wrap" style="display:none"><input id="pp-portfolio-name-input"
+placeholder="Nazwa portfela"></div>`, Save + Cancel buttons. Show name-wrap when
+"inny" is selected. Submit calls `POST /api/portfolio/wallets`; on 201: close modal,
+call `fetchUserPortfolios()`; on 409: show type-specific error message in modal.
+Disable "Inny" option in type select when user already has 2 (check against
+`_renderPortfolioTabs`'s current data).
+
+#### 4. Position CRUD — pass `portfolio_id` from active tab context
+
+**File**: `static/index.html`
+
+**Intent**: All position operations (fetch, add, delete) must now include
+`portfolio_id` from `_activePortfolioId` so the breaking Phase 3 API change is
+handled correctly.
+
+**Contract**:
+- `fetchPortfolioPositions()` (PUL-65): append `?portfolio_id=${_activePortfolioId}`
+  to the GET request URL. Guard: if `_activePortfolioId` is null, return early
+  (show "Wybierz portfel" prompt in table body).
+- `_upsertPortfolioPosition()` (PUL-65): include `portfolio_id: _activePortfolioId`
+  in the POST request body.
+- Delete handler (PUL-65): append `?portfolio_id=${_activePortfolioId}` to the
+  DELETE request URL.
+
+### Success Criteria
+
+#### Automated Verification
+
+- Browser console: 0 JS errors on page load (user role) — wallet management flows
+- `uv run ruff check src/` — clean
+
+#### Manual Verification
+
+- Any role: "Mój portfel" shows portfolio tabs (or "Utwórz portfel" prompt when empty)
+- "Dodaj portfel" modal opens; creating "Główny" triggers orphan-assign; tab appears
+- Selecting wallet tab filters positions table to that wallet
+- "Dodaj pozycję" → position appears in active wallet tab
+- "Tabela | Treemapa" toggle visible (treemap sub-view can be empty at this stage)
+
+---
+
+## Phase 5: Frontend — treemap tab + admin cleanup
+
+### Overview
+
+Remove the admin-only XTB-snapshot treemap from `injectAdminOnlyChrome()`, add "Widok"
+tab toggle (Tabela | Treemapa), render all wallets side-by-side inside
+`#portfolio-positions-view`, wire the popup, and update URL routing. Ships in the same
+PR as Phases 1–4.
 
 ### Changes Required
 
@@ -498,7 +656,7 @@ The function retains x-history button/view creation only.
 **File**: `static/index.html`
 
 **Intent**: Remove variables and functions that referenced the now-removed `#treemap-view`
-DOM; keep `renderTreemap()` and `computeTreemapLayout()` (still used in Phase 3's new
+DOM; keep `renderTreemap()` and `computeTreemapLayout()` (still used in Phase 5's new
 treemap tab).
 
 **Contract**: Remove: `_TREEMAP_WALLET_CONTAINERS`, `_treemapData` variable,
@@ -507,10 +665,10 @@ treemap tab).
 `stopTreemapResizeTracking()`, `_onTreemapResize()`, `showTreemapView()`.
 Keep: `renderTreemap(data, container)`, `_openTreemapPopup()`, `_closeTreemapPopup()`.
 The popup DOM (`#treemap-popup-backdrop` and children) moves inside
-`#portfolio-positions-view` HTML in step 4.
+`#portfolio-positions-view` HTML in step 5.
 
 **Also replace 4 call sites of the removed `stopTreemapResizeTracking()` with
-`stopPortfolioTreemapResize()` (introduced in step 9) to avoid `ReferenceError` on
+`stopPortfolioTreemapResize()` (introduced in step 6) to avoid `ReferenceError` on
 view switches and logout:**
 - `doLogout()` line 654
 - `showAnnouncementsView()` line 1114
@@ -535,57 +693,7 @@ URL deep-link support for all roles.
   add (or confirm PUL-65 added) `else if (view === 'portfolio-positions')` →
   `showPortfolioPositionsView()` — no role gate.
 
-#### 4. Portfolio selector tabs + wallet management area
-
-**File**: `static/index.html`
-
-**Intent**: Add a portfolio tabs strip and "Dodaj portfel" button at the top of
-`#portfolio-positions-view`; portfolio switching reloads the table and updates
-`_activePortfolioId`.
-
-**Contract**: Inside `_buildPortfolioPositionsViewContent()` (the PUL-65 lazy builder),
-prepend a `<div id="pp-portfolio-tabs-wrap">` containing:
-- `<div id="pp-portfolio-tabs"></div>` (populated by `_renderPortfolioTabs(portfolios)`)
-- `<button id="pp-add-portfolio-btn">+ Dodaj portfel</button>`
-Module-level variable `let _activePortfolioId = null`.
-`_renderPortfolioTabs(portfolios)`: clears `#pp-portfolio-tabs`, creates one
-`<button class="pp-portfolio-tab" data-portfolio-id="...">` per wallet (label:
-`portfolio_type === 'inny' ? portfolio_name : TYPE_LABELS[portfolio_type]`), marks the
-first as active; if `portfolios` is empty, shows `<p class="pp-notice">Utwórz swój
-pierwszy portfel ↑</p>`. Clicking a tab sets `_activePortfolioId`, removes active class
-from others, calls `fetchPortfolioPositions(_activePortfolioId)`.
-
-#### 5. `fetchUserPortfolios()` function
-
-**File**: `static/index.html`
-
-**Intent**: Fetch wallet list and render tabs; called on first `showPortfolioPositionsView()`
-(lazy, guarded by `_portfoliosFetched` flag), and after any wallet create/delete.
-
-**Contract**: `GET /api/portfolio/wallets` with both auth headers. On success: set
-`_activePortfolioId = data[0]?.portfolio_id ?? null`; call `_renderPortfolioTabs(data)`;
-if `_activePortfolioId` is not null, call `fetchPortfolioPositions(_activePortfolioId)`.
-On error: show error in `#pp-portfolio-tabs`.
-
-#### 6. "Dodaj portfel" modal
-
-**File**: `static/index.html`
-
-**Intent**: Inline modal (overlay pattern matching `#pp-edit-overlay`) for creating a
-new wallet; portfolio_type dropdown collapses to just the permitted types; optional name
-field shown only for "inny".
-
-**Contract**: Modal HTML (static, inside `#portfolio-positions-view`):
-`#pp-add-portfolio-overlay` / `#pp-add-portfolio-modal` with a `<select
-id="pp-portfolio-type-select">` listing all 6 types, a `<div
-id="pp-portfolio-name-wrap" style="display:none"><input id="pp-portfolio-name-input"
-placeholder="Nazwa portfela"></div>`, Save + Cancel buttons. Show name-wrap when
-"inny" is selected. Submit calls `POST /api/portfolio/wallets`; on 201: close modal,
-call `fetchUserPortfolios()`; on 409: show type-specific error message in modal.
-Disable "Inny" option in type select when user already has 2 (check against
-`_renderPortfolioTabs`'s current data).
-
-#### 7. "Widok" tab toggle — Tabela | Treemapa
+#### 4. "Widok" tab toggle — Tabela | Treemapa
 
 **File**: `static/index.html`
 
@@ -600,7 +708,7 @@ Clicking "Tabela": show `#pp-table-wrap`, hide `#pp-treemap-wrap`, call
 `#pp-treemap-wrap`, call `fetchPortfolioTreemap()` (if not yet loaded or if
 `_ppTreemapData` is null), call `startPortfolioTreemapResize()`.
 
-#### 8. Treemap container + popup inside `#portfolio-positions-view`
+#### 5. Treemap container + popup inside `#portfolio-positions-view`
 
 **File**: `static/index.html`
 
@@ -623,7 +731,7 @@ Escape key) wired in `_buildPortfolioPositionsViewContent()` (lazy, once). Popup
 `goto` button navigates to announcements view filtered by company name — same logic as
 before.
 
-#### 9. `fetchPortfolioTreemap()` + `_renderPortfolioTreemap(data)`
+#### 6. `fetchPortfolioTreemap()` + `_renderPortfolioTreemap(data)`
 
 **File**: `static/index.html`
 
@@ -644,47 +752,27 @@ view header. `startPortfolioTreemapResize()` / `stopPortfolioTreemapResize()` mi
 the old `startTreemapResizeTracking()` but reference `_ppTreemapData` and
 `_renderPortfolioTreemap`.
 
-#### 10. Position CRUD — pass `portfolio_id` from active tab context
-
-**File**: `static/index.html`
-
-**Intent**: All position operations (fetch, add, delete) must now include
-`portfolio_id` from `_activePortfolioId` so the breaking Phase 2 API change is
-handled correctly.
-
-**Contract**:
-- `fetchPortfolioPositions()` (PUL-65): append `?portfolio_id=${_activePortfolioId}`
-  to the GET request URL. Guard: if `_activePortfolioId` is null, return early
-  (show "Wybierz portfel" prompt in table body).
-- `_upsertPortfolioPosition()` (PUL-65): include `portfolio_id: _activePortfolioId`
-  in the POST request body.
-- Delete handler (PUL-65): append `?portfolio_id=${_activePortfolioId}` to the
-  DELETE request URL.
-
 ### Success Criteria
 
 #### Automated Verification
 
-- `uv run mypy static/` (if configured) — or browser console shows 0 JS errors on load
+- Browser console: 0 JS errors on page load (user role)
+- Browser console: 0 JS errors on page load (admin role)
 - `uv run ruff check src/` — clean
 
 #### Manual Verification
 
-- Admin role: no "Treemapa portfela" button in the topbar nav (old admin button gone)
-- Any role: "Mój portfel" → portfolio-positions-view opens; "Utwórz portfel" prompt
-  shown when no wallets exist
-- "Dodaj portfel" modal opens; creating "Główny" triggers orphan-assign; wallet tab appears
-- Selecting wallet tab filters positions table to that wallet
-- "Dodaj pozycję" (using existing ticker autocomplete) → position appears in active wallet
-- "Treemapa" toggle shows all wallets side-by-side; no-price notice shows if kurs=null
-- Refreshing `?view=portfolio-positions` lands on correct view
-- Admin role: clicking "Mój portfel" → same wallet view as user role
+- Admin role: no "Treemapa portfela" nav button in topbar
+- "Treemapa" toggle renders all wallets side-by-side
+- No-price notice shows for positions without kurs_zamkniecia
+- `?view=portfolio-positions` deep-link restores view on refresh
+- Admin "Mój portfel" → same wallet/treemap UI as user role
 
-**Phase 3 and Phase 2 must ship in the same PR (breaking change in position endpoints).**
+**Phases 1–5 ship in a single PR.**
 
 ---
 
-## Phase 4: E2E Tests
+## Phase 6: E2E Tests
 
 ### Overview
 
@@ -785,8 +873,8 @@ popup click. Adapt patterns from `tests/e2e/test_portfolio_treemap.py` (admin te
 
 ### Integration Tests
 
-- All wallet management endpoints (CRUD) + updated positions endpoints + treemap
-  endpoint — min 10 tests (see Phase 2 change 11)
+- Wallet CRUD endpoints — min 6 tests (Phase 2 change 6)
+- Updated positions endpoints + treemap endpoint — min 5 tests (Phase 3 change 6)
 - Follow existing pattern: mock BQ functions at `src.api.*` import path with
   `side_effect` callables for reads, `MagicMock()` for writes
 
@@ -820,24 +908,25 @@ moves them. No data is lost in any scenario.
 - Research: `context/changes/non-admin-portfolio-treemap/research.md`
 - Admin treemap plan (PUL-45): `context/archive/2026-06-20-admin-ui-portfolio-treemap/plan.md`
 - `src/api.py:53-75` — auth dependencies
+- `src/api.py:120-128` — `TreemapPosition` model (update `position_value_pln` to `float | None` in Phase 3)
 - `src/api.py:325-354` — admin treemap endpoint (reference; stays in code, removed from UI)
 - `src/portfolio_treemap.py:4-73` — `compute_treemap_positions()` (NOT reused)
 - `db/bigquery.py:491-530` — `list_user_portfolio_positions()` (base of new compute)
 - `db/bigquery.py:1281-1325` — `company_daily_stats` schema (kurs_zamkniecia)
-- `static/index.html:985-1090` — `injectAdminOnlyChrome()` (gutted in Phase 3)
+- `static/index.html:985-1090` — `injectAdminOnlyChrome()` (gutted in Phase 5)
 - `static/index.html:1718-1763` — `renderTreemap()` (reused unchanged)
-- `tests/e2e/conftest.py:202-238` — live_server_url fixture (extended in Phase 1 + 4)
+- `tests/e2e/conftest.py:202-238` — live_server_url fixture (extended in Phase 1 + 6)
 - `tests/e2e/test_portfolio_treemap.py:1-166` — E2E patterns to adapt
 
 ## Progress
 
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles.
 
-### Phase 1: Data Model + BQ Functions + conftest
+### Phase 1: Data Model + BQ Functions + conftest + compute function
 
 #### Automated
 
-- [ ] 1.1 `uv run pytest tests/test_portfolio_treemap.py` passes (new compute function tests)
+- [ ] 1.1 `uv run pytest tests/test_portfolio_treemap.py` — new compute function tests pass
 - [ ] 1.2 `uv run mypy db/bigquery.py src/portfolio_treemap.py` — no new errors
 - [ ] 1.3 `uv run ruff check db/ src/portfolio_treemap.py tests/test_portfolio_treemap.py` — clean
 
@@ -847,48 +936,74 @@ moves them. No data is lost in any scenario.
 - [ ] 1.5 `user_portfolios` BQ table created successfully in dev dataset
 - [ ] 1.6 `list_user_portfolios("test-uid")` returns `[]` for a new user
 
-### Phase 2: Backend API + Treemap Computation
+### Phase 2: Portfolio Wallet CRUD API
 
 #### Automated
 
-- [ ] 2.1 `uv run pytest tests/test_api.py tests/test_portfolio_treemap.py` — all pass
-- [ ] 2.2 `uv run mypy src/api.py src/portfolio_treemap.py` — no new errors
+- [ ] 2.1 `uv run pytest tests/test_api.py -k wallet` — all pass
+- [ ] 2.2 `uv run mypy src/api.py` — no new errors
 - [ ] 2.3 `uv run ruff check src/` — clean
 
 #### Manual
 
-- [ ] 2.4 `GET /api/portfolio/treemap` returns correct JSON structure with `portfolios` + `as_of`
+- [ ] 2.4 `GET /api/portfolio/wallets` with `X-API-Key` → 200 `[]`
 - [ ] 2.5 `POST /api/portfolio/wallets {"portfolio_type":"glowny"}` → 201
 - [ ] 2.6 Second POST with same type → 409
-- [ ] 2.7 `GET /admin/portfolio/treemap` still returns 200 (endpoint kept in code)
+- [ ] 2.7 `DELETE /api/portfolio/wallets/{id}` → 204
 
-### Phase 3: Frontend
+### Phase 3: Positions CRUD update + treemapa endpoint
 
 #### Automated
 
-- [ ] 3.1 Browser console: 0 JS errors on page load (user role)
-- [ ] 3.2 Browser console: 0 JS errors on page load (admin role)
+- [ ] 3.1 `uv run pytest tests/test_api.py tests/test_portfolio_treemap.py` — all pass
+- [ ] 3.2 `uv run mypy src/api.py src/portfolio_treemap.py` — no new errors
 - [ ] 3.3 `uv run ruff check src/` — clean
 
 #### Manual
 
-- [ ] 3.4 Admin role: no "Treemapa portfela" nav button in topbar
-- [ ] 3.5 Any role: "Mój portfel" opens portfolio-positions-view with "Utwórz portfel" prompt
-- [ ] 3.6 "Dodaj portfel" → creates Główny → existing positions auto-assigned → tab appears
-- [ ] 3.7 Portfolio tab switch filters positions table to that wallet
-- [ ] 3.8 "Treemapa" toggle renders all wallets side-by-side
-- [ ] 3.9 No-price notice shows for positions without kurs_zamkniecia
-- [ ] 3.10 `?view=portfolio-positions` deep-link restores view on refresh
-- [ ] 3.11 Admin "Mój portfel" → same wallet UI as user role
+- [ ] 3.4 `GET /api/portfolio/treemap` with `X-API-Key` → correct `{portfolios, as_of}`
+- [ ] 3.5 `GET /api/portfolio/positions` without `portfolio_id` → 422
+- [ ] 3.6 `GET /admin/portfolio/treemap` still returns 200
 
-### Phase 4: E2E Tests
+### Phase 4: Frontend — wallet management
 
 #### Automated
 
-- [ ] 4.1 `uv run pytest tests/e2e/test_portfolio_wallets.py` — all 5 pass
-- [ ] 4.2 `uv run pytest tests/e2e/test_user_portfolio_treemap.py` — all 6 pass
-- [ ] 4.3 `uv run pytest tests/e2e/` — full suite passes (no regressions)
+- [ ] 4.1 Browser console: 0 JS errors on page load (user role) — wallet management flows
+- [ ] 4.2 `uv run ruff check src/` — clean
 
 #### Manual
 
-- [ ] 4.4 Full E2E suite run against local server — zero failures
+- [ ] 4.3 Any role: "Mój portfel" shows portfolio tabs (or "Utwórz portfel" prompt)
+- [ ] 4.4 "Dodaj portfel" → creates Główny → existing positions auto-assigned → tab appears
+- [ ] 4.5 Portfolio tab switch filters positions table to that wallet
+- [ ] 4.6 "Dodaj pozycję" → position appears in active wallet tab
+- [ ] 4.7 "Tabela | Treemapa" toggle visible in view
+
+### Phase 5: Frontend — treemap tab + admin cleanup
+
+#### Automated
+
+- [ ] 5.1 Browser console: 0 JS errors on page load (user role)
+- [ ] 5.2 Browser console: 0 JS errors on page load (admin role)
+- [ ] 5.3 `uv run ruff check src/` — clean
+
+#### Manual
+
+- [ ] 5.4 Admin role: no "Treemapa portfela" nav button in topbar
+- [ ] 5.5 "Treemapa" toggle renders all wallets side-by-side
+- [ ] 5.6 No-price notice shows for positions without kurs_zamkniecia
+- [ ] 5.7 `?view=portfolio-positions` deep-link restores view on refresh
+- [ ] 5.8 Admin "Mój portfel" → same wallet/treemap UI as user role
+
+### Phase 6: E2E Tests
+
+#### Automated
+
+- [ ] 6.1 `uv run pytest tests/e2e/test_portfolio_wallets.py` — all 5 pass
+- [ ] 6.2 `uv run pytest tests/e2e/test_user_portfolio_treemap.py` — all 6 pass
+- [ ] 6.3 `uv run pytest tests/e2e/` — full suite passes (no regressions)
+
+#### Manual
+
+- [ ] 6.4 Full E2E suite run against local server — zero failures
