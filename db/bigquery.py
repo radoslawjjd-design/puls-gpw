@@ -389,6 +389,7 @@ _USER_PORTFOLIO_POSITIONS_SCHEMA = [
     bigquery.SchemaField("avg_buy_price", "FLOAT64",   mode="REQUIRED"),
     bigquery.SchemaField("created_at",    "TIMESTAMP", mode="REQUIRED"),
     bigquery.SchemaField("updated_at",    "TIMESTAMP", mode="REQUIRED"),
+    bigquery.SchemaField("portfolio_id",  "STRING",    mode="NULLABLE"),
 ]
 
 
@@ -412,12 +413,13 @@ def ensure_user_portfolio_positions_schema_current() -> None:
 
 def upsert_user_portfolio_position(
     user_id: str,
+    portfolio_id: str,
     ticker: str,
     company_name: str | None,
     shares: float,
     avg_buy_price: float,
 ) -> None:
-    """Insert-or-update one portfolio position row keyed on (user_id, ticker).
+    """Insert-or-update one portfolio position row keyed on (portfolio_id, ticker).
 
     MATCHED → update company_name, shares, avg_buy_price, updated_at.
     NOT MATCHED → full INSERT with created_at and updated_at set to now.
@@ -427,11 +429,11 @@ def upsert_user_portfolio_position(
     query = f"""
         MERGE `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` T
         USING (
-            SELECT @user_id AS user_id, @ticker AS ticker,
-                   @company_name AS company_name, @shares AS shares,
-                   @avg_buy_price AS avg_buy_price
+            SELECT @user_id AS user_id, @portfolio_id AS portfolio_id,
+                   @ticker AS ticker, @company_name AS company_name,
+                   @shares AS shares, @avg_buy_price AS avg_buy_price
         ) S
-        ON T.user_id = S.user_id AND T.ticker = S.ticker
+        ON T.portfolio_id = S.portfolio_id AND T.ticker = S.ticker
         WHEN MATCHED THEN
           UPDATE SET
             company_name  = S.company_name,
@@ -439,13 +441,14 @@ def upsert_user_portfolio_position(
             avg_buy_price = S.avg_buy_price,
             updated_at    = CURRENT_TIMESTAMP()
         WHEN NOT MATCHED THEN
-          INSERT (user_id, ticker, company_name, shares, avg_buy_price, created_at, updated_at)
-          VALUES (S.user_id, S.ticker, S.company_name, S.shares, S.avg_buy_price,
+          INSERT (user_id, portfolio_id, ticker, company_name, shares, avg_buy_price, created_at, updated_at)
+          VALUES (S.user_id, S.portfolio_id, S.ticker, S.company_name, S.shares, S.avg_buy_price,
                   CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ScalarQueryParameter("user_id",       "STRING",  user_id),
+            bigquery.ScalarQueryParameter("portfolio_id",  "STRING",  portfolio_id),
             bigquery.ScalarQueryParameter("ticker",        "STRING",  ticker),
             bigquery.ScalarQueryParameter("company_name",  "STRING",  company_name),
             bigquery.ScalarQueryParameter("shares",        "FLOAT64", shares),
@@ -459,23 +462,24 @@ def upsert_user_portfolio_position(
         raise BigQueryError(f"upsert_user_portfolio_position failed: {exc}") from exc
     if job.errors:
         raise BigQueryError(f"upsert_user_portfolio_position failed: {job.errors}")
-    logger.debug("upsert_user_portfolio_position: user_id=%s ticker=%s", user_id, ticker)
+    logger.debug("upsert_user_portfolio_position: user_id=%s portfolio_id=%s ticker=%s", user_id, portfolio_id, ticker)
 
 
-def delete_user_portfolio_position(user_id: str, ticker: str) -> None:
-    """Remove one portfolio position; silent no-op if the row does not exist.
+def delete_user_portfolio_position(user_id: str, portfolio_id: str, ticker: str) -> None:
+    """Remove one portfolio position scoped to a wallet; silent no-op if not present.
 
     Raises BigQueryError on query failure.
     """
     client = _get_client()
     query = f"""
         DELETE FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}`
-        WHERE user_id = @user_id AND ticker = @ticker
+        WHERE user_id = @user_id AND portfolio_id = @portfolio_id AND ticker = @ticker
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-            bigquery.ScalarQueryParameter("ticker",  "STRING", ticker),
+            bigquery.ScalarQueryParameter("user_id",      "STRING", user_id),
+            bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id),
+            bigquery.ScalarQueryParameter("ticker",       "STRING", ticker),
         ]
     )
     try:
@@ -485,17 +489,20 @@ def delete_user_portfolio_position(user_id: str, ticker: str) -> None:
         raise BigQueryError(f"delete_user_portfolio_position failed: {exc}") from exc
     if job.errors:
         raise BigQueryError(f"delete_user_portfolio_position failed: {job.errors}")
-    logger.debug("delete_user_portfolio_position: user_id=%s ticker=%s", user_id, ticker)
+    logger.debug("delete_user_portfolio_position: user_id=%s portfolio_id=%s ticker=%s", user_id, portfolio_id, ticker)
 
 
-def list_user_portfolio_positions(user_id: str) -> list[dict]:
-    """Return all positions for user_id joined with the latest available close price.
+def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None) -> list[dict]:
+    """Return positions for user_id joined with the latest available close price.
 
+    When portfolio_id is provided, results are scoped to that wallet. Without it,
+    all positions for the user are returned (used by the treemap endpoint).
     Uses ROW_NUMBER() OVER PARTITION BY ticker to pick the most recent company_daily_stats
     entry per ticker, then LEFT JOIN so positions without price data still appear.
     Raises BigQueryError on query failure.
     """
     client = _get_client()
+    portfolio_filter = "AND p.portfolio_id = @portfolio_id" if portfolio_id is not None else ""
     query = f"""
         WITH latest_stats AS (
           SELECT
@@ -517,19 +524,174 @@ def list_user_portfolio_positions(user_id: str) -> list[dict]:
         FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` p
         LEFT JOIN latest_stats ls
           ON p.ticker = ls.ticker AND ls.rn = 1
-        WHERE p.user_id = @user_id
+        WHERE p.user_id = @user_id {portfolio_filter}
         ORDER BY p.ticker
     """
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-        ]
-    )
+    params: list[bigquery.ScalarQueryParameter] = [
+        bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+    ]
+    if portfolio_id is not None:
+        params.append(bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id))
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
     try:
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"list_user_portfolio_positions failed: {exc}") from exc
     return [dict(row) for row in rows]
+
+
+_USER_PORTFOLIOS_TABLE_NAME = "user_portfolios"
+
+_USER_PORTFOLIOS_SCHEMA = [
+    bigquery.SchemaField("user_id",        "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("portfolio_id",   "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("portfolio_type", "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("portfolio_name", "STRING",    mode="NULLABLE"),
+    bigquery.SchemaField("display_order",  "INTEGER",   mode="REQUIRED"),
+    bigquery.SchemaField("created_at",     "TIMESTAMP", mode="REQUIRED"),
+]
+
+_PORTFOLIO_DISPLAY_ORDER: dict[str, int] = {
+    "glowny": 1, "ikze": 2, "ike": 3, "ppk": 6, "ppe": 7,
+}
+
+
+def create_user_portfolios_table_if_not_exists() -> None:
+    """Create the user_portfolios table in BigQuery if it does not already exist."""
+    client = _get_client()
+    table_id = _table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_USER_PORTFOLIOS_SCHEMA)
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_user_portfolios_schema_current() -> None:
+    """Migrate user_portfolios — add any missing schema columns."""
+    ensure_schema_current(_USER_PORTFOLIOS_TABLE_NAME, _USER_PORTFOLIOS_SCHEMA)
+
+
+def list_user_portfolios(user_id: str) -> list[dict]:
+    """Return all wallets for user_id ordered by display_order, then created_at.
+
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT *
+        FROM `{_table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)}`
+        WHERE user_id = @user_id
+        ORDER BY display_order ASC, created_at ASC
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("user_id", "STRING", user_id)]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_user_portfolios failed: {exc}") from exc
+    return [dict(row) for row in rows]
+
+
+def create_user_portfolio(
+    user_id: str, portfolio_type: str, portfolio_name: str | None
+) -> str:
+    """Insert a new wallet and return its portfolio_id (UUID).
+
+    Display order is determined by type; for "inny", queries existing count
+    to assign 4 (first) or 5 (second).
+    Raises BigQueryError on failure.
+    """
+    if portfolio_type == "inny":
+        existing = list_user_portfolios(user_id)
+        inny_count = sum(1 for p in existing if p["portfolio_type"] == "inny")
+        display_order = 4 if inny_count == 0 else 5
+    else:
+        display_order = _PORTFOLIO_DISPLAY_ORDER.get(portfolio_type, 99)
+
+    portfolio_id = str(uuid.uuid4())
+    client = _get_client()
+    query = f"""
+        INSERT INTO `{_table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)}`
+          (user_id, portfolio_id, portfolio_type, portfolio_name, display_order, created_at)
+        VALUES
+          (@user_id, @portfolio_id, @portfolio_type, @portfolio_name, @display_order,
+           CURRENT_TIMESTAMP())
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id",        "STRING",  user_id),
+            bigquery.ScalarQueryParameter("portfolio_id",   "STRING",  portfolio_id),
+            bigquery.ScalarQueryParameter("portfolio_type", "STRING",  portfolio_type),
+            bigquery.ScalarQueryParameter("portfolio_name", "STRING",  portfolio_name),
+            bigquery.ScalarQueryParameter("display_order",  "INTEGER", display_order),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"create_user_portfolio failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"create_user_portfolio failed: {job.errors}")
+    logger.debug("create_user_portfolio: user_id=%s portfolio_id=%s type=%s", user_id, portfolio_id, portfolio_type)
+    return portfolio_id
+
+
+def delete_user_portfolio(user_id: str, portfolio_id: str) -> None:
+    """Delete a wallet and cascade-delete all its positions (positions first).
+
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    pos_query = f"""
+        DELETE FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}`
+        WHERE portfolio_id = @portfolio_id
+    """
+    wallet_query = f"""
+        DELETE FROM `{_table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)}`
+        WHERE user_id = @user_id AND portfolio_id = @portfolio_id
+    """
+    params = [
+        bigquery.ScalarQueryParameter("user_id",      "STRING", user_id),
+        bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id),
+    ]
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
+    try:
+        client.query(pos_query, job_config=job_config).result()
+        client.query(wallet_query, job_config=job_config).result()
+    except Exception as exc:
+        raise BigQueryError(f"delete_user_portfolio failed: {exc}") from exc
+    logger.debug("delete_user_portfolio: user_id=%s portfolio_id=%s", user_id, portfolio_id)
+
+
+def assign_orphan_positions_to_portfolio(user_id: str, portfolio_id: str) -> None:
+    """Assign NULL-portfolio_id positions (pre-PUL-64) to the given wallet.
+
+    Called when user creates their first Główny wallet to make existing positions visible.
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        UPDATE `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}`
+        SET portfolio_id = @portfolio_id
+        WHERE user_id = @user_id AND portfolio_id IS NULL
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id",      "STRING", user_id),
+            bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"assign_orphan_positions_to_portfolio failed: {exc}") from exc
+    logger.debug("assign_orphan_positions_to_portfolio: user_id=%s portfolio_id=%s", user_id, portfolio_id)
 
 
 def add_watchlist_ticker(client_id: str, ticker: str) -> None:

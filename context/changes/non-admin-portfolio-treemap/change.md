@@ -1,7 +1,7 @@
 ---
 change_id: non-admin-portfolio-treemap
 title: Treemapa portfela for non-admin users (own data, not admin's)
-status: plan_reviewed
+status: implementing
 created: 2026-06-25
 updated: 2026-06-28
 archived_at: null

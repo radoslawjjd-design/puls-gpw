@@ -166,6 +166,30 @@ def _fake_list_watchlist_tickers(client_id):
 
 _portfolio_positions_store: dict[str, list[dict]] = {}
 
+_FAKE_PORTFOLIO_ID = "test-portfolio-glowny-001"
+_FAKE_PORTFOLIOS = [
+    {
+        "portfolio_id": _FAKE_PORTFOLIO_ID,
+        "portfolio_type": "glowny",
+        "portfolio_name": None,
+        "display_order": 1,
+        "user_id": "test-client-id",
+        "created_at": "2026-01-01T00:00:00+00:00",
+    }
+]
+_FAKE_PORTFOLIO_POSITIONS = [
+    {
+        "ticker": "PKO", "company_name": "PKO BP", "shares": 100.0,
+        "avg_buy_price": 45.0, "current_price": 50.0,
+        "daily_change_pct": 1.5, "price_as_of": "2026-06-27",
+    },
+    {
+        "ticker": "CDR", "company_name": "CD Projekt", "shares": 10.0,
+        "avg_buy_price": 130.0, "current_price": None,
+        "daily_change_pct": None, "price_as_of": None,
+    },
+]
+
 
 def _fake_create_user_portfolio_positions_table_if_not_exists():
     pass
@@ -175,27 +199,56 @@ def _fake_ensure_user_portfolio_positions_schema_current():
     pass
 
 
-def _fake_upsert_user_portfolio_position(user_id, ticker, company_name, shares, avg_buy_price):
+def _fake_upsert_user_portfolio_position(user_id, portfolio_id, ticker, company_name, shares, avg_buy_price):
     positions = _portfolio_positions_store.setdefault(user_id, [])
     for p in positions:
-        if p["ticker"] == ticker:
+        if p["ticker"] == ticker and p.get("portfolio_id") == portfolio_id:
             p.update({"company_name": company_name, "shares": shares, "avg_buy_price": avg_buy_price})
             return
     positions.append({
         "ticker": ticker, "company_name": company_name,
         "shares": shares, "avg_buy_price": avg_buy_price,
+        "portfolio_id": portfolio_id,
         "current_price": 52.0, "daily_change_pct": 1.5,
         "price_as_of": "2026-06-27",
     })
 
 
-def _fake_delete_user_portfolio_position(user_id, ticker):
+def _fake_delete_user_portfolio_position(user_id, portfolio_id, ticker):
     store = _portfolio_positions_store.get(user_id, [])
-    _portfolio_positions_store[user_id] = [p for p in store if p["ticker"] != ticker]
+    _portfolio_positions_store[user_id] = [
+        p for p in store if not (p["ticker"] == ticker and p.get("portfolio_id") == portfolio_id)
+    ]
 
 
-def _fake_list_user_portfolio_positions(user_id):
+def _fake_list_user_portfolio_positions(user_id, portfolio_id=None):
+    if portfolio_id == _FAKE_PORTFOLIO_ID:
+        return list(_FAKE_PORTFOLIO_POSITIONS)
     return list(_portfolio_positions_store.get(user_id, []))
+
+
+def _fake_create_user_portfolios_table_if_not_exists():
+    pass
+
+
+def _fake_ensure_user_portfolios_schema_current():
+    pass
+
+
+def _fake_list_user_portfolios(user_id):
+    return list(_FAKE_PORTFOLIOS)
+
+
+def _fake_create_user_portfolio(user_id, portfolio_type, portfolio_name):
+    return _FAKE_PORTFOLIO_ID
+
+
+def _fake_delete_user_portfolio(user_id, portfolio_id):
+    pass
+
+
+def _fake_assign_orphan_positions_to_portfolio(user_id, portfolio_id):
+    pass
 
 
 def _fake_list_announcements_for_watchlist(client_id, page=1, page_size=20, from_dt=None, to_dt=None):
@@ -267,6 +320,21 @@ def live_server_url():
         patch("src.api.upsert_user_portfolio_position", side_effect=_fake_upsert_user_portfolio_position),
         patch("src.api.delete_user_portfolio_position", side_effect=_fake_delete_user_portfolio_position),
         patch("src.api.list_user_portfolio_positions", side_effect=_fake_list_user_portfolio_positions),
+        patch(
+            "src.api.create_user_portfolios_table_if_not_exists",
+            side_effect=_fake_create_user_portfolios_table_if_not_exists,
+        ),
+        patch(
+            "src.api.ensure_user_portfolios_schema_current",
+            side_effect=_fake_ensure_user_portfolios_schema_current,
+        ),
+        patch("src.api.list_user_portfolios", side_effect=_fake_list_user_portfolios),
+        patch("src.api.create_user_portfolio", side_effect=_fake_create_user_portfolio),
+        patch("src.api.delete_user_portfolio", side_effect=_fake_delete_user_portfolio),
+        patch(
+            "src.api.assign_orphan_positions_to_portfolio",
+            side_effect=_fake_assign_orphan_positions_to_portfolio,
+        ),
     ]
 
     with ExitStack() as stack:

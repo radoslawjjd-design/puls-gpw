@@ -926,15 +926,15 @@ moves them. No data is lost in any scenario.
 
 #### Automated
 
-- [ ] 1.1 `uv run pytest tests/test_portfolio_treemap.py` — new compute function tests pass
-- [ ] 1.2 `uv run mypy db/bigquery.py src/portfolio_treemap.py` — no new errors
-- [ ] 1.3 `uv run ruff check db/ src/portfolio_treemap.py tests/test_portfolio_treemap.py` — clean
+- [x] 1.1 `uv run pytest tests/test_portfolio_treemap.py` — new compute function tests pass
+- [x] 1.2 `uv run mypy db/bigquery.py src/portfolio_treemap.py` — no new errors
+- [x] 1.3 `uv run ruff check db/ src/portfolio_treemap.py tests/test_portfolio_treemap.py` — clean
 
 #### Manual
 
-- [ ] 1.4 `portfolio_id` column visible in BQ `user_portfolio_positions` table after startup
-- [ ] 1.5 `user_portfolios` BQ table created successfully in dev dataset
-- [ ] 1.6 `list_user_portfolios("test-uid")` returns `[]` for a new user
+- [x] 1.4 `portfolio_id` column visible in BQ `user_portfolio_positions` table after startup
+- [x] 1.5 `user_portfolios` BQ table created successfully in dev dataset
+- [x] 1.6 `list_user_portfolios("test-uid")` returns `[]` for a new user
 
 ### Phase 2: Portfolio Wallet CRUD API
 
