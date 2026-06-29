@@ -84,11 +84,11 @@ def compute_calendar_pnl(
         if pf_found > 0:
             state = "data"
             pnl = (pf - prev_trading_value) if prev_trading_value is not None else None
+            prev_trading_value = pf  # only advance baseline when we have real prices
         else:
             state = "no_data"
             pnl = None
-
-        prev_trading_value = pf
+            # don't update prev_trading_value — portfolio_value=0.0 is not a real baseline
 
         days.append({
             "date": iso, "day": day_num, "weekday": wd,

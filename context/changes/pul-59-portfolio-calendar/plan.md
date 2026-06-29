@@ -665,7 +665,7 @@ snapshot_date BETWEEN @lookback_start AND @end_date is partition-pruned by BQ au
 
 #### Automated
 
-- [ ] 4.1 `uv run pytest tests/test_api.py` passes (no regressions)
+- [x] 4.1 `uv run pytest tests/test_api.py` passes (no regressions)
 
 #### Manual
 

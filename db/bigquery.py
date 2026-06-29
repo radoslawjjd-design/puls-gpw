@@ -600,6 +600,7 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
           FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
         )
         SELECT
+          p.portfolio_id,
           p.ticker,
           p.company_name,
           p.shares,
