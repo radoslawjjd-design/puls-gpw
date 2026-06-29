@@ -569,26 +569,26 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [x] 1.1 Import modułów BQ bez błędów (`merge_etf_instruments`, `merge_etf_quotes`, `list_distinct_tickers`)
-- [x] 1.2 Testy jednostkowe passują: `uv run pytest tests/ -x -q`
+- [x] 1.1 Import modułów BQ bez błędów (`merge_etf_instruments`, `merge_etf_quotes`, `list_distinct_tickers`) — 7a644eb
+- [x] 1.2 Testy jednostkowe passują: `uv run pytest tests/ -x -q` — 7a644eb
 
 #### Manual
 
-- [x] 1.3 Round-trip: create_etf_*_table_if_not_exists() tworzy obie tabele w BQ bez błędów
-- [x] 1.4 `list_distinct_tickers()` zwraca tickery ETF po seeded test-insert
+- [x] 1.3 Round-trip: create_etf_*_table_if_not_exists() tworzy obie tabele w BQ bez błędów — 7a644eb
+- [x] 1.4 `list_distinct_tickers()` zwraca tickery ETF po seeded test-insert — 7a644eb
 
 ### Phase 2: GPW ETF Scraper
 
 #### Automated
 
-- [ ] 2.1 Testy unit scraper passują: `uv run pytest tests/ -x -q -k "etf"`
-- [ ] 2.2 Linting: `uv run ruff check src/gpw_etf_metrics.py`
+- [x] 2.1 Testy unit scraper passują: `uv run pytest tests/ -x -q -k "etf"`
+- [x] 2.2 Linting: `uv run ruff check src/gpw_etf_metrics.py`
 
 #### Manual
 
-- [ ] 2.3 Lokalne uruchomienie `fetch_etf_page()` → ≥ 30 instrumentów, ≥ 30 kwotowań
-- [ ] 2.4 ETFBW20TR w wynikach z kurs_zamkniecia non-None
-- [ ] 2.5 Instrument z `—` (ETFHANESGO) → kurs_zamkniecia = None, bez wyjątku
+- [x] 2.3 Lokalne uruchomienie `fetch_etf_page()` → ≥ 30 instrumentów, ≥ 30 kwotowań
+- [x] 2.4 ETFBW20TR w wynikach z kurs_zamkniecia non-None
+- [x] 2.5 Instrument z `—` (ETFHANESGO) → kurs_zamkniecia = None, bez wyjątku
 
 ### Phase 3: Cloud Run Job Entrypoint
 
