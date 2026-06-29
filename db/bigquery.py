@@ -1664,11 +1664,12 @@ def x_post_already_published(window: str, day: date | None = None) -> bool:
 
 
 def list_distinct_tickers() -> list[str]:
-    """Return sorted list of all tickers in the companies dimension table."""
+    """Return sorted list of all tickers from companies and etf_instruments tables."""
     client = _get_client()
     query = f"""
-        SELECT ticker
-        FROM `{_table_ref(client, _COMPANIES_TABLE_NAME)}`
+        SELECT ticker FROM `{_table_ref(client, _COMPANIES_TABLE_NAME)}`
+        UNION DISTINCT
+        SELECT ticker FROM `{_table_ref(client, _ETF_INSTRUMENTS_TABLE_NAME)}`
         ORDER BY ticker
     """
     try:
@@ -1940,6 +1941,202 @@ def merge_company_daily_stats(rows: list[dict]) -> None:
                 tmp_table_id,
                 exc_info=True,
             )
+
+
+# ── ETF/ETC/ETN tables (PUL-67) ───────────────────────────────────────────────
+
+_ETF_INSTRUMENTS_TABLE_NAME = "etf_instruments"
+
+_ETF_INSTRUMENTS_SCHEMA = [
+    bigquery.SchemaField("ticker", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("name", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("isin", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("instrument_type", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("created_at", "TIMESTAMP", mode="REQUIRED"),
+    bigquery.SchemaField("updated_at", "TIMESTAMP", mode="REQUIRED"),
+]
+
+_ETF_QUOTES_TABLE_NAME = "etf_quotes"
+
+_ETF_QUOTES_SCHEMA = [
+    bigquery.SchemaField("ticker", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("snapshot_date", "DATE", mode="REQUIRED"),
+    bigquery.SchemaField("kurs_zamkniecia", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("zmiana_procentowa", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("zmiana_kwotowa", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_odn", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_otwarcia", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_min", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_max", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("wolumen_skum", "FLOAT64", mode="NULLABLE"),
+    bigquery.SchemaField("fetched_at", "TIMESTAMP", mode="REQUIRED"),
+]
+
+
+def create_etf_instruments_table_if_not_exists() -> None:
+    """Create the etf_instruments table in BigQuery if it does not already exist."""
+    client = _get_client()
+    table_id = _table_ref(client, _ETF_INSTRUMENTS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_ETF_INSTRUMENTS_SCHEMA)
+        table.clustering_fields = ["ticker"]
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def create_etf_quotes_table_if_not_exists() -> None:
+    """Create the etf_quotes table in BigQuery if it does not already exist.
+
+    Partitioned by snapshot_date (DAY), clustered by ticker.
+    """
+    client = _get_client()
+    table_id = _table_ref(client, _ETF_QUOTES_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_ETF_QUOTES_SCHEMA)
+        table.time_partitioning = bigquery.TimePartitioning(
+            type_=bigquery.TimePartitioningType.DAY,
+            field="snapshot_date",
+        )
+        table.clustering_fields = ["ticker"]
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_etf_instruments_schema_current() -> None:
+    """Migrate the etf_instruments table — add any missing schema columns."""
+    ensure_schema_current(_ETF_INSTRUMENTS_TABLE_NAME, _ETF_INSTRUMENTS_SCHEMA)
+
+
+def ensure_etf_quotes_schema_current() -> None:
+    """Migrate the etf_quotes table — add any missing schema columns."""
+    ensure_schema_current(_ETF_QUOTES_TABLE_NAME, _ETF_QUOTES_SCHEMA)
+
+
+def merge_etf_instruments(rows: list[dict]) -> None:
+    """Atomically upsert etf_instruments rows via BigQuery MERGE (ON ticker)."""
+    if not rows:
+        logger.info("merge_etf_instruments: no rows to merge")
+        return
+
+    client = _get_client()
+    target = _table_ref(client, _ETF_INSTRUMENTS_TABLE_NAME)
+    tmp_table_id = _table_ref(client, f"{_ETF_INSTRUMENTS_TABLE_NAME}_tmp_{uuid.uuid4().hex[:8]}")
+
+    try:
+        job_config = bigquery.LoadJobConfig(
+            schema=_ETF_INSTRUMENTS_SCHEMA,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
+        )
+        tmp_table = bigquery.Table(tmp_table_id, schema=_ETF_INSTRUMENTS_SCHEMA)
+        from datetime import timezone as _tz
+        tmp_table.expires = datetime.now(_tz.utc) + timedelta(hours=24)
+        client.create_table(tmp_table, exists_ok=True)
+
+        load_job = client.load_table_from_json(rows, tmp_table_id, job_config=job_config)
+        load_job.result()
+        if load_job.errors:
+            raise BigQueryError(f"merge_etf_instruments load failed: {load_job.errors}")
+
+        merge_sql = f"""
+            MERGE `{target}` T
+            USING `{tmp_table_id}` S
+            ON T.ticker = S.ticker
+            WHEN MATCHED THEN
+              UPDATE SET
+                name = S.name,
+                isin = S.isin,
+                instrument_type = S.instrument_type,
+                updated_at = S.updated_at
+            WHEN NOT MATCHED THEN
+              INSERT (ticker, name, isin, instrument_type, created_at, updated_at)
+              VALUES (S.ticker, S.name, S.isin, S.instrument_type, S.created_at, S.updated_at)
+        """
+        try:
+            merge_job = client.query(merge_sql)
+            merge_job.result()
+        except Exception as exc:
+            raise BigQueryError(f"merge_etf_instruments MERGE failed: {exc}") from exc
+        if merge_job.errors:
+            raise BigQueryError(f"merge_etf_instruments MERGE failed: {merge_job.errors}")
+
+        logger.info("merge_etf_instruments: merged %d rows", len(rows))
+    finally:
+        try:
+            client.delete_table(tmp_table_id, not_found_ok=True)
+        except Exception:
+            logger.warning("merge_etf_instruments: failed to clean up temp table %s", tmp_table_id, exc_info=True)
+
+
+def merge_etf_quotes(rows: list[dict]) -> None:
+    """Atomically upsert etf_quotes rows via BigQuery MERGE (ON ticker + snapshot_date)."""
+    if not rows:
+        logger.info("merge_etf_quotes: no rows to merge")
+        return
+
+    client = _get_client()
+    target = _table_ref(client, _ETF_QUOTES_TABLE_NAME)
+    tmp_table_id = _table_ref(client, f"{_ETF_QUOTES_TABLE_NAME}_tmp_{uuid.uuid4().hex[:8]}")
+
+    try:
+        job_config = bigquery.LoadJobConfig(
+            schema=_ETF_QUOTES_SCHEMA,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
+        )
+        tmp_table = bigquery.Table(tmp_table_id, schema=_ETF_QUOTES_SCHEMA)
+        from datetime import timezone as _tz
+        tmp_table.expires = datetime.now(_tz.utc) + timedelta(hours=24)
+        client.create_table(tmp_table, exists_ok=True)
+
+        load_job = client.load_table_from_json(rows, tmp_table_id, job_config=job_config)
+        load_job.result()
+        if load_job.errors:
+            raise BigQueryError(f"merge_etf_quotes load failed: {load_job.errors}")
+
+        merge_sql = f"""
+            MERGE `{target}` T
+            USING `{tmp_table_id}` S
+            ON T.ticker = S.ticker AND T.snapshot_date = S.snapshot_date
+            WHEN MATCHED THEN
+              UPDATE SET
+                kurs_zamkniecia = S.kurs_zamkniecia,
+                zmiana_procentowa = S.zmiana_procentowa,
+                zmiana_kwotowa = S.zmiana_kwotowa,
+                kurs_odn = S.kurs_odn,
+                kurs_otwarcia = S.kurs_otwarcia,
+                kurs_min = S.kurs_min,
+                kurs_max = S.kurs_max,
+                wolumen_skum = S.wolumen_skum,
+                fetched_at = S.fetched_at
+            WHEN NOT MATCHED THEN
+              INSERT (ticker, snapshot_date, kurs_zamkniecia, zmiana_procentowa,
+                      zmiana_kwotowa, kurs_odn, kurs_otwarcia, kurs_min, kurs_max,
+                      wolumen_skum, fetched_at)
+              VALUES (S.ticker, S.snapshot_date, S.kurs_zamkniecia, S.zmiana_procentowa,
+                      S.zmiana_kwotowa, S.kurs_odn, S.kurs_otwarcia, S.kurs_min, S.kurs_max,
+                      S.wolumen_skum, S.fetched_at)
+        """
+        try:
+            merge_job = client.query(merge_sql)
+            merge_job.result()
+        except Exception as exc:
+            raise BigQueryError(f"merge_etf_quotes MERGE failed: {exc}") from exc
+        if merge_job.errors:
+            raise BigQueryError(f"merge_etf_quotes MERGE failed: {merge_job.errors}")
+
+        logger.info("merge_etf_quotes: merged %d rows", len(rows))
+    finally:
+        try:
+            client.delete_table(tmp_table_id, not_found_ok=True)
+        except Exception:
+            logger.warning("merge_etf_quotes: failed to clean up temp table %s", tmp_table_id, exc_info=True)
 
 
 def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
