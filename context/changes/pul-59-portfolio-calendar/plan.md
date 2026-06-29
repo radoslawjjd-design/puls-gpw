@@ -639,27 +639,27 @@ snapshot_date BETWEEN @lookback_start AND @end_date is partition-pruned by BQ au
 
 #### Automated
 
-- [x] 2.1 `uv run pytest tests/test_portfolio_calendar.py` passes (all edge cases)
-- [x] 2.2 `uv run ruff check src/portfolio_calendar.py` passes
-- [x] 2.3 `uv run mypy src/portfolio_calendar.py --ignore-missing-imports` passes
+- [x] 2.1 `uv run pytest tests/test_portfolio_calendar.py` passes (all edge cases) — d224584
+- [x] 2.2 `uv run ruff check src/portfolio_calendar.py` passes — d224584
+- [x] 2.3 `uv run mypy src/portfolio_calendar.py --ignore-missing-imports` passes — d224584
 
 #### Manual
 
-- [x] 2.4 Python one-liner with empty rows produces 30-day neutral grid without error
+- [x] 2.4 Python one-liner with empty rows produces 30-day neutral grid without error — d224584
 
 ### Phase 3: FastAPI Endpoint — GET /api/portfolio/calendar
 
 #### Automated
 
-- [ ] 3.1 `uv run pytest tests/test_api.py -k calendar` passes (auth, validation, 500 cases)
-- [ ] 3.2 `uv run pytest tests/test_api.py` passes (no regressions)
-- [ ] 3.3 `uv run ruff check src/api.py` passes
-- [ ] 3.4 `uv run mypy src/api.py --ignore-missing-imports` passes
+- [x] 3.1 `uv run pytest tests/test_api.py -k calendar` passes (auth, validation, 500 cases)
+- [x] 3.2 `uv run pytest tests/test_api.py` passes (no regressions)
+- [x] 3.3 `uv run ruff check src/api.py` passes
+- [x] 3.4 `uv run mypy src/api.py --ignore-missing-imports` passes
 
 #### Manual
 
-- [ ] 3.5 curl against local server returns JSON with 30 day objects
-- [ ] 3.6 Endpoint visible in /docs
+- [x] 3.5 curl against local server returns JSON with 30 day objects
+- [x] 3.6 Endpoint visible in /docs
 
 ### Phase 4: Frontend — Kalendarz Tab in Mój portfel
 
