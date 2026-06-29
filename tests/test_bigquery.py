@@ -1157,8 +1157,8 @@ def test_get_portfolio_calendar_data_returns_correct_shape():
     from db.bigquery import get_portfolio_calendar_data
 
     bq_rows = [
-        {"snapshot_date": date(2026, 6, 2), "portfolio_value": 10500.0, "prices_found": 3, "total_positions": 3},
-        {"snapshot_date": date(2026, 6, 3), "portfolio_value": 10650.0, "prices_found": 3, "total_positions": 3},
+        {"snapshot_date": date(2026, 6, 2), "portfolio_value": 10500.0, "daily_change_pln": 120.0, "prices_found": 3, "total_positions": 3},
+        {"snapshot_date": date(2026, 6, 3), "portfolio_value": 10650.0, "daily_change_pln": 150.0, "prices_found": 3, "total_positions": 3},
     ]
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(bq_rows)):
         result = get_portfolio_calendar_data("port-123", "user-abc", 2026, 6)
@@ -1168,6 +1168,7 @@ def test_get_portfolio_calendar_data_returns_correct_shape():
     row = result[0]
     assert row["snapshot_date"] == date(2026, 6, 2)
     assert row["portfolio_value"] == 10500.0
+    assert row["daily_change_pln"] == 120.0
     assert row["prices_found"] == 3
     assert row["total_positions"] == 3
 

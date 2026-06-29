@@ -14,33 +14,24 @@ def compute_calendar_pnl(
     """Build a full monthly calendar from BQ rows returned by get_portfolio_calendar_data().
 
     Each entry in rows must have: snapshot_date (date), portfolio_value (float),
-    prices_found (int), total_positions (int).
+    daily_change_pln (float), prices_found (int), total_positions (int).
 
     State values per day:
       'weekend'    — Saturday or Sunday
       'no_session' — Mon–Fri weekday absent from rows (GPW holiday or scraper gap)
-      'data'       — trading day with prices_found > 0; pnl_abs is set
+      'data'       — trading day with prices_found > 0; pnl_abs = sum(shares * zmiana_kwotowa)
       'no_data'    — trading day in rows but prices_found == 0; pnl_abs is None
       'future'     — date is strictly after today (UTC)
 
-    pnl_abs = portfolio_value[D] − portfolio_value[D−1] using consecutive trading-day
-    entries. The lookback baseline (entry before month_start) drives the first trading
-    day's P&L. If no baseline exists, pnl_abs for the first trading day is None.
+    pnl_abs uses daily_change_pln (sum of shares × zmiana_kwotowa per position) — the same
+    daily change metric shown in the Tabela view.  No lookback baseline needed.
     """
     today = datetime.now(tz=timezone.utc).date()
-    month_start = date(year, month, 1)
     _, last_day = calendar.monthrange(year, month)
 
-    # Sort rows by date and split into lookback (< month_start) and in-month buckets
-    sorted_rows = sorted(rows, key=lambda r: r["snapshot_date"])
-    rows_by_date: dict[date, dict] = {r["snapshot_date"]: r for r in sorted_rows}
-
-    # Find the lookback baseline: last entry strictly before month_start
-    lookback_rows = [r for r in sorted_rows if r["snapshot_date"] < month_start]
-    prev_value: float | None = lookback_rows[-1]["portfolio_value"] if lookback_rows else None
+    rows_by_date: dict[date, dict] = {r["snapshot_date"]: r for r in rows}
 
     days: list[dict] = []
-    prev_trading_value = prev_value
 
     for day_num in range(1, last_day + 1):
         d = date(year, month, day_num)
@@ -66,7 +57,6 @@ def compute_calendar_pnl(
             continue
 
         if d not in rows_by_date:
-            # Weekday not present in BQ → non-trading day (GPW holiday or scraper gap)
             days.append({
                 "date": iso, "day": day_num, "weekday": wd,
                 "state": "no_session",
@@ -76,24 +66,20 @@ def compute_calendar_pnl(
             continue
 
         row = rows_by_date[d]
-        pf = row["portfolio_value"]
         pf_found = row["prices_found"]
         total_pos = row["total_positions"]
 
-        pnl: float | None
         if pf_found > 0:
             state = "data"
-            pnl = (pf - prev_trading_value) if prev_trading_value is not None else None
-            prev_trading_value = pf  # only advance baseline when we have real prices
+            pnl: float | None = row.get("daily_change_pln")
         else:
             state = "no_data"
             pnl = None
-            # don't update prev_trading_value — portfolio_value=0.0 is not a real baseline
 
         days.append({
             "date": iso, "day": day_num, "weekday": wd,
             "state": state,
-            "portfolio_value": pf,
+            "portfolio_value": row["portfolio_value"],
             "pnl_abs": pnl,
             "prices_found": pf_found,
             "total_positions": total_pos,

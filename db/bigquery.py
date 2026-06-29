@@ -390,7 +390,8 @@ def get_portfolio_calendar_data(
               td.snapshot_date,
               p.ticker,
               p.shares,
-              cds.kurs_zamkniecia AS close_price
+              cds.kurs_zamkniecia AS close_price,
+              cds.zmiana_kwotowa  AS daily_chg
             FROM trading_days td
             CROSS JOIN positions p
             LEFT JOIN `{cds_ref}` cds
@@ -401,12 +402,14 @@ def get_portfolio_calendar_data(
               snapshot_date,
               SUM(CASE WHEN close_price IS NOT NULL THEN shares * close_price ELSE 0 END)
                 AS portfolio_value,
+              SUM(CASE WHEN daily_chg IS NOT NULL THEN shares * daily_chg ELSE 0 END)
+                AS daily_change_pln,
               COUNTIF(close_price IS NOT NULL) AS prices_found,
               COUNT(*) AS total_positions
             FROM daily_prices
             GROUP BY snapshot_date
           )
-        SELECT snapshot_date, portfolio_value, prices_found, total_positions
+        SELECT snapshot_date, portfolio_value, daily_change_pln, prices_found, total_positions
         FROM daily_portfolio
         ORDER BY snapshot_date
     """
@@ -426,6 +429,7 @@ def get_portfolio_calendar_data(
         {
             "snapshot_date": row.snapshot_date,
             "portfolio_value": float(row.portfolio_value),
+            "daily_change_pln": float(row.daily_change_pln),
             "prices_found": int(row.prices_found),
             "total_positions": int(row.total_positions),
         }

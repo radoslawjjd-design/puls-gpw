@@ -6,10 +6,17 @@ import pytest
 from src.portfolio_calendar import compute_calendar_pnl
 
 
-def _make_row(snapshot_date: date, portfolio_value: float, prices_found: int = 1, total_positions: int = 1) -> dict:
+def _make_row(
+    snapshot_date: date,
+    portfolio_value: float,
+    daily_change_pln: float = 0.0,
+    prices_found: int = 1,
+    total_positions: int = 1,
+) -> dict:
     return {
         "snapshot_date": snapshot_date,
         "portfolio_value": portfolio_value,
+        "daily_change_pln": daily_change_pln,
         "prices_found": prices_found,
         "total_positions": total_positions,
     }
@@ -88,53 +95,38 @@ def test_empty_rows_all_non_weekends_are_no_session_or_future():
 
 # ── P&L delta computation ────────────────────────────────────────────────────
 
-def test_pnl_abs_computed_from_consecutive_trading_days():
-    """pnl_abs = portfolio_value[D] − portfolio_value[D−1] for consecutive trading days."""
+def test_pnl_abs_comes_from_daily_change_pln():
+    """pnl_abs = daily_change_pln (shares × zmiana_kwotowa) — same as Tabela view."""
     rows = [
-        _make_row(date(2026, 6, 2), 10000.0),
-        _make_row(date(2026, 6, 3), 10300.0),
+        _make_row(date(2026, 6, 2), 10000.0, daily_change_pln=300.0),
+        _make_row(date(2026, 6, 3), 10300.0, daily_change_pln=-50.0),
     ]
     result = compute_calendar_pnl(rows, 2026, 6)
     days = {d["date"]: d for d in result["days"]}
-    assert days["2026-06-03"]["pnl_abs"] == pytest.approx(300.0)
+    assert days["2026-06-02"]["pnl_abs"] == pytest.approx(300.0)
+    assert days["2026-06-03"]["pnl_abs"] == pytest.approx(-50.0)
 
 
 def test_pnl_abs_is_negative_on_loss_day():
-    rows = [
-        _make_row(date(2026, 6, 2), 10000.0),
-        _make_row(date(2026, 6, 3), 9750.0),
-    ]
+    rows = [_make_row(date(2026, 6, 2), 9750.0, daily_change_pln=-250.0)]
     result = compute_calendar_pnl(rows, 2026, 6)
     days = {d["date"]: d for d in result["days"]}
-    assert days["2026-06-03"]["pnl_abs"] == pytest.approx(-250.0)
+    assert days["2026-06-02"]["pnl_abs"] == pytest.approx(-250.0)
 
 
-def test_first_trading_day_pnl_uses_lookback_baseline():
-    """First in-month day gets pnl from lookback (snapshot_date < month_start)."""
+def test_lookback_rows_ignored_pnl_uses_daily_change_directly():
+    """Lookback rows (before month_start) don't affect P&L — daily_change_pln is used directly."""
     rows = [
-        _make_row(date(2026, 5, 29), 9800.0),   # lookback — before June
-        _make_row(date(2026, 6, 2), 10000.0),   # first June trading day
+        _make_row(date(2026, 5, 29), 9800.0, daily_change_pln=50.0),  # lookback — ignored
+        _make_row(date(2026, 6, 2), 10000.0, daily_change_pln=200.0),
     ]
     result = compute_calendar_pnl(rows, 2026, 6)
     days = {d["date"]: d for d in result["days"]}
     assert days["2026-06-02"]["pnl_abs"] == pytest.approx(200.0)
 
 
-def test_first_trading_day_has_none_pnl_when_no_lookback():
-    """If no entry exists before month_start, pnl_abs of first trading day is None."""
-    rows = [
-        _make_row(date(2026, 6, 2), 10000.0),   # no lookback entry
-    ]
-    result = compute_calendar_pnl(rows, 2026, 6)
-    days = {d["date"]: d for d in result["days"]}
-    assert days["2026-06-02"]["pnl_abs"] is None
-
-
-def test_zero_pnl_when_portfolio_value_unchanged():
-    rows = [
-        _make_row(date(2026, 5, 29), 10000.0),
-        _make_row(date(2026, 6, 2), 10000.0),
-    ]
+def test_zero_daily_change_shows_zero_pnl():
+    rows = [_make_row(date(2026, 6, 2), 10000.0, daily_change_pln=0.0)]
     result = compute_calendar_pnl(rows, 2026, 6)
     days = {d["date"]: d for d in result["days"]}
     assert days["2026-06-02"]["pnl_abs"] == pytest.approx(0.0)
@@ -143,10 +135,10 @@ def test_zero_pnl_when_portfolio_value_unchanged():
 # ── best-effort (partial prices) ─────────────────────────────────────────────
 
 def test_partial_prices_still_produce_data_state():
-    """prices_found < total_positions is allowed — state is still 'data'."""
+    """prices_found < total_positions is allowed — state is still 'data', pnl from daily_change_pln."""
     rows = [
-        _make_row(date(2026, 6, 2), 5000.0, prices_found=1, total_positions=3),
-        _make_row(date(2026, 6, 3), 5200.0, prices_found=1, total_positions=3),
+        _make_row(date(2026, 6, 2), 5000.0, daily_change_pln=80.0, prices_found=1, total_positions=3),
+        _make_row(date(2026, 6, 3), 5200.0, daily_change_pln=200.0, prices_found=1, total_positions=3),
     ]
     result = compute_calendar_pnl(rows, 2026, 6)
     days = {d["date"]: d for d in result["days"]}
