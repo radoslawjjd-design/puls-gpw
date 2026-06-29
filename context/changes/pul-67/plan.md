@@ -629,9 +629,9 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [x] 6.1 GET /autocomplete/etf-instruments → HTTP 200, zawiera ETFBW20TR
-- [x] 6.2 Testy unit API passują: `uv run pytest tests/ -x -q`
-- [x] 6.3 Mocki `list_distinct_tickers` w test_api.py zawierają ETF ticker dla testów POST /api/portfolio/positions
+- [x] 6.1 GET /autocomplete/etf-instruments → HTTP 200, zawiera ETFBW20TR — 518f55e
+- [x] 6.2 Testy unit API passują: `uv run pytest tests/ -x -q` — 518f55e
+- [x] 6.3 Mocki `list_distinct_tickers` w test_api.py zawierają ETF ticker dla testów POST /api/portfolio/positions — 518f55e
 
 #### Manual
 
@@ -643,7 +643,7 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [ ] 7.1 CI/CD pipeline bez błędów YAML syntax
+- [x] 7.1 CI/CD pipeline bez błędów YAML syntax
 - [ ] 7.2 `gcloud run jobs describe puls-gpw-etf-quotes` → job istnieje po deploy
 
 #### Manual
