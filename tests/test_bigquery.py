@@ -1147,3 +1147,69 @@ def test_list_companies_with_hop_info_raises_bigquery_error_on_failure():
     with patch("db.bigquery._get_client", return_value=client):
         with pytest.raises(BigQueryError, match="list_companies_with_hop_info failed"):
             list_companies_with_hop_info()
+
+
+# ── get_portfolio_calendar_data (PUL-59) ─────────────────────────────────────
+
+def test_get_portfolio_calendar_data_returns_correct_shape():
+    """Returns list[dict] with expected keys for a month with trading-day rows."""
+    from datetime import timedelta
+    from db.bigquery import get_portfolio_calendar_data
+
+    bq_rows = [
+        {"snapshot_date": date(2026, 6, 2), "portfolio_value": 10500.0, "prices_found": 3, "total_positions": 3},
+        {"snapshot_date": date(2026, 6, 3), "portfolio_value": 10650.0, "prices_found": 3, "total_positions": 3},
+    ]
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(bq_rows)):
+        result = get_portfolio_calendar_data("port-123", "user-abc", 2026, 6)
+
+    assert isinstance(result, list)
+    assert len(result) == 2
+    row = result[0]
+    assert row["snapshot_date"] == date(2026, 6, 2)
+    assert row["portfolio_value"] == 10500.0
+    assert row["prices_found"] == 3
+    assert row["total_positions"] == 3
+
+
+def test_get_portfolio_calendar_data_uses_correct_date_params():
+    """lookback_start must be month_start − 35 days; end_date must be last day of month."""
+    from db.bigquery import get_portfolio_calendar_data
+    from google.cloud import bigquery as bq_module
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_calendar_data("port-abc", "user-xyz", 2026, 6)
+
+    job_config = mock_get.return_value.query.call_args[1]["job_config"]
+    params_by_name = {p.name: p for p in job_config.query_parameters}
+
+    assert params_by_name["portfolio_id"].value == "port-abc"
+    assert params_by_name["user_id"].value == "user-xyz"
+    assert params_by_name["lookback_start"].value == date(2026, 6, 1) - __import__("datetime").timedelta(days=35)
+    assert params_by_name["end_date"].value == date(2026, 6, 30)
+    assert params_by_name["lookback_start"].type_ == "DATE"
+    assert params_by_name["end_date"].type_ == "DATE"
+
+
+def test_get_portfolio_calendar_data_returns_empty_list_when_no_positions():
+    """Returns [] when portfolio has no positions (BQ query returns 0 rows)."""
+    from db.bigquery import get_portfolio_calendar_data
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
+        result = get_portfolio_calendar_data("empty-port", "user-1", 2026, 6)
+
+    assert result == []
+
+
+def test_get_portfolio_calendar_data_raises_bigquery_error_on_failure():
+    """Raises BigQueryError when the BQ query throws."""
+    from src.exceptions import BigQueryError
+    from db.bigquery import get_portfolio_calendar_data
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = Exception("network timeout")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="get_portfolio_calendar_data failed"):
+            get_portfolio_calendar_data("port-123", "user-abc", 2026, 6)

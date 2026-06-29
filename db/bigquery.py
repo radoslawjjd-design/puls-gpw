@@ -19,6 +19,7 @@ x_posts table (one row per generated post; see _X_POSTS_SCHEMA):
   x_post_id, window, post_text, tweet_ids (PUL-27), posted_at, supervisor_attempts,
   x_publish_status (published|skipped|failed|partial; NULL for legacy/pre-publish rows)
 """
+import calendar
 import hashlib
 import logging
 import os
@@ -346,6 +347,90 @@ def get_latest_snapshot_for_wallet(wallet: str) -> dict | None:
         "day_change_pct": row.day_change_pct,
         "positions_json": row.positions_json,
     }
+
+
+def get_portfolio_calendar_data(
+    portfolio_id: str,
+    user_id: str,
+    year: int,
+    month: int,
+) -> list[dict]:
+    """Return daily portfolio values for a given month + 35-day lookback.
+
+    Crosses all trading days in the extended range (month_start − 35 days through
+    month_end) against the user's current positions, left-joins closing prices, and
+    groups by snapshot_date.  Returns one dict per trading day with keys:
+    snapshot_date (date), portfolio_value (float, best-effort sum), prices_found (int),
+    total_positions (int).  Returns [] when the portfolio has no positions.
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    month_start = date(year, month, 1)
+    lookback_start = month_start - timedelta(days=35)
+    _, last_day = calendar.monthrange(year, month)
+    end_date = date(year, month, last_day)
+
+    cds_ref = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    pos_ref = _table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)
+
+    query = f"""
+        WITH
+          trading_days AS (
+            SELECT DISTINCT snapshot_date
+            FROM `{cds_ref}`
+            WHERE snapshot_date BETWEEN @lookback_start AND @end_date
+          ),
+          positions AS (
+            SELECT ticker, shares
+            FROM `{pos_ref}`
+            WHERE user_id = @user_id AND portfolio_id = @portfolio_id
+          ),
+          daily_prices AS (
+            SELECT
+              td.snapshot_date,
+              p.ticker,
+              p.shares,
+              cds.kurs_zamkniecia AS close_price
+            FROM trading_days td
+            CROSS JOIN positions p
+            LEFT JOIN `{cds_ref}` cds
+              ON cds.ticker = p.ticker AND cds.snapshot_date = td.snapshot_date
+          ),
+          daily_portfolio AS (
+            SELECT
+              snapshot_date,
+              SUM(CASE WHEN close_price IS NOT NULL THEN shares * close_price ELSE 0 END)
+                AS portfolio_value,
+              COUNTIF(close_price IS NOT NULL) AS prices_found,
+              COUNT(*) AS total_positions
+            FROM daily_prices
+            GROUP BY snapshot_date
+          )
+        SELECT snapshot_date, portfolio_value, prices_found, total_positions
+        FROM daily_portfolio
+        ORDER BY snapshot_date
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("portfolio_id",   "STRING", portfolio_id),
+            bigquery.ScalarQueryParameter("user_id",        "STRING", user_id),
+            bigquery.ScalarQueryParameter("lookback_start", "DATE",   lookback_start),
+            bigquery.ScalarQueryParameter("end_date",       "DATE",   end_date),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_portfolio_calendar_data failed: {exc}") from exc
+    return [
+        {
+            "snapshot_date": row.snapshot_date,
+            "portfolio_value": float(row.portfolio_value),
+            "prices_found": int(row.prices_found),
+            "total_positions": int(row.total_positions),
+        }
+        for row in rows
+    ]
 
 
 _WATCHLIST_TABLE_NAME = "watchlist"
