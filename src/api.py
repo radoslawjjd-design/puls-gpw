@@ -38,6 +38,7 @@ from db.bigquery import (
     list_announcements_user,
     list_distinct_companies,
     list_distinct_tickers,
+    list_etf_instruments_for_autocomplete,
     list_user_portfolio_positions,
     get_portfolio_calendar_data,
     list_user_portfolios,
@@ -49,11 +50,11 @@ from db.bigquery import (
 from src.portfolio_calendar import compute_calendar_pnl
 from src.portfolio_treemap import compute_treemap_positions, compute_user_portfolio_treemap_positions
 
-_AC_CACHE: dict[str, tuple[list[str], float]] = {}
+_AC_CACHE: dict[str, tuple[list, float]] = {}
 _AC_TTL = 300  # 5 minutes
 
 
-def _ac_get(key: str) -> list[str] | None:
+def _ac_get(key: str) -> list | None:
     if key in _AC_CACHE:
         data, ts = _AC_CACHE[key]
         if time.time() - ts < _AC_TTL:
@@ -61,7 +62,7 @@ def _ac_get(key: str) -> list[str] | None:
     return None
 
 
-def _ac_set(key: str, data: list[str]) -> None:
+def _ac_set(key: str, data: list) -> None:
     _AC_CACHE[key] = (data, time.time())
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -298,6 +299,19 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=str(exc))
         _ac_set("companies", data)
         return data
+
+    @app.get("/autocomplete/etf-instruments")
+    async def autocomplete_etf_instruments(role: Role = Depends(_get_role)) -> dict:
+        cached = _ac_get("etf-instruments")
+        if cached is not None:
+            return {"instruments": cached}
+        try:
+            data = list_etf_instruments_for_autocomplete()
+        except BigQueryError as exc:
+            logger.error("BQ error in /autocomplete/etf-instruments: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        _ac_set("etf-instruments", data)
+        return {"instruments": data}
 
     @app.get("/watchlist")
     async def get_watchlist(

@@ -665,7 +665,7 @@ def test_list_x_posts_admin_offset_math():
 # ── autocomplete BQ functions (PUL-25 panel-ui-redesign) ──────────────────────
 
 def test_list_distinct_tickers_returns_sorted_list():
-    """list_distinct_tickers must read from companies, not announcements."""
+    """list_distinct_tickers must read from companies and etf_instruments."""
     rows = [{"ticker": "PKO"}, {"ticker": "CDR"}, {"ticker": "XTB"}]
     mock = _mock_bq_client_with_rows(rows)
     with patch("db.bigquery._get_client", return_value=mock):
