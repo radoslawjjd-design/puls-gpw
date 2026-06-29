@@ -581,8 +581,8 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [x] 2.1 Testy unit scraper passują: `uv run pytest tests/ -x -q -k "etf"`
-- [x] 2.2 Linting: `uv run ruff check src/gpw_etf_metrics.py`
+- [x] 2.1 Testy unit scraper passują: `uv run pytest tests/ -x -q -k "etf"` — 4b107b3
+- [x] 2.2 Linting: `uv run ruff check src/gpw_etf_metrics.py` — 4b107b3
 
 #### Manual
 
@@ -594,12 +594,12 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [ ] 3.1 Linting: `uv run ruff check etf_quotes_main.py`
+- [x] 3.1 Linting: `uv run ruff check etf_quotes_main.py`
 
 #### Manual
 
-- [ ] 3.2 Lokalne `uv run python etf_quotes_main.py` kończy się bez błędów
-- [ ] 3.3 BQ `etf_instruments` i `etf_quotes` mają dane po uruchomieniu
+- [x] 3.2 Lokalne `uv run python etf_quotes_main.py` kończy się bez błędów
+- [x] 3.3 BQ `etf_instruments` i `etf_quotes` mają dane po uruchomieniu
 
 ### Phase 4: Portfolio + Treemap — price resolution
 
