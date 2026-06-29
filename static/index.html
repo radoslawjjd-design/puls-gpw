@@ -987,7 +987,7 @@ async function _doLoadAutocomplete() {
       fetch('/autocomplete/companies',      { headers: { 'X-API-Key': apiKey } }),
       fetch('/autocomplete/etf-instruments',{ headers: { 'X-API-Key': apiKey } }),
     ]);
-    if (tRes.status === 401 || cRes.status === 401) {
+    if (tRes.status === 401 || cRes.status === 401 || etfRes.status === 401) {
       doLogout(); return;
     }
     if (tRes.ok) {

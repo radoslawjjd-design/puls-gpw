@@ -50,11 +50,11 @@ from db.bigquery import (
 from src.portfolio_calendar import compute_calendar_pnl
 from src.portfolio_treemap import compute_treemap_positions, compute_user_portfolio_treemap_positions
 
-_AC_CACHE: dict[str, tuple[list[str], float]] = {}
+_AC_CACHE: dict[str, tuple[list, float]] = {}
 _AC_TTL = 300  # 5 minutes
 
 
-def _ac_get(key: str) -> list[str] | None:
+def _ac_get(key: str) -> list | None:
     if key in _AC_CACHE:
         data, ts = _AC_CACHE[key]
         if time.time() - ts < _AC_TTL:
@@ -62,7 +62,7 @@ def _ac_get(key: str) -> list[str] | None:
     return None
 
 
-def _ac_set(key: str, data: list[str]) -> None:
+def _ac_set(key: str, data: list) -> None:
     _AC_CACHE[key] = (data, time.time())
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)

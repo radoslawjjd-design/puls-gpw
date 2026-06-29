@@ -2,6 +2,8 @@
 from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 
+from src.exceptions import ScraperError
+
 import pytest
 
 _SNAPSHOT_DATE = date(2026, 6, 29)
@@ -114,6 +116,19 @@ def _mock_resp(html: str) -> MagicMock:
     m = MagicMock()
     m.text = html
     return m
+
+
+# ── Phase 2.E: HTTP failure ──────────────────────────────────────────────────
+
+def test_fetch_etf_page_http_failure_returns_empty():
+    """fetch_etf_page must return ({}, []) on ScraperError, not propagate the exception."""
+    from src.gpw_etf_metrics import fetch_etf_page
+
+    with patch("src.gpw_etf_metrics.get", side_effect=ScraperError("timeout")):
+        instruments, quotes = fetch_etf_page(_SNAPSHOT_DATE, _FETCHED_AT)
+
+    assert instruments == {}
+    assert quotes == []
 
 
 # ── Phase 2.A: happy path ────────────────────────────────────────────────────

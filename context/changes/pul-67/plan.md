@@ -187,6 +187,8 @@ ORDER BY ticker
 
 Nowy moduł `src/gpw_etf_metrics.py` z funkcją `fetch_etf_page()` parsującą `gpw.pl/etfy-pelna-wersja-notowan`. Reużywa istniejącego HTTP client (`src/http_client.py`) i BeautifulSoup.
 
+> **Implementation note (discovered during TDD):** Plan opisywał dynamic header-text mapping + `_parse_float()` dla polskich liczb. Rzeczywista strona GPW ma stabilne CSS classes (`table.etf-footable`, `_rel`, `_last`, itp.) i czyste floaty w atrybutach `data-o-value` — nie wymaga parsowania polskiego formatu. Implementacja używa CSS class selectors + `data-o-value` (bardziej robustne). `quotes` zwraca `list[dict]` zamiast `dict[str,dict]` z planu — `merge_etf_quotes()` i tak przyjmuje `list[dict]`.
+
 ### Changes Required:
 
 #### 1. Nowy moduł scraper

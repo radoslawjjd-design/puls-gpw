@@ -15,6 +15,7 @@ from datetime import date, datetime
 
 from bs4 import BeautifulSoup
 
+from src.exceptions import ScraperError
 from src.http_client import get
 
 logger = logging.getLogger(__name__)
@@ -62,7 +63,11 @@ def fetch_etf_page(
         instruments: {ticker: instrument master-data dict}
         quotes:      list of daily quote dicts
     """
-    resp = get(GPW_ETF_URL)
+    try:
+        resp = get(GPW_ETF_URL)
+    except ScraperError:
+        logger.warning("fetch_etf_page: HTTP request failed for %s", GPW_ETF_URL)
+        return {}, []
     soup = BeautifulSoup(resp.text, "html.parser")
 
     instruments: dict[str, dict] = {}
