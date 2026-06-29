@@ -1,10 +1,10 @@
 ---
 change_id: pul-59-portfolio-calendar
 title: Monthly P&L calendar view in Mój portfel (green/red days)
-status: impl_reviewed
+status: archived
 created: 2026-06-29
 updated: 2026-06-29
-archived_at: null
+archived_at: 2026-06-29T10:57:06Z
 tracking:
   linear: PUL-59
   github: null
