@@ -30,7 +30,7 @@ def get_client() -> genai.Client:
                 _genai_client = genai.Client(
                     vertexai=True,
                     project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-                    location=os.environ.get("GOOGLE_CLOUD_REGION", "europe-central2"),
+                    location=os.environ.get("GOOGLE_CLOUD_REGION", "global"),
                 )
                 logger.info("Gemini client initialized, model: %s", GEMINI_MODEL)
     return _genai_client
