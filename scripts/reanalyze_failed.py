@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 from db.bigquery import BigQueryError, _get_client, _table_ref, save_analysis_result
 from src.analyzer import analyze_announcement
 
-_BETWEEN_CALLS_S = 5  # seconds between announcements — stay under RPM quota
+_BETWEEN_CALLS_S = 0  # no artificial delay — global endpoint has no observed QPM limit
 
 
 def _fetch_failed(target_date: date) -> list[dict]:
@@ -125,7 +125,7 @@ def main() -> None:
                 logger.error("[%d/%d] BQ save failed for %s: %s", i, len(rows), ann_id[:16], exc)
                 failed += 1
 
-        if i < len(rows):
+        if i < len(rows) and _BETWEEN_CALLS_S > 0:
             time.sleep(_BETWEEN_CALLS_S)
 
     logger.info("Done: %d OK, %d failed (out of %d)", ok, failed, len(rows))
