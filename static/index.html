@@ -358,6 +358,8 @@
   .view-header { padding-top: 24px; }
   .view-header h2 { font-size: 1.15rem; color: var(--brand); font-weight: 700; margin-bottom: 16px; }
   .view-header-meta { font-size: .85rem; font-weight: 400; color: var(--text-muted); }
+  .view-header-row { display: flex; align-items: center; gap: .75rem; margin-bottom: 16px; }
+  .view-header-row h2 { margin-bottom: 0; }
 
   /* Toast */
   .toast {
@@ -1911,9 +1913,13 @@ function _renderPortfolioTabs(portfolios) {
   if (!tabs) return;
   tabs.innerHTML = '';
   if (!portfolios.length) {
-    tabs.innerHTML = '<p class="pp-notice">Utwórz swój pierwszy portfel ↑</p>';
+    tabs.innerHTML = '<p class="pp-notice">Utwórz swój pierwszy portfel →</p>';
+    const addBtn = $('pp-add-toggle-btn');
+    if (addBtn) addBtn.style.display = 'none';
     return;
   }
+  const addBtn = $('pp-add-toggle-btn');
+  if (addBtn && _ppEditingTicker === null) addBtn.style.display = '';
   portfolios.forEach((p, i) => {
     const label = p.portfolio_type === 'inny'
       ? (p.portfolio_name || 'Inny')
@@ -2030,10 +2036,14 @@ async function _deletePortfolio(portfolioId, label) {
 // ── Portfolio Positions: view ─────────────────────────────────────────────
 function _buildPortfolioPositionsViewContent(view) {
   view.innerHTML = `
-    <div class="view-header"><h2>Mój portfel <span id="pp-treemap-as-of" class="view-header-meta"></span></h2></div>
+    <div class="view-header">
+      <div class="view-header-row">
+        <h2>Mój portfel <span id="pp-treemap-as-of" class="view-header-meta"></span></h2>
+        <button type="button" id="pp-add-portfolio-btn">+ Dodaj portfel</button>
+      </div>
+    </div>
     <div id="pp-portfolio-tabs-wrap">
       <div id="pp-portfolio-tabs"></div>
-      <button type="button" id="pp-add-portfolio-btn">+ Dodaj portfel</button>
     </div>
     <div id="pp-view-tabs">
       <button type="button" class="pp-view-tab active" data-mode="table">Tabela</button>

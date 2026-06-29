@@ -220,11 +220,18 @@ def _enforce_body_cashtag(tweet: str) -> str:
     return _PAREN_TICKER_RE.sub(lambda m: f"( ${m.group(1).lstrip('$')} )", tweet)
 
 
-_DOMAIN_TLD_RE = re.compile(r"\b([\w-]{1,63})\.(pl|com|net|org|info|io|co)\b", re.IGNORECASE)
+_FULL_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
+_DOMAIN_TLD_RE = re.compile(r"\b([\w-]{1,63})\.(pl|eu|com|net|org|info|io|co|uk|de|fr)\b", re.IGNORECASE)
 
 
 def _strip_domain_suffix(text: str) -> str:
-    """Strip a domain-like `.<tld>` suffix so X's link auto-detection can't linkify it."""
+    """Remove https?:// URLs entirely; strip .<tld> from bare domain.tld patterns.
+
+    Full URLs are removed because the protocol prefix alone makes them clickable on X
+    regardless of TLD. Bare domain mentions (e.g. allegro.pl) keep the domain name so
+    company references stay readable.
+    """
+    text = _FULL_URL_RE.sub("", text)
     return _DOMAIN_TLD_RE.sub(r"\1", text)
 
 
