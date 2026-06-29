@@ -39,12 +39,14 @@ from db.bigquery import (
     list_distinct_companies,
     list_distinct_tickers,
     list_user_portfolio_positions,
+    get_portfolio_calendar_data,
     list_user_portfolios,
     list_watchlist_tickers,
     list_x_posts_admin,
     remove_watchlist_ticker,
     upsert_user_portfolio_position,
 )
+from src.portfolio_calendar import compute_calendar_pnl
 from src.portfolio_treemap import compute_treemap_positions, compute_user_portfolio_treemap_positions
 
 _AC_CACHE: dict[str, tuple[list[str], float]] = {}
@@ -141,6 +143,25 @@ class TreemapPosition(BaseModel):
 
 
 _TREEMAP_WALLETS = ("main", "ikze")
+
+
+class PortfolioCalendarDay(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    date: str
+    day: int
+    weekday: int
+    state: str
+    portfolio_value: float | None = None
+    pnl_abs: float | None = None
+    prices_found: int = 0
+    total_positions: int = 0
+
+
+class PortfolioCalendarResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    year: int
+    month: int
+    days: list[PortfolioCalendarDay]
 
 
 class AnnouncementUser(BaseModel):
@@ -586,7 +607,43 @@ def create_app() -> FastAPI:
                 "positions": positions,
             })
         as_of = max(price_as_of_values) if price_as_of_values else None
-        return {"portfolios": portfolios, "as_of": as_of}
+        stats_fetched_at: str | None = None
+        if as_of:
+            try:
+                from datetime import date as _date
+                as_of_date = _date.fromisoformat(as_of)
+                stats_fetched_at = get_latest_company_stats_fetched_at(as_of_date)
+            except Exception:
+                pass
+        return {"portfolios": portfolios, "as_of": as_of, "stats_fetched_at": stats_fetched_at}
+
+    @app.get("/api/portfolio/calendar")
+    async def get_portfolio_calendar(
+        year: int,
+        month: int,
+        portfolio_id: str,
+        role: Role = Depends(_get_role),
+        client_id: str = Depends(_get_client_id),
+    ):
+        current_year = date.today().year
+        if not (1 <= month <= 12):
+            raise HTTPException(status_code=422, detail="month must be 1–12")
+        if not (current_year - 5 <= year <= current_year + 1):
+            raise HTTPException(status_code=422, detail=f"year must be in [{current_year - 5}, {current_year + 1}]")
+        try:
+            wallets = list_user_portfolios(client_id)
+        except BigQueryError as exc:
+            logger.error("BQ error listing wallets in GET /api/portfolio/calendar: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        if not any(w["portfolio_id"] == portfolio_id for w in wallets):
+            raise HTTPException(status_code=403, detail="Portfolio not found or access denied")
+        try:
+            rows = get_portfolio_calendar_data(portfolio_id, client_id, year, month)
+        except BigQueryError as exc:
+            logger.error("BQ error in GET /api/portfolio/calendar: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        cal = compute_calendar_pnl(rows, year, month)
+        return PortfolioCalendarResponse(**cal).model_dump()
 
     app.mount("/static", StaticFiles(directory="static"), name="static")
 

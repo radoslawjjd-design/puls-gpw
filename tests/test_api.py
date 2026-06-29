@@ -1017,3 +1017,104 @@ def test_admin_portfolio_treemap_endpoint_unaffected(api_client):
             "/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY}
         )
     assert r.status_code == 200
+
+
+# ── GET /api/portfolio/calendar (PUL-59) ─────────────────────────────────────
+
+_CAL_PORTFOLIO_ID = _WALLET_ID  # reuse existing wallet fixture
+_CAL_DAYS = [
+    {
+        "date": "2026-06-02", "day": 2, "weekday": 1, "state": "data",
+        "portfolio_value": 10000.0, "pnl_abs": 200.0,
+        "prices_found": 2, "total_positions": 2,
+    },
+    {
+        "date": "2026-06-06", "day": 6, "weekday": 5, "state": "weekend",
+        "portfolio_value": None, "pnl_abs": None,
+        "prices_found": 0, "total_positions": 0,
+    },
+]
+_CAL_RESPONSE = {"year": 2026, "month": 6, "days": _CAL_DAYS}
+
+
+def test_get_portfolio_calendar_returns_200_with_valid_params(api_client):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_calendar_data", return_value=[]),
+        patch("src.api.compute_calendar_pnl", return_value=_CAL_RESPONSE),
+    ):
+        r = api_client.get(
+            f"/api/portfolio/calendar?year=2026&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
+            headers=_AUTH,
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["year"] == 2026
+    assert body["month"] == 6
+    assert isinstance(body["days"], list)
+
+
+def test_get_portfolio_calendar_returns_401_without_key(api_client):
+    r = api_client.get(
+        f"/api/portfolio/calendar?year=2026&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
+    )
+    assert r.status_code == 401
+
+
+def test_get_portfolio_calendar_returns_400_without_client_id(api_client):
+    r = api_client.get(
+        f"/api/portfolio/calendar?year=2026&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
+        headers={"X-API-Key": _USER_KEY},
+    )
+    assert r.status_code == 400
+
+
+def test_get_portfolio_calendar_returns_403_for_wrong_portfolio(api_client):
+    """portfolio_id belonging to a different user → 403."""
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = api_client.get(
+            "/api/portfolio/calendar?year=2026&month=6&portfolio_id=other-user-portfolio",
+            headers=_AUTH,
+        )
+    assert r.status_code == 403
+
+
+def test_get_portfolio_calendar_returns_422_when_month_out_of_range(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = api_client.get(
+            f"/api/portfolio/calendar?year=2026&month=13&portfolio_id={_CAL_PORTFOLIO_ID}",
+            headers=_AUTH,
+        )
+    assert r.status_code == 422
+
+
+def test_get_portfolio_calendar_returns_422_when_month_zero(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = api_client.get(
+            f"/api/portfolio/calendar?year=2026&month=0&portfolio_id={_CAL_PORTFOLIO_ID}",
+            headers=_AUTH,
+        )
+    assert r.status_code == 422
+
+
+def test_get_portfolio_calendar_returns_422_when_year_too_old(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = api_client.get(
+            f"/api/portfolio/calendar?year=2010&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
+            headers=_AUTH,
+        )
+    assert r.status_code == 422
+
+
+def test_get_portfolio_calendar_returns_500_on_bq_error(api_client):
+    from src.exceptions import BigQueryError
+
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_calendar_data", side_effect=BigQueryError("boom")),
+    ):
+        r = api_client.get(
+            f"/api/portfolio/calendar?year=2026&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
+            headers=_AUTH,
+        )
+    assert r.status_code == 500

@@ -2,7 +2,7 @@ import os
 import threading
 import time
 from contextlib import ExitStack
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -191,6 +191,22 @@ _FAKE_PORTFOLIO_POSITIONS = [
 ]
 
 
+_FAKE_CALENDAR_ROWS = [
+    {"snapshot_date": date(2026, 6, 2), "portfolio_value": 10300.0,
+     "daily_change_pln": 300.0, "prices_found": 2, "total_positions": 2},
+    {"snapshot_date": date(2026, 6, 3), "portfolio_value": 10150.0,
+     "daily_change_pln": -150.0, "prices_found": 2, "total_positions": 2},
+    {"snapshot_date": date(2026, 6, 5), "portfolio_value": 10150.0,
+     "daily_change_pln": 0.0, "prices_found": 2, "total_positions": 2},
+]
+
+
+def _fake_get_portfolio_calendar_data(portfolio_id, user_id, year, month):
+    if portfolio_id == _FAKE_PORTFOLIO_ID:
+        return _FAKE_CALENDAR_ROWS
+    return []
+
+
 def _fake_create_user_portfolio_positions_table_if_not_exists():
     pass
 
@@ -344,6 +360,10 @@ def live_server_url():
         patch(
             "src.api.assign_orphan_positions_to_portfolio",
             side_effect=_fake_assign_orphan_positions_to_portfolio,
+        ),
+        patch(
+            "src.api.get_portfolio_calendar_data",
+            side_effect=_fake_get_portfolio_calendar_data,
         ),
     ]
 

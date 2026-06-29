@@ -424,6 +424,69 @@
   }
   .tc-popup-btn:hover { background: var(--brand-dark); }
 
+  /* Calendar (PUL-59) */
+  #pp-cal-nav {
+    display: flex; align-items: center; justify-content: center;
+    gap: 1rem; margin-bottom: 1rem;
+  }
+  #pp-cal-prev, #pp-cal-next {
+    background: none; border: 1px solid var(--border); border-radius: var(--radius-md);
+    font-size: 1.4rem; line-height: 1; padding: .25rem .75rem; cursor: pointer;
+    color: var(--brand);
+  }
+  #pp-cal-prev:hover, #pp-cal-next:hover { background: var(--fill); }
+  #pp-cal-prev:disabled, #pp-cal-next:disabled { opacity: .4; cursor: not-allowed; }
+  #pp-cal-label { font-weight: 600; font-size: 1rem; min-width: 160px; text-align: center; }
+  #pp-cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  }
+  .pp-cal-header {
+    text-align: center; font-size: .72rem; font-weight: 600;
+    color: var(--text-muted); padding: .3rem 0;
+  }
+  .pp-cal-cell {
+    position: relative; border-radius: 8px;
+    min-height: 56px; padding: 6px 8px;
+    background: #fff; border: 1px solid var(--border); font-size: .8rem;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pp-cal-cell .pp-cal-day {
+    position: absolute; top: 4px; left: 6px;
+    font-size: .68rem; color: var(--text-muted); line-height: 1;
+  }
+  .pp-cal-cell .pp-cal-pnl {
+    font-weight: 700; font-size: .82rem; text-align: center; line-height: 1.2;
+  }
+  .pp-cal-gain { background: var(--positive); color: #fff; border-color: var(--positive); }
+  .pp-cal-gain .pp-cal-day { color: rgba(255,255,255,.7); }
+  .pp-cal-loss { background: var(--negative); color: #fff; border-color: var(--negative); }
+  .pp-cal-loss .pp-cal-day { color: rgba(255,255,255,.7); }
+  .pp-cal-neutral { background: #d9d9d9; color: #666; border-color: #bbb; }
+  .pp-cal-neutral .pp-cal-day { color: #888; }
+.pp-cal-empty { background: transparent; border: none; min-height: 56px; }
+  #pp-cal-legend {
+    display: flex; gap: .75rem 1.25rem; flex-wrap: wrap; margin-top: 1rem;
+    font-size: .8rem; align-items: center;
+    padding: .6rem .75rem; background: #fff;
+    border: 1px solid var(--border); border-radius: var(--radius-md);
+  }
+  .pp-cal-legend-item {
+    display: inline-flex; align-items: center; gap: .45rem;
+    color: var(--text-muted);
+  }
+  .pp-cal-legend-swatch {
+    display: inline-block; width: 14px; height: 14px; border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .pp-cal-swatch-gain { background: var(--positive); }
+  .pp-cal-swatch-loss { background: var(--negative); }
+  .pp-cal-swatch-neutral { background: #d9d9d9; border: 1px solid #bbb; }
+  .pp-cal-swatch-white { background: #fff; border: 1px solid var(--border); }
+  @media (max-width: 600px) {
+    .pp-cal-cell { min-height: 44px; font-size: .72rem; }
+    .pp-cal-cell .pp-cal-pnl { font-size: .72rem; }
+  }
+
   /* My Wallet */
   #wl-add-form {
     display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
@@ -1336,8 +1399,8 @@ function _navigateToView(view) {
   } else if (view === 'my-wallet') {
     showMyWalletView();
   } else if (view === 'portfolio-positions') {
-    showPortfolioPositionsView();
     history.pushState({ view: 'portfolio-positions' }, '', '?view=portfolio-positions');
+    showPortfolioPositionsView();
   } else {
     showAnnouncementsView();
     history.pushState({}, '', '/');
@@ -1396,7 +1459,10 @@ function _applyUrlState() {
   const view = params.get('view');
   if (view === 'portfolio-positions') {
     currentView = 'portfolio-positions';
+    const yearP = parseInt(params.get('year'), 10);
+    const monthP = parseInt(params.get('month'), 10);
     showPortfolioPositionsView();
+    if (yearP && monthP) { _ppCalYear = yearP; _ppCalMonth = monthP; }
   } else if (view === 'x-history' && role === 'admin') {
     currentView = 'x-history';
     _showXHistoryViewDom();
@@ -1431,6 +1497,25 @@ function _writeUrl(view, params, push) {
   const state = { view };
   if (push) history.pushState(state, '', url);
   else      history.replaceState(state, '', url);
+}
+
+function _ppPortfolioParams() {
+  const ppView = $('portfolio-positions-view');
+  const activeTab = ppView?.querySelector('.pp-view-tab.active')?.dataset.mode || 'table';
+  const out = new URLSearchParams();
+  out.set('tab', activeTab);
+  if (_activePortfolioId) out.set('portfolio', _activePortfolioId);
+  if (activeTab === 'calendar' && _ppCalYear) {
+    out.set('year', _ppCalYear);
+    out.set('month', _ppCalMonth);
+  }
+  return out;
+}
+
+function _ppWriteUrl(push = true) {
+  if ($('portfolio-positions-view')?.dataset.built) {
+    _writeUrl('portfolio-positions', _ppPortfolioParams(), push);
+  }
 }
 
 // ── fetch ──────────────────────────────────────────────────────────────
@@ -1761,6 +1846,9 @@ let _ppEditingTicker = null;
 let _activePortfolioId = null;
 let _portfoliosFetched = false;
 let _ppTreemapData = null;
+let _ppCalData = null;
+let _ppCalYear = null;
+let _ppCalMonth = null;
 const _PORTFOLIO_TYPE_LABELS = {
   glowny: 'Główny', ikze: 'IKZE', ike: 'IKE', ppk: 'PPK', ppe: 'PPE', inny: 'Inny'
 };
@@ -1946,7 +2034,11 @@ function _renderPortfolioTabs(portfolios) {
       tabs.querySelectorAll('.pp-portfolio-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       _activePortfolioId = p.portfolio_id;
+      _ppCalData = null;
+      const curMode = $('portfolio-positions-view').querySelector('.pp-view-tab.active')?.dataset.mode;
+      if (curMode === 'calendar') fetchPortfolioCalendar();
       fetchPortfolioPositions();
+      _ppWriteUrl(true);
     });
     tabs.appendChild(btn);
   });
@@ -1962,9 +2054,26 @@ async function fetchUserPortfolios() {
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    _activePortfolioId = data.length ? data[0].portfolio_id : null;
+    const urlParams = new URLSearchParams(location.search);
+    const urlPortfolio = urlParams.get('portfolio');
+    const urlTab = urlParams.get('tab');
+    const matchedPortfolio = urlPortfolio ? data.find(p => p.portfolio_id === urlPortfolio) : null;
+    _activePortfolioId = matchedPortfolio ? matchedPortfolio.portfolio_id
+                       : (data.length ? data[0].portfolio_id : null);
     _renderPortfolioTabs(data);
+    if (matchedPortfolio) {
+      const tabs = $('pp-portfolio-tabs');
+      tabs?.querySelectorAll('.pp-portfolio-tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.portfolioId === matchedPortfolio.portfolio_id);
+      });
+    }
     if (_activePortfolioId) fetchPortfolioPositions();
+    if (urlTab && urlTab !== 'table') {
+      const tabBtn = $('portfolio-positions-view')?.querySelector(`.pp-view-tab[data-mode="${urlTab}"]`);
+      if (tabBtn) tabBtn.click();
+    } else {
+      _ppWriteUrl(false);
+    }
   } catch (e) {
     tabs.innerHTML = '<p class="pp-notice" style="color:var(--negative)">Błąd ładowania portfeli.</p>';
   }
@@ -2048,6 +2157,7 @@ function _buildPortfolioPositionsViewContent(view) {
     <div id="pp-view-tabs">
       <button type="button" class="pp-view-tab active" data-mode="table">Tabela</button>
       <button type="button" class="pp-view-tab" data-mode="treemap">Treemapa</button>
+      <button type="button" class="pp-view-tab" data-mode="calendar">Kalendarz</button>
     </div>
     <div id="pp-table-wrap">
       <button type="button" id="pp-add-toggle-btn">Dodaj pozycję</button>
@@ -2137,6 +2247,20 @@ function _buildPortfolioPositionsViewContent(view) {
         </div>
       </div>
     </div>
+    <div id="pp-calendar-wrap" style="display:none">
+      <div id="pp-cal-nav">
+        <button type="button" id="pp-cal-prev">&#8249;</button>
+        <span id="pp-cal-label"></span>
+        <button type="button" id="pp-cal-next">&#8250;</button>
+      </div>
+      <div id="pp-cal-grid"></div>
+      <div id="pp-cal-legend">
+        <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-gain"></span>zysk</span>
+        <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-loss"></span>strata</span>
+        <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-neutral"></span>weekend / święto GPW</span>
+        <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-white"></span>brak danych</span>
+      </div>
+    </div>
     <div id="pp-add-portfolio-overlay" style="display:none">
       <div id="pp-add-portfolio-modal">
         <h3>Dodaj portfel</h3>
@@ -2169,15 +2293,20 @@ function _buildPortfolioPositionsViewContent(view) {
       view.querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const mode = btn.dataset.mode;
-      $('pp-portfolio-tabs-wrap').style.display = mode === 'table' ? '' : 'none';
+      $('pp-portfolio-tabs-wrap').style.display = (mode === 'table' || mode === 'calendar') ? '' : 'none';
       $('pp-table-wrap').style.display = mode === 'table' ? '' : 'none';
       $('pp-treemap-wrap').style.display = mode === 'treemap' ? '' : 'none';
+      $('pp-calendar-wrap').style.display = mode === 'calendar' ? '' : 'none';
       if (mode === 'table') {
         stopPortfolioTreemapResize();
-      } else {
+      } else if (mode === 'treemap') {
         if (!_ppTreemapData) fetchPortfolioTreemap();
         startPortfolioTreemapResize();
+      } else if (mode === 'calendar') {
+        stopPortfolioTreemapResize();
+        if (!_ppCalData) fetchPortfolioCalendar();
       }
+      _ppWriteUrl(true);
     });
   });
 
@@ -2247,6 +2376,31 @@ function _buildPortfolioPositionsViewContent(view) {
     _ppCloseEditModal();
     _upsertPortfolioPosition(ticker, company, shares, avgBuyPrice);
   });
+
+  // change #9: init calendar to current month
+  const _now = new Date();
+  _ppCalYear = _now.getFullYear();
+  _ppCalMonth = _now.getMonth() + 1;
+
+  // change #6: month navigation handlers (disable synchronously — lessons.md SPA rule)
+  $('pp-cal-prev').addEventListener('click', () => {
+    $('pp-cal-prev').disabled = true;
+    $('pp-cal-next').disabled = true;
+    _ppCalData = null;
+    _ppCalMonth--;
+    if (_ppCalMonth < 1) { _ppCalMonth = 12; _ppCalYear--; }
+    _ppWriteUrl(true);
+    fetchPortfolioCalendar();
+  });
+  $('pp-cal-next').addEventListener('click', () => {
+    $('pp-cal-prev').disabled = true;
+    $('pp-cal-next').disabled = true;
+    _ppCalData = null;
+    _ppCalMonth++;
+    if (_ppCalMonth > 12) { _ppCalMonth = 1; _ppCalYear++; }
+    _ppWriteUrl(true);
+    fetchPortfolioCalendar();
+  });
 }
 
 function showPortfolioPositionsView() {
@@ -2263,6 +2417,11 @@ function showPortfolioPositionsView() {
   stopPortfolioTreemapResize();
   closeProfileMenu();
   _setActiveNavItem('portfolio-positions');
+  const _calNow = new Date();
+  _ppCalYear = _calNow.getFullYear();
+  _ppCalMonth = _calNow.getMonth() + 1;
+  _ppCalData = null;
+  _ppWriteUrl(false);
   if (!_portfoliosFetched) fetchUserPortfolios();
 }
 
@@ -2346,6 +2505,72 @@ async function fetchPortfolioTreemap() {
   }
 }
 
+async function fetchPortfolioCalendar() {
+  if (_activePortfolioId === null) {
+    $('pp-cal-grid').innerHTML = '<div class="empty">Wybierz portfel powyżej.</div>';
+    return;
+  }
+  $('pp-cal-prev').disabled = true;
+  $('pp-cal-next').disabled = true;
+  try {
+    const url = `/api/portfolio/calendar?year=${_ppCalYear}&month=${_ppCalMonth}&portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
+    const r = await fetch(url, { headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId } });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    _ppCalData = data;
+    _renderPortfolioCalendar(data);
+  } catch (e) {
+    $('pp-cal-grid').innerHTML = `<div class="empty">Błąd ładowania kalendarza.</div>`;
+  } finally {
+    $('pp-cal-prev').disabled = false;
+    $('pp-cal-next').disabled = false;
+  }
+}
+
+function _renderPortfolioCalendar(data) {
+  const MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec',
+    'Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+  const label = `${MONTHS_PL[data.month - 1]} ${data.year}`;
+  $('pp-cal-label').textContent = label;
+
+  const grid = $('pp-cal-grid');
+  grid.innerHTML = '';
+
+  const DAYS = ['Pn','Wt','Śr','Cz','Pt','Sb','Nd'];
+  DAYS.forEach(d => {
+    const hdr = document.createElement('div');
+    hdr.className = 'pp-cal-header';
+    hdr.textContent = d;
+    grid.appendChild(hdr);
+  });
+
+  const firstWeekday = data.days[0].weekday; // 0=Mon
+  for (let i = 0; i < firstWeekday; i++) {
+    const empty = document.createElement('div');
+    empty.className = 'pp-cal-empty';
+    grid.appendChild(empty);
+  }
+
+  for (const day of data.days) {
+    const cell = document.createElement('div');
+    let cls = 'pp-cal-cell ';
+    let pnlText = '';
+    if (day.state === 'data' && day.pnl_abs !== null) {
+      const sign = day.pnl_abs >= 0 ? '+' : '−';
+      const amt = Math.round(Math.abs(day.pnl_abs));
+      pnlText = `${sign}${amt} PLN`;
+      cls += day.pnl_abs >= 0 ? 'pp-cal-gain' : 'pp-cal-loss';
+    } else if (day.state === 'weekend' || day.state === 'holiday') {
+      cls += 'pp-cal-neutral';
+    }
+    // no_data, partial, future → white (base .pp-cal-cell style, background:#fff)
+    cell.className = cls;
+    cell.innerHTML = `<span class="pp-cal-day">${day.day}</span>${pnlText ? `<span class="pp-cal-pnl">${pnlText}</span>` : ''}`;
+    grid.appendChild(cell);
+  }
+}
+
 function _renderPortfolioTreemap(data) {
   const walletsEl = $('pp-treemap-wallets');
   walletsEl.innerHTML = '';
@@ -2392,7 +2617,14 @@ function _renderPortfolioTreemap(data) {
   if (asOfEl) {
     if (data.as_of) {
       const [y, m, d] = data.as_of.split('-');
-      asOfEl.textContent = `(stan na dzień: ${d}-${m}-${y})`;
+      let timePrefix = '';
+      if (data.stats_fetched_at) {
+        const ts = new Date(data.stats_fetched_at);
+        const hh = String(ts.getHours()).padStart(2, '0');
+        const min = String(ts.getMinutes()).padStart(2, '0');
+        timePrefix = `${hh}:${min} `;
+      }
+      asOfEl.textContent = `(stan na dzień: ${timePrefix}${d}-${m}-${y})`;
     } else {
       asOfEl.textContent = '';
     }
