@@ -1,10 +1,10 @@
 ---
 change_id: pul-67
 title: WIG index quotes ingestion and portfolio integration
-status: impl_reviewed
+status: archived
 created: 2026-06-29
 updated: 2026-06-29
-archived_at: null
+archived_at: 2026-06-29T15:45:11Z
 tracking:
   linear: PUL-67
   github: 114
