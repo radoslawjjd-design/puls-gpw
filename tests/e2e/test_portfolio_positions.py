@@ -42,12 +42,13 @@ def test_user_can_edit_position_and_see_updated_values(page: Page, live_server_u
 
     page.locator("#pp-tbody tr", has_text="PKO").get_by_role("button", name="Edytuj").click()
 
-    expect(page.locator("#pp-shares-input")).to_have_value("10")
-    expect(page.locator("#pp-price-input")).to_have_value("40")
-    expect(page.locator("#pp-ticker-label")).to_have_text("PKO")
+    expect(page.locator("#pp-edit-overlay")).to_be_visible()
+    expect(page.locator("#pp-edit-title")).to_contain_text("PKO")
+    expect(page.locator("#pp-edit-shares")).to_have_value("10")
+    expect(page.locator("#pp-edit-price")).to_have_value("40")
 
-    page.locator("#pp-shares-input").fill("20")
-    page.get_by_role("button", name="Zapisz zmiany").click()
+    page.locator("#pp-edit-shares").fill("20")
+    page.locator("#pp-edit-save-btn").click()
 
     expect(page.locator("#pp-tbody")).to_contain_text("20")
 
