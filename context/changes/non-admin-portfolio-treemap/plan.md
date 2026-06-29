@@ -961,9 +961,9 @@ moves them. No data is lost in any scenario.
 
 #### Manual
 
-- [ ] 3.4 `GET /api/portfolio/treemap` with `X-API-Key` → correct `{portfolios, as_of}`
-- [ ] 3.5 `GET /api/portfolio/positions` without `portfolio_id` → 422
-- [ ] 3.6 `GET /admin/portfolio/treemap` still returns 200
+- [x] 3.4 `GET /api/portfolio/treemap` with `X-API-Key` → correct `{portfolios, as_of}` — bee3528
+- [x] 3.5 `GET /api/portfolio/positions` without `portfolio_id` → 422 — bee3528
+- [x] 3.6 `GET /admin/portfolio/treemap` still returns 200 — bee3528
 
 ### Phase 4: Frontend — wallet management
 
@@ -1006,4 +1006,4 @@ moves them. No data is lost in any scenario.
 
 #### Manual
 
-- [ ] 6.4 Full E2E suite run against local server — zero failures
+- [x] 6.4 Full E2E suite run against local server — zero failures — bee3528
