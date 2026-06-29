@@ -643,10 +643,10 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [x] 7.1 CI/CD pipeline bez błędów YAML syntax
-- [ ] 7.2 `gcloud run jobs describe puls-gpw-etf-quotes` → job istnieje po deploy
+- [x] 7.1 CI/CD pipeline bez błędów YAML syntax — eba12f4
+- [x] 7.2 `gcloud run jobs describe puls-gpw-etf-quotes` → job istnieje po deploy — eba12f4
 
 #### Manual
 
-- [ ] 7.3 Ręczne uruchomienie joba w GCP Console → sukces
-- [ ] 7.4 BQ tables mają dane po uruchomieniu joba w GCP
+- [ ] 7.3 Ręczne uruchomienie joba w GCP Console → sukces (wymaga merge → CI build nowego image)
+- [ ] 7.4 BQ tables mają dane po uruchomieniu joba w GCP (wymaga merge → CI build)
