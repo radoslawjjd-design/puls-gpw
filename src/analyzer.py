@@ -178,7 +178,7 @@ def _call_analysis(parsed_content: str) -> dict | None:
             logger.warning("Gemini analysis schema invalid", exc_info=True)
             return None
         except _genai_errors.ClientError as exc:
-            if exc.status_code == 429 and attempt == 0:
+            if exc.code == 429 and attempt == 0:
                 logger.warning("Gemini analysis 429 — backing off %ds before retry", _RETRY_DELAY_S)
                 time.sleep(_RETRY_DELAY_S)
                 continue
@@ -206,7 +206,7 @@ def _call_gate(parsed_content: str, structured_analysis: str) -> tuple[bool | No
             data = json5.loads(response.text)
             return bool(data["approved"]), data.get("reason")
         except _genai_errors.ClientError as exc:
-            if exc.status_code == 429 and attempt == 0:
+            if exc.code == 429 and attempt == 0:
                 logger.warning("Gemini gate 429 — backing off %ds before retry", _RETRY_DELAY_S)
                 time.sleep(_RETRY_DELAY_S)
                 continue
