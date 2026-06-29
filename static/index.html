@@ -1357,8 +1357,7 @@ function _buildMyWalletViewContent(view) {
     '<tr>' + _USER_COLS.map(c => `<th class="${c.cls}">${c.label}</th>`).join('') + '</tr>';
 
   _setupAcInput('wl-ticker-input', 'ac-wl-ticker', _acTickers);
-  _setupAcInput('wl-company-input', 'ac-wl-company',
-    () => [..._acCompanies, ...Object.values(_etfInstrumentsMap).map(i => i.name || i.ticker)]);
+  _setupAcInput('wl-company-input', 'ac-wl-company', _acCompanies);
 
   $('wl-add-form').addEventListener('submit', e => {
     e.preventDefault();
@@ -1745,15 +1744,7 @@ async function addWatchlistTicker() {
   try {
     let ticker = tickerValue;
     if (!ticker) {
-      // ETF/ETC/ETN: resolve ticker from local map before hitting /announcements
-      const etfEntry = Object.values(_etfInstrumentsMap).find(
-        i => (i.name || i.ticker) === companyValue
-      );
-      if (etfEntry) {
-        ticker = etfEntry.ticker;
-      } else {
-        ticker = await _resolveTickerForCompany(companyValue);
-      }
+      ticker = await _resolveTickerForCompany(companyValue);
       if (!ticker) {
         $('wl-error').textContent = 'Nie znaleziono tickera dla tej spółki.';
         $('wl-error').style.display = 'block';
