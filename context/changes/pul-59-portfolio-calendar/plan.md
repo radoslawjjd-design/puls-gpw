@@ -626,26 +626,26 @@ snapshot_date BETWEEN @lookback_start AND @end_date is partition-pruned by BQ au
 
 #### Automated
 
-- [x] 1.1 `uv run pytest tests/test_bigquery.py -k calendar` passes
-- [x] 1.2 `uv run ruff check db/bigquery.py` passes
-- [x] 1.3 `uv run mypy db/bigquery.py --ignore-missing-imports` passes
+- [x] 1.1 `uv run pytest tests/test_bigquery.py -k calendar` passes — ac6252e
+- [x] 1.2 `uv run ruff check db/bigquery.py` passes — ac6252e
+- [x] 1.3 `uv run mypy db/bigquery.py --ignore-missing-imports` passes — ac6252e
 
 #### Manual
 
-- [x] 1.4 Round-trip test against real BQ returns rows for trading days in queried month
-- [x] 1.5 SQL has no un-backticked reserved keywords
+- [x] 1.4 Round-trip test against real BQ returns rows for trading days in queried month — ac6252e
+- [x] 1.5 SQL has no un-backticked reserved keywords — ac6252e
 
 ### Phase 2: Compute Function — src/portfolio_calendar.py
 
 #### Automated
 
-- [ ] 2.1 `uv run pytest tests/test_portfolio_calendar.py` passes (all edge cases)
-- [ ] 2.2 `uv run ruff check src/portfolio_calendar.py` passes
-- [ ] 2.3 `uv run mypy src/portfolio_calendar.py --ignore-missing-imports` passes
+- [x] 2.1 `uv run pytest tests/test_portfolio_calendar.py` passes (all edge cases)
+- [x] 2.2 `uv run ruff check src/portfolio_calendar.py` passes
+- [x] 2.3 `uv run mypy src/portfolio_calendar.py --ignore-missing-imports` passes
 
 #### Manual
 
-- [ ] 2.4 Python one-liner with empty rows produces 30-day neutral grid without error
+- [x] 2.4 Python one-liner with empty rows produces 30-day neutral grid without error
 
 ### Phase 3: FastAPI Endpoint — GET /api/portfolio/calendar
 
