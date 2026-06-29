@@ -651,15 +651,15 @@ snapshot_date BETWEEN @lookback_start AND @end_date is partition-pruned by BQ au
 
 #### Automated
 
-- [x] 3.1 `uv run pytest tests/test_api.py -k calendar` passes (auth, validation, 500 cases)
-- [x] 3.2 `uv run pytest tests/test_api.py` passes (no regressions)
-- [x] 3.3 `uv run ruff check src/api.py` passes
-- [x] 3.4 `uv run mypy src/api.py --ignore-missing-imports` passes
+- [x] 3.1 `uv run pytest tests/test_api.py -k calendar` passes (auth, validation, 500 cases) — 0767fea
+- [x] 3.2 `uv run pytest tests/test_api.py` passes (no regressions) — 0767fea
+- [x] 3.3 `uv run ruff check src/api.py` passes — 0767fea
+- [x] 3.4 `uv run mypy src/api.py --ignore-missing-imports` passes — 0767fea
 
 #### Manual
 
-- [x] 3.5 curl against local server returns JSON with 30 day objects
-- [x] 3.6 Endpoint visible in /docs
+- [x] 3.5 curl against local server returns JSON with 30 day objects — 0767fea
+- [x] 3.6 Endpoint visible in /docs — 0767fea
 
 ### Phase 4: Frontend — Kalendarz Tab in Mój portfel
 
