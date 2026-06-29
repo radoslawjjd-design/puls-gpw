@@ -1402,7 +1402,6 @@ function _navigateToView(view) {
     showMyWalletView();
   } else if (view === 'portfolio-positions') {
     showPortfolioPositionsView();
-    history.pushState({ view: 'portfolio-positions' }, '', '?view=portfolio-positions');
   } else {
     showAnnouncementsView();
     history.pushState({}, '', '/');
@@ -1461,6 +1460,9 @@ function _applyUrlState() {
   const view = params.get('view');
   if (view === 'portfolio-positions') {
     currentView = 'portfolio-positions';
+    const yearP = parseInt(params.get('year'), 10);
+    const monthP = parseInt(params.get('month'), 10);
+    if (yearP && monthP) { _ppCalYear = yearP; _ppCalMonth = monthP; }
     showPortfolioPositionsView();
   } else if (view === 'x-history' && role === 'admin') {
     currentView = 'x-history';
@@ -1496,6 +1498,25 @@ function _writeUrl(view, params, push) {
   const state = { view };
   if (push) history.pushState(state, '', url);
   else      history.replaceState(state, '', url);
+}
+
+function _ppPortfolioParams() {
+  const ppView = $('portfolio-positions-view');
+  const activeTab = ppView?.querySelector('.pp-view-tab.active')?.dataset.mode || 'table';
+  const out = new URLSearchParams();
+  out.set('tab', activeTab);
+  if (_activePortfolioId) out.set('portfolio', _activePortfolioId);
+  if (activeTab === 'calendar' && _ppCalYear) {
+    out.set('year', _ppCalYear);
+    out.set('month', _ppCalMonth);
+  }
+  return out;
+}
+
+function _ppWriteUrl(push = true) {
+  if ($('portfolio-positions-view')?.dataset.built) {
+    _writeUrl('portfolio-positions', _ppPortfolioParams(), push);
+  }
 }
 
 // ── fetch ──────────────────────────────────────────────────────────────
@@ -2018,6 +2039,7 @@ function _renderPortfolioTabs(portfolios) {
       const curMode = $('portfolio-positions-view').querySelector('.pp-view-tab.active')?.dataset.mode;
       if (curMode === 'calendar') fetchPortfolioCalendar();
       fetchPortfolioPositions();
+      _ppWriteUrl(true);
     });
     tabs.appendChild(btn);
   });
@@ -2033,9 +2055,26 @@ async function fetchUserPortfolios() {
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    _activePortfolioId = data.length ? data[0].portfolio_id : null;
+    const urlParams = new URLSearchParams(location.search);
+    const urlPortfolio = urlParams.get('portfolio');
+    const urlTab = urlParams.get('tab');
+    const matchedPortfolio = urlPortfolio ? data.find(p => p.portfolio_id === urlPortfolio) : null;
+    _activePortfolioId = matchedPortfolio ? matchedPortfolio.portfolio_id
+                       : (data.length ? data[0].portfolio_id : null);
     _renderPortfolioTabs(data);
+    if (matchedPortfolio) {
+      const tabs = $('pp-portfolio-tabs');
+      tabs?.querySelectorAll('.pp-portfolio-tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.portfolioId === matchedPortfolio.portfolio_id);
+      });
+    }
     if (_activePortfolioId) fetchPortfolioPositions();
+    if (urlTab && urlTab !== 'table') {
+      const tabBtn = $('portfolio-positions-view')?.querySelector(`.pp-view-tab[data-mode="${urlTab}"]`);
+      if (tabBtn) tabBtn.click();
+    } else {
+      _ppWriteUrl(false);
+    }
   } catch (e) {
     tabs.innerHTML = '<p class="pp-notice" style="color:var(--negative)">Błąd ładowania portfeli.</p>';
   }
@@ -2268,6 +2307,7 @@ function _buildPortfolioPositionsViewContent(view) {
         stopPortfolioTreemapResize();
         if (!_ppCalData) fetchPortfolioCalendar();
       }
+      _ppWriteUrl(true);
     });
   });
 
@@ -2350,6 +2390,7 @@ function _buildPortfolioPositionsViewContent(view) {
     _ppCalData = null;
     _ppCalMonth--;
     if (_ppCalMonth < 1) { _ppCalMonth = 12; _ppCalYear--; }
+    _ppWriteUrl(true);
     fetchPortfolioCalendar();
   });
   $('pp-cal-next').addEventListener('click', () => {
@@ -2358,6 +2399,7 @@ function _buildPortfolioPositionsViewContent(view) {
     _ppCalData = null;
     _ppCalMonth++;
     if (_ppCalMonth > 12) { _ppCalMonth = 1; _ppCalYear++; }
+    _ppWriteUrl(true);
     fetchPortfolioCalendar();
   });
 }
@@ -2380,6 +2422,7 @@ function showPortfolioPositionsView() {
   _ppCalYear = _calNow.getFullYear();
   _ppCalMonth = _calNow.getMonth() + 1;
   _ppCalData = null;
+  _ppWriteUrl(true);
   if (!_portfoliosFetched) fetchUserPortfolios();
 }
 
