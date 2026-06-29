@@ -12,8 +12,9 @@ def _login(page: Page, base_url: str) -> None:
     expect(page.locator("#page-label")).to_have_text("Strona 1")
 
 
-def _open_treemap(page: Page) -> None:
-    page.get_by_role("button", name="Treemapa portfela").click()
+def _open_portfolio_positions(page: Page) -> None:
+    page.get_by_role("button", name="Mój portfel").click()
+    expect(page.locator("#portfolio-positions-view")).to_be_visible()
 
 
 def _open_x_history(page: Page) -> None:
@@ -37,8 +38,8 @@ def test_view_switch_sequence_updates_url_and_is_back_navigable(
 ):
     _login(page, live_server_url)
 
-    _open_treemap(page)
-    expect(page).to_have_url(re.compile(r"\?view=treemap"))
+    _open_portfolio_positions(page)
+    expect(page).to_have_url(re.compile(r"\?view=portfolio-positions"))
 
     _open_x_history(page)
     expect(page).to_have_url(re.compile(r"view=x-history"))
@@ -52,22 +53,21 @@ def test_view_switch_sequence_updates_url_and_is_back_navigable(
     expect(page.locator("#x-history-view")).to_be_visible()
 
     page.go_back()
-    expect(page).to_have_url(re.compile(r"\?view=treemap"))
-    expect(page.get_by_role("heading", name="Portfel główny")).to_be_visible()
+    expect(page).to_have_url(re.compile(r"\?view=portfolio-positions"))
+    expect(page.locator("#portfolio-positions-view")).to_be_visible()
 
     page.go_back()
     expect(page.locator("#announcements-view")).to_be_visible()
     expect(page).not_to_have_url(re.compile(r"view="))
 
 
-def test_deep_link_to_treemap_lands_directly_on_treemap_view(page: Page, live_server_url: str):
+def test_deep_link_to_portfolio_positions_lands_directly_on_view(page: Page, live_server_url: str):
     _login(page, live_server_url)
     _persist_session_across_goto(page)
 
-    page.goto(f"{live_server_url}?view=treemap")
+    page.goto(f"{live_server_url}?view=portfolio-positions")
 
-    expect(page.get_by_role("heading", name="Portfel główny")).to_be_visible()
-    expect(page.locator("#treemap-view")).to_be_visible()
+    expect(page.locator("#portfolio-positions-view")).to_be_visible()
     expect(page.locator("#announcements-view")).to_be_hidden()
 
 
@@ -107,8 +107,8 @@ def test_old_format_bookmark_resolves_to_announcements_page_2(page: Page, live_s
 
 def test_logout_resets_url_to_root(page: Page, live_server_url: str):
     _login(page, live_server_url)
-    _open_treemap(page)
-    expect(page).to_have_url(re.compile(r"\?view=treemap"))
+    _open_portfolio_positions(page)
+    expect(page).to_have_url(re.compile(r"\?view=portfolio-positions"))
 
     page.get_by_role("button", name="admin").click()
     page.get_by_role("menuitem", name="Wyloguj").click()

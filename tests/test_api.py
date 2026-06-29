@@ -558,9 +558,12 @@ _POSITION_NO_PRICE = {
 
 
 def test_get_portfolio_positions_returns_empty_list(api_client):
-    with patch("src.api.list_user_portfolio_positions", return_value=[]):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_user_portfolio_positions", return_value=[]),
+    ):
         r = api_client.get(
-            "/api/portfolio/positions",
+            f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
@@ -568,9 +571,12 @@ def test_get_portfolio_positions_returns_empty_list(api_client):
 
 
 def test_get_portfolio_positions_with_price_computes_pnl(api_client):
-    with patch("src.api.list_user_portfolio_positions", return_value=[_POSITION_WITH_PRICE]):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_user_portfolio_positions", return_value=[_POSITION_WITH_PRICE]),
+    ):
         r = api_client.get(
-            "/api/portfolio/positions",
+            f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
@@ -585,9 +591,12 @@ def test_get_portfolio_positions_with_price_computes_pnl(api_client):
 
 
 def test_get_portfolio_positions_without_price_has_null_pnl(api_client):
-    with patch("src.api.list_user_portfolio_positions", return_value=[_POSITION_NO_PRICE]):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_user_portfolio_positions", return_value=[_POSITION_NO_PRICE]),
+    ):
         r = api_client.get(
-            "/api/portfolio/positions",
+            f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
@@ -611,9 +620,12 @@ def test_get_portfolio_positions_no_key_returns_401(api_client):
 
 def test_get_portfolio_positions_bq_error_returns_500(api_client):
     from src.exceptions import BigQueryError
-    with patch("src.api.list_user_portfolio_positions", side_effect=BigQueryError("boom")):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_user_portfolio_positions", side_effect=BigQueryError("boom")),
+    ):
         r = api_client.get(
-            "/api/portfolio/positions",
+            f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 500
@@ -621,25 +633,31 @@ def test_get_portfolio_positions_bq_error_returns_500(api_client):
 
 def test_post_portfolio_position_valid_ticker_returns_200(api_client):
     with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]),
         patch("src.api.upsert_user_portfolio_position", return_value=None) as mock_upsert,
     ):
         r = api_client.post(
             "/api/portfolio/positions",
-            json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
+            json={"portfolio_id": _WALLET_ID, "ticker": "PKO",
+                  "company_name": "PKO Bank Polski SA",
                   "shares": 10.0, "avg_buy_price": 40.0},
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
     assert r.json() == {"ticker": "PKO", "upserted": True}
-    mock_upsert.assert_called_once_with(_CLIENT_ID, "PKO", "PKO Bank Polski SA", 10.0, 40.0)
+    mock_upsert.assert_called_once_with(_CLIENT_ID, _WALLET_ID, "PKO", "PKO Bank Polski SA", 10.0, 40.0)
 
 
 def test_post_portfolio_position_unknown_ticker_returns_422(api_client):
-    with patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]),
+    ):
         r = api_client.post(
             "/api/portfolio/positions",
-            json={"ticker": "NOPE", "company_name": "Firma", "shares": 10.0, "avg_buy_price": 40.0},
+            json={"portfolio_id": _WALLET_ID, "ticker": "NOPE",
+                  "company_name": "Firma", "shares": 10.0, "avg_buy_price": 40.0},
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 422
@@ -688,12 +706,14 @@ def test_post_portfolio_position_no_key_returns_401(api_client):
 def test_post_portfolio_position_bq_error_returns_500(api_client):
     from src.exceptions import BigQueryError
     with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_distinct_tickers", return_value=["PKO"]),
         patch("src.api.upsert_user_portfolio_position", side_effect=BigQueryError("boom")),
     ):
         r = api_client.post(
             "/api/portfolio/positions",
-            json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
+            json={"portfolio_id": _WALLET_ID, "ticker": "PKO",
+                  "company_name": "PKO Bank Polski SA",
                   "shares": 10.0, "avg_buy_price": 40.0},
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
@@ -701,13 +721,16 @@ def test_post_portfolio_position_bq_error_returns_500(api_client):
 
 
 def test_delete_portfolio_position_returns_204(api_client):
-    with patch("src.api.delete_user_portfolio_position", return_value=None) as mock_del:
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.delete_user_portfolio_position", return_value=None) as mock_del,
+    ):
         r = api_client.delete(
-            "/api/portfolio/positions/PKO",
+            f"/api/portfolio/positions/PKO?portfolio_id={_WALLET_ID}",
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 204
-    mock_del.assert_called_once_with(_CLIENT_ID, "PKO")
+    mock_del.assert_called_once_with(_CLIENT_ID, _WALLET_ID, "PKO")
 
 
 def test_delete_portfolio_position_missing_client_id_returns_400(api_client):
@@ -722,9 +745,275 @@ def test_delete_portfolio_position_no_key_returns_401(api_client):
 
 def test_delete_portfolio_position_bq_error_returns_500(api_client):
     from src.exceptions import BigQueryError
-    with patch("src.api.delete_user_portfolio_position", side_effect=BigQueryError("boom")):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.delete_user_portfolio_position", side_effect=BigQueryError("boom")),
+    ):
+        r = api_client.delete(
+            f"/api/portfolio/positions/PKO?portfolio_id={_WALLET_ID}",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 500
+
+
+# ── portfolio wallet endpoints (PUL-64 non-admin-portfolio-treemap, Phase 2) ──
+
+_WALLET_ID = "aaaabbbb-0000-1111-2222-ccccddddeeee"
+
+_WALLET_GLOWNY = {
+    "portfolio_id": _WALLET_ID,
+    "portfolio_type": "glowny",
+    "portfolio_name": None,
+    "display_order": 1,
+    "user_id": _CLIENT_ID,
+    "created_at": "2026-01-01T00:00:00+00:00",
+}
+
+_WALLET_INNY_1 = {
+    "portfolio_id": "inny-0001",
+    "portfolio_type": "inny",
+    "portfolio_name": "Mój inny",
+    "display_order": 4,
+    "user_id": _CLIENT_ID,
+    "created_at": "2026-01-02T00:00:00+00:00",
+}
+
+_WALLET_INNY_2 = {
+    "portfolio_id": "inny-0002",
+    "portfolio_type": "inny",
+    "portfolio_name": "Drugi inny",
+    "display_order": 5,
+    "user_id": _CLIENT_ID,
+    "created_at": "2026-01-03T00:00:00+00:00",
+}
+
+_AUTH = {"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+
+
+def test_get_wallets_returns_list(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = api_client.get("/api/portfolio/wallets", headers=_AUTH)
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["portfolio_type"] == "glowny"
+    assert data[0]["portfolio_id"] == _WALLET_ID
+
+
+def test_get_wallets_no_key_returns_401(api_client):
+    r = api_client.get("/api/portfolio/wallets")
+    assert r.status_code == 401
+
+
+def test_post_wallet_glowny_creates_and_assigns_orphans(api_client):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[]),
+        patch("src.api.create_user_portfolio", return_value=_WALLET_ID) as mock_create,
+        patch("src.api.assign_orphan_positions_to_portfolio") as mock_assign,
+    ):
+        r = api_client.post(
+            "/api/portfolio/wallets",
+            json={"portfolio_type": "glowny"},
+            headers=_AUTH,
+        )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["portfolio_id"] == _WALLET_ID
+    assert body["portfolio_type"] == "glowny"
+    mock_create.assert_called_once_with(_CLIENT_ID, "glowny", None)
+    mock_assign.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
+
+
+def test_post_wallet_duplicate_type_returns_409(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = api_client.post(
+            "/api/portfolio/wallets",
+            json={"portfolio_type": "glowny"},
+            headers=_AUTH,
+        )
+    assert r.status_code == 409
+    assert "already exists" in r.json()["detail"]
+
+
+def test_post_wallet_third_inny_returns_409(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_INNY_1, _WALLET_INNY_2]):
+        r = api_client.post(
+            "/api/portfolio/wallets",
+            json={"portfolio_type": "inny", "portfolio_name": "Trzeci"},
+            headers=_AUTH,
+        )
+    assert r.status_code == 409
+    assert "Maximum 2" in r.json()["detail"]
+
+
+def test_delete_wallet_own_returns_204(api_client):
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.delete_user_portfolio") as mock_del,
+    ):
+        r = api_client.delete(
+            f"/api/portfolio/wallets/{_WALLET_ID}",
+            headers=_AUTH,
+        )
+    assert r.status_code == 204
+    mock_del.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
+
+
+def test_delete_wallet_wrong_user_returns_404(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[]):
+        r = api_client.delete(
+            "/api/portfolio/wallets/nonexistent-id",
+            headers=_AUTH,
+        )
+    assert r.status_code == 404
+
+
+def test_post_wallet_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with (
+        patch("src.api.list_user_portfolios", return_value=[]),
+        patch("src.api.create_user_portfolio", side_effect=BigQueryError("bq down")),
+    ):
+        r = api_client.post(
+            "/api/portfolio/wallets",
+            json={"portfolio_type": "glowny"},
+            headers=_AUTH,
+        )
+    assert r.status_code == 500
+
+
+def test_delete_wallet_bq_error_returns_500(api_client):
+    from src.exceptions import BigQueryError
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.delete_user_portfolio", side_effect=BigQueryError("bq down")),
+    ):
+        r = api_client.delete(
+            f"/api/portfolio/wallets/{_WALLET_ID}",
+            headers=_AUTH,
+        )
+    assert r.status_code == 500
+
+
+# ── Phase 3: positions CRUD update + treemap endpoint (PUL-64) ──────────────
+
+_POSITION_WITH_PRICE_AS_OF = {
+    **_POSITION_WITH_PRICE,
+    "price_as_of": "2026-06-27",
+}
+
+
+def test_get_portfolio_positions_without_portfolio_id_returns_422(api_client):
+    """portfolio_id is now a required query parameter."""
+    with patch("src.api.list_user_portfolio_positions", return_value=[]):
+        r = api_client.get(
+            "/api/portfolio/positions",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 422
+
+
+def test_get_portfolio_positions_scoped_to_portfolio(api_client):
+    """GET positions with portfolio_id passes it to BQ and validates ownership."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_user_portfolio_positions", return_value=[]) as mock_list,
+    ):
+        r = api_client.get(
+            f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 200
+    mock_list.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
+
+
+def test_get_portfolio_positions_wrong_portfolio_returns_404(api_client):
+    """portfolio_id not owned by user → 404."""
+    with patch("src.api.list_user_portfolios", return_value=[]):
+        r = api_client.get(
+            f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 404
+
+
+def test_delete_portfolio_position_without_portfolio_id_returns_422(api_client):
+    """portfolio_id query param is now required for DELETE."""
+    with patch("src.api.delete_user_portfolio_position", return_value=None):
         r = api_client.delete(
             "/api/portfolio/positions/PKO",
             headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
-    assert r.status_code == 500
+    assert r.status_code == 422
+
+
+def test_post_portfolio_position_passes_portfolio_id_to_bq(api_client):
+    """POST positions includes portfolio_id in body and passes it to BQ."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_distinct_tickers", return_value=["PKO"]),
+        patch("src.api.upsert_user_portfolio_position", return_value=None) as mock_upsert,
+    ):
+        r = api_client.post(
+            "/api/portfolio/positions",
+            json={
+                "portfolio_id": _WALLET_ID,
+                "ticker": "PKO",
+                "company_name": "PKO Bank Polski SA",
+                "shares": 10.0,
+                "avg_buy_price": 40.0,
+            },
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 200
+    mock_upsert.assert_called_once_with(
+        _CLIENT_ID, _WALLET_ID, "PKO", "PKO Bank Polski SA", 10.0, 40.0
+    )
+
+
+def test_get_portfolio_treemap_returns_correct_shape(api_client):
+    _computed = [{
+        "ticker": "PKO",
+        "position_value_pln": 520.0,
+        "daily_change_pct": 1.5,
+        "daily_change_pln": 7.72,
+        "since_purchase_pct": 30.0,
+        "since_purchase_pln": 120.0,
+        "portfolio_share_pct": 100.0,
+    }]
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_user_portfolio_positions", return_value=[_POSITION_WITH_PRICE]),
+        patch(
+            "src.api.compute_user_portfolio_treemap_positions",
+            create=True,
+            return_value=_computed,
+        ),
+    ):
+        r = api_client.get("/api/portfolio/treemap", headers=_AUTH)
+    assert r.status_code == 200
+    data = r.json()
+    assert "portfolios" in data
+    assert "as_of" in data
+    portfolios = data["portfolios"]
+    assert len(portfolios) == 1
+    assert portfolios[0]["portfolio_id"] == _WALLET_ID
+    assert portfolios[0]["portfolio_type"] == "glowny"
+    assert len(portfolios[0]["positions"]) == 1
+    assert portfolios[0]["positions"][0]["ticker"] == "PKO"
+
+
+def test_get_portfolio_treemap_zero_portfolios_returns_empty(api_client):
+    with patch("src.api.list_user_portfolios", return_value=[]):
+        r = api_client.get("/api/portfolio/treemap", headers=_AUTH)
+    assert r.status_code == 200
+    assert r.json() == {"portfolios": [], "as_of": None}
+
+
+def test_admin_portfolio_treemap_endpoint_unaffected(api_client):
+    """Phase 3 must not break the admin treemap endpoint."""
+    with patch("src.api.get_latest_snapshot_for_wallet", return_value=None):
+        r = api_client.get(
+            "/admin/portfolio/treemap", headers={"X-API-Key": _ADMIN_KEY}
+        )
+    assert r.status_code == 200
