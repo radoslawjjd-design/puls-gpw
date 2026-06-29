@@ -360,9 +360,14 @@ def get_portfolio_calendar_data(
     Crosses all trading days in the extended range (month_start − 35 days through
     month_end) against the user's current positions, left-joins closing prices, and
     groups by snapshot_date.  Returns one dict per trading day with keys:
-    snapshot_date (date), portfolio_value (float, best-effort sum), prices_found (int),
-    total_positions (int).  Returns [] when the portfolio has no positions.
-    Raises BigQueryError on query failure.
+    snapshot_date (date), portfolio_value (float, best-effort sum), daily_change_pln
+    (float, SUM(shares × zmiana_kwotowa)), prices_found (int), total_positions (int).
+    Returns [] when the portfolio has no positions.  Raises BigQueryError on failure.
+
+    Note: the 35-day lookback was originally intended as a delta baseline (plan used
+    consecutive-day portfolio_value differences for P&L).  The implementation uses
+    zmiana_kwotowa directly instead, so lookback rows before month_start are fetched
+    but ignored by compute_calendar_pnl().  The window is kept for potential future use.
     """
     client = _get_client()
     month_start = date(year, month, 1)

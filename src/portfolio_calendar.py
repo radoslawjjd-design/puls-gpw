@@ -6,6 +6,7 @@ import calendar
 from datetime import date, datetime, timezone
 
 # GPW official no-session days (holidays) — source: https://www.gpw.pl/szczegoly-sesji
+# Last updated: 2026-06-29. TODO: update for 2028+ before Dec 31 2027 (stale list → holidays show white, not gray).
 _GPW_HOLIDAYS: frozenset[date] = frozenset([
     # 2025
     date(2025, 1, 1), date(2025, 1, 6), date(2025, 4, 18), date(2025, 4, 21),
