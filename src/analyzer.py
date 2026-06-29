@@ -1,15 +1,20 @@
 """Gemini-powered analysis pipeline for ESPI/EBI announcements."""
 import json
 import logging
-
-import json5
+import time
 from dataclasses import dataclass
 
 import google.genai as genai
+import json5
+from google.genai import errors as _genai_errors
 from pydantic import field_validator
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from src.gemini_client import get_client as _get_client, GEMINI_MODEL as _GEMINI_MODEL
+
+# On 429 RESOURCE_EXHAUSTED, retry once after _RETRY_DELAY_S seconds before
+# giving up — recovers from short quota windows without blocking the pipeline.
+_RETRY_DELAY_S = 30
 
 logger = logging.getLogger(__name__)
 
@@ -156,43 +161,61 @@ class AnalysisResult:
 
 
 def _call_analysis(parsed_content: str) -> dict | None:
-    try:
-        client = _get_client()
-        response = client.models.generate_content(
-            model=_GEMINI_MODEL,
-            contents=parsed_content,
-            config=genai.types.GenerateContentConfig(
-                system_instruction=_ANALYSIS_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-            ),
-        )
-        data = json5.loads(response.text)
-        return _AnalysisResponse.model_validate(data).model_dump()
-    except ValidationError:
-        logger.warning("Gemini analysis schema invalid", exc_info=True)
-        return None
-    except Exception:
-        logger.warning("Gemini analysis call failed", exc_info=True)
-        return None
+    for attempt in range(2):
+        try:
+            client = _get_client()
+            response = client.models.generate_content(
+                model=_GEMINI_MODEL,
+                contents=parsed_content,
+                config=genai.types.GenerateContentConfig(
+                    system_instruction=_ANALYSIS_SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                ),
+            )
+            data = json5.loads(response.text)
+            return _AnalysisResponse.model_validate(data).model_dump()
+        except ValidationError:
+            logger.warning("Gemini analysis schema invalid", exc_info=True)
+            return None
+        except _genai_errors.ClientError as exc:
+            if exc.status_code == 429 and attempt == 0:
+                logger.warning("Gemini analysis 429 — backing off %ds before retry", _RETRY_DELAY_S)
+                time.sleep(_RETRY_DELAY_S)
+                continue
+            logger.warning("Gemini analysis call failed", exc_info=True)
+            return None
+        except Exception:
+            logger.warning("Gemini analysis call failed", exc_info=True)
+            return None
+    return None
 
 
 def _call_gate(parsed_content: str, structured_analysis: str) -> tuple[bool | None, str | None]:
     user_message = f"TREŚĆ KOMUNIKATU:\n{parsed_content}\n\nANALIZA:\n{structured_analysis}"
-    try:
-        client = _get_client()
-        response = client.models.generate_content(
-            model=_GEMINI_MODEL,
-            contents=user_message,
-            config=genai.types.GenerateContentConfig(
-                system_instruction=_GATE_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-            ),
-        )
-        data = json5.loads(response.text)
-        return bool(data["approved"]), data.get("reason")
-    except Exception:
-        logger.warning("Gemini gate call failed", exc_info=True)
-        return None, None
+    for attempt in range(2):
+        try:
+            client = _get_client()
+            response = client.models.generate_content(
+                model=_GEMINI_MODEL,
+                contents=user_message,
+                config=genai.types.GenerateContentConfig(
+                    system_instruction=_GATE_SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                ),
+            )
+            data = json5.loads(response.text)
+            return bool(data["approved"]), data.get("reason")
+        except _genai_errors.ClientError as exc:
+            if exc.status_code == 429 and attempt == 0:
+                logger.warning("Gemini gate 429 — backing off %ds before retry", _RETRY_DELAY_S)
+                time.sleep(_RETRY_DELAY_S)
+                continue
+            logger.warning("Gemini gate call failed", exc_info=True)
+            return None, None
+        except Exception:
+            logger.warning("Gemini gate call failed", exc_info=True)
+            return None, None
+    return None, None
 
 
 def _compute_score(
