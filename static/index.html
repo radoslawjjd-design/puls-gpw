@@ -842,6 +842,7 @@ let _acCompanies   = [];
 let _acEventTypes  = [];
 let _acInitialized = false;
 let _acLoading     = null;
+let _etfInstrumentsMap = {};  // {ticker: {name, instrument_type}} — loaded at autocomplete init
 
 // ── idle timeout ───────────────────────────────────────────────────────
 const SESSION_IDLE_MINUTES    = 10;
@@ -981,9 +982,10 @@ async function _doLoadAutocomplete() {
   }
 
   try {
-    const [tRes, cRes] = await Promise.all([
-      fetch('/autocomplete/tickers',   { headers: { 'X-API-Key': apiKey } }),
-      fetch('/autocomplete/companies', { headers: { 'X-API-Key': apiKey } }),
+    const [tRes, cRes, etfRes] = await Promise.all([
+      fetch('/autocomplete/tickers',        { headers: { 'X-API-Key': apiKey } }),
+      fetch('/autocomplete/companies',      { headers: { 'X-API-Key': apiKey } }),
+      fetch('/autocomplete/etf-instruments',{ headers: { 'X-API-Key': apiKey } }),
     ]);
     if (tRes.status === 401 || cRes.status === 401) {
       doLogout(); return;
@@ -997,6 +999,11 @@ async function _doLoadAutocomplete() {
       const vals = await cRes.json();
       _acCompanies.length = 0; vals.forEach(v => _acCompanies.push(v));
       fillDl('dl-companies', vals);
+    }
+    if (etfRes.ok) {
+      const body = await etfRes.json();
+      _etfInstrumentsMap = {};
+      (body.instruments || []).forEach(i => { _etfInstrumentsMap[i.ticker] = i; });
     }
   } catch (e) {
     console.warn('Autocomplete load failed:', e);
@@ -1706,6 +1713,10 @@ async function _resolveTickerForCompany(companyName) {
 }
 
 async function _resolveCompanyForTicker(ticker) {
+  // ETF/ETC/ETN instruments: resolve name from local map (no announcements for these)
+  if (_etfInstrumentsMap[ticker]) {
+    return _etfInstrumentsMap[ticker].name || ticker;
+  }
   try {
     const params = new URLSearchParams({ ticker, page_size: '1' });
     const r = await fetch('/announcements?' + params, { headers: { 'X-API-Key': apiKey } });

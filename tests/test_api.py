@@ -1118,3 +1118,39 @@ def test_get_portfolio_calendar_returns_500_on_bq_error(api_client):
             headers=_AUTH,
         )
     assert r.status_code == 500
+
+
+# ── Phase 6: autocomplete/etf-instruments (PUL-67) ───────────────────────────
+
+def test_autocomplete_etf_instruments_returns_200_with_instruments(api_client):
+    """GET /autocomplete/etf-instruments must return 200 with instruments list."""
+    etf_data = [
+        {"ticker": "ETFBW20TR", "name": "ETFBW20TR", "instrument_type": "ETF"},
+        {"ticker": "ETCGLDRMAU", "name": "ETCGLDRMAU", "instrument_type": "ETC"},
+    ]
+    with patch("src.api.list_etf_instruments_for_autocomplete", return_value=etf_data):
+        r = api_client.get("/autocomplete/etf-instruments", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 200
+    body = r.json()
+    assert "instruments" in body
+    assert len(body["instruments"]) == 2
+    assert body["instruments"][0]["ticker"] == "ETFBW20TR"
+
+
+def test_autocomplete_etf_instruments_no_key_returns_401(api_client):
+    r = api_client.get("/autocomplete/etf-instruments")
+    assert r.status_code == 401
+
+
+def test_portfolio_positions_accepts_etf_ticker(api_client):
+    """POST /api/portfolio/positions must accept ETF ticker when it's in list_distinct_tickers."""
+    with patch("src.api.list_distinct_tickers", return_value=["CDR", "ETFBW20TR", "PKO"]), \
+         patch("src.api.list_user_portfolios", return_value=[{"portfolio_id": "port-1"}]), \
+         patch("src.api.upsert_user_portfolio_position"):
+        r = api_client.post(
+            "/api/portfolio/positions",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": "test-user"},
+            json={"ticker": "ETFBW20TR", "company_name": "ETFBW20TR",
+                  "shares": 5.0, "avg_buy_price": 70.0, "portfolio_id": "port-1"},
+        )
+    assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text}"

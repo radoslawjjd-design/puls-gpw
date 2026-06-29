@@ -2022,6 +2022,21 @@ def create_etf_quotes_table_if_not_exists() -> None:
         logger.info("BQ table created: %s", table_id)
 
 
+def list_etf_instruments_for_autocomplete() -> list[dict]:
+    """Return all ETF/ETC/ETN instruments as list of {ticker, name, instrument_type}."""
+    client = _get_client()
+    query = f"""
+        SELECT ticker, name, instrument_type
+        FROM `{_table_ref(client, _ETF_INSTRUMENTS_TABLE_NAME)}`
+        ORDER BY ticker
+    """
+    try:
+        rows = list(client.query(query).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_etf_instruments_for_autocomplete failed: {exc}") from exc
+    return [{"ticker": row.ticker, "name": row.name, "instrument_type": row.instrument_type} for row in rows]
+
+
 def ensure_etf_instruments_schema_current() -> None:
     """Migrate the etf_instruments table — add any missing schema columns."""
     ensure_schema_current(_ETF_INSTRUMENTS_TABLE_NAME, _ETF_INSTRUMENTS_SCHEMA)

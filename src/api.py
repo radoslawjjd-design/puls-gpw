@@ -38,6 +38,7 @@ from db.bigquery import (
     list_announcements_user,
     list_distinct_companies,
     list_distinct_tickers,
+    list_etf_instruments_for_autocomplete,
     list_user_portfolio_positions,
     get_portfolio_calendar_data,
     list_user_portfolios,
@@ -298,6 +299,19 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=str(exc))
         _ac_set("companies", data)
         return data
+
+    @app.get("/autocomplete/etf-instruments")
+    async def autocomplete_etf_instruments(role: Role = Depends(_get_role)) -> dict:
+        cached = _ac_get("etf-instruments")
+        if cached is not None:
+            return {"instruments": cached}
+        try:
+            data = list_etf_instruments_for_autocomplete()
+        except BigQueryError as exc:
+            logger.error("BQ error in /autocomplete/etf-instruments: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        _ac_set("etf-instruments", data)
+        return {"instruments": data}
 
     @app.get("/watchlist")
     async def get_watchlist(

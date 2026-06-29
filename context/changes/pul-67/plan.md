@@ -618,7 +618,7 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [x] 5.1 Testy jednostkowe passują: `uv run pytest tests/ -x -q`
+- [x] 5.1 Testy jednostkowe passują: `uv run pytest tests/ -x -q` — 57f9329
 
 #### Manual
 
@@ -629,15 +629,15 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [ ] 6.1 GET /autocomplete/etf-instruments → HTTP 200, zawiera ETFBW20TR
-- [ ] 6.2 Testy unit API passują: `uv run pytest tests/ -x -q`
-- [ ] 6.3 Mocki `list_distinct_tickers` w test_api.py zawierają ETF ticker dla testów POST /api/portfolio/positions
+- [x] 6.1 GET /autocomplete/etf-instruments → HTTP 200, zawiera ETFBW20TR
+- [x] 6.2 Testy unit API passują: `uv run pytest tests/ -x -q`
+- [x] 6.3 Mocki `list_distinct_tickers` w test_api.py zawierają ETF ticker dla testów POST /api/portfolio/positions
 
 #### Manual
 
-- [ ] 6.4 Autocomplete w formularzu pokazuje ETF tickery po wpisaniu `ETFB`
-- [ ] 6.5 POST /api/portfolio/positions z ETFBW20TR → HTTP 200
-- [ ] 6.6 Brak regresji: autocomplete spółek nadal działa
+- [x] 6.4 Autocomplete w formularzu pokazuje ETF tickery po wpisaniu `ETFB`
+- [x] 6.5 POST /api/portfolio/positions z ETFBW20TR → HTTP 200
+- [x] 6.6 Brak regresji: autocomplete spółek nadal działa
 
 ### Phase 7: CI/CD
 
