@@ -1981,7 +1981,7 @@ function _ppResetToAddMode() {
   $('pp-ticker-field').innerHTML =
     `<div class="ac-wrap"><input type="text" id="pp-ticker-input" placeholder="Ticker (np. PKO)" autocomplete="off"><div id="ac-pp-ticker" class="ac-dropdown" style="display:none"></div></div>`;
   $('pp-company-field').innerHTML =
-    `<div class="ac-wrap"><input type="text" id="pp-company-input" placeholder="Nazwa spółki" autocomplete="off"><div id="ac-pp-company" class="ac-dropdown" style="display:none"></div></div>`;
+    `<div class="ac-wrap"><input type="text" id="pp-company-input" placeholder="Nazwa spółki / ETF" autocomplete="off"><div id="ac-pp-company" class="ac-dropdown" style="display:none"></div></div>`;
   _ppWireAcCrossFill();
   $('pp-shares-input').value = '';
   $('pp-price-input').value = '';
@@ -1997,8 +1997,22 @@ function _ppWireAcCrossFill() {
     const companyInput = $('pp-company-input');
     if (company && companyInput) companyInput.value = company;
   });
-  _setupAcInput('pp-company-input', 'ac-pp-company', _acCompanies, async (company) => {
+  // Include ETF/ETC/ETN names alongside company names so users can search by instrument name
+  const _ppCompanyList = [
+    ..._acCompanies,
+    ...Object.values(_etfInstrumentsMap).map(i => i.name || i.ticker),
+  ];
+  _setupAcInput('pp-company-input', 'ac-pp-company', _ppCompanyList, async (company) => {
     try {
+      // ETF/ETC/ETN: resolve ticker from local map before hitting /announcements
+      const etfEntry = Object.values(_etfInstrumentsMap).find(
+        i => (i.name || i.ticker) === company
+      );
+      if (etfEntry) {
+        const tickerInput = $('pp-ticker-input');
+        if (tickerInput) tickerInput.value = etfEntry.ticker;
+        return;
+      }
       const ticker = await _resolveTickerForCompany(company);
       const tickerInput = $('pp-ticker-input');
       if (ticker && tickerInput) tickerInput.value = ticker;
@@ -2182,7 +2196,7 @@ function _buildPortfolioPositionsViewContent(view) {
           </div>
           <div id="pp-company-field">
             <div class="ac-wrap">
-              <input type="text" id="pp-company-input" placeholder="Nazwa spółki" autocomplete="off">
+              <input type="text" id="pp-company-input" placeholder="Nazwa spółki / ETF" autocomplete="off">
               <div id="ac-pp-company" class="ac-dropdown" style="display:none"></div>
             </div>
           </div>
