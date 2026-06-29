@@ -1678,7 +1678,21 @@ def x_post_already_published(window: str, day: date | None = None) -> bool:
 
 
 def list_distinct_tickers() -> list[str]:
-    """Return sorted list of all tickers from companies and etf_instruments tables."""
+    """Return sorted list of company tickers (announcements/watchlist autocomplete)."""
+    client = _get_client()
+    query = f"""
+        SELECT ticker FROM `{_table_ref(client, _COMPANIES_TABLE_NAME)}`
+        ORDER BY ticker
+    """
+    try:
+        rows = list(client.query(query).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_distinct_tickers failed: {exc}") from exc
+    return [row.ticker for row in rows]
+
+
+def list_distinct_portfolio_tickers() -> list[str]:
+    """Return sorted list of company + ETF tickers for portfolio ticker validation."""
     client = _get_client()
     query = f"""
         SELECT ticker FROM `{_table_ref(client, _COMPANIES_TABLE_NAME)}`
@@ -1689,7 +1703,7 @@ def list_distinct_tickers() -> list[str]:
     try:
         rows = list(client.query(query).result())
     except Exception as exc:
-        raise BigQueryError(f"list_distinct_tickers failed: {exc}") from exc
+        raise BigQueryError(f"list_distinct_portfolio_tickers failed: {exc}") from exc
     return [row.ticker for row in rows]
 
 

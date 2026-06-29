@@ -1994,11 +1994,15 @@ function _ppResetToAddMode() {
 }
 
 function _ppWireAcCrossFill() {
-  _setupAcInput('pp-ticker-input', 'ac-pp-ticker', _acTickers, async (ticker) => {
-    const company = await _resolveCompanyForTicker(ticker);
-    const companyInput = $('pp-company-input');
-    if (company && companyInput) companyInput.value = company;
-  });
+  // Portfolio ticker input includes ETF tickers from _etfInstrumentsMap (lazy);
+  // _acTickers contains only company tickers (used for announcements/watchlist).
+  _setupAcInput('pp-ticker-input', 'ac-pp-ticker',
+    () => [..._acTickers, ...Object.keys(_etfInstrumentsMap)],
+    async (ticker) => {
+      const company = await _resolveCompanyForTicker(ticker);
+      const companyInput = $('pp-company-input');
+      if (company && companyInput) companyInput.value = company;
+    });
   // Include ETF/ETC/ETN names alongside company names — evaluated lazily so the
   // list stays live even when _ppWireAcCrossFill is called before _acCompanies loads.
   _setupAcInput('pp-company-input', 'ac-pp-company',

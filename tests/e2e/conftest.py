@@ -326,7 +326,8 @@ def live_server_url():
     _patches = [
         patch("src.api.list_announcements_admin", return_value=_FAKE_ADMIN_ROWS),
         patch("src.api.list_announcements_user", return_value=[]),
-        patch("src.api.list_distinct_tickers",   return_value=["CDR", "ETFBW20TR", "PKO", "XTB"]),
+        patch("src.api.list_distinct_tickers",            return_value=["CDR", "PKO", "XTB"]),
+        patch("src.api.list_distinct_portfolio_tickers",  return_value=["CDR", "ETFBW20TR", "PKO", "XTB"]),
         patch("src.api.list_etf_instruments_for_autocomplete", return_value=_FAKE_ETF_INSTRUMENTS),
         patch("src.api.list_distinct_companies",  return_value=["PKO SA", "CD Projekt SA"]),
         patch("src.api.list_x_posts_admin", side_effect=_fake_list_x_posts_admin),

@@ -205,17 +205,17 @@ def test_merge_etf_instruments_happy_path():
     client.delete_table.assert_called_once()
 
 
-# ── Phase 1.D: list_distinct_tickers UNION ───────────────────────────────────
+# ── Phase 1.D: list_distinct_portfolio_tickers UNION ─────────────────────────
 
-def test_list_distinct_tickers_includes_etf_instruments_via_union():
-    """list_distinct_tickers must UNION companies + etf_instruments so ETF tickers appear."""
-    from db.bigquery import list_distinct_tickers
+def test_list_distinct_portfolio_tickers_includes_etf_instruments_via_union():
+    """list_distinct_portfolio_tickers must UNION companies + etf_instruments for portfolio validation."""
+    from db.bigquery import list_distinct_portfolio_tickers
 
     rows = [{"ticker": "CDR"}, {"ticker": "ETFBW20TR"}, {"ticker": "PKO"}]
     mock = _mock_bq_client_with_rows(rows)
 
     with patch("db.bigquery._get_client", return_value=mock):
-        result = list_distinct_tickers()
+        result = list_distinct_portfolio_tickers()
 
     assert "ETFBW20TR" in result
     query_str = mock.query.call_args[0][0]

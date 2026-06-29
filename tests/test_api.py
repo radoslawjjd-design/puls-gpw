@@ -634,7 +634,7 @@ def test_get_portfolio_positions_bq_error_returns_500(api_client):
 def test_post_portfolio_position_valid_ticker_returns_200(api_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
-        patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]),
+        patch("src.api.list_distinct_portfolio_tickers", return_value=["PKO", "CDR"]),
         patch("src.api.upsert_user_portfolio_position", return_value=None) as mock_upsert,
     ):
         r = api_client.post(
@@ -652,7 +652,7 @@ def test_post_portfolio_position_valid_ticker_returns_200(api_client):
 def test_post_portfolio_position_unknown_ticker_returns_422(api_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
-        patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]),
+        patch("src.api.list_distinct_portfolio_tickers", return_value=["PKO", "CDR"]),
     ):
         r = api_client.post(
             "/api/portfolio/positions",
@@ -707,7 +707,7 @@ def test_post_portfolio_position_bq_error_returns_500(api_client):
     from src.exceptions import BigQueryError
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
-        patch("src.api.list_distinct_tickers", return_value=["PKO"]),
+        patch("src.api.list_distinct_portfolio_tickers", return_value=["PKO"]),
         patch("src.api.upsert_user_portfolio_position", side_effect=BigQueryError("boom")),
     ):
         r = api_client.post(
@@ -951,7 +951,7 @@ def test_post_portfolio_position_passes_portfolio_id_to_bq(api_client):
     """POST positions includes portfolio_id in body and passes it to BQ."""
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
-        patch("src.api.list_distinct_tickers", return_value=["PKO"]),
+        patch("src.api.list_distinct_portfolio_tickers", return_value=["PKO"]),
         patch("src.api.upsert_user_portfolio_position", return_value=None) as mock_upsert,
     ):
         r = api_client.post(
@@ -1143,8 +1143,8 @@ def test_autocomplete_etf_instruments_no_key_returns_401(api_client):
 
 
 def test_portfolio_positions_accepts_etf_ticker(api_client):
-    """POST /api/portfolio/positions must accept ETF ticker when it's in list_distinct_tickers."""
-    with patch("src.api.list_distinct_tickers", return_value=["CDR", "ETFBW20TR", "PKO"]), \
+    """POST /api/portfolio/positions must accept ETF ticker via list_distinct_portfolio_tickers."""
+    with patch("src.api.list_distinct_portfolio_tickers", return_value=["CDR", "ETFBW20TR", "PKO"]), \
          patch("src.api.list_user_portfolios", return_value=[{"portfolio_id": "port-1"}]), \
          patch("src.api.upsert_user_portfolio_position"):
         r = api_client.post(

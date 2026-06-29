@@ -42,7 +42,7 @@ def _add_position(page: Page, ticker: str, company: str, shares: str, price: str
 def test_user_can_add_etf_position_and_see_it_in_table(page: Page, live_server_url: str):
     """Risk: ETF ticker must be accepted by POST /api/portfolio/positions (not HTTP 422)
     and the added position must appear in the portfolio positions table.
-    Breaks if ETFBW20TR is absent from list_distinct_tickers → validation returns 422."""
+    Breaks if ETFBW20TR is absent from list_distinct_portfolio_tickers → validation returns 422."""
     _login(page, live_server_url)
     _open_portfolio(page)
     _add_position(page, "ETFBW20TR", "ETFBW20TR", "5", "600.00")
@@ -52,22 +52,24 @@ def test_user_can_add_etf_position_and_see_it_in_table(page: Page, live_server_u
 
 
 def test_etf_tickers_included_in_portfolio_ticker_autocomplete(page: Page, live_server_url: str):
-    """Risk: ETF instruments must appear in the #dl-tickers datalist so users can
-    discover them in the portfolio form — proving list_distinct_tickers UNION and
-    /autocomplete/etf-instruments are both wired correctly after page load.
-    Breaks if ETFBW20TR is absent from the list_distinct_tickers mock."""
+    """Risk: ETF instruments must appear in the portfolio ticker dropdown when user types
+    — proving /autocomplete/etf-instruments is wired to the portfolio form ticker input.
+    ETF tickers are NOT in #dl-tickers (announcements datalist); they come from
+    _etfInstrumentsMap combined lazily in _ppWireAcCrossFill.
+    Breaks if list_etf_instruments_for_autocomplete mock is absent or empty."""
     _login(page, live_server_url)
+    _open_portfolio(page)
+    _open_add_form(page)
 
-    # Wait until the async autocomplete fetch populates the datalist
-    page.wait_for_function(
-        "Array.from(document.querySelector('#dl-tickers').options)"
-        ".some(o => o.value === 'ETFBW20TR')"
-    )
+    pp = page.locator("#portfolio-positions-view")
+    ticker_input = pp.locator("#pp-ticker-input")
 
-    options = page.evaluate(
-        "Array.from(document.querySelector('#dl-tickers').options).map(o => o.value)"
-    )
-    assert "ETFBW20TR" in options
+    # Wait for autocomplete data to load (company tickers in dl-tickers signals batch complete)
+    page.wait_for_function("document.querySelector('#dl-tickers').options.length > 0")
+
+    # Type ETF prefix — the lazy combined list should surface ETFBW20TR in the dropdown
+    ticker_input.fill("ETFB")
+    expect(pp.locator("#ac-pp-ticker")).to_contain_text("ETFBW20TR")
 
 
 def test_selecting_etf_name_fills_ticker_field(page: Page, live_server_url: str):
@@ -81,11 +83,8 @@ def test_selecting_etf_name_fills_ticker_field(page: Page, live_server_url: str)
 
     pp = page.locator("#portfolio-positions-view")
 
-    # Wait for ETF instruments to load (same async batch as _acTickers)
-    page.wait_for_function(
-        "Array.from(document.querySelector('#dl-tickers').options)"
-        ".some(o => o.value === 'ETFBW20TR')"
-    )
+    # Wait for autocomplete batch to complete (company tickers load in same Promise.all as ETF map)
+    page.wait_for_function("document.querySelector('#dl-tickers').options.length > 0")
 
     # Type ETF name into the company field — triggers the ac-dropdown
     company_input = pp.locator("#pp-company-input")

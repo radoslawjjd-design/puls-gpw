@@ -38,6 +38,7 @@ from db.bigquery import (
     list_announcements_user,
     list_distinct_companies,
     list_distinct_tickers,
+    list_distinct_portfolio_tickers,
     list_etf_instruments_for_autocomplete,
     list_user_portfolio_positions,
     get_portfolio_calendar_data,
@@ -492,7 +493,7 @@ def create_app() -> FastAPI:
         if not any(w["portfolio_id"] == body.portfolio_id for w in wallets):
             raise HTTPException(status_code=404, detail="Wallet not found")
         try:
-            known_tickers = list_distinct_tickers()
+            known_tickers = list_distinct_portfolio_tickers()
             if body.ticker not in known_tickers:
                 raise HTTPException(status_code=422, detail="Unknown ticker")
             upsert_user_portfolio_position(
