@@ -447,7 +447,7 @@
   .pp-cal-cell {
     position: relative; border-radius: 8px;
     min-height: 56px; padding: 6px 8px;
-    border: 1px solid var(--border); font-size: .8rem;
+    background: #fff; border: 1px solid var(--border); font-size: .8rem;
     display: flex; align-items: center; justify-content: center;
   }
   .pp-cal-cell .pp-cal-day {
@@ -482,8 +482,8 @@
   }
   .pp-cal-swatch-gain { background: var(--positive); }
   .pp-cal-swatch-loss { background: var(--negative); }
-  .pp-cal-swatch-neutral { background: var(--fill); border: 1px solid var(--border); }
-  .pp-cal-swatch-nodata { background: #fff; border: 1px dashed #c9c3b8; }
+  .pp-cal-swatch-neutral { background: #d9d9d9; border: 1px solid #bbb; }
+  .pp-cal-swatch-white { background: #fff; border: 1px solid var(--border); }
   @media (max-width: 600px) {
     .pp-cal-cell { min-height: 44px; font-size: .72rem; }
     .pp-cal-cell .pp-cal-pnl { font-size: .72rem; }
@@ -2220,7 +2220,7 @@ function _buildPortfolioPositionsViewContent(view) {
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-gain"></span>zysk</span>
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-loss"></span>strata</span>
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-neutral"></span>bez sesji / weekend</span>
-        <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-nodata"></span>brak danych</span>
+        <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-white"></span>brak danych</span>
       </div>
     </div>
     <div id="pp-add-portfolio-overlay" style="display:none">
@@ -2519,11 +2519,10 @@ function _renderPortfolioCalendar(data) {
       const amt = Math.round(Math.abs(day.pnl_abs));
       pnlText = `${sign}${amt} PLN`;
       cls += day.pnl_abs >= 0 ? 'pp-cal-gain' : 'pp-cal-loss';
-    } else if (day.state === 'no_data') {
-      cls += 'pp-cal-nodata';
-    } else {
+    } else if (day.state === 'weekend' || day.state === 'no_session') {
       cls += 'pp-cal-neutral';
     }
+    // no_data, future, data with pnl_abs=null → white (base .pp-cal-cell style)
     cell.className = cls;
     cell.innerHTML = `<span class="pp-cal-day">${day.day}</span>${pnlText ? `<span class="pp-cal-pnl">${pnlText}</span>` : ''}`;
     grid.appendChild(cell);
@@ -2576,7 +2575,14 @@ function _renderPortfolioTreemap(data) {
   if (asOfEl) {
     if (data.as_of) {
       const [y, m, d] = data.as_of.split('-');
-      asOfEl.textContent = `(stan na dzień: ${d}-${m}-${y})`;
+      let timePrefix = '';
+      if (data.stats_fetched_at) {
+        const ts = new Date(data.stats_fetched_at);
+        const hh = String(ts.getHours()).padStart(2, '0');
+        const min = String(ts.getMinutes()).padStart(2, '0');
+        timePrefix = `${hh}:${min} `;
+      }
+      asOfEl.textContent = `(stan na dzień: ${timePrefix}${d}-${m}-${y})`;
     } else {
       asOfEl.textContent = '';
     }

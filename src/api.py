@@ -607,7 +607,15 @@ def create_app() -> FastAPI:
                 "positions": positions,
             })
         as_of = max(price_as_of_values) if price_as_of_values else None
-        return {"portfolios": portfolios, "as_of": as_of}
+        stats_fetched_at: str | None = None
+        if as_of:
+            try:
+                from datetime import date as _date
+                as_of_date = _date.fromisoformat(as_of)
+                stats_fetched_at = get_latest_company_stats_fetched_at(as_of_date)
+            except Exception:
+                pass
+        return {"portfolios": portfolios, "as_of": as_of, "stats_fetched_at": stats_fetched_at}
 
     @app.get("/api/portfolio/calendar")
     async def get_portfolio_calendar(
