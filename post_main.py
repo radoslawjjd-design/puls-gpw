@@ -5,6 +5,7 @@ import os
 import re
 import sys
 from datetime import datetime, time, timedelta, timezone
+from time import sleep as _sleep
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -35,6 +36,10 @@ from src.x_publisher import get_x_publisher
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 _MAX_ATTEMPTS = 3
+# Seconds to wait between generation attempts when Gemini returns a transient error (429).
+# Three back-to-back calls hit the same rate-limit bucket; spacing them out lets the
+# per-minute quota window reset.
+_RETRY_BACKOFF_S = 20
 
 # Pipeline quality gate (PUL-27): announcements below this analysis_score never enter
 # a post. Filtered at fetch time, so it gates generation + email + publish together.
@@ -268,10 +273,19 @@ def main() -> None:
 
         post = None
         previous_issues: list[str] | None = None
+        gemini_failures = 0
+        supervisor_failures = 0
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             post = generate_post(announcements, window=window, previous_issues=previous_issues)
             if post is None:
+                gemini_failures += 1
                 logger.warning("post_main: generate_post returned None on attempt %d", attempt)
+                if attempt < _MAX_ATTEMPTS:
+                    logger.info(
+                        "post_main: sleeping %ds before retry (Gemini rate-limit back-off)",
+                        _RETRY_BACKOFF_S,
+                    )
+                    _sleep(_RETRY_BACKOFF_S)
                 continue
             result = validate_post(post, tickers, expected_tweets=expected_tweets)
             if result.warnings:
@@ -294,11 +308,25 @@ def main() -> None:
                 )
                 return
             logger.warning("post_main: attempt %d rejected: %s", attempt, result.issues)
+            supervisor_failures += 1
             previous_issues = result.issues
 
         save_x_post(ann_ids, None, window, _MAX_ATTEMPTS)
-        logger.warning("post_main: all %d supervisor attempts failed for window %s", _MAX_ATTEMPTS, window)
-        send_no_post_email(window_name, date_str, "Supervisor odrzucił wszystkie 3 próby.")
+        logger.warning("post_main: all %d attempts failed for window %s", _MAX_ATTEMPTS, window)
+        if gemini_failures == _MAX_ATTEMPTS:
+            failure_reason = (
+                f"Gemini API niedostępny — wszystkie {_MAX_ATTEMPTS} próby zwróciły błąd "
+                "429 RESOURCE_EXHAUSTED. Spróbuj ponownie za kilka minut."
+            )
+        elif gemini_failures > 0:
+            failure_reason = (
+                f"Gemini API niedostępny w {gemini_failures}/{_MAX_ATTEMPTS} próbach "
+                f"(429 RESOURCE_EXHAUSTED); supervisor odrzucił {supervisor_failures} "
+                f"{'próbę' if supervisor_failures == 1 else 'próby'}."
+            )
+        else:
+            failure_reason = f"Supervisor odrzucił wszystkie {_MAX_ATTEMPTS} próby."
+        send_no_post_email(window_name, date_str, failure_reason)
 
     except Exception as exc:
         logger.exception("post_main: pipeline failed")
