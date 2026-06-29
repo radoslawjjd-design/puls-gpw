@@ -53,15 +53,23 @@ def test_weekends_are_classified_as_weekend():
     assert days["2026-06-07"]["state"] == "weekend"
 
 
-def test_weekday_absent_from_rows_is_no_session():
-    """Mon–Fri absent from BQ rows → state='no_session' (GPW holiday or scraper gap)."""
+def test_weekday_absent_from_rows_is_no_data():
+    """Mon–Fri absent from BQ rows and not a GPW holiday → state='no_data' (white in UI)."""
     rows = [
         # June 2 is Tuesday — skip it (no row)
         _make_row(date(2026, 6, 3), 10000.0),  # Wednesday
     ]
     result = compute_calendar_pnl(rows, 2026, 6)
     days = {d["date"]: d for d in result["days"]}
-    assert days["2026-06-02"]["state"] == "no_session"
+    assert days["2026-06-02"]["state"] == "no_data"
+
+
+def test_gpw_holiday_gets_holiday_state():
+    """Official GPW holidays (from _GPW_HOLIDAYS) → state='holiday' (gray in UI)."""
+    result = compute_calendar_pnl([], 2026, 6)
+    days = {d["date"]: d for d in result["days"]}
+    # June 4, 2026 = Boże Ciało (Corpus Christi) — official GPW holiday
+    assert days["2026-06-04"]["state"] == "holiday"
 
 
 def test_trading_day_with_prices_has_state_data():
@@ -77,20 +85,20 @@ def test_trading_day_with_prices_has_state_data():
 
 def test_future_days_get_future_state():
     """Days after today → state='future'."""
-    # Use a past month to avoid flakiness — July 2030 is entirely future relative to 2026-06-29
     result = compute_calendar_pnl([], 2030, 7)
     non_weekend = [d for d in result["days"] if d["weekday"] < 5]
+    # non-holidays in future month should be future (July 2030 has no _GPW_HOLIDAYS entries)
     assert all(d["state"] == "future" for d in non_weekend)
 
 
-def test_empty_rows_all_non_weekends_are_no_session_or_future():
-    """With empty rows, weekdays are no_session or future; weekends stay weekend."""
+def test_empty_rows_weekdays_are_no_data_holiday_or_future():
+    """With empty rows, weekdays are no_data / holiday / future; weekends stay weekend."""
     result = compute_calendar_pnl([], 2026, 6)
     for d in result["days"]:
         if d["weekday"] >= 5:
             assert d["state"] == "weekend"
         else:
-            assert d["state"] in ("no_session", "future")
+            assert d["state"] in ("no_data", "holiday", "future")
 
 
 # ── P&L delta computation ────────────────────────────────────────────────────

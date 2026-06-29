@@ -5,6 +5,22 @@ No I/O — takes raw BQ rows and builds a full monthly grid with state and P&L.
 import calendar
 from datetime import date, datetime, timezone
 
+# GPW official no-session days (holidays) — source: https://www.gpw.pl/szczegoly-sesji
+_GPW_HOLIDAYS: frozenset[date] = frozenset([
+    # 2025
+    date(2025, 1, 1), date(2025, 1, 6), date(2025, 4, 18), date(2025, 4, 21),
+    date(2025, 5, 1), date(2025, 6, 19), date(2025, 8, 15), date(2025, 11, 11),
+    date(2025, 12, 24), date(2025, 12, 25), date(2025, 12, 26), date(2025, 12, 31),
+    # 2026
+    date(2026, 1, 1), date(2026, 1, 6), date(2026, 4, 3), date(2026, 4, 6),
+    date(2026, 5, 1), date(2026, 6, 4), date(2026, 11, 11),
+    date(2026, 12, 24), date(2026, 12, 25), date(2026, 12, 31),
+    # 2027
+    date(2027, 1, 1), date(2027, 1, 6), date(2027, 3, 26), date(2027, 3, 29),
+    date(2027, 5, 3), date(2027, 5, 27), date(2027, 11, 1), date(2027, 11, 11),
+    date(2027, 12, 24), date(2027, 12, 31),
+])
+
 
 def compute_calendar_pnl(
     rows: list[dict],
@@ -17,14 +33,15 @@ def compute_calendar_pnl(
     daily_change_pln (float), prices_found (int), total_positions (int).
 
     State values per day:
-      'weekend'    — Saturday or Sunday
-      'no_session' — Mon–Fri weekday absent from rows (GPW holiday or scraper gap)
+      'weekend'    — Saturday or Sunday (always gray in UI)
+      'holiday'    — official GPW no-session day from _GPW_HOLIDAYS (gray in UI)
+      'no_data'    — weekday with no BQ row (portfolio missing data / no history) — white
       'data'       — trading day with prices_found > 0; pnl_abs = sum(shares * zmiana_kwotowa)
-      'no_data'    — trading day in rows but prices_found == 0; pnl_abs is None
-      'future'     — date is strictly after today (UTC)
+      'partial'    — trading day in rows but prices_found == 0; pnl_abs is None — white
+      'future'     — date is strictly after today (UTC) — white
 
-    pnl_abs uses daily_change_pln (sum of shares × zmiana_kwotowa per position) — the same
-    daily change metric shown in the Tabela view.  No lookback baseline needed.
+    Gray in UI: weekend + holiday only.
+    White in UI: everything else without a green/red value.
     """
     today = datetime.now(tz=timezone.utc).date()
     _, last_day = calendar.monthrange(year, month)
@@ -47,6 +64,15 @@ def compute_calendar_pnl(
             })
             continue
 
+        if d in _GPW_HOLIDAYS:
+            days.append({
+                "date": iso, "day": day_num, "weekday": wd,
+                "state": "holiday",
+                "portfolio_value": None, "pnl_abs": None,
+                "prices_found": 0, "total_positions": 0,
+            })
+            continue
+
         if d > today:
             days.append({
                 "date": iso, "day": day_num, "weekday": wd,
@@ -59,7 +85,7 @@ def compute_calendar_pnl(
         if d not in rows_by_date:
             days.append({
                 "date": iso, "day": day_num, "weekday": wd,
-                "state": "no_session",
+                "state": "no_data",
                 "portfolio_value": None, "pnl_abs": None,
                 "prices_found": 0, "total_positions": 0,
             })
@@ -73,7 +99,7 @@ def compute_calendar_pnl(
             state = "data"
             pnl: float | None = row.get("daily_change_pln")
         else:
-            state = "no_data"
+            state = "partial"
             pnl = None
 
         days.append({

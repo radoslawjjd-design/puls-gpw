@@ -2219,7 +2219,7 @@ function _buildPortfolioPositionsViewContent(view) {
       <div id="pp-cal-legend">
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-gain"></span>zysk</span>
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-loss"></span>strata</span>
-        <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-neutral"></span>bez sesji / weekend</span>
+        <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-neutral"></span>weekend / święto GPW</span>
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-white"></span>brak danych</span>
       </div>
     </div>
@@ -2519,10 +2519,10 @@ function _renderPortfolioCalendar(data) {
       const amt = Math.round(Math.abs(day.pnl_abs));
       pnlText = `${sign}${amt} PLN`;
       cls += day.pnl_abs >= 0 ? 'pp-cal-gain' : 'pp-cal-loss';
-    } else if (day.state === 'weekend' || day.state === 'no_session') {
+    } else if (day.state === 'weekend' || day.state === 'holiday') {
       cls += 'pp-cal-neutral';
     }
-    // no_data, future, data with pnl_abs=null → white (base .pp-cal-cell style)
+    // no_data, partial, future → white (base .pp-cal-cell style, background:#fff)
     cell.className = cls;
     cell.innerHTML = `<span class="pp-cal-day">${day.day}</span>${pnlText ? `<span class="pp-cal-pnl">${pnlText}</span>` : ''}`;
     grid.appendChild(cell);
