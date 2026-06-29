@@ -665,13 +665,13 @@ snapshot_date BETWEEN @lookback_start AND @end_date is partition-pruned by BQ au
 
 #### Automated
 
-- [x] 4.1 `uv run pytest tests/test_api.py` passes (no regressions)
+- [x] 4.1 `uv run pytest tests/test_api.py` passes (no regressions) — 24ddd39
 
 #### Manual
 
-- [ ] 4.2 Clicking Kalendarz tab shows monthly grid
-- [ ] 4.3 Prev/next navigation loads correct months
-- [ ] 4.4 Green/red/grey cells render correctly
-- [ ] 4.5 Wallet switch triggers calendar refetch
-- [ ] 4.6 Tabela/Treemapa tabs still work (no regressions)
-- [ ] 4.7 Mobile layout renders without overflow
+- [x] 4.2 Clicking Kalendarz tab shows monthly grid — 361185e
+- [x] 4.3 Prev/next navigation loads correct months — 361185e
+- [x] 4.4 Green/red/grey cells render correctly — 4bbfcc5
+- [x] 4.5 Wallet switch triggers calendar refetch — 24ddd39
+- [x] 4.6 Tabela/Treemapa tabs still work (no regressions) — 24ddd39
+- [x] 4.7 Mobile layout renders without overflow — 361185e
