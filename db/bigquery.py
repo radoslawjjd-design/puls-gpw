@@ -376,6 +376,7 @@ def get_portfolio_calendar_data(
     end_date = date(year, month, last_day)
 
     cds_ref = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    etf_ref = _table_ref(client, _ETF_QUOTES_TABLE_NAME)
     pos_ref = _table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)
 
     query = f"""
@@ -395,12 +396,14 @@ def get_portfolio_calendar_data(
               td.snapshot_date,
               p.ticker,
               p.shares,
-              cds.kurs_zamkniecia AS close_price,
-              cds.zmiana_kwotowa  AS daily_chg
+              COALESCE(cds.kurs_zamkniecia, etq.kurs_zamkniecia) AS close_price,
+              COALESCE(cds.zmiana_kwotowa,  etq.zmiana_kwotowa)  AS daily_chg
             FROM trading_days td
             CROSS JOIN positions p
             LEFT JOIN `{cds_ref}` cds
               ON cds.ticker = p.ticker AND cds.snapshot_date = td.snapshot_date
+            LEFT JOIN `{etf_ref}` etq
+              ON etq.ticker = p.ticker AND etq.snapshot_date = td.snapshot_date
           ),
           daily_portfolio AS (
             SELECT

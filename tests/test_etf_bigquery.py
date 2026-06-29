@@ -90,6 +90,26 @@ def _mock_bq_client_with_rows(rows: list[dict]) -> MagicMock:
     return client
 
 
+# ── Phase 5: get_portfolio_calendar_data COALESCE ────────────────────────────
+
+def test_get_portfolio_calendar_data_query_includes_etf_quotes_coalesce():
+    """get_portfolio_calendar_data must JOIN etf_quotes and COALESCE prices for ETF tickers."""
+    from db.bigquery import get_portfolio_calendar_data
+
+    mock = MagicMock()
+    mock.project = "test-project"
+    job = MagicMock()
+    job.result.return_value = []
+    mock.query.return_value = job
+
+    with patch("db.bigquery._get_client", return_value=mock):
+        get_portfolio_calendar_data("port-1", "user-1", 2026, 6)
+
+    query_str = mock.query.call_args[0][0]
+    assert "etf_quotes" in query_str, "Calendar query must JOIN etf_quotes"
+    assert "COALESCE" in query_str, "Calendar query must COALESCE company_daily_stats and etf_quotes"
+
+
 # ── Phase 1.A: create_etf_quotes_table_if_not_exists ─────────────────────────
 
 def test_create_etf_quotes_table_creates_with_partitioning_and_clustering():

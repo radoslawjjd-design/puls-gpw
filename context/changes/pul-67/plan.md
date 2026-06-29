@@ -605,8 +605,8 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [x] 4.1 Testy jednostkowe passują: `uv run pytest tests/ -x -q`
-- [x] 4.2 Import `list_user_portfolio_positions` bez błędów
+- [x] 4.1 Testy jednostkowe passują: `uv run pytest tests/ -x -q` — bb60bde
+- [x] 4.2 Import `list_user_portfolio_positions` bez błędów — bb60bde
 
 #### Manual
 
@@ -618,12 +618,12 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [ ] 5.1 Testy jednostkowe passują: `uv run pytest tests/ -x -q`
+- [x] 5.1 Testy jednostkowe passują: `uv run pytest tests/ -x -q`
 
 #### Manual
 
-- [ ] 5.2 GET /api/portfolio/calendar → dni z ETF mają pnl_abs non-null
-- [ ] 5.3 Brak regresji: kalendarz dla portfela tylko ze spółkami działa identycznie
+- [x] 5.2 GET /api/portfolio/calendar → dni z ETF mają pnl_abs non-null
+- [x] 5.3 Brak regresji: kalendarz dla portfela tylko ze spółkami działa identycznie
 
 ### Phase 6: Autocomplete + Ticker Validation
 
