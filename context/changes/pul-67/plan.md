@@ -594,25 +594,25 @@ Obie nowe tabele BQ są tworzone przez `ensure_schema_current()` przy pierwszym 
 
 #### Automated
 
-- [x] 3.1 Linting: `uv run ruff check etf_quotes_main.py`
+- [x] 3.1 Linting: `uv run ruff check etf_quotes_main.py` — 18ba153
 
 #### Manual
 
-- [x] 3.2 Lokalne `uv run python etf_quotes_main.py` kończy się bez błędów
-- [x] 3.3 BQ `etf_instruments` i `etf_quotes` mają dane po uruchomieniu
+- [x] 3.2 Lokalne `uv run python etf_quotes_main.py` kończy się bez błędów — 18ba153
+- [x] 3.3 BQ `etf_instruments` i `etf_quotes` mają dane po uruchomieniu — 18ba153
 
 ### Phase 4: Portfolio + Treemap — price resolution
 
 #### Automated
 
-- [ ] 4.1 Testy jednostkowe passują: `uv run pytest tests/ -x -q`
-- [ ] 4.2 Import `list_user_portfolio_positions` bez błędów
+- [x] 4.1 Testy jednostkowe passują: `uv run pytest tests/ -x -q`
+- [x] 4.2 Import `list_user_portfolio_positions` bez błędów
 
 #### Manual
 
-- [ ] 4.3 GET /api/portfolio/positions z ETF pozycją → `current_price` non-null
-- [ ] 4.4 GET /api/portfolio/treemap → ETF widoczny z wyceną
-- [ ] 4.5 Brak regresji: pozycje spółek mają poprawne ceny
+- [x] 4.3 GET /api/portfolio/positions z ETF pozycją → `current_price` non-null
+- [x] 4.4 GET /api/portfolio/treemap → ETF widoczny z wyceną
+- [x] 4.5 Brak regresji: pozycje spółek mają poprawne ceny
 
 ### Phase 5: Kalendarz P&L — price resolution
 

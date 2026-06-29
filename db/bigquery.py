@@ -607,6 +607,15 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
             CAST(snapshot_date AS STRING) AS price_as_of,
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
+        ),
+        latest_etf AS (
+          SELECT
+            ticker,
+            kurs_zamkniecia,
+            zmiana_procentowa,
+            CAST(snapshot_date AS STRING) AS price_as_of,
+            ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
+          FROM `{_table_ref(client, _ETF_QUOTES_TABLE_NAME)}`
         )
         SELECT
           p.portfolio_id,
@@ -614,12 +623,14 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
           p.company_name,
           p.shares,
           p.avg_buy_price,
-          ls.kurs_zamkniecia   AS current_price,
-          ls.zmiana_procentowa AS daily_change_pct,
-          ls.price_as_of
+          COALESCE(ls.kurs_zamkniecia,   etf.kurs_zamkniecia)   AS current_price,
+          COALESCE(ls.zmiana_procentowa, etf.zmiana_procentowa) AS daily_change_pct,
+          COALESCE(ls.price_as_of,       etf.price_as_of)       AS price_as_of
         FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` p
         LEFT JOIN latest_stats ls
           ON p.ticker = ls.ticker AND ls.rn = 1
+        LEFT JOIN latest_etf etf
+          ON p.ticker = etf.ticker AND etf.rn = 1
         WHERE p.user_id = @user_id {portfolio_filter}
         ORDER BY p.ticker
     """

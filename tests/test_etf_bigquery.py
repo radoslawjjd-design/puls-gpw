@@ -3,6 +3,62 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# ── Phase 4: list_user_portfolio_positions COALESCE ──────────────────────────
+
+def test_list_user_portfolio_positions_query_includes_etf_quotes_coalesce():
+    """list_user_portfolio_positions must COALESCE company_daily_stats and etf_quotes for current_price."""
+    from db.bigquery import list_user_portfolio_positions
+
+    mock = MagicMock()
+    mock.project = "test-project"
+    job = MagicMock()
+    job.result.return_value = []
+    mock.query.return_value = job
+
+    with patch("db.bigquery._get_client", return_value=mock):
+        list_user_portfolio_positions("user-1")
+
+    query_str = mock.query.call_args[0][0]
+    assert "etf_quotes" in query_str, "Query must JOIN etf_quotes table"
+    assert "COALESCE" in query_str, "Query must COALESCE company_daily_stats and etf_quotes prices"
+
+
+class _FakeBQRow(dict):
+    """Minimal BQ Row fake: dict() works, attribute access works."""
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(key)
+
+
+def test_list_user_portfolio_positions_etf_price_falls_back_from_etf_quotes():
+    """When BQ returns current_price from etf_quotes (company_daily_stats has no row), result includes it."""
+    from db.bigquery import list_user_portfolio_positions
+
+    row = _FakeBQRow(
+        portfolio_id="port-1",
+        ticker="ETFBW20TR",
+        company_name="ETFBW20TR",
+        shares=10.0,
+        avg_buy_price=70.0,
+        current_price=72.81,   # came from etf_quotes via COALESCE
+        daily_change_pct=-0.25,
+        price_as_of="2026-06-29",
+    )
+    mock = MagicMock()
+    mock.project = "test-project"
+    job = MagicMock()
+    job.result.return_value = [row]
+    mock.query.return_value = job
+
+    with patch("db.bigquery._get_client", return_value=mock):
+        result = list_user_portfolio_positions("user-1")
+
+    assert len(result) == 1
+    assert result[0]["ticker"] == "ETFBW20TR"
+    assert result[0]["current_price"] == pytest.approx(72.81)
+
 
 def _mock_bq_client_for_merge() -> MagicMock:
     client = MagicMock()
