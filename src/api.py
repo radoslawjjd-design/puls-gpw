@@ -208,6 +208,14 @@ def create_app() -> FastAPI:
 
     app = FastAPI()
 
+    @app.middleware("http")
+    async def _add_process_time_header(request: Request, call_next):
+        start = time.time()
+        response = await call_next(request)
+        elapsed_ms = (time.time() - start) * 1000
+        response.headers["X-Process-Time"] = f"{elapsed_ms:.1f}ms"
+        return response
+
     @app.on_event("startup")
     async def _init_dimension_tables():
         create_watchlist_table_if_not_exists()
