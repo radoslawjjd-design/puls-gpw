@@ -433,8 +433,8 @@ Faza 5 wymaga ręcznego uruchomienia `scripts/migrate_announcements_partition.py
 
 #### Automated
 
-- [x] 5.1 pytest tests/ przechodzą
-- [x] 5.2 python scripts/migrate_announcements_partition.py --dry-run bez błędów
+- [x] 5.1 pytest tests/ przechodzą — cb1c41b
+- [x] 5.2 python scripts/migrate_announcements_partition.py --dry-run bez błędów — cb1c41b
 
 #### Manual
 
@@ -446,9 +446,9 @@ Faza 5 wymaga ręcznego uruchomienia `scripts/migrate_announcements_partition.py
 
 #### Automated
 
-- [ ] 6.1 playwright test — E2E testy watchlist przechodzą
+- [x] 6.1 playwright test — E2E testy watchlist przechodzą
 
 #### Manual
 
-- [ ] 6.2 3× navigacja do Obserwowane — tylko 1. wejście robi network call w DevTools
-- [ ] 6.3 Add ticker: oba fetche startują jednocześnie (Promise.all)
+- [x] 6.2 3× navigacja do Obserwowane — tylko 1. wejście robi network call w DevTools
+- [x] 6.3 Add ticker: oba fetche startują jednocześnie (Promise.all)

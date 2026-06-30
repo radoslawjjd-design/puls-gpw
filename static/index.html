@@ -1391,8 +1391,10 @@ function _showMyWalletViewDom() {
 
 function showMyWalletView(push = true) {
   _showMyWalletViewDom();
-  fetchWatchlistTickers();
-  fetchMyWalletAnnouncements(push);
+  if (!_watchlistFetched) {
+    fetchWatchlistTickers();
+    fetchMyWalletAnnouncements(push);
+  }
 }
 
 
@@ -1663,6 +1665,7 @@ async function fetchMyWalletAnnouncements(push = true) {
 
 // ── My Wallet: ticker list (add/remove) ───────────────────────────────────
 let _watchlistTickers = [];
+let _watchlistFetched = false;
 
 async function fetchWatchlistTickers() {
   try {
@@ -1674,6 +1677,7 @@ async function fetchWatchlistTickers() {
     const data = await r.json();
     _watchlistTickers = data.tickers || [];
     renderWatchlistTickers();
+    _watchlistFetched = true;
   } catch (e) {
     $('wl-tickers-list').innerHTML = `<div class="empty">Błąd ładowania obserwowanych</div>`;
   }
@@ -1765,8 +1769,8 @@ async function addWatchlistTicker() {
     tickerInput.value = '';
     companyInput.value = '';
     wlPage = 1;
-    await fetchWatchlistTickers();
-    await fetchMyWalletAnnouncements();
+    _watchlistFetched = false;
+    await Promise.all([fetchWatchlistTickers(), fetchMyWalletAnnouncements()]);
     showToast(`Dodano ${ticker} do obserwowanych`);
   } catch (e) {
     $('wl-error').textContent = 'Błąd dodawania tickera.';
@@ -1785,8 +1789,8 @@ async function removeWatchlistTicker(ticker) {
     if (r.status === 401) { doLogout(); return; }
     if (r.status !== 204 && !r.ok) throw new Error('HTTP ' + r.status);
     wlPage = 1;
-    await fetchWatchlistTickers();
-    await fetchMyWalletAnnouncements();
+    _watchlistFetched = false;
+    await Promise.all([fetchWatchlistTickers(), fetchMyWalletAnnouncements()]);
   } catch (e) {
     $('wl-error').textContent = 'Błąd usuwania tickera.';
     $('wl-error').style.display = 'block';
