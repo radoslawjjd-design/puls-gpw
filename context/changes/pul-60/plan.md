@@ -386,12 +386,12 @@ Faza 5 wymaga ręcznego uruchomienia `scripts/migrate_announcements_partition.py
 
 #### Automated
 
-- [x] 1.1 pytest tests/ — wszystkie testy przechodzą
-- [x] 1.2 X-Process-Time header obecny w odpowiedzi (curl -I)
+- [x] 1.1 pytest tests/ — wszystkie testy przechodzą — f779a15
+- [x] 1.2 X-Process-Time header obecny w odpowiedzi (curl -I) — f779a15
 
 #### Manual
 
-- [x] 1.3 Zmierzyć i zapisać TTFB baseline dla wszystkich 5 widoków w DevTools prod
+- [x] 1.3 Zmierzyć i zapisać TTFB baseline dla wszystkich 5 widoków w DevTools prod — f779a15
 
 ### Phase 2: BQ Query Fixes
 
