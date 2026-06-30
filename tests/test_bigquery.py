@@ -537,10 +537,19 @@ def test_save_analysis_result_stamps_analyzed_at():
 # ---------------------------------------------------------------------------
 
 
-def test_build_filter_clauses_no_filters_returns_empty():
+def test_build_filter_clauses_no_filters_applies_90day_default():
     where, params = _build_filter_clauses()
-    assert where == ""
+    assert "TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)" in where
     assert params == []
+
+
+def test_build_filter_clauses_explicit_from_dt_overrides_default():
+    from datetime import datetime, timezone
+    from_dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    where, params = _build_filter_clauses(from_dt=from_dt)
+    assert "published_at >= @from_dt" in where
+    assert "TIMESTAMP_SUB" not in where
+    assert any(p.name == "from_dt" for p in params)
 
 
 def test_build_filter_clauses_ticker_adds_param():

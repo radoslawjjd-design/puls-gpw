@@ -43,6 +43,7 @@ from src.post_selection import select_top_companies  # noqa: E402
 
 _DATASET = os.environ.get("BIGQUERY_DATASET", "espi_ebi")
 _TABLE_NAME = "announcements"
+_ANNOUNCEMENTS_DEFAULT_DAYS = 90
 
 _SCHEMA = [
     bigquery.SchemaField("announcement_id", "STRING", mode="REQUIRED"),
@@ -126,6 +127,8 @@ def create_table_if_not_exists() -> None:
         logger.info("BQ table already exists: %s", table_id)
     except NotFound:
         table = bigquery.Table(table_id, schema=_SCHEMA)
+        table.time_partitioning = bigquery.TimePartitioning(field="published_at", type_="DAY")
+        table.clustering_fields = ["ticker"]
         client.create_table(table)
         logger.info("BQ table created: %s", table_id)
 
@@ -1263,6 +1266,10 @@ def _build_filter_clauses(
     if from_dt:
         clauses.append("published_at >= @from_dt")
         params.append(bigquery.ScalarQueryParameter("from_dt", "TIMESTAMP", from_dt))
+    else:
+        clauses.append(
+            f"published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {_ANNOUNCEMENTS_DEFAULT_DAYS} DAY)"
+        )
     if to_dt:
         clauses.append("published_at <= @to_dt")
         params.append(bigquery.ScalarQueryParameter("to_dt", "TIMESTAMP", to_dt))

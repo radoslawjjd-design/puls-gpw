@@ -422,19 +422,19 @@ Faza 5 wymaga ręcznego uruchomienia `scripts/migrate_announcements_partition.py
 
 #### Automated
 
-- [x] 4.1 pytest tests/ przechodzą
+- [x] 4.1 pytest tests/ przechodzą — bdac58e
 
 #### Manual
 
-- [x] 4.2 X-Process-Time admin treemap spada o ~50% vs. baseline
-- [x] 4.3 Admin treemap renderuje poprawne dane (main + ikze)
+- [x] 4.2 X-Process-Time admin treemap spada o ~50% vs. baseline — bdac58e
+- [x] 4.3 Admin treemap renderuje poprawne dane (main + ikze) — bdac58e
 
 ### Phase 5: Announcements Table Partitioning
 
 #### Automated
 
-- [ ] 5.1 pytest tests/ przechodzą
-- [ ] 5.2 python scripts/migrate_announcements_partition.py --dry-run bez błędów
+- [x] 5.1 pytest tests/ przechodzą
+- [x] 5.2 python scripts/migrate_announcements_partition.py --dry-run bez błędów
 
 #### Manual
 
