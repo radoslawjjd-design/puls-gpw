@@ -61,7 +61,7 @@ Każdy endoint dostaje dwa poziomy obrony: (1) tańszy BQ query (date filter / p
 | 5. Announcements Partitioning | Partition pruning + cluster by ticker; TTFB ogłoszeń < 500 ms | Migracja BQ = human-only; typ published_at do weryfikacji |
 | 6. Frontend Watchlist | Brak re-fetch na każdej wizycie + równoległe fetche po mutacji | _watchlistFetched reset przy mutacji nie przy nawigacji |
 
-**Prerequisites:** Fazy 1–4 mogą być wdrożone w dowolnej kolejności (niezależne). Faza 5 wymaga ręcznej migracji BQ (human). Faza 6 niezależna od pozostałych.  
+**Prerequisites:** Faza 1 musi być wdrożona pierwsza (bez `X-Process-Time` headera weryfikacja kolejnych faz jest niemożliwa). Fazy 2–6 są niezależne od siebie; Faza 5 wymaga ręcznej migracji BQ (human).  
 **Estimated effort:** ~2–3 sesje, 6 faz
 
 ## Open Risks & Assumptions

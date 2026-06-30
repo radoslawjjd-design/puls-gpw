@@ -133,6 +133,7 @@ Dwie ortogonalne zmiany SQL eliminujące najdroższe scany: (1) filtr daty w `li
 #### Automated Verification:
 
 - `pytest tests/` — wszystkie testy przechodzą
+- `X-Process-Time` dla `GET /api/portfolio/positions` < 1500 ms (po cache-miss, warm instance)
 - SQL string `list_user_portfolio_positions()` zawiera `DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)` (assert na query string)
 
 #### Manual Verification:
@@ -223,7 +224,7 @@ Refaktor `GET /admin/portfolio/treemap` (`src/api.py:405`): 5 sekwencyjnych BQ r
 - Runda 1 (parallel): `asyncio.gather` na `get_latest_snapshot_for_wallet("main")` i `get_latest_snapshot_for_wallet("ikze")` — wrappowane w `asyncio.to_thread()`
 - Runda 2 (parallel): `asyncio.gather` na `get_latest_snapshot_before("main", main_date)`, `get_latest_snapshot_before("ikze", ikze_date)` i `get_latest_company_stats_fetched_at(main_date)` — wszystkie trzy przez `asyncio.to_thread()`
 
-**Contract**: `import asyncio` na górze pliku jeśli brak. Wyniki Rundy 1 rozpakowywane przed Rundą 2 (`main_snap, ikze_snap = await asyncio.gather(...)`). Daty snapshots pobierane z wyników Rundy 1 jako argumenty do Rundy 2.
+**Contract**: **`import asyncio` BRAKUJE w `src/api.py` (potwierdzone grep) — dodać na górze pliku jako pierwszy krok tej fazy.** Wyniki Rundy 1 rozpakowywane przed Rundą 2 (`main_snap, ikze_snap = await asyncio.gather(...)`). Daty snapshots pobierane z wyników Rundy 1 jako argumenty do Rundy 2.
 
 ### Success Criteria:
 
@@ -256,7 +257,13 @@ Migracja tabeli `announcements` w BQ: dodanie `PARTITION BY DATE(published_at)` 
 1. `CREATE TABLE IF NOT EXISTS {dataset}.announcements_backup AS SELECT * FROM {dataset}.announcements`
 2. `CREATE OR REPLACE TABLE {dataset}.announcements PARTITION BY [DATE(published_at) | published_at] CLUSTER BY ticker AS SELECT * FROM {dataset}.announcements_backup`
 
-Skrypt weryfikuje typ kolumny `published_at` przed generowaniem SQL (sprawdzić `_SCHEMA` lub BQ `client.get_table().schema`).
+Skrypt weryfikuje typ kolumny `published_at` przed generowaniem SQL — autodetekcja:
+```python
+ref = client.dataset(dataset_id).table("announcements")
+schema = client.get_table(ref).schema
+field = next(f for f in schema if f.name == "published_at")
+partition_clause = "DATE(published_at)" if field.field_type == "TIMESTAMP" else "published_at"
+```
 
 #### 2. Schema update w db/bigquery.py
 
@@ -303,7 +310,7 @@ Dwie drobne poprawki w `static/index.html`: guard zapobiegający re-fetch przy k
 
 **Intent**: Dodać moduł-level `let _watchlistFetched = false` (analogia do `_portfoliosFetched`, linia ~1860). W `showMyWalletView()` (linia ~1394): wywołać `fetchWatchlistTickers()` i `fetchMyWalletAnnouncements()` tylko gdy `!_watchlistFetched`, ustawić `_watchlistFetched = true` po starcie fetchy. Zresetować do `false` na końcu `addWatchlistTicker()` i `removeWatchlistTicker()` — następna wizyta re-fetches po mutacji.
 
-**Contract**: Guard reset (do `false`) następuje PO zakończeniu mutacji (po await POST/DELETE), przed odświeżeniem danych. Nie resetować przy nawigacji — tylko przy mutacjach.
+**Contract**: `fetchWatchlistTickers()` ustawia `_watchlistFetched = true` WEWNĄTRZ funkcji po udanym fetchu (analogia `_portfoliosFetched:2110`). `addWatchlistTicker()` i `removeWatchlistTicker()` resetują do `false` PRZED wywołaniem funkcji fetch — fetch function ustawia z powrotem na `true`. Nie resetować przy nawigacji — tylko przy mutacjach.
 
 #### 2. Promise.all w add/remove watchlist
 
@@ -391,12 +398,14 @@ Faza 5 wymaga ręcznego uruchomienia `scripts/migrate_announcements_partition.py
 #### Automated
 
 - [ ] 2.1 pytest tests/ przechodzą
-- [ ] 2.2 SQL string list_user_portfolio_positions zawiera DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+- [ ] 2.2 X-Process-Time dla GET /api/portfolio/positions < 1500 ms (warm, cache-miss)
+- [ ] 2.6 SQL string list_user_portfolio_positions zawiera DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
 
 #### Manual
 
 - [ ] 2.3 TTFB Mój portfel, Treemapa, Kalendarz — porównać z baseline z Fazy 1
 - [ ] 2.4 Pozycje wyświetlają poprawne ceny po weekendzie (7-dniowy bufor działa)
+- [ ] 2.5 Dane kalendarza dla bieżącego miesiąca identyczne przed i po
 
 ### Phase 3: TTL Cache
 
