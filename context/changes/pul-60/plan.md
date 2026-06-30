@@ -397,15 +397,15 @@ Faza 5 wymaga ręcznego uruchomienia `scripts/migrate_announcements_partition.py
 
 #### Automated
 
-- [ ] 2.1 pytest tests/ przechodzą
-- [ ] 2.2 X-Process-Time dla GET /api/portfolio/positions < 1500 ms (warm, cache-miss)
-- [ ] 2.6 SQL string list_user_portfolio_positions zawiera DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+- [x] 2.1 pytest tests/ przechodzą
+- [x] 2.2 X-Process-Time dla GET /api/portfolio/positions < 1500 ms (warm, cache-miss)
+- [x] 2.6 SQL string list_user_portfolio_positions zawiera DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
 
 #### Manual
 
-- [ ] 2.3 TTFB Mój portfel, Treemapa, Kalendarz — porównać z baseline z Fazy 1
-- [ ] 2.4 Pozycje wyświetlają poprawne ceny po weekendzie (7-dniowy bufor działa)
-- [ ] 2.5 Dane kalendarza dla bieżącego miesiąca identyczne przed i po
+- [x] 2.3 TTFB Mój portfel, Treemapa, Kalendarz — porównać z baseline z Fazy 1
+- [x] 2.4 Pozycje wyświetlają poprawne ceny po weekendzie (7-dniowy bufor działa)
+- [x] 2.5 Dane kalendarza dla bieżącego miesiąca identyczne przed i po
 
 ### Phase 3: TTL Cache
 

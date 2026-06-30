@@ -1175,7 +1175,7 @@ def test_get_portfolio_calendar_data_returns_correct_shape():
 
 
 def test_get_portfolio_calendar_data_uses_correct_date_params():
-    """lookback_start must be month_start − 35 days; end_date must be last day of month."""
+    """lookback_start must be month_start (first day of month); end_date must be last day of month."""
     from db.bigquery import get_portfolio_calendar_data
     from google.cloud import bigquery as bq_module
 
@@ -1187,7 +1187,7 @@ def test_get_portfolio_calendar_data_uses_correct_date_params():
 
     assert params_by_name["portfolio_id"].value == "port-abc"
     assert params_by_name["user_id"].value == "user-xyz"
-    assert params_by_name["lookback_start"].value == date(2026, 6, 1) - __import__("datetime").timedelta(days=35)
+    assert params_by_name["lookback_start"].value == date(2026, 6, 1)
     assert params_by_name["end_date"].value == date(2026, 6, 30)
     assert params_by_name["lookback_start"].type_ == "DATE"
     assert params_by_name["end_date"].type_ == "DATE"

@@ -379,7 +379,7 @@ def get_portfolio_calendar_data(
     client = _get_client()
     _t = time.time()
     month_start = date(year, month, 1)
-    lookback_start = month_start - timedelta(days=35)
+    lookback_start = month_start
     _, last_day = calendar.monthrange(year, month)
     end_date = date(year, month, last_day)
 
@@ -620,6 +620,7 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
             CAST(snapshot_date AS STRING) AS price_as_of,
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
+          WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
         ),
         latest_etf AS (
           SELECT
@@ -629,6 +630,7 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
             CAST(snapshot_date AS STRING) AS price_as_of,
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _ETF_QUOTES_TABLE_NAME)}`
+          WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
         )
         SELECT
           p.portfolio_id,
