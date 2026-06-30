@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import pathlib
@@ -432,25 +433,32 @@ def create_app() -> FastAPI:
         if cached is not None:
             return cached
         try:
-            result: dict[str, list[dict] | str | None] = {}
-            snapshot_dates: list[date] = []
-            for wallet in _TREEMAP_WALLETS:
-                latest = get_latest_snapshot_for_wallet(wallet)
-                if latest is None:
-                    result[wallet] = []
-                    continue
-                snapshot_dates.append(latest["snapshot_date"])
-                prior = get_latest_snapshot_before(wallet, latest["snapshot_date"])
-                positions = compute_treemap_positions(
-                    latest["positions_json"],
-                    prior["positions_json"] if prior else None,
-                    latest["total_value"],
+            # Round 1 (parallel): fetch latest snapshot for each wallet
+            main_snap, ikze_snap = await asyncio.gather(
+                asyncio.to_thread(get_latest_snapshot_for_wallet, "main"),
+                asyncio.to_thread(get_latest_snapshot_for_wallet, "ikze"),
+            )
+            snaps = {"main": main_snap, "ikze": ikze_snap}
+            active = {w: s for w, s in snaps.items() if s is not None}
+            result: dict[str, list[dict] | str | None] = {w: [] for w in _TREEMAP_WALLETS}
+            if active:
+                latest_date = max(s["snapshot_date"] for s in active.values())
+                active_list = list(active.items())
+                # Round 2 (parallel): fetch prior snapshots + stats_fetched_at
+                gathered = await asyncio.gather(
+                    *[asyncio.to_thread(get_latest_snapshot_before, w, s["snapshot_date"]) for w, s in active_list],
+                    asyncio.to_thread(get_latest_company_stats_fetched_at, latest_date),
                 )
-                result[wallet] = [TreemapPosition(**p).model_dump() for p in positions]
-            if snapshot_dates:
-                latest_date = max(snapshot_dates)
+                priors, stats_fetched_at = gathered[:-1], gathered[-1]
+                for (wallet, latest), prior in zip(active_list, priors):
+                    positions = compute_treemap_positions(
+                        latest["positions_json"],
+                        prior["positions_json"] if prior else None,
+                        latest["total_value"],
+                    )
+                    result[wallet] = [TreemapPosition(**p).model_dump() for p in positions]
                 result["as_of"] = latest_date.isoformat() if hasattr(latest_date, "isoformat") else str(latest_date)
-                result["stats_fetched_at"] = get_latest_company_stats_fetched_at(latest_date)
+                result["stats_fetched_at"] = stats_fetched_at
             else:
                 result["as_of"] = None
                 result["stats_fetched_at"] = None
