@@ -1483,8 +1483,10 @@ function _applyUrlState() {
     currentView = 'my-wallet';
     _showMyWalletViewDom();
     _applyMyWalletParams(params);
-    fetchWatchlistTickers();
-    fetchMyWalletAnnouncements(false);
+    if (!_watchlistFetched) {
+      fetchWatchlistTickers();
+      fetchMyWalletAnnouncements(false);
+    }
   } else {
     currentView = 'announcements';
     _applyAnnouncementsParams(params);

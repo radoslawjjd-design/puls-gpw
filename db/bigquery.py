@@ -1296,7 +1296,7 @@ def list_announcements_admin(
         ticker=ticker,
         company=company,
         event_type=event_type,
-        from_dt=from_dt,
+        from_dt=from_dt if from_dt is not None else datetime.min,
         to_dt=to_dt,
     )
     # LEFT JOIN x_posts so posts written after PUL-29 (post_text lives in x_posts, not

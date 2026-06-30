@@ -86,6 +86,8 @@ def main() -> None:
         logger.info("Step %d/%d:\n%s", i, len(statements), sql)
         job = client.query(sql)
         job.result()
+        if job.errors:
+            raise RuntimeError(f"Migration step {i} failed: {job.errors}")
         logger.info("Step %d done", i)
 
     logger.info("Migration complete. Verify in BQ Console: partition=published_at, cluster=ticker")
