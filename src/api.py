@@ -3,7 +3,7 @@ import os
 import pathlib
 import time
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,22 @@ def _ac_get(key: str) -> list | None:
 
 def _ac_set(key: str, data: list) -> None:
     _AC_CACHE[key] = (data, time.time())
+
+
+_PERF_CACHE: dict[str, tuple[Any, float]] = {}
+
+
+def _perf_get(key: str, ttl: int) -> Any | None:
+    if key in _PERF_CACHE:
+        data, ts = _PERF_CACHE[key]
+        if time.time() - ts < ttl:
+            return data
+    return None
+
+
+def _perf_set(key: str, data: Any) -> None:
+    _PERF_CACHE[key] = (data, time.time())
+
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 _CLIENT_ID_HEADER = APIKeyHeader(name="X-Client-Id", auto_error=False)
@@ -412,6 +428,9 @@ def create_app() -> FastAPI:
 
     @app.get("/admin/portfolio/treemap")
     async def admin_portfolio_treemap(role: Role = Depends(_require_admin)):
+        cached = _perf_get("admin:treemap", ttl=60)
+        if cached is not None:
+            return cached
         try:
             result: dict[str, list[dict] | str | None] = {}
             snapshot_dates: list[date] = []
@@ -435,6 +454,7 @@ def create_app() -> FastAPI:
             else:
                 result["as_of"] = None
                 result["stats_fetched_at"] = None
+            _perf_set("admin:treemap", result)
             return result
         except BigQueryError as exc:
             logger.error("BQ error in /admin/portfolio/treemap: %s", exc)
@@ -459,6 +479,10 @@ def create_app() -> FastAPI:
         role: Role = Depends(_get_role),
         client_id: str = Depends(_get_client_id),
     ):
+        cache_key = f"positions:{client_id}:{portfolio_id}"
+        cached = _perf_get(cache_key, ttl=30)
+        if cached is not None:
+            return cached
         try:
             wallets = list_user_portfolios(client_id)
         except BigQueryError as exc:
@@ -483,6 +507,7 @@ def create_app() -> FastAPI:
                 else None
             )
             result.append(PortfolioPositionOut(**row, pnl_pln=pnl_pln, pnl_pct=pnl_pct).model_dump())
+        _perf_set(cache_key, result)
         return result
 
     @app.post("/api/portfolio/positions")
@@ -598,6 +623,10 @@ def create_app() -> FastAPI:
         role: Role = Depends(_get_role),
         client_id: str = Depends(_get_client_id),
     ):
+        cache_key = f"treemap:{client_id}"
+        cached = _perf_get(cache_key, ttl=60)
+        if cached is not None:
+            return cached
         try:
             wallets = list_user_portfolios(client_id)
         except BigQueryError as exc:
@@ -638,7 +667,9 @@ def create_app() -> FastAPI:
                 stats_fetched_at = get_latest_company_stats_fetched_at(as_of_date)
             except Exception:
                 pass
-        return {"portfolios": portfolios, "as_of": as_of, "stats_fetched_at": stats_fetched_at}
+        response_data = {"portfolios": portfolios, "as_of": as_of, "stats_fetched_at": stats_fetched_at}
+        _perf_set(cache_key, response_data)
+        return response_data
 
     @app.get("/api/portfolio/calendar")
     async def get_portfolio_calendar(
@@ -653,6 +684,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=422, detail="month must be 1–12")
         if not (current_year - 5 <= year <= current_year + 1):
             raise HTTPException(status_code=422, detail=f"year must be in [{current_year - 5}, {current_year + 1}]")
+        cache_key = f"calendar:{client_id}:{portfolio_id}:{year}:{month}"
+        cached = _perf_get(cache_key, ttl=300)
+        if cached is not None:
+            return cached
         try:
             wallets = list_user_portfolios(client_id)
         except BigQueryError as exc:
@@ -666,7 +701,9 @@ def create_app() -> FastAPI:
             logger.error("BQ error in GET /api/portfolio/calendar: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
         cal = compute_calendar_pnl(rows, year, month)
-        return PortfolioCalendarResponse(**cal).model_dump()
+        result = PortfolioCalendarResponse(**cal).model_dump()
+        _perf_set(cache_key, result)
+        return result
 
     app.mount("/static", StaticFiles(directory="static"), name="static")
 

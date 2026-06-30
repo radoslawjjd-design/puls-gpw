@@ -411,12 +411,12 @@ Faza 5 wymaga ręcznego uruchomienia `scripts/migrate_announcements_partition.py
 
 #### Automated
 
-- [ ] 3.1 pytest tests/ przechodzą
+- [x] 3.1 pytest tests/ przechodzą
 
 #### Manual
 
-- [ ] 3.2 2. wywołanie Treemap w ciągu 60 s — X-Process-Time < 50 ms
-- [ ] 3.3 Po 70 s: 3. wywołanie znów > 300 ms (TTL wygasł)
+- [x] 3.2 2. wywołanie Treemap w ciągu 60 s — X-Process-Time < 50 ms
+- [x] 3.3 Po 70 s: 3. wywołanie znów > 300 ms (TTL wygasł)
 
 ### Phase 4: Admin Treemap Parallelization
 
