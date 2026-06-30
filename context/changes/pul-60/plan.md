@@ -446,9 +446,9 @@ Faza 5 wymaga ręcznego uruchomienia `scripts/migrate_announcements_partition.py
 
 #### Automated
 
-- [x] 6.1 playwright test — E2E testy watchlist przechodzą
+- [x] 6.1 playwright test — E2E testy watchlist przechodzą — 01b8cd1
 
 #### Manual
 
-- [x] 6.2 3× navigacja do Obserwowane — tylko 1. wejście robi network call w DevTools
-- [x] 6.3 Add ticker: oba fetche startują jednocześnie (Promise.all)
+- [x] 6.2 3× navigacja do Obserwowane — tylko 1. wejście robi network call w DevTools — 01b8cd1
+- [x] 6.3 Add ticker: oba fetche startują jednocześnie (Promise.all) — 01b8cd1

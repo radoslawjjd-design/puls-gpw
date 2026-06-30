@@ -1,7 +1,7 @@
 ---
 change_id: pul-60
 title: Performance — sub-second perceived load for announcements, watchlist, portfolio, treemap and calendar
-status: plan_reviewed
+status: implemented
 created: 2026-06-30
 updated: 2026-06-30
 archived_at: null
