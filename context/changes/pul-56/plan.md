@@ -374,7 +374,7 @@ None. Existing workflow and action are unchanged. Adding `ai-security-review/ver
 
 #### Manual
 
-- [ ] 2.4 Action referenceable via `uses: ./.github/actions/ai-security-reviewer`
+- [x] 2.4 Action referenceable via `uses: ./.github/actions/ai-security-reviewer`
 
 ### Phase 3: Workflow
 
@@ -387,20 +387,20 @@ None. Existing workflow and action are unchanged. Adding `ai-security-review/ver
 
 #### Manual
 
-- [ ] 3.5 Workflow appears in GitHub Actions tab after branch push
-- [ ] 3.6 `workflow_dispatch` can be triggered from the branch
+- [x] 3.5 Workflow appears in GitHub Actions tab after branch push
+- [x] 3.6 `workflow_dispatch` can be triggered from the branch
 
 ### Phase 4: Smoke Test
 
 #### Automated
 
-- [ ] 4.1 `workflow_dispatch` run completes green (no technical failure)
-- [ ] 4.2 `ai-security-review/verdict` commit status posted on the run
+- [x] 4.1 `workflow_dispatch` run completes green (no technical failure)
+- [x] 4.2 `ai-security-review/verdict` commit status posted on the run
 
 #### Manual
 
-- [ ] 4.3 Security review comment separate from code-review comment (distinct markers)
-- [ ] 4.4 `ai-sec:passed` or `ai-sec:failed` label applied (no `ai-cr:*` labels)
-- [ ] 4.5 `ai-code-review/verdict` status unaffected
-- [ ] 4.6 `ai-sec:override` label bypasses gate correctly
-- [ ] 4.7 `ai-sec:review` label re-runs and updates comment in-place (no duplicate)
+- [x] 4.3 Security review comment separate from code-review comment (distinct markers)
+- [x] 4.4 `ai-sec:passed` or `ai-sec:failed` label applied (no `ai-cr:*` labels)
+- [x] 4.5 `ai-code-review/verdict` status unaffected
+- [x] 4.6 `ai-sec:override` label bypasses gate correctly
+- [x] 4.7 `ai-sec:review` label re-runs and updates comment in-place (no duplicate)
