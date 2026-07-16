@@ -109,7 +109,7 @@ def compute_calendar_pnl(
             pnl = None
 
         if state == "data":
-            cumulative_pnl += pnl or 0.0
+            cumulative_pnl += pnl if pnl is not None else 0.0
             mtd_diff: float | None = cumulative_pnl
         else:
             mtd_diff = None

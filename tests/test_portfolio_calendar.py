@@ -159,7 +159,7 @@ def test_partial_prices_still_produce_data_state():
 def test_day_object_has_all_required_fields():
     """Each day dict has: date, day, weekday, state, portfolio_value, pnl_abs, prices_found, total_positions."""
     result = compute_calendar_pnl([], 2026, 6)
-    required = {"date", "day", "weekday", "state", "portfolio_value", "pnl_abs", "prices_found", "total_positions"}
+    required = {"date", "day", "weekday", "state", "portfolio_value", "pnl_abs", "prices_found", "total_positions", "mtd_diff"}
     for d in result["days"]:
         assert required.issubset(d.keys()), f"Missing keys in {d}"
 

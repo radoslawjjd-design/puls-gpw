@@ -75,6 +75,8 @@ baseline_value = (
 ```
 Każdy dict w `days` zyskuje klucz `"mtd_diff"` (`float | None`). Sygnatura funkcji i zwracany `{"year", "month", "days"}` nie zmieniają się.
 
+> **⚠️ Impl note (drift)**: Podczas implementacji wykryto, że `portfolio_value - baseline_value` uwzględnia depozyty (zakup pozycji), co fałszuje MTD. Zaimplementowano zamiast tego kumulatywną sumę `daily_change_pln` (`cumulative_pnl += pnl if pnl is not None else 0.0`). Baseline/lookback całkowicie usunięty.
+
 #### 2. `src/api.py`
 
 **File**: `src/api.py`
