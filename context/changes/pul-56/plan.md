@@ -368,9 +368,9 @@ None. Existing workflow and action are unchanged. Adding `ai-security-review/ver
 
 #### Automated
 
-- [x] 2.1 `action.yml` YAML parses without error
-- [x] 2.2 No `ai-code-reviewer` string in `action.yml` (grep returns 0)
-- [x] 2.3 No `__AI_CR_RESULT__` string in `action.yml` (grep returns 0)
+- [x] 2.1 `action.yml` YAML parses without error — 9d857ee
+- [x] 2.2 No `ai-code-reviewer` string in `action.yml` (grep returns 0) — 9d857ee
+- [x] 2.3 No `__AI_CR_RESULT__` string in `action.yml` (grep returns 0) — 9d857ee
 
 #### Manual
 
@@ -380,10 +380,10 @@ None. Existing workflow and action are unchanged. Adding `ai-security-review/ver
 
 #### Automated
 
-- [ ] 3.1 `ai-security-review.yml` YAML parses without error
-- [ ] 3.2 No `ai-cr:` label references in workflow file (grep returns 0)
-- [ ] 3.3 No `ai-code-review` string in workflow file (grep returns 0)
-- [ ] 3.4 Exactly one `ai-security-review/verdict` occurrence in workflow file
+- [x] 3.1 `ai-security-review.yml` YAML parses without error
+- [x] 3.2 No `ai-cr:` label references in workflow file (grep returns 0)
+- [x] 3.3 No `ai-code-review` string in workflow file (grep returns 0)
+- [x] 3.4 Exactly one `ai-security-review/verdict` occurrence in workflow file
 
 #### Manual
 

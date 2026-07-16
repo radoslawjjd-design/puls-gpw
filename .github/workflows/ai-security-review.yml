@@ -1,0 +1,293 @@
+# .github/workflows/ai-security-review.yml
+#
+# Dedicated AI security-review gate (PUL-56), independent of the AI code-review
+# gate (PUL-33). On every PR to `master` (and on demand via the `ai-sec:review`
+# label or `workflow_dispatch`), a single-shot Gemini-via-Vertex scorer (the
+# tools/ai-security-reviewer/ package, wrapped as
+# .github/actions/ai-security-reviewer) scores the diff against 5 security
+# criteria. The workflow then:
+#   - posts/updates ONE marker-tagged PR comment (summary + score table),
+#   - applies exactly one of `ai-sec:passed` / `ai-sec:failed`,
+#   - POSTs an informational `ai-security-review/verdict` commit status.
+#
+# Soft-launch: non-blocking (informational only). Adding
+# `ai-security-review/verdict` to branch protection required checks is a
+# human-only step after stabilization.
+#
+# Gate rule: green when verdict == pass AND min criterion score >= 4; red when
+# verdict == fail OR any criterion < 4. A technical failure is fail-closed.
+# The `ai-sec:override` label forces the gate green in either case.
+#
+# Labels used (created idempotently):
+#   ai-sec:passed   ai-sec:failed   ai-sec:review   ai-sec:override
+#
+# Auth: reuses the existing `puls_gpw_secret` SA via google-github-actions/auth.
+
+name: AI Security Review
+
+on:
+  pull_request:
+    branches: [master]
+    # `labeled` lets `ai-sec:review` re-run on demand and `ai-sec:override`
+    # re-evaluate the gate. The guard step below skips the agent on the
+    # workflow's own `ai-sec:passed`/`ai-sec:failed` label adds (no recursion).
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+# Minimal at top; elevated in-job only.
+permissions: {}
+
+# One in-flight run per PR; rapid pushes cancel the stale run.
+concurrency:
+  group: ai-security-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: AI security review
+    # Run for manual dispatch, or for same-repo PRs only. Fork PRs can't read
+    # repo secrets and shouldn't receive commits/comments-back.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+    env:
+      GOOGLE_CLOUD_PROJECT: puls-gpw
+      GOOGLE_CLOUD_REGION: europe-central2
+    steps:
+      # ── Guard ──────────────────────────────────────────────────────────
+      # Decide whether to run the (cost-bearing) agent. True for dispatch and
+      # for real PR activity; false for label-only events that are NOT a
+      # review/override request — in particular the workflow's own
+      # passed/failed label adds, which would otherwise recurse.
+      - name: Decide whether to review
+        id: guard
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          LABEL_NAME: ${{ github.event.label.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          should_review=false
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            should_review=true
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
+            case "$EVENT_ACTION" in
+              opened|synchronize|reopened)
+                should_review=true ;;
+              labeled)
+                # Only re-run on an explicit request / override re-evaluation.
+                if [ "$LABEL_NAME" = "ai-sec:review" ] || [ "$LABEL_NAME" = "ai-sec:override" ]; then
+                  should_review=true
+                fi ;;
+            esac
+          fi
+          echo "should_review=$should_review" >> "$GITHUB_OUTPUT"
+          echo "Decision: should_review=$should_review (event=$EVENT_NAME action=${EVENT_ACTION:-} label=${LABEL_NAME:-})"
+
+      - name: Checkout
+        if: steps.guard.outputs.should_review == 'true'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Full history so `git diff origin/<base>...HEAD` has the merge-base.
+          fetch-depth: 0
+          # PR head for a real diff; default branch on dispatch.
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+
+      # ADC for @ai-sdk/google-vertex. Exports GOOGLE_APPLICATION_CREDENTIALS
+      # to $GITHUB_ENV, which the composite action's CLI reads from process.env.
+      - name: Authenticate to Google Cloud
+        if: steps.guard.outputs.should_review == 'true'
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          credentials_json: ${{ secrets.puls_gpw_secret }}
+
+      # ── Diff ───────────────────────────────────────────────────────────
+      # Write the diff to a FILE and exclude generated artifacts.
+      # On dispatch there is no PR, so smoke-test against the most recent
+      # commit's diff instead.
+      - name: Compute diff
+        if: steps.guard.outputs.should_review == 'true'
+        id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXCLUDES=( ':(exclude)uv.lock' ':(exclude)*.lock' ':(exclude)tach_module_graph.dot' )
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff "origin/${BASE_REF}...HEAD" -- . "${EXCLUDES[@]}" > diff.txt
+          else
+            # workflow_dispatch smoke test — no PR context. Review the most
+            # recent commit so the agent exercises the full path and returns a
+            # well-formed SecurityResult without touching any PR API.
+            git diff "HEAD~1...HEAD" -- . "${EXCLUDES[@]}" > diff.txt || git show HEAD > diff.txt
+          fi
+          echo "Diff bytes: $(wc -c < diff.txt)"
+          echo "path=diff.txt" >> "$GITHUB_OUTPUT"
+
+      # ── Agent ──────────────────────────────────────────────────────────
+      # The composite action builds the package and runs the scorer. Exposes
+      # `result` (full JSON), `verdict`, `min-score`. Exits non-zero only on a
+      # technical failure → step outcome `failure` → gate fails closed.
+      - name: Run AI security review
+        if: steps.guard.outputs.should_review == 'true'
+        id: review
+        uses: ./.github/actions/ai-security-reviewer
+        with:
+          pr-title: ${{ github.event.pull_request.title || 'Dispatch smoke test' }}
+          pr-body: ${{ github.event.pull_request.body || 'Manual workflow_dispatch run — no PR context.' }}
+          diff-path: ${{ steps.diff.outputs.path }}
+
+      # ── Side-effects (PR only) ─────────────────────────────────────────
+      # `gh pr edit --add-label` errors on a missing label and does NOT
+      # auto-create, so create all four idempotently first.
+      - name: Ensure labels exist
+        if: steps.guard.outputs.should_review == 'true' && github.event_name == 'pull_request' && steps.review.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh label create "ai-sec:passed"   --color 2ea44f --description "AI security review passed"          --force
+          gh label create "ai-sec:failed"   --color d73a4a --description "AI security review failed"          --force
+          gh label create "ai-sec:review"   --color 0366d6 --description "Re-run the AI security review"      --force
+          gh label create "ai-sec:override" --color fbca04 --description "Bypass the AI security-review gate" --force
+
+      # Post or update ONE marker-tagged comment (never duplicate).
+      - name: Post or update PR comment
+        if: steps.guard.outputs.should_review == 'true' && github.event_name == 'pull_request' && steps.review.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RESULT: ${{ steps.review.outputs.result }}
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          MIN_SCORE: ${{ steps.review.outputs.min-score }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARKER="<!-- ai-security-review -->"
+
+          SUMMARY=$(jq -r '.summary' <<<"$RESULT")
+          SCORE_ROWS=$(jq -r '.scores | to_entries[] | "| \(.key) | \(.value) |"' <<<"$RESULT")
+
+          if [ "$VERDICT" = "pass" ] && [ "${MIN_SCORE:-0}" -ge 4 ]; then
+            BADGE="✅ **PASS**"
+          else
+            BADGE="❌ **FAIL**"
+          fi
+
+          {
+            echo "$MARKER"
+            echo "## 🤖 AI Security Review — $BADGE"
+            echo ""
+            echo "$SUMMARY"
+            echo ""
+            echo "| Criterion | Score (1–10) |"
+            echo "| --- | --- |"
+            echo "$SCORE_ROWS"
+            echo ""
+            echo "Verdict: \`$VERDICT\` · min score: \`${MIN_SCORE}\` · gate context: \`ai-security-review/verdict\`"
+            echo ""
+            echo "_[Run log]($RUN_URL) · re-run with the \`ai-sec:review\` label · bypass with \`ai-sec:override\`._"
+          } > comment.md
+
+          COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" -F body=@comment.md > /dev/null
+            echo "Updated comment $COMMENT_ID"
+          else
+            gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -F body=@comment.md > /dev/null
+            echo "Created new comment"
+          fi
+
+      - name: Apply verdict label
+        if: steps.guard.outputs.should_review == 'true' && github.event_name == 'pull_request' && steps.review.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          MIN_SCORE: ${{ steps.review.outputs.min-score }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$VERDICT" = "pass" ] && [ "${MIN_SCORE:-0}" -ge 4 ]; then
+            ADD="ai-sec:passed"; REMOVE="ai-sec:failed"
+          else
+            ADD="ai-sec:failed"; REMOVE="ai-sec:passed"
+          fi
+          # --remove-label is tolerant when the label isn't present.
+          gh pr edit "$PR_NUMBER" --add-label "$ADD" --remove-label "$REMOVE" || \
+            gh pr edit "$PR_NUMBER" --add-label "$ADD"
+          echo "Applied $ADD (removed $REMOVE)"
+
+      # ── Merge gate (commit status) ─────────────────────────────────────
+      # `if: always()` so it re-evaluates even when the agent step failed
+      # (fail-closed) — but only when this run was meant to review and only on a
+      # PR (dispatch has no commit to attach a status to).
+      - name: Merge gate
+        if: always() && steps.guard.outputs.should_review == 'true' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REVIEW_OUTCOME: ${{ steps.review.outcome }}
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          MIN_SCORE: ${{ steps.review.outputs.min-score }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS_CONTEXT="ai-security-review/verdict"
+
+          post_status() {
+            local state="$1" description="$2"
+            gh api --method POST "repos/${REPO}/statuses/${HEAD_SHA}" \
+              -f state="$state" \
+              -f context="$STATUS_CONTEXT" \
+              -f description="$description" \
+              -f target_url="$RUN_URL" > /dev/null
+          }
+
+          HAS_OVERRIDE=$(gh pr view "$PR_NUMBER" --json labels \
+            --jq '.labels[] | select(.name == "ai-sec:override") | .name' || true)
+
+          # Fail-closed: agent step failed, or produced no verdict.
+          if [ "$REVIEW_OUTCOME" != "success" ] || [ -z "${VERDICT:-}" ]; then
+            if [ -n "$HAS_OVERRIDE" ]; then
+              echo "::notice::Agent failed technically but 'ai-sec:override' is present — bypassing gate."
+              post_status success "Technical failure bypassed by 'ai-sec:override'"
+              exit 0
+            fi
+            post_status failure "AI security review failed technically — re-run via the ai-sec:review label"
+            echo "::error title=AI security review failed technically::The review agent did not produce a verdict. Re-run by adding the 'ai-sec:review' label, or bypass with 'ai-sec:override'."
+            exit 1
+          fi
+
+          echo "Verdict: $VERDICT · min-score: ${MIN_SCORE} · override: ${HAS_OVERRIDE:-none}"
+
+          if [ "$VERDICT" = "pass" ] && [ "${MIN_SCORE:-0}" -ge 4 ]; then
+            post_status success "Verdict: pass (min score ${MIN_SCORE})"
+            exit 0
+          fi
+
+          if [ -n "$HAS_OVERRIDE" ]; then
+            echo "::notice::Gate would fail (verdict=$VERDICT, min-score=$MIN_SCORE) but 'ai-sec:override' is present — bypassing."
+            post_status success "Failing verdict bypassed by 'ai-sec:override'"
+            exit 0
+          fi
+
+          post_status failure "Verdict: $VERDICT (min score ${MIN_SCORE}) — add 'ai-sec:override' to bypass"
+          echo "::error title=AI security review failed::Verdict=$VERDICT, min criterion score=${MIN_SCORE}. Review the PR comment, then push a fix or add the 'ai-sec:override' label to bypass."
+          exit 1
