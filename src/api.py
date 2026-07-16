@@ -182,6 +182,7 @@ class PortfolioCalendarDay(BaseModel):
     pnl_abs: float | None = None
     prices_found: int = 0
     total_positions: int = 0
+    mtd_diff: float | None = None
 
 
 class PortfolioCalendarResponse(BaseModel):
