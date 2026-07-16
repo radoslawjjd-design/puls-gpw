@@ -1,7 +1,7 @@
 ---
 change_id: pul-56
 title: AI security review pipeline — dedicated CI gate
-status: implemented
+status: impl_reviewed
 created: 2026-07-16
 updated: 2026-07-16
 archived_at: null

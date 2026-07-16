@@ -383,7 +383,7 @@ None. Existing workflow and action are unchanged. Adding `ai-security-review/ver
 - [x] 3.1 `ai-security-review.yml` YAML parses without error — 879c892
 - [x] 3.2 No `ai-cr:` label references in workflow file (grep returns 0) — 879c892
 - [x] 3.3 No `ai-code-review` string in workflow file (grep returns 0) — 879c892
-- [x] 3.4 Exactly one `ai-security-review/verdict` occurrence in workflow file — 879c892
+- [x] 3.4 Exactly one `STATUS_CONTEXT=` assignment in workflow file (`grep -c 'STATUS_CONTEXT='` returns 1) — 879c892
 
 #### Manual
 
