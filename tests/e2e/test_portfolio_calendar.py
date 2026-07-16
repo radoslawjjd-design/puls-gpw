@@ -1,7 +1,8 @@
-"""E2E tests — monthly P&L calendar view in Mój portfel (PUL-59).
+"""E2E tests — monthly P&L calendar view in Mój portfel (PUL-59, PUL-68).
 
 Risk: calendar tab renders gain/loss/neutral cells correctly, month navigation
-updates the label and grid, and the URL reflects the active tab.
+updates the label and grid, the URL reflects the active tab, and the MTD summary
+element shows the correct cumulative P&L value below the grid.
 
 Seed: tests/e2e/test_user_portfolio_treemap.py
 """
@@ -114,3 +115,45 @@ def test_calendar_url_contains_tab_calendar_after_switch(page: Page, live_server
     _open_calendar_tab(page)
 
     expect(page).to_have_url(re.compile(r"tab=calendar"))
+
+
+# ── PUL-68: MTD summary element ───────────────────────────────────────────────
+
+def test_mtd_summary_shows_correct_value_and_gain_class(page: Page, live_server_url: str):
+    """Risk (PUL-68): MTD summary element must appear below the calendar grid with the
+    cumulative daily_change_pln for the month and the correct colour class.
+
+    Fake data: day1=+300, day2=-150, day3=0 → cumulative = +150 → 'MTD: +150 PLN', mtd-gain.
+    Proves: JS render picks last data day, formats sign correctly, sets display:block.
+    """
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    _open_calendar_tab(page)
+
+    mtd = page.locator("#pp-cal-mtd-summary")
+    expect(mtd).to_be_visible()
+    expect(mtd).to_have_text("MTD: +150 PLN")
+    expect(mtd).to_have_class("mtd-gain")
+
+
+def test_mtd_summary_hidden_when_portfolio_has_no_data(page: Page, live_server_url: str):
+    """Risk (PUL-68): when the calendar has no data rows (empty portfolio), the MTD
+    summary element must not be visible — proving the hide branch runs correctly.
+
+    Uses a portfolio_id that the mock returns [] for (any non-matching uuid).
+    """
+    _login(page, live_server_url)
+    _open_portfolio(page)
+
+    # Navigate to the calendar for a portfolio with no data by switching to an
+    # unknown portfolio — the mock returns [] for any id != _FAKE_PORTFOLIO_ID,
+    # so the calendar renders with no data days and mtd_diff = null for all.
+    page.locator("#pp-portfolio-tabs .pp-portfolio-tab").first.click()
+    _open_calendar_tab(page)
+
+    # Navigate to a future month to guarantee no data days exist at all
+    for _ in range(3):
+        page.locator("#pp-cal-next").click()
+
+    mtd = page.locator("#pp-cal-mtd-summary")
+    expect(mtd).not_to_be_visible()
