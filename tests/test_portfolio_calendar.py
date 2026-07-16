@@ -179,55 +179,48 @@ def test_date_field_is_iso_string():
 
 # ── MTD diff ─────────────────────────────────────────────────────────────────
 
-def test_mtd_diff_zero_when_day1_is_trading_day():
-    """Day 1 with data: mtd_diff = portfolio_value[day_1] - baseline = 0."""
+def test_mtd_diff_is_cumulative_daily_pnl():
+    """mtd_diff = running sum of daily_change_pln across data days in chronological order."""
     rows = [
-        _make_row(date(2026, 6, 1), 10000.0),  # Monday, trading day → baseline
-        _make_row(date(2026, 6, 2), 10300.0),
+        _make_row(date(2026, 6, 2), 10012.0, daily_change_pln=12.0),
+        _make_row(date(2026, 6, 3), 9961.0, daily_change_pln=-51.0),
+        _make_row(date(2026, 6, 5), 10398.0, daily_change_pln=437.0),
     ]
     result = compute_calendar_pnl(rows, 2026, 6)
     days = {d["date"]: d for d in result["days"]}
-    assert days["2026-06-01"]["mtd_diff"] == pytest.approx(0.0)
+    assert days["2026-06-02"]["mtd_diff"] == pytest.approx(12.0)
+    assert days["2026-06-03"]["mtd_diff"] == pytest.approx(-39.0)
+    assert days["2026-06-05"]["mtd_diff"] == pytest.approx(398.0)
+
+
+def test_mtd_diff_includes_first_day_pnl():
+    """First data day's pnl is included in MTD, not zeroed as with the old baseline approach."""
+    rows = [
+        _make_row(date(2026, 6, 1), 10500.0, daily_change_pln=500.0),
+        _make_row(date(2026, 6, 2), 10800.0, daily_change_pln=300.0),
+    ]
+    result = compute_calendar_pnl(rows, 2026, 6)
+    days = {d["date"]: d for d in result["days"]}
+    assert days["2026-06-01"]["mtd_diff"] == pytest.approx(500.0)
+    assert days["2026-06-02"]["mtd_diff"] == pytest.approx(800.0)
+
+
+def test_mtd_diff_lookback_rows_do_not_affect_cumulative():
+    """Rows from previous month are never processed in the loop — cumulative starts at 0."""
+    rows = [
+        _make_row(date(2026, 5, 29), 9500.0, daily_change_pln=500.0),  # previous month
+        _make_row(date(2026, 6, 2), 9800.0, daily_change_pln=300.0),
+    ]
+    result = compute_calendar_pnl(rows, 2026, 6)
+    days = {d["date"]: d for d in result["days"]}
     assert days["2026-06-02"]["mtd_diff"] == pytest.approx(300.0)
 
 
-def test_mtd_diff_accumulates_across_month():
-    """MTD grows with each data day relative to baseline."""
-    rows = [
-        _make_row(date(2026, 6, 1), 10000.0),  # baseline
-        _make_row(date(2026, 6, 2), 10200.0),
-        _make_row(date(2026, 6, 3), 9800.0),   # loss day but MTD still -200 from baseline
-    ]
-    result = compute_calendar_pnl(rows, 2026, 6)
-    days = {d["date"]: d for d in result["days"]}
-    assert days["2026-06-01"]["mtd_diff"] == pytest.approx(0.0)
-    assert days["2026-06-02"]["mtd_diff"] == pytest.approx(200.0)
-    assert days["2026-06-03"]["mtd_diff"] == pytest.approx(-200.0)
-
-
-def test_mtd_diff_uses_lookback_when_day1_is_weekend():
-    """When day 1 = weekend/holiday, baseline = last trading day of previous month."""
-    # July 2026: day 1 = Wednesday (trading day) — use a month starting on weekend instead
-    # Use custom: pretend we're computing June 2026, but add a lookback row from May
-    # and no row for June 1 (simulate no_data on June 1)
-    rows = [
-        _make_row(date(2026, 5, 29), 9500.0),  # lookback, last trading day before June 1
-        _make_row(date(2026, 6, 2), 9800.0),   # first data day in June
-    ]
-    result = compute_calendar_pnl(rows, 2026, 6)
-    days = {d["date"]: d for d in result["days"]}
-    # baseline = 9500 (max snapshot_date <= 2026-06-01)
-    assert days["2026-06-02"]["mtd_diff"] == pytest.approx(300.0)
-
-
-def test_mtd_diff_none_when_no_baseline():
-    """No rows at or before day 1 → mtd_diff = None for all data days."""
-    rows = [
-        _make_row(date(2026, 6, 3), 10000.0),  # no lookback row before or on June 1
-    ]
-    result = compute_calendar_pnl(rows, 2026, 6)
-    days = {d["date"]: d for d in result["days"]}
-    assert days["2026-06-03"]["mtd_diff"] is None
+def test_mtd_diff_none_when_no_rows_at_all():
+    """Completely empty rows → mtd_diff = None."""
+    result = compute_calendar_pnl([], 2026, 6)
+    for d in result["days"]:
+        assert d["mtd_diff"] is None
 
 
 def test_mtd_diff_none_for_non_data_states():

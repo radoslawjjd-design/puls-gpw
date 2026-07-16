@@ -49,13 +49,7 @@ def compute_calendar_pnl(
 
     rows_by_date: dict[date, dict] = {r["snapshot_date"]: r for r in rows}
 
-    month_start = date(year, month, 1)
-    lookback = [r for r in rows if r["snapshot_date"] <= month_start]
-    baseline_value: float | None = (
-        max(lookback, key=lambda r: r["snapshot_date"])["portfolio_value"]
-        if lookback else None
-    )
-
+    cumulative_pnl: float = 0.0
     days: list[dict] = []
 
     for day_num in range(1, last_day + 1):
@@ -114,11 +108,11 @@ def compute_calendar_pnl(
             state = "partial"
             pnl = None
 
-        mtd_diff: float | None = (
-            row["portfolio_value"] - baseline_value
-            if state == "data" and baseline_value is not None
-            else None
-        )
+        if state == "data":
+            cumulative_pnl += pnl or 0.0
+            mtd_diff: float | None = cumulative_pnl
+        else:
+            mtd_diff = None
 
         days.append({
             "date": iso, "day": day_num, "weekday": wd,

@@ -222,23 +222,23 @@ if (lastMtd) {
 
 #### Automated
 
-- [x] 1.1 `uv run pytest tests/test_portfolio_calendar.py` — wszystkie testy przechodzą
-- [x] 1.2 `uv run pytest` — cały suite przechodzi
+- [x] 1.1 `uv run pytest tests/test_portfolio_calendar.py` — wszystkie testy przechodzą — 50d7ad3
+- [x] 1.2 `uv run pytest` — cały suite przechodzi — 50d7ad3
 
 #### Manual
 
-- [x] 1.3 API zwraca `mtd_diff` dla dni `state='data'`, null dla reszty
-- [x] 1.4 Dzień 1. miesiąca (trading day) ma `mtd_diff == 0.0`
+- [x] 1.3 API zwraca `mtd_diff` dla dni `state='data'`, null dla reszty — 50d7ad3
+- [x] 1.4 Dzień 1. miesiąca (trading day) ma `mtd_diff == 0.0` — 50d7ad3
 
 ### Phase 2: Frontend — MTD Summary Element
 
 #### Automated
 
-- [ ] 2.1 `uv run pytest` — brak regresji
+- [x] 2.1 `uv run pytest` — brak regresji
 
 #### Manual
 
-- [ ] 2.2 Element "MTD: +X PLN" widoczny pod siatką kalendarza
-- [ ] 2.3 Kolor zielony/czerwony zgodny ze znakiem MTD
-- [ ] 2.4 Nawigacja między miesiącami aktualizuje MTD
-- [ ] 2.5 Pusty portfel → element MTD ukryty
+- [x] 2.2 Element "MTD: +X PLN" widoczny pod siatką kalendarza
+- [x] 2.3 Kolor zielony/czerwony zgodny ze znakiem MTD
+- [x] 2.4 Nawigacja między miesiącami aktualizuje MTD
+- [x] 2.5 Pusty portfel → element MTD ukryty
