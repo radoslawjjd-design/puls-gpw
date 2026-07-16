@@ -1,9 +1,10 @@
+import asyncio
 import logging
 import os
 import pathlib
 import time
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,30 @@ def _ac_get(key: str) -> list | None:
 
 def _ac_set(key: str, data: list) -> None:
     _AC_CACHE[key] = (data, time.time())
+
+
+_PERF_CACHE: dict[str, tuple[Any, float]] = {}
+
+
+def _perf_get(key: str, ttl: int) -> Any | None:
+    if key in _PERF_CACHE:
+        data, ts = _PERF_CACHE[key]
+        if time.time() - ts < ttl:
+            return data
+    return None
+
+
+def _perf_set(key: str, data: Any) -> None:
+    _PERF_CACHE[key] = (data, time.time())
+
+
+def _perf_invalidate_portfolio(client_id: str, portfolio_id: str) -> None:
+    _PERF_CACHE.pop(f"positions:{client_id}:{portfolio_id}", None)
+    _PERF_CACHE.pop(f"treemap:{client_id}", None)
+    prefix = f"calendar:{client_id}:{portfolio_id}:"
+    for k in [k for k in _PERF_CACHE if k.startswith(prefix)]:
+        _PERF_CACHE.pop(k, None)
+
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 _CLIENT_ID_HEADER = APIKeyHeader(name="X-Client-Id", auto_error=False)
@@ -207,6 +232,14 @@ def create_app() -> FastAPI:
     ui_html = pathlib.Path("static/index.html").read_text(encoding="utf-8")
 
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _add_process_time_header(request: Request, call_next):
+        start = time.time()
+        response = await call_next(request)
+        elapsed_ms = (time.time() - start) * 1000
+        response.headers["X-Process-Time"] = f"{elapsed_ms:.1f}ms"
+        return response
 
     @app.on_event("startup")
     async def _init_dimension_tables():
@@ -404,29 +437,40 @@ def create_app() -> FastAPI:
 
     @app.get("/admin/portfolio/treemap")
     async def admin_portfolio_treemap(role: Role = Depends(_require_admin)):
+        cached = _perf_get("admin:treemap", ttl=60)
+        if cached is not None:
+            return cached
         try:
-            result: dict[str, list[dict] | str | None] = {}
-            snapshot_dates: list[date] = []
-            for wallet in _TREEMAP_WALLETS:
-                latest = get_latest_snapshot_for_wallet(wallet)
-                if latest is None:
-                    result[wallet] = []
-                    continue
-                snapshot_dates.append(latest["snapshot_date"])
-                prior = get_latest_snapshot_before(wallet, latest["snapshot_date"])
-                positions = compute_treemap_positions(
-                    latest["positions_json"],
-                    prior["positions_json"] if prior else None,
-                    latest["total_value"],
+            # Round 1 (parallel): fetch latest snapshot for each wallet
+            main_snap, ikze_snap = await asyncio.gather(
+                asyncio.to_thread(get_latest_snapshot_for_wallet, "main"),
+                asyncio.to_thread(get_latest_snapshot_for_wallet, "ikze"),
+            )
+            snaps = {"main": main_snap, "ikze": ikze_snap}
+            active = {w: s for w, s in snaps.items() if s is not None}
+            result: dict[str, list[dict] | str | None] = {w: [] for w in _TREEMAP_WALLETS}
+            if active:
+                latest_date = max(s["snapshot_date"] for s in active.values())
+                active_list = list(active.items())
+                # Round 2 (parallel): fetch prior snapshots + stats_fetched_at
+                gathered = await asyncio.gather(
+                    *[asyncio.to_thread(get_latest_snapshot_before, w, s["snapshot_date"]) for w, s in active_list],
+                    asyncio.to_thread(get_latest_company_stats_fetched_at, latest_date),
                 )
-                result[wallet] = [TreemapPosition(**p).model_dump() for p in positions]
-            if snapshot_dates:
-                latest_date = max(snapshot_dates)
+                priors, stats_fetched_at = gathered[:-1], gathered[-1]
+                for (wallet, latest), prior in zip(active_list, priors):
+                    positions = compute_treemap_positions(
+                        latest["positions_json"],
+                        prior["positions_json"] if prior else None,
+                        latest["total_value"],
+                    )
+                    result[wallet] = [TreemapPosition(**p).model_dump() for p in positions]
                 result["as_of"] = latest_date.isoformat() if hasattr(latest_date, "isoformat") else str(latest_date)
-                result["stats_fetched_at"] = get_latest_company_stats_fetched_at(latest_date)
+                result["stats_fetched_at"] = stats_fetched_at
             else:
                 result["as_of"] = None
                 result["stats_fetched_at"] = None
+            _perf_set("admin:treemap", result)
             return result
         except BigQueryError as exc:
             logger.error("BQ error in /admin/portfolio/treemap: %s", exc)
@@ -451,6 +495,10 @@ def create_app() -> FastAPI:
         role: Role = Depends(_get_role),
         client_id: str = Depends(_get_client_id),
     ):
+        cache_key = f"positions:{client_id}:{portfolio_id}"
+        cached = _perf_get(cache_key, ttl=30)
+        if cached is not None:
+            return cached
         try:
             wallets = list_user_portfolios(client_id)
         except BigQueryError as exc:
@@ -475,6 +523,7 @@ def create_app() -> FastAPI:
                 else None
             )
             result.append(PortfolioPositionOut(**row, pnl_pln=pnl_pln, pnl_pct=pnl_pct).model_dump())
+        _perf_set(cache_key, result)
         return result
 
     @app.post("/api/portfolio/positions")
@@ -499,6 +548,7 @@ def create_app() -> FastAPI:
             upsert_user_portfolio_position(
                 client_id, body.portfolio_id, body.ticker, body.company_name, body.shares, body.avg_buy_price
             )
+            _perf_invalidate_portfolio(client_id, body.portfolio_id)
         except BigQueryError as exc:
             logger.error("BQ error in POST /api/portfolio/positions: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -520,6 +570,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Wallet not found")
         try:
             delete_user_portfolio_position(client_id, portfolio_id, ticker)
+            _perf_invalidate_portfolio(client_id, portfolio_id)
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /api/portfolio/positions/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -590,6 +641,10 @@ def create_app() -> FastAPI:
         role: Role = Depends(_get_role),
         client_id: str = Depends(_get_client_id),
     ):
+        cache_key = f"treemap:{client_id}"
+        cached = _perf_get(cache_key, ttl=60)
+        if cached is not None:
+            return cached
         try:
             wallets = list_user_portfolios(client_id)
         except BigQueryError as exc:
@@ -630,7 +685,9 @@ def create_app() -> FastAPI:
                 stats_fetched_at = get_latest_company_stats_fetched_at(as_of_date)
             except Exception:
                 pass
-        return {"portfolios": portfolios, "as_of": as_of, "stats_fetched_at": stats_fetched_at}
+        response_data = {"portfolios": portfolios, "as_of": as_of, "stats_fetched_at": stats_fetched_at}
+        _perf_set(cache_key, response_data)
+        return response_data
 
     @app.get("/api/portfolio/calendar")
     async def get_portfolio_calendar(
@@ -645,6 +702,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=422, detail="month must be 1–12")
         if not (current_year - 5 <= year <= current_year + 1):
             raise HTTPException(status_code=422, detail=f"year must be in [{current_year - 5}, {current_year + 1}]")
+        cache_key = f"calendar:{client_id}:{portfolio_id}:{year}:{month}"
+        cached = _perf_get(cache_key, ttl=300)
+        if cached is not None:
+            return cached
         try:
             wallets = list_user_portfolios(client_id)
         except BigQueryError as exc:
@@ -658,7 +719,9 @@ def create_app() -> FastAPI:
             logger.error("BQ error in GET /api/portfolio/calendar: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
         cal = compute_calendar_pnl(rows, year, month)
-        return PortfolioCalendarResponse(**cal).model_dump()
+        result = PortfolioCalendarResponse(**cal).model_dump()
+        _perf_set(cache_key, result)
+        return result
 
     app.mount("/static", StaticFiles(directory="static"), name="static")
 

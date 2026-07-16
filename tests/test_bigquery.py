@@ -537,10 +537,19 @@ def test_save_analysis_result_stamps_analyzed_at():
 # ---------------------------------------------------------------------------
 
 
-def test_build_filter_clauses_no_filters_returns_empty():
+def test_build_filter_clauses_no_filters_applies_90day_default():
     where, params = _build_filter_clauses()
-    assert where == ""
+    assert "TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)" in where
     assert params == []
+
+
+def test_build_filter_clauses_explicit_from_dt_overrides_default():
+    from datetime import datetime, timezone
+    from_dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    where, params = _build_filter_clauses(from_dt=from_dt)
+    assert "published_at >= @from_dt" in where
+    assert "TIMESTAMP_SUB" not in where
+    assert any(p.name == "from_dt" for p in params)
 
 
 def test_build_filter_clauses_ticker_adds_param():
@@ -1175,7 +1184,7 @@ def test_get_portfolio_calendar_data_returns_correct_shape():
 
 
 def test_get_portfolio_calendar_data_uses_correct_date_params():
-    """lookback_start must be month_start − 35 days; end_date must be last day of month."""
+    """lookback_start must be month_start (first day of month); end_date must be last day of month."""
     from db.bigquery import get_portfolio_calendar_data
     from google.cloud import bigquery as bq_module
 
@@ -1187,7 +1196,7 @@ def test_get_portfolio_calendar_data_uses_correct_date_params():
 
     assert params_by_name["portfolio_id"].value == "port-abc"
     assert params_by_name["user_id"].value == "user-xyz"
-    assert params_by_name["lookback_start"].value == date(2026, 6, 1) - __import__("datetime").timedelta(days=35)
+    assert params_by_name["lookback_start"].value == date(2026, 6, 1)
     assert params_by_name["end_date"].value == date(2026, 6, 30)
     assert params_by_name["lookback_start"].type_ == "DATE"
     assert params_by_name["end_date"].type_ == "DATE"

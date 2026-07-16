@@ -16,11 +16,13 @@ def _env(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _clear_ac_cache():
+def _clear_caches():
     import src.api as m
     m._AC_CACHE.clear()
+    m._PERF_CACHE.clear()
     yield
     m._AC_CACHE.clear()
+    m._PERF_CACHE.clear()
 
 
 @pytest.fixture

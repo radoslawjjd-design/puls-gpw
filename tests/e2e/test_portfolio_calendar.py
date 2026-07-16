@@ -6,8 +6,24 @@ updates the label and grid, and the URL reflects the active tab.
 Seed: tests/e2e/test_user_portfolio_treemap.py
 """
 import re
+from datetime import date
 
 from playwright.sync_api import Page, expect
+
+_MONTHS_PL = [
+    "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
+    "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień",
+]
+
+
+def _current_month_name() -> str:
+    return _MONTHS_PL[date.today().month - 1]
+
+
+def _prev_month_name() -> str:
+    today = date.today()
+    m = today.month - 1 if today.month > 1 else 12
+    return _MONTHS_PL[m - 1]
 
 _USER_KEY = "e2e-user-key"
 
@@ -66,7 +82,6 @@ def test_calendar_weekend_and_holiday_cells_are_neutral(page: Page, live_server_
     _open_portfolio(page)
     _open_calendar_tab(page)
 
-    # June 2026 has 4 Saturdays (6, 13, 20, 27), 4 Sundays, and June 4 = GPW holiday
     neutral_cells = page.locator("#pp-cal-grid .pp-cal-neutral")
     expect(neutral_cells.first).to_be_visible()
 
@@ -83,11 +98,11 @@ def test_calendar_prev_navigation_changes_month_label(page: Page, live_server_ur
     _open_calendar_tab(page)
 
     label = page.locator("#pp-cal-label")
-    expect(label).to_contain_text("czerwiec", ignore_case=True)  # June 2026 (current month)
+    expect(label).to_contain_text(_current_month_name(), ignore_case=True)
 
     page.locator("#pp-cal-prev").click()
 
-    expect(label).to_contain_text("maj", ignore_case=True)  # May 2026
+    expect(label).to_contain_text(_prev_month_name(), ignore_case=True)
     expect(page.locator("#pp-cal-grid")).to_be_visible()
 
 

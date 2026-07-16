@@ -24,6 +24,7 @@ import hashlib
 import logging
 import os
 import threading
+import time
 import uuid
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -42,6 +43,7 @@ from src.post_selection import select_top_companies  # noqa: E402
 
 _DATASET = os.environ.get("BIGQUERY_DATASET", "espi_ebi")
 _TABLE_NAME = "announcements"
+_ANNOUNCEMENTS_DEFAULT_DAYS = 90
 
 _SCHEMA = [
     bigquery.SchemaField("announcement_id", "STRING", mode="REQUIRED"),
@@ -125,6 +127,8 @@ def create_table_if_not_exists() -> None:
         logger.info("BQ table already exists: %s", table_id)
     except NotFound:
         table = bigquery.Table(table_id, schema=_SCHEMA)
+        table.time_partitioning = bigquery.TimePartitioning(field="published_at", type_="DAY")
+        table.clustering_fields = ["ticker"]
         client.create_table(table)
         logger.info("BQ table created: %s", table_id)
 
@@ -278,6 +282,7 @@ def get_latest_snapshot_before(wallet: str, before_date: date) -> dict | None:
     Raises BigQueryError on query failure.
     """
     client = _get_client()
+    _t = time.time()
     query = f"""
         SELECT snapshot_id, wallet, snapshot_date, total_value, currency,
                day_change_abs, day_change_pct, positions_json
@@ -297,8 +302,10 @@ def get_latest_snapshot_before(wallet: str, before_date: date) -> dict | None:
     except Exception as exc:
         raise BigQueryError(f"get_latest_snapshot_before failed: {exc}") from exc
     if not rows:
+        logger.debug("BQ get_latest_snapshot_before: %.0fms", (time.time() - _t) * 1000)
         return None
     row = rows[0]
+    logger.debug("BQ get_latest_snapshot_before: %.0fms", (time.time() - _t) * 1000)
     return {
         "snapshot_id": row.snapshot_id,
         "wallet": row.wallet,
@@ -317,6 +324,7 @@ def get_latest_snapshot_for_wallet(wallet: str) -> dict | None:
     Returns None if that wallet has no rows. Raises BigQueryError on query failure.
     """
     client = _get_client()
+    _t = time.time()
     query = f"""
         SELECT snapshot_id, wallet, snapshot_date, total_value, currency,
                day_change_abs, day_change_pct, positions_json
@@ -335,8 +343,10 @@ def get_latest_snapshot_for_wallet(wallet: str) -> dict | None:
     except Exception as exc:
         raise BigQueryError(f"get_latest_snapshot_for_wallet failed: {exc}") from exc
     if not rows:
+        logger.debug("BQ get_latest_snapshot_for_wallet: %.0fms", (time.time() - _t) * 1000)
         return None
     row = rows[0]
+    logger.debug("BQ get_latest_snapshot_for_wallet: %.0fms", (time.time() - _t) * 1000)
     return {
         "snapshot_id": row.snapshot_id,
         "wallet": row.wallet,
@@ -370,8 +380,9 @@ def get_portfolio_calendar_data(
     but ignored by compute_calendar_pnl().  The window is kept for potential future use.
     """
     client = _get_client()
+    _t = time.time()
     month_start = date(year, month, 1)
-    lookback_start = month_start - timedelta(days=35)
+    lookback_start = month_start
     _, last_day = calendar.monthrange(year, month)
     end_date = date(year, month, last_day)
 
@@ -433,6 +444,7 @@ def get_portfolio_calendar_data(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"get_portfolio_calendar_data failed: {exc}") from exc
+    logger.debug("BQ get_portfolio_calendar_data: %.0fms", (time.time() - _t) * 1000)
     return [
         {
             "snapshot_date": row.snapshot_date,
@@ -600,6 +612,7 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
     Raises BigQueryError on query failure.
     """
     client = _get_client()
+    _t = time.time()
     portfolio_filter = "AND p.portfolio_id = @portfolio_id" if portfolio_id is not None else ""
     query = f"""
         WITH latest_stats AS (
@@ -610,6 +623,7 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
             CAST(snapshot_date AS STRING) AS price_as_of,
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
+          WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
         ),
         latest_etf AS (
           SELECT
@@ -619,6 +633,7 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
             CAST(snapshot_date AS STRING) AS price_as_of,
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _ETF_QUOTES_TABLE_NAME)}`
+          WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
         )
         SELECT
           p.portfolio_id,
@@ -647,6 +662,7 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"list_user_portfolio_positions failed: {exc}") from exc
+    logger.debug("BQ list_user_portfolio_positions: %.0fms", (time.time() - _t) * 1000)
     return [dict(row) for row in rows]
 
 
@@ -1250,6 +1266,10 @@ def _build_filter_clauses(
     if from_dt:
         clauses.append("published_at >= @from_dt")
         params.append(bigquery.ScalarQueryParameter("from_dt", "TIMESTAMP", from_dt))
+    else:
+        clauses.append(
+            f"published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {_ANNOUNCEMENTS_DEFAULT_DAYS} DAY)"
+        )
     if to_dt:
         clauses.append("published_at <= @to_dt")
         params.append(bigquery.ScalarQueryParameter("to_dt", "TIMESTAMP", to_dt))
@@ -1269,13 +1289,14 @@ def list_announcements_admin(
     if page < 1:
         raise ValueError(f"page must be >= 1, got {page}")
     client = _get_client()
+    _t = time.time()
     offset = (page - 1) * page_size
     where, filter_params = _build_filter_clauses(
         approved_only=False,
         ticker=ticker,
         company=company,
         event_type=event_type,
-        from_dt=from_dt,
+        from_dt=from_dt if from_dt is not None else datetime.min,
         to_dt=to_dt,
     )
     # LEFT JOIN x_posts so posts written after PUL-29 (post_text lives in x_posts, not
@@ -1309,6 +1330,7 @@ def list_announcements_admin(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"list_announcements_admin failed: {exc}") from exc
+    logger.debug("BQ list_announcements_admin: %.0fms", (time.time() - _t) * 1000)
     return [
         {
             "announcement_id": row.announcement_id,
@@ -1429,6 +1451,7 @@ def list_announcements_user(
     if page < 1:
         raise ValueError(f"page must be >= 1, got {page}")
     client = _get_client()
+    _t = time.time()
     offset = (page - 1) * page_size
     where, filter_params = _build_filter_clauses(
         approved_only=True,
@@ -1458,6 +1481,7 @@ def list_announcements_user(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"list_announcements_user failed: {exc}") from exc
+    logger.debug("BQ list_announcements_user: %.0fms", (time.time() - _t) * 1000)
     return [
         {
             "company": row.company,
@@ -1486,6 +1510,7 @@ def list_announcements_for_watchlist(
     if page < 1:
         raise ValueError(f"page must be >= 1, got {page}")
     client = _get_client()
+    _t = time.time()
     offset = (page - 1) * page_size
     where, filter_params = _build_filter_clauses(
         approved_only=True,
@@ -1517,6 +1542,7 @@ def list_announcements_for_watchlist(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"list_announcements_for_watchlist failed: {exc}") from exc
+    logger.debug("BQ list_announcements_for_watchlist: %.0fms", (time.time() - _t) * 1000)
     return [
         {
             "company": row.company,

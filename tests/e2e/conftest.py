@@ -196,12 +196,29 @@ _FAKE_PORTFOLIO_POSITIONS = [
 ]
 
 
+def _first_weekdays_of_month(n: int) -> list[date]:
+    """Return the first n weekday dates in the current month that are not in the future."""
+    import calendar as _cal
+    today = date.today()
+    y, m = today.year, today.month
+    _, last = _cal.monthrange(y, m)
+    days = []
+    for d in range(1, last + 1):
+        dt = date(y, m, d)
+        if dt.weekday() < 5 and dt <= today:
+            days.append(dt)
+            if len(days) >= n:
+                break
+    return days
+
+
+_cal_weekdays = _first_weekdays_of_month(3)
 _FAKE_CALENDAR_ROWS = [
-    {"snapshot_date": date(2026, 6, 2), "portfolio_value": 10300.0,
+    {"snapshot_date": _cal_weekdays[0], "portfolio_value": 10300.0,
      "daily_change_pln": 300.0, "prices_found": 2, "total_positions": 2},
-    {"snapshot_date": date(2026, 6, 3), "portfolio_value": 10150.0,
+    {"snapshot_date": _cal_weekdays[1], "portfolio_value": 10150.0,
      "daily_change_pln": -150.0, "prices_found": 2, "total_positions": 2},
-    {"snapshot_date": date(2026, 6, 5), "portfolio_value": 10150.0,
+    {"snapshot_date": _cal_weekdays[2], "portfolio_value": 10150.0,
      "daily_change_pln": 0.0, "prices_found": 2, "total_positions": 2},
 ]
 
