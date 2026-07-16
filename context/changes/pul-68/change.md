@@ -1,7 +1,7 @@
 ---
 change_id: pul-68
 title: Portfolio calendar — month-to-date (MTD) value difference
-status: implementing
+status: implemented
 created: 2026-07-16
 updated: 2026-07-16
 archived_at: null

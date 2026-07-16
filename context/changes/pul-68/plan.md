@@ -234,11 +234,11 @@ if (lastMtd) {
 
 #### Automated
 
-- [x] 2.1 `uv run pytest` — brak regresji
+- [x] 2.1 `uv run pytest` — brak regresji — bf288f6
 
 #### Manual
 
-- [x] 2.2 Element "MTD: +X PLN" widoczny pod siatką kalendarza
-- [x] 2.3 Kolor zielony/czerwony zgodny ze znakiem MTD
-- [x] 2.4 Nawigacja między miesiącami aktualizuje MTD
-- [x] 2.5 Pusty portfel → element MTD ukryty
+- [x] 2.2 Element "MTD: +X PLN" widoczny pod siatką kalendarza — bf288f6
+- [x] 2.3 Kolor zielony/czerwony zgodny ze znakiem MTD — bf288f6
+- [x] 2.4 Nawigacja między miesiącami aktualizuje MTD — bf288f6
+- [x] 2.5 Pusty portfel → element MTD ukryty — bf288f6
