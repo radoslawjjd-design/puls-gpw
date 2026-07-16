@@ -1,0 +1,25 @@
+{
+  "name": "ai-security-reviewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Single-shot AI security-review scorer for puls-gpw PRs (Vercel AI SDK 6 + Gemini via Vertex AI).",
+  "bin": {
+    "ai-security-reviewer": "dist/review.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/google-vertex": "4.0.145",
+    "ai": "6.0.205",
+    "json5": "2.2.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.3",
+    "typescript": "6.0.3",
+    "vitest": "4.1.9"
+  }
+}
