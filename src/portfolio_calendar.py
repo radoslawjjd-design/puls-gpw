@@ -49,6 +49,7 @@ def compute_calendar_pnl(
 
     rows_by_date: dict[date, dict] = {r["snapshot_date"]: r for r in rows}
 
+    cumulative_pnl: float = 0.0
     days: list[dict] = []
 
     for day_num in range(1, last_day + 1):
@@ -62,6 +63,7 @@ def compute_calendar_pnl(
                 "state": "weekend",
                 "portfolio_value": None, "pnl_abs": None,
                 "prices_found": 0, "total_positions": 0,
+                "mtd_diff": None,
             })
             continue
 
@@ -71,6 +73,7 @@ def compute_calendar_pnl(
                 "state": "holiday",
                 "portfolio_value": None, "pnl_abs": None,
                 "prices_found": 0, "total_positions": 0,
+                "mtd_diff": None,
             })
             continue
 
@@ -80,6 +83,7 @@ def compute_calendar_pnl(
                 "state": "future",
                 "portfolio_value": None, "pnl_abs": None,
                 "prices_found": 0, "total_positions": 0,
+                "mtd_diff": None,
             })
             continue
 
@@ -89,6 +93,7 @@ def compute_calendar_pnl(
                 "state": "no_data",
                 "portfolio_value": None, "pnl_abs": None,
                 "prices_found": 0, "total_positions": 0,
+                "mtd_diff": None,
             })
             continue
 
@@ -103,6 +108,12 @@ def compute_calendar_pnl(
             state = "partial"
             pnl = None
 
+        if state == "data":
+            cumulative_pnl += pnl if pnl is not None else 0.0
+            mtd_diff: float | None = cumulative_pnl
+        else:
+            mtd_diff = None
+
         days.append({
             "date": iso, "day": day_num, "weekday": wd,
             "state": state,
@@ -110,6 +121,7 @@ def compute_calendar_pnl(
             "pnl_abs": pnl,
             "prices_found": pf_found,
             "total_positions": total_pos,
+            "mtd_diff": mtd_diff,
         })
 
     return {"year": year, "month": month, "days": days}

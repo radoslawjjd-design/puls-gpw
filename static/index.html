@@ -486,6 +486,14 @@
     .pp-cal-cell { min-height: 44px; font-size: .72rem; }
     .pp-cal-cell .pp-cal-pnl { font-size: .72rem; }
   }
+  #pp-cal-mtd-summary {
+    display: none; margin-top: .5rem; padding: .6rem .75rem;
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--radius-md); font-size: .85rem;
+  }
+  #pp-cal-mtd-summary.mtd-gain { color: var(--positive); font-weight: 600; }
+  #pp-cal-mtd-summary.mtd-loss { color: var(--negative); font-weight: 600; }
+  #pp-cal-mtd-summary.mtd-zero { color: var(--text-muted); }
 
   /* My Wallet */
   #wl-add-form {
@@ -2290,6 +2298,7 @@ function _buildPortfolioPositionsViewContent(view) {
         <button type="button" id="pp-cal-next">&#8250;</button>
       </div>
       <div id="pp-cal-grid"></div>
+      <div id="pp-cal-mtd-summary"></div>
       <div id="pp-cal-legend">
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-gain"></span>zysk</span>
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-loss"></span>strata</span>
@@ -2604,6 +2613,21 @@ function _renderPortfolioCalendar(data) {
     cell.className = cls;
     cell.innerHTML = `<span class="pp-cal-day">${day.day}</span>${pnlText ? `<span class="pp-cal-pnl">${pnlText}</span>` : ''}`;
     grid.appendChild(cell);
+  }
+
+  const mtdEl = $('pp-cal-mtd-summary');
+  const lastMtdDay = [...data.days].reverse().find(
+    d => d.state === 'data' && d.mtd_diff !== null && d.mtd_diff !== undefined
+  );
+  if (lastMtdDay) {
+    const sign = lastMtdDay.mtd_diff >= 0 ? '+' : '−';
+    const amt = Math.round(Math.abs(lastMtdDay.mtd_diff));
+    mtdEl.textContent = `MTD: ${sign}${amt} PLN`;
+    mtdEl.className = lastMtdDay.mtd_diff > 0 ? 'mtd-gain'
+                    : lastMtdDay.mtd_diff < 0 ? 'mtd-loss' : 'mtd-zero';
+    mtdEl.style.display = 'block';
+  } else {
+    mtdEl.style.display = 'none';
   }
 }
 

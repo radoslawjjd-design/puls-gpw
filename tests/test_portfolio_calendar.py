@@ -159,7 +159,7 @@ def test_partial_prices_still_produce_data_state():
 def test_day_object_has_all_required_fields():
     """Each day dict has: date, day, weekday, state, portfolio_value, pnl_abs, prices_found, total_positions."""
     result = compute_calendar_pnl([], 2026, 6)
-    required = {"date", "day", "weekday", "state", "portfolio_value", "pnl_abs", "prices_found", "total_positions"}
+    required = {"date", "day", "weekday", "state", "portfolio_value", "pnl_abs", "prices_found", "total_positions", "mtd_diff"}
     for d in result["days"]:
         assert required.issubset(d.keys()), f"Missing keys in {d}"
 
@@ -175,3 +175,66 @@ def test_weekday_field_is_0_for_monday():
 def test_date_field_is_iso_string():
     result = compute_calendar_pnl([], 2026, 6)
     assert result["days"][0]["date"] == "2026-06-01"
+
+
+# ── MTD diff ─────────────────────────────────────────────────────────────────
+
+def test_mtd_diff_is_cumulative_daily_pnl():
+    """mtd_diff = running sum of daily_change_pln across data days in chronological order."""
+    rows = [
+        _make_row(date(2026, 6, 2), 10012.0, daily_change_pln=12.0),
+        _make_row(date(2026, 6, 3), 9961.0, daily_change_pln=-51.0),
+        _make_row(date(2026, 6, 5), 10398.0, daily_change_pln=437.0),
+    ]
+    result = compute_calendar_pnl(rows, 2026, 6)
+    days = {d["date"]: d for d in result["days"]}
+    assert days["2026-06-02"]["mtd_diff"] == pytest.approx(12.0)
+    assert days["2026-06-03"]["mtd_diff"] == pytest.approx(-39.0)
+    assert days["2026-06-05"]["mtd_diff"] == pytest.approx(398.0)
+
+
+def test_mtd_diff_includes_first_day_pnl():
+    """First data day's pnl is included in MTD, not zeroed as with the old baseline approach."""
+    rows = [
+        _make_row(date(2026, 6, 1), 10500.0, daily_change_pln=500.0),
+        _make_row(date(2026, 6, 2), 10800.0, daily_change_pln=300.0),
+    ]
+    result = compute_calendar_pnl(rows, 2026, 6)
+    days = {d["date"]: d for d in result["days"]}
+    assert days["2026-06-01"]["mtd_diff"] == pytest.approx(500.0)
+    assert days["2026-06-02"]["mtd_diff"] == pytest.approx(800.0)
+
+
+def test_mtd_diff_lookback_rows_do_not_affect_cumulative():
+    """Rows from previous month are never processed in the loop — cumulative starts at 0."""
+    rows = [
+        _make_row(date(2026, 5, 29), 9500.0, daily_change_pln=500.0),  # previous month
+        _make_row(date(2026, 6, 2), 9800.0, daily_change_pln=300.0),
+    ]
+    result = compute_calendar_pnl(rows, 2026, 6)
+    days = {d["date"]: d for d in result["days"]}
+    assert days["2026-06-02"]["mtd_diff"] == pytest.approx(300.0)
+
+
+def test_mtd_diff_none_when_no_rows_at_all():
+    """Completely empty rows → mtd_diff = None."""
+    result = compute_calendar_pnl([], 2026, 6)
+    for d in result["days"]:
+        assert d["mtd_diff"] is None
+
+
+def test_mtd_diff_none_for_non_data_states():
+    """weekend, holiday, no_data, partial, future → mtd_diff = None."""
+    rows = [
+        _make_row(date(2026, 6, 1), 10000.0),  # baseline
+        # June 4 = holiday (Corpus Christi), June 6-7 = weekend
+        _make_row(date(2026, 6, 5), 10100.0, prices_found=0),  # partial
+    ]
+    result = compute_calendar_pnl(rows, 2026, 6)
+    days = {d["date"]: d for d in result["days"]}
+    assert days["2026-06-04"]["state"] == "holiday"
+    assert days["2026-06-04"]["mtd_diff"] is None
+    assert days["2026-06-06"]["state"] == "weekend"
+    assert days["2026-06-06"]["mtd_diff"] is None
+    assert days["2026-06-05"]["state"] == "partial"
+    assert days["2026-06-05"]["mtd_diff"] is None
