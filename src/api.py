@@ -83,6 +83,14 @@ def _perf_set(key: str, data: Any) -> None:
     _PERF_CACHE[key] = (data, time.time())
 
 
+def _perf_invalidate_portfolio(client_id: str, portfolio_id: str) -> None:
+    _PERF_CACHE.pop(f"positions:{client_id}:{portfolio_id}", None)
+    _PERF_CACHE.pop(f"treemap:{client_id}", None)
+    prefix = f"calendar:{client_id}:{portfolio_id}:"
+    for k in [k for k in _PERF_CACHE if k.startswith(prefix)]:
+        _PERF_CACHE.pop(k, None)
+
+
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 _CLIENT_ID_HEADER = APIKeyHeader(name="X-Client-Id", auto_error=False)
 Role = Literal["admin", "user"]
@@ -540,6 +548,7 @@ def create_app() -> FastAPI:
             upsert_user_portfolio_position(
                 client_id, body.portfolio_id, body.ticker, body.company_name, body.shares, body.avg_buy_price
             )
+            _perf_invalidate_portfolio(client_id, body.portfolio_id)
         except BigQueryError as exc:
             logger.error("BQ error in POST /api/portfolio/positions: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -561,6 +570,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Wallet not found")
         try:
             delete_user_portfolio_position(client_id, portfolio_id, ticker)
+            _perf_invalidate_portfolio(client_id, portfolio_id)
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /api/portfolio/positions/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
