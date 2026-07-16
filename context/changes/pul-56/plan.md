@@ -356,21 +356,21 @@ None. Existing workflow and action are unchanged. Adding `ai-security-review/ver
 
 #### Automated
 
-- [x] 1.1 `npm run build` succeeds — `dist/review.js` exists
-- [x] 1.2 `npm test` passes — all 4 test files green
-- [x] 1.3 TypeScript compiles with no strict-mode errors
+- [x] 1.1 `npm run build` succeeds — `dist/review.js` exists — 8915d7b
+- [x] 1.2 `npm test` passes — all 4 test files green — 8915d7b
+- [x] 1.3 TypeScript compiles with no strict-mode errors — 8915d7b
 
 #### Manual
 
-- [x] 1.4 `dist/review.js` invoked with `DIFF_PATH` env returns JSON with 5 security criterion keys
+- [x] 1.4 `dist/review.js` invoked with `DIFF_PATH` env returns JSON with 5 security criterion keys — 8915d7b
 
 ### Phase 2: Composite Action
 
 #### Automated
 
-- [ ] 2.1 `action.yml` YAML parses without error
-- [ ] 2.2 No `ai-code-reviewer` string in `action.yml` (grep returns 0)
-- [ ] 2.3 No `__AI_CR_RESULT__` string in `action.yml` (grep returns 0)
+- [x] 2.1 `action.yml` YAML parses without error
+- [x] 2.2 No `ai-code-reviewer` string in `action.yml` (grep returns 0)
+- [x] 2.3 No `__AI_CR_RESULT__` string in `action.yml` (grep returns 0)
 
 #### Manual
 
