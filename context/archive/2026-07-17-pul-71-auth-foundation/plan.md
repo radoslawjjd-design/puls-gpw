@@ -319,4 +319,4 @@ Brak migracji danych. Istniejący anonimowy UUID (X-Client-Id) i Firebase UID ws
 
 #### Manual
 - [x] 6.3 Sekrety `jwt-secret` + `firebase-service-account` utworzone w Secret Managerze (human-only) — 17f7597
-- [ ] 6.4 Po deploy: prod register/login/me działa; frontend API-key bez regresji
+- [x] 6.4 Po deploy: prod register/login/me działa; frontend API-key bez regresji
