@@ -23,3 +23,5 @@ Prereq zrobiony 2026-07-17 (poza pipeline'em, ręcznie+CLI): Firebase podpięty 
 Branch: `pul-71-auth-foundation`.
 
 Adaptacja kryteriów (decyzja usera, faza 1, 2026-07-17): „ruff + mypy zielone" = **zero NOWYCH błędów** względem mastera (master ma zastany dług: 36 ruff / 71 mypy, CI gate'uje tylko pytest); nowe pliki change'a muszą być w 100% czyste.
+
+**Design note dla PUL-72** (z impl-review fazy 5, 2026-07-17): kolejność auth z ticketa (JWT cookie → rola user, przed API-key) oznacza, że admin z kluczem w localStorage, który zaloguje się też przez Firebase w tej samej przeglądarce, spada do roli user (/admin/* → 403 do czasu logout — cookie przesłania klucz). UI logowania w PUL-72 powinno to uwzględnić: nie oferować/ostrzegać przy logowaniu Firebase, gdy skonfigurowany jest admin API-key.
