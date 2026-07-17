@@ -389,6 +389,8 @@ def live_server_url():
             "src.api.get_portfolio_calendar_data",
             side_effect=_fake_get_portfolio_calendar_data,
         ),
+        patch("src.api.create_users_table_if_not_exists"),
+        patch("src.api.ensure_users_schema_current"),
     ]
 
     with ExitStack() as stack:

@@ -6,6 +6,7 @@ import pytest
 from db.bigquery import (
     _COMPANIES_SCHEMA,
     _COMPANY_DAILY_STATS_SCHEMA,
+    _USERS_SCHEMA,
     _WATCHLIST_SCHEMA,
     _X_POSTS_SCHEMA,
     _build_filter_clauses,
@@ -15,6 +16,7 @@ from db.bigquery import (
     create_company_daily_stats_table_if_not_exists,
     create_portfolio_snapshots_table_if_not_exists,
     delete_company_daily_stats_for_date,
+    create_users_table_if_not_exists,
     create_watchlist_table_if_not_exists,
     create_x_posts_table_if_not_exists,
     delete_announcement,
@@ -22,6 +24,7 @@ from db.bigquery import (
     get_latest_snapshot_before,
     get_latest_snapshot_for_wallet,
     insert_announcement,
+    insert_user,
     list_announcements_admin,
     list_announcements_for_watchlist,
     list_announcements_user,
@@ -40,6 +43,7 @@ from db.bigquery import (
     update_parsed_content,
     update_x_post_publish_result,
     upsert_company,
+    upsert_user_login,
     x_post_already_published,
 )
 
@@ -813,6 +817,92 @@ def test_list_announcements_for_watchlist_offset_math():
     params_by_name = {p.name: p.value for p in job_config.query_parameters}
     assert params_by_name["page_size"] == 20
     assert params_by_name["offset"] == 40
+
+
+# ── users table + CRUD (PUL-71 auth foundation) ───────────────────────────────
+
+def test_create_users_table_creates_on_not_found():
+    """create_users_table_if_not_exists must create the table when get_table raises NotFound."""
+    from google.cloud.exceptions import NotFound
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.side_effect = NotFound("missing")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_users_table_if_not_exists()
+
+    assert client.create_table.called
+    created_table = client.create_table.call_args[0][0]
+    assert "users" in str(created_table.reference) or "users" in str(created_table)
+
+
+def test_users_schema_columns_and_modes():
+    """_USERS_SCHEMA: user_id/email/created_at REQUIRED, last_login_at NULLABLE."""
+    names = {f.name: f for f in _USERS_SCHEMA}
+    assert set(names) == {"user_id", "email", "created_at", "last_login_at"}
+    assert names["user_id"].mode == "REQUIRED"
+    assert names["email"].mode == "REQUIRED"
+    assert names["created_at"].mode == "REQUIRED"
+    assert names["last_login_at"].mode == "NULLABLE"
+
+
+def test_insert_user_sql_and_params():
+    """INSERT must set created_at server-side and pass user_id/email as parameters."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        insert_user("firebase-uid-1", "user@example.com")
+
+    query_str = client.query.call_args[0][0]
+    job_config = client.query.call_args.kwargs["job_config"]
+    params = {p.name: p.value for p in job_config.query_parameters}
+    assert "INSERT INTO" in query_str and "users" in query_str
+    assert "(user_id, email, created_at)" in query_str
+    assert "CURRENT_TIMESTAMP()" in query_str
+    assert params["user_id"] == "firebase-uid-1"
+    assert params["email"] == "user@example.com"
+
+
+def test_insert_user_raises_bigquery_error_on_failure():
+    """Query failure must surface as BigQueryError, not a raw exception."""
+    from db.bigquery import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = RuntimeError("boom")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="insert_user failed"):
+            insert_user("uid", "a@b.pl")
+
+
+def test_upsert_user_login_merge_sql_and_params():
+    """MERGE keyed on user_id: MATCHED bumps last_login_at, NOT MATCHED full INSERT (self-heal)."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        upsert_user_login("firebase-uid-1", "user@example.com")
+
+    query_str = client.query.call_args[0][0]
+    job_config = client.query.call_args.kwargs["job_config"]
+    params = {p.name: p.value for p in job_config.query_parameters}
+    assert "MERGE" in query_str and "users" in query_str
+    assert "ON T.user_id = S.user_id" in query_str
+    assert "UPDATE SET last_login_at = CURRENT_TIMESTAMP()" in query_str
+    assert "INSERT (user_id, email, created_at, last_login_at)" in query_str
+    assert params["user_id"] == "firebase-uid-1"
+    assert params["email"] == "user@example.com"
+
+
+def test_upsert_user_login_raises_bigquery_error_on_job_errors():
+    """job.errors after result() must surface as BigQueryError."""
+    from db.bigquery import BigQueryError
+
+    client = _mock_bq_client()
+    client.query.return_value.errors = [{"reason": "invalid"}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="upsert_user_login failed"):
+            upsert_user_login("uid", "a@b.pl")
 
 
 # ── companies dimension table (PUL-53) ────────────────────────────────────────

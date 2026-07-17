@@ -23,6 +23,7 @@ from db.bigquery import (
     create_user_portfolio,
     create_user_portfolio_positions_table_if_not_exists,
     create_user_portfolios_table_if_not_exists,
+    create_users_table_if_not_exists,
     create_watchlist_table_if_not_exists,
     delete_announcement,
     delete_user_portfolio,
@@ -30,6 +31,7 @@ from db.bigquery import (
     ensure_companies_schema_current,
     ensure_user_portfolio_positions_schema_current,
     ensure_user_portfolios_schema_current,
+    ensure_users_schema_current,
     ensure_watchlist_schema_current,
     get_latest_company_stats_fetched_at,
     get_latest_snapshot_before,
@@ -252,6 +254,8 @@ def create_app() -> FastAPI:
         ensure_user_portfolio_positions_schema_current()
         create_user_portfolios_table_if_not_exists()
         ensure_user_portfolios_schema_current()
+        create_users_table_if_not_exists()
+        ensure_users_schema_current()
 
     @app.get("/health")
     async def health():
