@@ -165,6 +165,26 @@ def test_clear_session_cookie_expires_it():
     assert 'Max-Age=0' in header or "01 Jan 1970" in header
 
 
+def test_create_session_token_requires_secret(monkeypatch):
+    """Empty/missing JWT_SECRET must raise, never silently sign with an empty key."""
+    from src.auth import create_session_token
+
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+    with pytest.raises(RuntimeError, match="JWT_SECRET"):
+        create_session_token("uid-1", "a@b.pl", "firebase")
+
+
+def test_decode_returns_none_without_secret(monkeypatch):
+    """Without JWT_SECRET no token is valid — decode must return None, never raise."""
+    import jwt as pyjwt
+
+    from src.auth import decode_session_token
+
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+    token = pyjwt.encode({"user_id": "uid-1"}, "some-secret", algorithm="HS256")
+    assert decode_session_token(token) is None
+
+
 # ── rate limiter ──────────────────────────────────────────────────────────────
 
 def _make_request(headers: dict[str, str] | None = None, client_host: str = "10.0.0.1"):
@@ -253,6 +273,21 @@ def test_spoofed_xff_first_element_does_not_bypass_limit():
     with pytest.raises(HTTPException) as exc_info:
         limiter.check(client_ip(request))
     assert exc_info.value.status_code == 429
+
+
+def test_rate_limiter_sweeps_stale_buckets():
+    """Abandoned IP buckets must be swept so the dict doesn't grow forever."""
+    from src.auth import RateLimiter
+
+    fake_now = [1000.0]
+    limiter = RateLimiter(max_per_minute=1, time_fn=lambda: fake_now[0], sweep_threshold=3)
+    limiter.check("a")
+    limiter.check("b")
+    limiter.check("c")
+    fake_now[0] = 1061.0  # a/b/c now stale
+    limiter.check("d")    # dict at threshold — triggers the sweep
+    # _hits is internal, but the retained-key set IS the memory property under test
+    assert set(limiter._hits) == {"d"}
 
 
 def _drive(coro):

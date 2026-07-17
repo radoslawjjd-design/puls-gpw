@@ -60,6 +60,8 @@ def _jwt_secret() -> str:
 
 def create_session_token(user_id: str, email: str, auth_type: str) -> str:
     """Issue an HS256 session JWT valid for 7 days."""
+    if not _jwt_secret():
+        raise RuntimeError("JWT_SECRET is not set — cannot issue session tokens")
     now = int(time.time())
     payload = {
         "user_id": user_id,
@@ -76,8 +78,11 @@ def decode_session_token(token: str) -> dict[str, Any] | None:
 
     Never raises — callers treat None as "no session".
     """
+    secret = _jwt_secret()
+    if not secret:
+        return None
     try:
-        return jwt.decode(token, _jwt_secret(), algorithms=["HS256"])
+        return jwt.decode(token, secret, algorithms=["HS256"])
     except jwt.InvalidTokenError:
         return None
 
@@ -119,16 +124,26 @@ def client_ip(request: Request) -> str:
 class RateLimiter:
     """In-memory sliding-window counter, per-instance by design (max 2 instances)."""
 
-    def __init__(self, max_per_minute: int, time_fn: Callable[[], float] = time.time):
+    def __init__(
+        self,
+        max_per_minute: int,
+        time_fn: Callable[[], float] = time.time,
+        sweep_threshold: int = 1000,
+    ):
         self._max = max_per_minute
         self._time_fn = time_fn
         self._hits: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
+        self._sweep_threshold = sweep_threshold
 
     def check(self, ip: str) -> None:
         """Record a hit for `ip`; raise 429 with Retry-After when over the limit."""
         now = self._time_fn()
         with self._lock:
+            if len(self._hits) >= self._sweep_threshold:
+                # Abandoned IPs never get pruned on access — sweep so the dict is bounded
+                cutoff = now - _RATE_WINDOW_SECONDS
+                self._hits = {k: v for k, v in self._hits.items() if v and v[-1] > cutoff}
             bucket = self._hits.setdefault(ip, deque())
             while bucket and bucket[0] <= now - _RATE_WINDOW_SECONDS:
                 bucket.popleft()
