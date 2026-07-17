@@ -172,7 +172,7 @@ def test_login_firebase_lockout_maps_to_429(client):
     assert r.status_code == 429
 
 
-@pytest.mark.parametrize("failure", ["timeout", "http_500", "unknown_code"])
+@pytest.mark.parametrize("failure", ["timeout", "http_500", "unknown_code", "malformed_200"])
 def test_login_service_failures_map_to_503(client, failure):
     import httpx as httpx_module
     import respx
@@ -184,6 +184,8 @@ def test_login_service_failures_map_to_503(client, failure):
             route.mock(side_effect=httpx_module.ConnectTimeout("timeout"))
         elif failure == "http_500":
             route.mock(return_value=HttpxResponse(500, json={}))
+        elif failure == "malformed_200":
+            route.mock(return_value=HttpxResponse(200, json={"no": "localId"}))
         else:
             route.mock(return_value=HttpxResponse(400, json={"error": {"message": "WEIRD_NEW_CODE"}}))
         r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})

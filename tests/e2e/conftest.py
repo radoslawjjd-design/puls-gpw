@@ -3,6 +3,7 @@ import threading
 import time
 from contextlib import ExitStack
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -398,6 +399,10 @@ def live_server_url():
         patch("src.auth.insert_user"),
         patch("src.auth.upsert_user_login"),
         patch("src.auth._get_firebase_app"),
+        patch(
+            "src.auth.firebase_auth.create_user",
+            return_value=SimpleNamespace(uid="e2e-firebase-uid"),
+        ),
         patch(
             "src.auth.verify_password_rest",
             return_value=("e2e-firebase-uid", "e2e@example.com"),

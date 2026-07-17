@@ -65,8 +65,15 @@ def _jwt_secret() -> str:
     return os.environ.get("JWT_SECRET", "")
 
 
-def create_session_token(user_id: str, email: str, auth_type: str) -> str:
-    """Issue an HS256 session JWT valid for 7 days."""
+def create_session_token(
+    user_id: str, email: str, auth_type: str, login_at: int | None = None
+) -> str:
+    """Issue an HS256 session JWT valid for 7 days.
+
+    `login_at` records the ORIGINAL login time and survives sliding refreshes —
+    it is what the absolute session cap is measured against. Fresh logins omit
+    it (login_at == iat); refresh passes the old value through.
+    """
     if not _jwt_secret():
         raise RuntimeError("JWT_SECRET is not set — cannot issue session tokens")
     now = int(time.time())
@@ -76,6 +83,7 @@ def create_session_token(user_id: str, email: str, auth_type: str) -> str:
         "auth_type": auth_type,
         "iat": now,
         "exp": now + _SESSION_TTL_SECONDS,
+        "login_at": login_at if login_at is not None else now,
     }
     return jwt.encode(payload, _jwt_secret(), algorithm="HS256")
 
@@ -89,9 +97,16 @@ def decode_session_token(token: str) -> dict[str, Any] | None:
     if not secret:
         return None
     try:
-        return jwt.decode(token, secret, algorithms=["HS256"])
+        payload = jwt.decode(
+            token, secret, algorithms=["HS256"], options={"require": ["exp", "iat"]}
+        )
     except jwt.InvalidTokenError:
         return None
+    # Identity claims are required too — a token without them would be a
+    # KeyError (500) at every consumer instead of a clean "no session".
+    if not payload.get("user_id") or not payload.get("email"):
+        return None
+    return payload
 
 
 def set_session_cookie(response: Response, token: str) -> None:
@@ -109,10 +124,16 @@ def set_session_cookie(response: Response, token: str) -> None:
 
 def clear_session_cookie(response: Response) -> None:
     """Emit a deletion Set-Cookie for the session cookie (logout)."""
-    response.delete_cookie(key=SESSION_COOKIE_NAME, httponly=True, samesite="lax")
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=bool(os.environ.get("K_SERVICE")),
+    )
 
 
 _SESSION_REFRESH_AFTER_SECONDS = 24 * 3600
+_SESSION_ABSOLUTE_MAX_SECONDS = 30 * 24 * 3600
 
 
 def session_payload_from_request(request: Request) -> dict[str, Any] | None:
@@ -122,12 +143,24 @@ def session_payload_from_request(request: Request) -> dict[str, Any] | None:
 
 
 def refresh_session_if_stale(response: Response, payload: dict[str, Any]) -> None:
-    """Sliding refresh: re-issue the cookie when the token is older than 24h."""
-    if time.time() - payload.get("iat", 0) >= _SESSION_REFRESH_AFTER_SECONDS:
-        token = create_session_token(
-            payload["user_id"], payload["email"], payload.get("auth_type", "firebase")
-        )
-        set_session_cookie(response, token)
+    """Sliding refresh: re-issue the cookie when the token is older than 24h.
+
+    Capped at an absolute session age of 30 days from the original login
+    (`login_at` claim) — without the cap a stolen cookie could be slid forever
+    by replaying it daily. Past the cap the token simply isn't refreshed and
+    expires naturally; the user logs in again.
+    """
+    now = time.time()
+    if now - payload.get("iat", 0) < _SESSION_REFRESH_AFTER_SECONDS:
+        return
+    login_at = int(payload.get("login_at", payload.get("iat", 0)))
+    if now - login_at >= _SESSION_ABSOLUTE_MAX_SECONDS:
+        return
+    token = create_session_token(
+        payload["user_id"], payload["email"], payload.get("auth_type", "firebase"),
+        login_at=login_at,
+    )
+    set_session_cookie(response, token)
 
 
 _RATE_WINDOW_SECONDS = 60.0
@@ -259,8 +292,11 @@ def verify_password_rest(email: str, password: str) -> tuple[str, str]:
         raise AuthUnavailableError(f"Identity Toolkit unreachable: {exc}") from exc
 
     if resp.status_code == 200:
-        data = resp.json()
-        return data["localId"], data.get("email", email)
+        try:
+            data = resp.json()
+            return data["localId"], data.get("email", email)
+        except (ValueError, KeyError) as exc:
+            raise AuthUnavailableError("Identity Toolkit returned a malformed 200 body") from exc
     if resp.status_code >= 500:
         raise AuthUnavailableError(f"Identity Toolkit 5xx: {resp.status_code}")
 

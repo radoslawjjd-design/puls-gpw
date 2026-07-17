@@ -114,6 +114,83 @@ def test_decode_returns_none_for_expired_token(jwt_secret):
     assert decode_session_token(expired) is None
 
 
+def test_decode_returns_none_for_token_missing_required_claims(jwt_secret):
+    """A signed token without exp/iat or without user_id/email must decode to None
+    (never 'valid forever', never a KeyError at the consumer)."""
+    import time
+
+    import jwt as pyjwt
+
+    from src.auth import decode_session_token
+
+    now = int(time.time())
+    no_exp = pyjwt.encode(
+        {"user_id": "uid-1", "email": "user@example.com", "iat": now},
+        _SECRET, algorithm="HS256",
+    )
+    assert decode_session_token(no_exp) is None
+
+    no_identity = pyjwt.encode(
+        {"iat": now, "exp": now + 3600}, _SECRET, algorithm="HS256",
+    )
+    assert decode_session_token(no_identity) is None
+
+
+def test_new_session_token_carries_login_at(jwt_secret):
+    """A fresh session token records the original login time (login_at == iat)."""
+    from src.auth import create_session_token, decode_session_token
+
+    token = create_session_token("uid-1", "user@example.com", "firebase")
+    payload = decode_session_token(token)
+    assert payload is not None
+    assert payload["login_at"] == payload["iat"]
+
+
+def test_refresh_refused_past_absolute_session_cap(jwt_secret):
+    """Sliding refresh must stop once the original login is older than 30 days —
+    a stolen cookie cannot be slid forever."""
+    import time
+
+    from fastapi import Response
+
+    from src.auth import refresh_session_if_stale
+
+    now = int(time.time())
+    payload = {
+        "user_id": "uid-1", "email": "user@example.com", "auth_type": "firebase",
+        "iat": now - 25 * 3600, "exp": now + 6 * 24 * 3600,
+        "login_at": now - 31 * 24 * 3600,
+    }
+    resp = Response()
+    refresh_session_if_stale(resp, payload)
+    assert "set-cookie" not in resp.headers
+
+
+def test_refresh_preserves_original_login_at(jwt_secret):
+    """A re-issued token keeps the ORIGINAL login_at (refresh must not reset the cap)."""
+    import time
+
+    from fastapi import Response
+
+    from src.auth import decode_session_token, refresh_session_if_stale
+
+    now = int(time.time())
+    original_login = now - 10 * 24 * 3600
+    payload = {
+        "user_id": "uid-1", "email": "user@example.com", "auth_type": "firebase",
+        "iat": now - 25 * 3600, "exp": now + 6 * 24 * 3600,
+        "login_at": original_login,
+    }
+    resp = Response()
+    refresh_session_if_stale(resp, payload)
+    cookie_header = resp.headers.get("set-cookie", "")
+    assert cookie_header.startswith("session=")
+    token = cookie_header.split("session=", 1)[1].split(";", 1)[0]
+    refreshed = decode_session_token(token)
+    assert refreshed is not None
+    assert refreshed["login_at"] == original_login
+
+
 def test_jwt_secret_read_at_call_time(monkeypatch):
     """JWT_SECRET must be read inside the call, not at import — monkeypatch after import works."""
     from src.auth import create_session_token, decode_session_token
