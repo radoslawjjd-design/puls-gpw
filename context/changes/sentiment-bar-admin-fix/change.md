@@ -1,7 +1,7 @@
 ---
 change_id: sentiment-bar-admin-fix
 title: Fix sentiment 7-day bar — admin-only visibility and real data
-status: new
+status: planned
 created: 2026-07-17
 updated: 2026-07-17
 archived_at: null
