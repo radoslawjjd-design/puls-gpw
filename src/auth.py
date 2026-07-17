@@ -3,6 +3,7 @@
 No Firebase calls here yet (phase 4); this module holds the pure logic that
 backs the /api/auth/* router.
 """
+import json
 import logging
 import math
 import os
@@ -12,10 +13,16 @@ from collections import deque
 from collections.abc import Callable
 from typing import Any
 
+import firebase_admin  # type: ignore[import-untyped]
+import httpx
 import jwt
 from email_validator import EmailNotValidError, validate_email
-from fastapi import HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
+from firebase_admin import credentials as firebase_credentials  # type: ignore[import-untyped]
 from pydantic import BaseModel, field_validator
+
+from db.bigquery import BigQueryError, insert_user, upsert_user_login
 
 logger = logging.getLogger(__name__)
 
@@ -165,3 +172,168 @@ def rate_limit(max_per_minute: int, time_fn: Callable[[], float] = time.time):
         limiter.check(client_ip(request))
 
     return _dependency
+
+
+# ── Firebase clients ──────────────────────────────────────────────────────────
+
+class AuthUnavailableError(Exception):
+    """Firebase misconfigured/unreachable — endpoints map this to 503, never 500."""
+
+
+class InvalidCredentialsError(Exception):
+    """Wrong email or password — one shared 401, no account enumeration."""
+
+
+class FirebaseRateLimitedError(Exception):
+    """Firebase-side lockout (TOO_MANY_ATTEMPTS_TRIED_LATER) — maps to 429."""
+
+
+_AUTH_UNAVAILABLE_DETAIL = "Auth temporarily unavailable"
+
+_firebase_app: firebase_admin.App | None = None
+_firebase_lock = threading.Lock()
+
+
+def _get_firebase_app() -> firebase_admin.App:
+    """Lazy singleton — never initialized at import time (tests/E2E lack the env var)."""
+    global _firebase_app
+    if _firebase_app is None:
+        with _firebase_lock:
+            if _firebase_app is None:
+                raw = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+                if not raw:
+                    raise AuthUnavailableError("FIREBASE_SERVICE_ACCOUNT_JSON is not set")
+                try:
+                    cred = firebase_credentials.Certificate(json.loads(raw))
+                    _firebase_app = firebase_admin.initialize_app(cred)
+                except Exception as exc:
+                    raise AuthUnavailableError(f"Firebase init failed: {exc}") from exc
+    return _firebase_app
+
+
+_IDENTITY_TOOLKIT_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+
+# Identity Toolkit error codes → one shared 401 (no email/password distinction — anti-enumeration)
+_INVALID_CREDENTIAL_CODES = (
+    "INVALID_LOGIN_CREDENTIALS",
+    "EMAIL_NOT_FOUND",
+    "INVALID_PASSWORD",
+    "USER_DISABLED",
+)
+
+
+def verify_password_rest(email: str, password: str) -> tuple[str, str]:
+    """Verify credentials via Identity Toolkit REST; return (local_id, email).
+
+    Raises InvalidCredentialsError / FirebaseRateLimitedError / AuthUnavailableError.
+    """
+    api_key = os.environ.get("FIREBASE_WEB_API_KEY")
+    if not api_key:
+        raise AuthUnavailableError("FIREBASE_WEB_API_KEY is not set")
+    try:
+        resp = httpx.post(
+            _IDENTITY_TOOLKIT_URL,
+            params={"key": api_key},
+            json={"email": email, "password": password, "returnSecureToken": True},
+            timeout=10.0,
+        )
+    except httpx.HTTPError as exc:
+        raise AuthUnavailableError(f"Identity Toolkit unreachable: {exc}") from exc
+
+    if resp.status_code == 200:
+        data = resp.json()
+        return data["localId"], data.get("email", email)
+    if resp.status_code >= 500:
+        raise AuthUnavailableError(f"Identity Toolkit 5xx: {resp.status_code}")
+
+    try:
+        code = resp.json()["error"]["message"]
+    except Exception as exc:
+        raise AuthUnavailableError("Identity Toolkit returned an unparseable error") from exc
+    # Firebase may suffix codes with context ("TOO_MANY_ATTEMPTS_TRIED_LATER : ...")
+    if any(code.startswith(known) for known in _INVALID_CREDENTIAL_CODES):
+        raise InvalidCredentialsError(code)
+    if code.startswith("TOO_MANY_ATTEMPTS_TRIED_LATER"):
+        raise FirebaseRateLimitedError(code)
+    raise AuthUnavailableError(f"Identity Toolkit error: {code}")
+
+
+# ── /api/auth router ──────────────────────────────────────────────────────────
+
+router = APIRouter(prefix="/api/auth")
+
+_register_rate_limiter = RateLimiter(5)
+_login_rate_limiter = RateLimiter(10)
+
+
+async def _register_rate_dep(request: Request) -> None:
+    _register_rate_limiter.check(client_ip(request))
+
+
+async def _login_rate_dep(request: Request) -> None:
+    _login_rate_limiter.check(client_ip(request))
+
+
+def _session_response(response: Response, user_id: str, email: str) -> dict[str, str]:
+    token = create_session_token(user_id, email, "firebase")
+    set_session_cookie(response, token)
+    return {"user_id": user_id, "email": email}
+
+
+@router.post("/register")
+async def register(body: RegisterIn, response: Response, _rl: None = Depends(_register_rate_dep)):
+    try:
+        _get_firebase_app()
+        user = firebase_auth.create_user(email=body.email, password=body.password)
+    except firebase_auth.EmailAlreadyExistsError:
+        raise HTTPException(status_code=409, detail="Email jest już zarejestrowany")
+    except AuthUnavailableError as exc:
+        logger.warning("register: auth unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+    except Exception as exc:
+        logger.error("register: unexpected Firebase error: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+
+    try:
+        insert_user(user.uid, body.email)
+    except BigQueryError as exc:
+        # Not fatal — upsert_user_login self-heals the row on first login (Q6)
+        logger.warning("register: insert_user failed for %s: %s", user.uid, exc)
+
+    return _session_response(response, user.uid, body.email)
+
+
+@router.post("/login")
+async def login(body: LoginIn, response: Response, _rl: None = Depends(_login_rate_dep)):
+    try:
+        user_id, email = verify_password_rest(body.email, body.password)
+    except InvalidCredentialsError:
+        raise HTTPException(status_code=401, detail="Nieprawidłowy email lub hasło")
+    except FirebaseRateLimitedError:
+        raise HTTPException(status_code=429, detail="Zbyt wiele prób logowania, spróbuj później")
+    except AuthUnavailableError as exc:
+        logger.warning("login: auth unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+
+    try:
+        upsert_user_login(user_id, email)
+    except BigQueryError as exc:
+        # Not fatal — the row self-heals on the next successful login
+        logger.warning("login: upsert_user_login failed for %s: %s", user_id, exc)
+
+    return _session_response(response, user_id, email)
+
+
+@router.post("/logout", status_code=204)
+async def logout(response: Response) -> None:
+    clear_session_cookie(response)
+
+
+@router.get("/me")
+async def me(request: Request):
+    """Identity from the JWT alone — no BQ round-trip (ticket requirement)."""
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    payload = decode_session_token(token) if token else None
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Brak ważnej sesji")
+    return {"user_id": payload["user_id"], "email": payload["email"]}

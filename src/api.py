@@ -51,6 +51,7 @@ from db.bigquery import (
     remove_watchlist_ticker,
     upsert_user_portfolio_position,
 )
+from src.auth import router as auth_router
 from src.portfolio_calendar import compute_calendar_pnl
 from src.portfolio_treemap import compute_treemap_positions, compute_user_portfolio_treemap_positions
 
@@ -235,6 +236,7 @@ def create_app() -> FastAPI:
     ui_html = pathlib.Path("static/index.html").read_text(encoding="utf-8")
 
     app = FastAPI()
+    app.include_router(auth_router)
 
     @app.middleware("http")
     async def _add_process_time_header(request: Request, call_next):
