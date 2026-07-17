@@ -87,7 +87,7 @@ jobs:
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }} \
             --service-account=puls-gpw-runner@puls-gpw.iam.gserviceaccount.com \
-            --set-secrets="ADMIN_API_KEY=admin-api-key:latest,USER_API_KEY=user-api-key:latest" \
+            --set-secrets="ADMIN_API_KEY=admin-api-key:latest,USER_API_KEY=user-api-key:latest,JWT_SECRET=jwt-secret:latest,FIREBASE_SERVICE_ACCOUNT_JSON=firebase-service-account:latest,FIREBASE_WEB_API_KEY=firebase-web-api-key:latest" \
             --set-env-vars="GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},BIGQUERY_DATASET=espi_ebi" \
             --allow-unauthenticated \
             --cpu=1 \

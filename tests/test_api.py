@@ -1156,3 +1156,81 @@ def test_portfolio_positions_accepts_etf_ticker(api_client):
                   "shares": 5.0, "avg_buy_price": 70.0, "portfolio_id": "port-1"},
         )
     assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text}"
+
+
+# ── JWT cookie auth seam (PUL-71 phase 5) ─────────────────────────────────────
+
+_JWT_SECRET = "test-jwt-secret"
+
+
+def _make_session_token(iat_offset_seconds: int = 0, user_id: str = "fb-uid-1") -> str:
+    import time as _time
+
+    import jwt as pyjwt
+
+    iat = int(_time.time()) + iat_offset_seconds
+    payload = {"user_id": user_id, "email": "user@example.com",
+               "auth_type": "firebase", "iat": iat, "exp": iat + 7 * 24 * 3600}
+    return pyjwt.encode(payload, _JWT_SECRET, algorithm="HS256")
+
+
+@pytest.fixture
+def jwt_env(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", _JWT_SECRET)
+
+
+def test_auth_role_with_cookie_only_returns_user(api_client, jwt_env):
+    """A valid session cookie alone must authenticate as role=user — no API key needed."""
+    api_client.cookies.set("session", _make_session_token())
+    r = api_client.get("/auth/role")
+    assert r.status_code == 200
+    assert r.json() == {"role": "user"}
+
+
+def test_auth_role_without_any_credentials_returns_401(api_client, jwt_env):
+    assert api_client.get("/auth/role").status_code == 401
+
+
+def test_expired_cookie_falls_through_to_api_key(api_client, jwt_env):
+    """A stale browser cookie must not break API-key auth — fallthrough, not 401."""
+    import time as _time
+
+    import jwt as pyjwt
+
+    expired = pyjwt.encode(
+        {"user_id": "fb-uid-1", "email": "user@example.com", "auth_type": "firebase",
+         "iat": int(_time.time()) - 7200, "exp": int(_time.time()) - 3600},
+        _JWT_SECRET, algorithm="HS256",
+    )
+    api_client.cookies.set("session", expired)
+    r = api_client.get("/auth/role", headers={"X-API-Key": _ADMIN_KEY})
+    assert r.status_code == 200
+    assert r.json() == {"role": "admin"}
+
+
+def test_admin_endpoint_with_cookie_returns_403(api_client, jwt_env):
+    """JWT cookie grants role=user only — admin stays API-key-exclusive."""
+    api_client.cookies.set("session", _make_session_token())
+    assert api_client.get("/admin/x-posts").status_code == 403
+
+
+def test_watchlist_with_cookie_uses_jwt_user_id(api_client, jwt_env):
+    """With a session cookie, client_id comes from the JWT (Firebase UID) — no X-Client-Id header."""
+    api_client.cookies.set("session", _make_session_token(user_id="fb-uid-42"))
+    with patch("src.api.list_watchlist_tickers", return_value=["PKO"]) as lw:
+        r = api_client.get("/watchlist")
+    assert r.status_code == 200
+    lw.assert_called_once_with("fb-uid-42")
+
+
+def test_sliding_refresh_reissues_cookie_after_24h(api_client, jwt_env):
+    """Token older than 24h must be re-issued via Set-Cookie; a fresh one must not."""
+    api_client.cookies.set("session", _make_session_token(iat_offset_seconds=-25 * 3600))
+    r = api_client.get("/auth/role")
+    assert r.status_code == 200
+    assert "session=" in r.headers.get("set-cookie", "")
+
+    api_client.cookies.set("session", _make_session_token())
+    r2 = api_client.get("/auth/role")
+    assert r2.status_code == 200
+    assert "set-cookie" not in r2.headers

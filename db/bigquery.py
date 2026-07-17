@@ -846,6 +846,97 @@ def assign_orphan_positions_to_portfolio(user_id: str, portfolio_id: str) -> Non
     logger.debug("assign_orphan_positions_to_portfolio: user_id=%s portfolio_id=%s", user_id, portfolio_id)
 
 
+_USERS_TABLE_NAME = "users"
+
+_USERS_SCHEMA = [
+    bigquery.SchemaField("user_id",       "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("email",         "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("created_at",    "TIMESTAMP", mode="REQUIRED"),
+    bigquery.SchemaField("last_login_at", "TIMESTAMP", mode="NULLABLE"),
+]
+
+
+def create_users_table_if_not_exists() -> None:
+    """Create the users table in BigQuery if it does not already exist."""
+    client = _get_client()
+    table_id = _table_ref(client, _USERS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_USERS_SCHEMA)
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_users_schema_current() -> None:
+    """Migrate the users table — add any missing schema columns."""
+    ensure_schema_current(_USERS_TABLE_NAME, _USERS_SCHEMA)
+
+
+def insert_user(user_id: str, email: str) -> None:
+    """Insert one users row on registration; created_at set server-side.
+
+    Raises BigQueryError on failure.
+    """
+    client = _get_client()
+    query = f"""
+        INSERT INTO `{_table_ref(client, _USERS_TABLE_NAME)}` (user_id, email, created_at)
+        VALUES (@user_id, @email, CURRENT_TIMESTAMP())
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("email",   "STRING", email),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"insert_user failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"insert_user failed: {job.errors}")
+    logger.debug("insert_user: user_id=%s", user_id)
+
+
+def upsert_user_login(user_id: str, email: str) -> None:
+    """Record a login: bump last_login_at, self-healing the row if registration
+    never landed it (partial-fail recovery — the register path only logs BQ errors).
+
+    MATCHED → update last_login_at.
+    NOT MATCHED → full INSERT with created_at and last_login_at set to now.
+    Raises BigQueryError on failure.
+    """
+    client = _get_client()
+    query = f"""
+        MERGE `{_table_ref(client, _USERS_TABLE_NAME)}` T
+        USING (
+            SELECT @user_id AS user_id, @email AS email
+        ) S
+        ON T.user_id = S.user_id
+        WHEN MATCHED THEN
+          UPDATE SET last_login_at = CURRENT_TIMESTAMP()
+        WHEN NOT MATCHED THEN
+          INSERT (user_id, email, created_at, last_login_at)
+          VALUES (S.user_id, S.email, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("email",   "STRING", email),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"upsert_user_login failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"upsert_user_login failed: {job.errors}")
+    logger.debug("upsert_user_login: user_id=%s", user_id)
+
+
 def add_watchlist_ticker(client_id: str, ticker: str) -> None:
     """Add `ticker` to `client_id`'s watchlist; silent no-op if already present.
 

@@ -3,6 +3,7 @@ import threading
 import time
 from contextlib import ExitStack
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -339,6 +340,7 @@ def _accept_gdpr(page, request):
 def live_server_url():
     os.environ["ADMIN_API_KEY"] = _ADMIN_KEY
     os.environ["USER_API_KEY"]  = _USER_KEY
+    os.environ["JWT_SECRET"]    = "e2e-jwt-secret"
 
     _patches = [
         patch("src.api.list_announcements_admin", return_value=_FAKE_ADMIN_ROWS),
@@ -388,6 +390,22 @@ def live_server_url():
         patch(
             "src.api.get_portfolio_calendar_data",
             side_effect=_fake_get_portfolio_calendar_data,
+        ),
+        patch("src.api.create_users_table_if_not_exists"),
+        patch("src.api.ensure_users_schema_current"),
+        # Auth endpoints (PUL-71) — patched at the src.auth import site, not
+        # src.api: insert_user/upsert_user_login are imported into src.auth,
+        # and _get_firebase_app/verify_password_rest live there.
+        patch("src.auth.insert_user"),
+        patch("src.auth.upsert_user_login"),
+        patch("src.auth._get_firebase_app"),
+        patch(
+            "src.auth.firebase_auth.create_user",
+            return_value=SimpleNamespace(uid="e2e-firebase-uid"),
+        ),
+        patch(
+            "src.auth.verify_password_rest",
+            return_value=("e2e-firebase-uid", "e2e@example.com"),
         ),
     ]
 
