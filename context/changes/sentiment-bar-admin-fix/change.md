@@ -1,9 +1,9 @@
 ---
 change_id: sentiment-bar-admin-fix
 title: Fix sentiment 7-day bar — admin-only visibility and real data
-status: implementing
+status: implemented
 created: 2026-07-17
-updated: 2026-07-17
+updated: 2026-07-18
 archived_at: null
 tracking:
   linear: PUL-82

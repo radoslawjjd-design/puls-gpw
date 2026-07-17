@@ -247,4 +247,4 @@ sees the element. Follow `/10x-e2e` hard rules: role/label/text locators, no
 
 #### Manual
 
-- [ ] 2.4 Prod verification: admin sees populated bar, user sees no bar and no extra fetch
+- [x] 2.4 Prod verification: admin sees populated bar, user sees no bar and no extra fetch — 2f1340d
