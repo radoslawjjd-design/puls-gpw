@@ -65,15 +65,14 @@ mają **replace semantics** — zawsze podawaj pełną listę.
 | `user-api-key` | `USER_API_KEY` | Klucz API roli user |
 | `jwt-secret` | `JWT_SECRET` | Klucz HS256 do podpisywania JWT sesji (PUL-71); generowany np. `openssl rand -hex 32` |
 | `firebase-service-account` | `FIREBASE_SERVICE_ACCOUNT_JSON` | Treść JSON klucza SA `firebase-adminsdk-fbsvc@` (nie ścieżka) — Firebase Admin SDK (PUL-71) |
+| `firebase-web-api-key` | `FIREBASE_WEB_API_KEY` | Dedykowany klucz API `puls-gpw-backend-identitytoolkit` (restrykcja: TYLKO `identitytoolkit.googleapis.com`) — backend REST signInWithPassword. Używany wyłącznie server-side, więc trzymany jako sekret mimo że klucze web Firebase bywają publiczne; poprzednik (auto-created Browser key) wyciekł do publicznej historii gita i został zrotowany (2026-07-17) |
 
 **Wartości sekretów ustawia człowiek** (CLAUDE.md: tworzenie/rotacja sekretów = human-only);
 runner SA `puls-gpw-runner@` musi mieć `secretmanager.secretAccessor`.
 
 ### Env vars
 
-`GOOGLE_CLOUD_PROJECT=puls-gpw`, `BIGQUERY_DATASET=espi_ebi`,
-`FIREBASE_WEB_API_KEY` (klucz **publiczny** Web API Firebase — identyfikuje projekt przy
-Identity Toolkit REST, nie jest sekretem; wartość w `deploy.yml`).
+`GOOGLE_CLOUD_PROJECT=puls-gpw`, `BIGQUERY_DATASET=espi_ebi`.
 
 ---
 
