@@ -241,9 +241,9 @@ sees the element. Follow `/10x-e2e` hard rules: role/label/text locators, no
 
 #### Automated
 
-- [x] 2.1 Full e2e suite passes: `uv run pytest tests/e2e -q`
-- [x] 2.2 New admin test asserts populated bar (counts + avg score visible)
-- [x] 2.3 New user test asserts the bar is absent
+- [x] 2.1 Full e2e suite passes: `uv run pytest tests/e2e -q` — 36cba23
+- [x] 2.2 New admin test asserts populated bar (counts + avg score visible) — 36cba23
+- [x] 2.3 New user test asserts the bar is absent — 36cba23
 
 #### Manual
 
