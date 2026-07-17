@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api import create_app
+from src.auth import verify_password_rest as _real_verify_password_rest
 
 _SECRET = "test-jwt-secret"
 _WEB_KEY = "test-web-api-key"
@@ -16,6 +17,12 @@ def _env(monkeypatch):
     monkeypatch.setenv("USER_API_KEY", "test-user-key")
     monkeypatch.setenv("JWT_SECRET", _SECRET)
     monkeypatch.setenv("FIREBASE_WEB_API_KEY", _WEB_KEY)
+    # The session-scoped E2E fixture (tests/e2e/conftest.py::live_server_url)
+    # patches src.auth.verify_password_rest for the remainder of the pytest
+    # session once any e2e test has run. The respx-based login tests here need
+    # the real function (captured at import/collection time, before fixtures
+    # start) to exercise the actual Identity Toolkit error mapping.
+    monkeypatch.setattr("src.auth.verify_password_rest", _real_verify_password_rest)
 
 
 @pytest.fixture(autouse=True)
@@ -74,7 +81,7 @@ def test_register_invalid_input_returns_422_without_touching_firebase(client, bo
 
 
 def test_register_existing_email_returns_409(client):
-    from firebase_admin import auth as firebase_auth
+    from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
 
     with patch("src.auth._get_firebase_app"), \
          patch(
