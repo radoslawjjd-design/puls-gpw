@@ -1,7 +1,7 @@
 ---
 change_id: pul-71-auth-foundation
 title: Auth foundation — Firebase Auth, JWT session, user model
-status: new
+status: preparing
 created: 2026-07-17
 updated: 2026-07-17
 archived_at: null
