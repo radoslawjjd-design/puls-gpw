@@ -229,13 +229,13 @@ sees the element. Follow `/10x-e2e` hard rules: role/label/text locators, no
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [ ] 1.2 New role-contract tests for my-wallet green (admin gets sentiment+score, user gets neither)
-- [ ] 1.3 Query-string regression assert covers `analysis_score` in the watchlist SELECT
+- [x] 1.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
+- [x] 1.2 New role-contract tests for my-wallet green (admin gets sentiment+score, user gets neither)
+- [x] 1.3 Query-string regression assert covers `analysis_score` in the watchlist SELECT
 
 #### Manual
 
-- [ ] 1.4 Round-trip on real BQ: my-wallet returns non-null `analysis_score` for admin
+- [x] 1.4 Round-trip on real BQ: my-wallet returns non-null `analysis_score` for admin
 
 ### Phase 2: Frontend gate + E2E
 

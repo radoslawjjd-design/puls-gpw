@@ -1594,7 +1594,8 @@ def list_announcements_for_watchlist(
 ) -> list[dict]:
     """Return approved announcements for tickers in `client_id`'s watchlist.
 
-    Same returned column set as `list_announcements_user`. The watchlist
+    Column set of `list_announcements_user` plus `analysis_score` — the API
+    layer decides per role whether the score is exposed. The watchlist
     subquery is bounded to 200 tickers per client — a defensive guardrail,
     not a user-facing limit. Raises BigQueryError on query failure.
     """
@@ -1611,7 +1612,7 @@ def list_announcements_for_watchlist(
     query = f"""
         SELECT
             a.company, a.ticker, a.event_type, a.structured_analysis,
-            a.published_at
+            a.published_at, a.analysis_score
         FROM `{_table_ref(client)}` AS a
         INNER JOIN (
             SELECT ticker FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
@@ -1641,6 +1642,7 @@ def list_announcements_for_watchlist(
             "event_type": row.event_type,
             "structured_analysis": row.structured_analysis,
             "published_at": row.published_at,
+            "analysis_score": row.analysis_score,
         }
         for row in rows
     ]

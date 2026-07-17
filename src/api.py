@@ -425,6 +425,13 @@ def create_app() -> FastAPI:
             rows = list_announcements_for_watchlist(
                 client_id, page=page, page_size=page_size, from_dt=from_dt, to_dt=to_dt,
             )
+            if role == "admin":
+                return [
+                    AnnouncementAdmin(
+                        **{**r, "structured_analysis": _parse_structured_analysis(r.get("structured_analysis"))}
+                    ).model_dump()
+                    for r in rows
+                ]
             result = []
             for r in rows:
                 structured_analysis = _parse_structured_analysis(r.get("structured_analysis"))
