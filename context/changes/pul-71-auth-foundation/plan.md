@@ -314,9 +314,9 @@ Brak migracji danych. Istniejący anonimowy UUID (X-Client-Id) i Firebase UID ws
 ### Phase 6: E2E conftest + deploy + docs
 
 #### Automated
-- [x] 6.1 Pełna suita E2E zielona
-- [x] 6.2 pytest + ruff + mypy zielone
+- [x] 6.1 Pełna suita E2E zielona — 17f7597
+- [x] 6.2 pytest + ruff + mypy zielone — 17f7597
 
 #### Manual
-- [x] 6.3 Sekrety `jwt-secret` + `firebase-service-account` utworzone w Secret Managerze (human-only)
+- [x] 6.3 Sekrety `jwt-secret` + `firebase-service-account` utworzone w Secret Managerze (human-only) — 17f7597
 - [ ] 6.4 Po deploy: prod register/login/me działa; frontend API-key bez regresji
