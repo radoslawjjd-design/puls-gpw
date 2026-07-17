@@ -9,7 +9,7 @@ configure_logging()
 import os
 import uvicorn
 
-for _var in ("ADMIN_API_KEY", "USER_API_KEY"):
+for _var in ("ADMIN_API_KEY", "USER_API_KEY", "JWT_SECRET"):
     if not os.environ.get(_var):
         raise RuntimeError(f"Required env var {_var} is not set")
 

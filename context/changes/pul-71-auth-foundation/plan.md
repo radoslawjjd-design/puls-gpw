@@ -271,12 +271,12 @@ Brak migracji danych. Istniejący anonimowy UUID (X-Client-Id) i Firebase UID ws
 ### Phase 1: Zależności + konfiguracja
 
 #### Automated
-- [ ] 1.1 Import trzech nowych bibliotek przechodzi
-- [ ] 1.2 Istniejąca suita pytest zielona po dodaniu deps
-- [ ] 1.3 ruff + mypy zielone
+- [x] 1.1 Import trzech nowych bibliotek przechodzi
+- [x] 1.2 Istniejąca suita pytest zielona po dodaniu deps
+- [x] 1.3 ruff + mypy zielone
 
 #### Manual
-- [ ] 1.4 Lokalny `.env` uzupełniony; `api_main.py` startuje
+- [x] 1.4 Lokalny `.env` uzupełniony; `api_main.py` startuje
 
 ### Phase 2: Tabela BigQuery `users` + round-trip
 
