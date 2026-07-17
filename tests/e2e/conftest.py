@@ -2,7 +2,7 @@ import os
 import threading
 import time
 from contextlib import ExitStack
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -149,8 +149,12 @@ _watchlist_store: dict[str, list[str]] = {}
 
 _FAKE_WATCHLIST_ANNOUNCEMENT = {
     "company": "PKO SA", "ticker": "PKO", "event_type": "ESPI",
-    "structured_analysis": None,
-    "published_at": datetime(2026, 6, 20, 9, 0, 0, tzinfo=timezone.utc),
+    # Real analysis payload so the admin sentiment bar has data to render;
+    # dynamic published_at keeps the row inside the bar's 7-day window
+    # (a hardcoded date would silently age out and break the assertion).
+    "structured_analysis": '{"summary_pl": "Dobre wyniki", "sentiment": "pozytywny"}',
+    "published_at": datetime.now(timezone.utc) - timedelta(days=1),
+    "analysis_score": 85.0,
 }
 
 

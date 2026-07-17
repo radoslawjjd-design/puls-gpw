@@ -536,6 +536,63 @@ def test_announcements_my_wallet_bq_error_returns_500(api_client):
     assert r.status_code == 500
 
 
+_MY_WALLET_ROW_WITH_ANALYSIS = {
+    "company": "PKO", "ticker": "PKO", "event_type": "wyniki_finansowe",
+    "structured_analysis": '{"summary_pl": "ok", "sentiment": "pozytywny"}',
+    "published_at": "2024-01-01T00:00:00", "analysis_score": 85.0,
+}
+
+
+def test_announcements_my_wallet_admin_gets_sentiment_and_score(api_client):
+    with patch(
+        "src.api.list_announcements_for_watchlist",
+        return_value=[dict(_MY_WALLET_ROW_WITH_ANALYSIS)],
+    ):
+        r = api_client.get(
+            "/announcements/my-wallet",
+            headers={"X-API-Key": _ADMIN_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert data[0]["analysis_score"] == 85.0
+    assert data[0]["structured_analysis"]["sentiment"] == "pozytywny"
+
+
+def test_announcements_my_wallet_user_never_gets_sentiment_or_score(api_client):
+    with patch(
+        "src.api.list_announcements_for_watchlist",
+        return_value=[dict(_MY_WALLET_ROW_WITH_ANALYSIS)],
+    ):
+        r = api_client.get(
+            "/announcements/my-wallet",
+            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert "analysis_score" not in data[0]
+    assert "sentiment" not in data[0]["structured_analysis"]
+
+
+def test_list_announcements_for_watchlist_query_selects_analysis_score():
+    """Regression (lessons.md): mocked BQ tests don't parse SQL — assert the query string."""
+    from unittest.mock import MagicMock
+    from db import bigquery as bq
+
+    captured = {}
+
+    def _capture(query, job_config=None):
+        captured["query"] = query
+        job = MagicMock()
+        job.result.return_value = []
+        return job
+
+    client = MagicMock()
+    client.query.side_effect = _capture
+    with patch.object(bq, "_get_client", return_value=client):
+        bq.list_announcements_for_watchlist("client-1")
+    assert "a.analysis_score" in captured["query"]
+
+
 # ── portfolio positions endpoints (PUL-65) ────────────────────────────────────
 
 _POSITION_WITH_PRICE = {
