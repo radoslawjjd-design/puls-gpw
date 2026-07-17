@@ -290,8 +290,8 @@ Brak migracji danych. Istniejący anonimowy UUID (X-Client-Id) i Firebase UID ws
 ### Phase 3: Rdzeń auth (TDD)
 
 #### Automated
-- [ ] 3.1 `tests/test_auth.py` — walidacje, JWT, rate limiter zielone
-- [ ] 3.2 ruff + mypy zielone
+- [x] 3.1 `tests/test_auth.py` — walidacje, JWT, rate limiter zielone
+- [x] 3.2 ruff + mypy zielone
 
 ### Phase 4: Endpointy `/api/auth/*` (TDD)
 
