@@ -120,20 +120,22 @@ def test_calendar_url_contains_tab_calendar_after_switch(page: Page, live_server
 # ── PUL-68: MTD summary element ───────────────────────────────────────────────
 
 def test_mtd_summary_shows_correct_value_and_gain_class(page: Page, live_server_url: str):
-    """Risk (PUL-68): MTD summary element must appear below the calendar grid with the
+    """Risk (PUL-68): MTD summary must appear in the calendar header label with the
     cumulative daily_change_pln for the month and the correct colour class.
 
-    Fake data: day1=+300, day2=-150, day3=0 → cumulative = +150 → 'MTD: +150 PLN', mtd-gain.
-    Proves: JS render picks last data day, formats sign correctly, sets display:block.
+    Fake data: day1=+300, day2=-150, day3=0 → cumulative = +150 → 'MTD +150 PLN', mtd-gain.
+    Proves: JS render picks last data day, formats sign correctly, appends the span.
+    (faro-v2 layout: MTD lives inside #pp-cal-label; the old standalone
+    #pp-cal-mtd-summary element below the grid is intentionally hidden.)
     """
     _login(page, live_server_url)
     _open_portfolio(page)
     _open_calendar_tab(page)
 
-    mtd = page.locator("#pp-cal-mtd-summary")
+    mtd = page.locator("#pp-cal-label .pp-cal-mtd")
     expect(mtd).to_be_visible()
-    expect(mtd).to_have_text("MTD: +150 PLN")
-    expect(mtd).to_have_class("mtd-gain")
+    expect(mtd).to_have_text("MTD +150 PLN")
+    expect(mtd).to_have_class(re.compile(r"\bmtd-gain\b"))
 
 
 def test_mtd_summary_hidden_when_portfolio_has_no_data(page: Page, live_server_url: str):
@@ -155,5 +157,5 @@ def test_mtd_summary_hidden_when_portfolio_has_no_data(page: Page, live_server_u
     for _ in range(3):
         page.locator("#pp-cal-next").click()
 
-    mtd = page.locator("#pp-cal-mtd-summary")
-    expect(mtd).not_to_be_visible()
+    expect(page.locator("#pp-cal-label .pp-cal-mtd")).to_have_count(0)
+    expect(page.locator("#pp-cal-mtd-summary")).not_to_be_visible()
