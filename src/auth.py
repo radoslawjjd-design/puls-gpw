@@ -281,7 +281,9 @@ def _session_response(response: Response, user_id: str, email: str) -> dict[str,
 
 
 @router.post("/register")
-async def register(body: RegisterIn, response: Response, _rl: None = Depends(_register_rate_dep)):
+def register(body: RegisterIn, response: Response, _rl: None = Depends(_register_rate_dep)):
+    # sync (not async) on purpose: Firebase calls block up to 10s — FastAPI runs
+    # def endpoints in a threadpool, so a slow Firebase never freezes the event loop
     try:
         _get_firebase_app()
         user = firebase_auth.create_user(email=body.email, password=body.password)
@@ -304,7 +306,7 @@ async def register(body: RegisterIn, response: Response, _rl: None = Depends(_re
 
 
 @router.post("/login")
-async def login(body: LoginIn, response: Response, _rl: None = Depends(_login_rate_dep)):
+def login(body: LoginIn, response: Response, _rl: None = Depends(_login_rate_dep)):
     try:
         user_id, email = verify_password_rest(body.email, body.password)
     except InvalidCredentialsError:
@@ -325,12 +327,12 @@ async def login(body: LoginIn, response: Response, _rl: None = Depends(_login_ra
 
 
 @router.post("/logout", status_code=204)
-async def logout(response: Response) -> None:
+def logout(response: Response) -> None:
     clear_session_cookie(response)
 
 
 @router.get("/me")
-async def me(request: Request):
+def me(request: Request):
     """Identity from the JWT alone — no BQ round-trip (ticket requirement)."""
     token = request.cookies.get(SESSION_COOKIE_NAME)
     payload = decode_session_token(token) if token else None

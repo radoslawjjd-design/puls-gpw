@@ -296,11 +296,11 @@ Brak migracji danych. Istniejący anonimowy UUID (X-Client-Id) i Firebase UID ws
 ### Phase 4: Endpointy `/api/auth/*` (TDD)
 
 #### Automated
-- [x] 4.1 `tests/test_auth_api.py` — pełna macierz endpointów zielona
-- [x] 4.2 Pełna suita pytest zielona
+- [x] 4.1 `tests/test_auth_api.py` — pełna macierz endpointów zielona — b2db64b
+- [x] 4.2 Pełna suita pytest zielona — b2db64b
 
 #### Manual
-- [x] 4.3 curl register→login→me→logout lokalnie; wiersz widoczny w BQ `users`
+- [x] 4.3 curl register→login→me→logout lokalnie; wiersz widoczny w BQ `users` — b2db64b
 
 ### Phase 5: Rozszerzenie auth seam (TDD)
 
