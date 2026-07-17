@@ -112,6 +112,24 @@ def clear_session_cookie(response: Response) -> None:
     response.delete_cookie(key=SESSION_COOKIE_NAME, httponly=True, samesite="lax")
 
 
+_SESSION_REFRESH_AFTER_SECONDS = 24 * 3600
+
+
+def session_payload_from_request(request: Request) -> dict[str, Any] | None:
+    """Decode the session cookie from a request; None when absent/invalid/expired."""
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    return decode_session_token(token) if token else None
+
+
+def refresh_session_if_stale(response: Response, payload: dict[str, Any]) -> None:
+    """Sliding refresh: re-issue the cookie when the token is older than 24h."""
+    if time.time() - payload.get("iat", 0) >= _SESSION_REFRESH_AFTER_SECONDS:
+        token = create_session_token(
+            payload["user_id"], payload["email"], payload.get("auth_type", "firebase")
+        )
+        set_session_cookie(response, token)
+
+
 _RATE_WINDOW_SECONDS = 60.0
 
 

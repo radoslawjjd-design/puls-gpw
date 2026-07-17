@@ -9,7 +9,7 @@ from typing import Any, Literal
 logger = logging.getLogger(__name__)
 
 import json5
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, Security
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
@@ -51,6 +51,7 @@ from db.bigquery import (
     remove_watchlist_ticker,
     upsert_user_portfolio_position,
 )
+from src.auth import refresh_session_if_stale, session_payload_from_request
 from src.auth import router as auth_router
 from src.portfolio_calendar import compute_calendar_pnl
 from src.portfolio_treemap import compute_treemap_positions, compute_user_portfolio_treemap_positions
@@ -99,7 +100,17 @@ _CLIENT_ID_HEADER = APIKeyHeader(name="X-Client-Id", auto_error=False)
 Role = Literal["admin", "user"]
 
 
-def _get_role(key: str | None = Security(_API_KEY_HEADER)) -> Role:
+def _get_role(
+    request: Request,
+    response: Response,
+    key: str | None = Security(_API_KEY_HEADER),
+) -> Role:
+    # Order per PUL-71: valid JWT cookie → user; invalid/expired cookie falls
+    # through to the API-key headers (a stale browser cookie must not break API-key auth)
+    payload = session_payload_from_request(request)
+    if payload is not None:
+        refresh_session_if_stale(response, payload)
+        return "user"
     if key == os.environ.get("ADMIN_API_KEY"):
         return "admin"
     if key == os.environ.get("USER_API_KEY"):
@@ -113,7 +124,14 @@ def _require_admin(role: Role = Depends(_get_role)) -> Role:
     return role
 
 
-def _get_client_id(client_id: str | None = Security(_CLIENT_ID_HEADER)) -> str:
+def _get_client_id(
+    request: Request,
+    client_id: str | None = Security(_CLIENT_ID_HEADER),
+) -> str:
+    # JWT session → Firebase UID becomes the client_id (groundwork for PUL-74)
+    payload = session_payload_from_request(request)
+    if payload is not None:
+        return payload["user_id"]
     if not client_id:
         raise HTTPException(status_code=400, detail="Missing X-Client-Id header")
     return client_id

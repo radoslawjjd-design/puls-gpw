@@ -305,11 +305,11 @@ Brak migracji danych. Istniejący anonimowy UUID (X-Client-Id) i Firebase UID ws
 ### Phase 5: Rozszerzenie auth seam (TDD)
 
 #### Automated
-- [ ] 5.1 Macierz cookie/API-key/nic w `tests/test_api.py` zielona; istniejące testy bez modyfikacji
-- [ ] 5.2 Pełna suita pytest zielona
+- [x] 5.1 Macierz cookie/API-key/nic w `tests/test_api.py` zielona; istniejące testy bez modyfikacji
+- [x] 5.2 Pełna suita pytest zielona
 
 #### Manual
-- [ ] 5.3 `/announcements` działa z samym cookie i z samym API-key
+- [x] 5.3 `/announcements` działa z samym cookie i z samym API-key
 
 ### Phase 6: E2E conftest + deploy + docs
 
