@@ -1,7 +1,7 @@
 ---
 change_id: login-register-landing
 title: Onboarding landing page + email/password login and registration (PUL-72)
-status: planned
+status: implementing
 created: 2026-07-18
 updated: 2026-07-18
 archived_at: null

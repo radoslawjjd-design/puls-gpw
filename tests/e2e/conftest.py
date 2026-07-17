@@ -158,6 +158,25 @@ _FAKE_WATCHLIST_ANNOUNCEMENT = {
 }
 
 
+# Public landing cards (PUL-72). Dynamic published_at keeps rows inside the
+# 90-day window; the sentiment key in the raw JSON lets e2e prove it never
+# renders on the public cards (the API strips it server-side).
+_FAKE_PUBLIC_TOP_ROWS = [
+    {"company": "PKO SA", "ticker": "PKO", "title": "Rekordowe wyniki kwartalne",
+     "event_type": "wyniki",
+     "published_at": datetime.now(timezone.utc) - timedelta(days=1),
+     "structured_analysis": '{"summary_pl": "Bank raportuje rekordowy zysk netto.", "sentiment": "pozytywny"}'},
+    {"company": "CD Projekt SA", "ticker": "CDR", "title": "Umowa wydawnicza",
+     "event_type": "umowa",
+     "published_at": datetime.now(timezone.utc) - timedelta(days=2),
+     "structured_analysis": '{"summary_pl": "Podpisano znaczącą umowę wydawniczą.", "sentiment": "pozytywny"}'},
+    {"company": "XTB SA", "ticker": "XTB", "title": "Dywidenda 2026",
+     "event_type": "dywidenda",
+     "published_at": datetime.now(timezone.utc) - timedelta(days=3),
+     "structured_analysis": '{"summary_pl": "Zarząd rekomenduje wypłatę dywidendy.", "sentiment": "neutralny"}'},
+]
+
+
 def _fake_add_watchlist_ticker(client_id, ticker):
     tickers = _watchlist_store.setdefault(client_id, [])
     if ticker not in tickers:
@@ -365,6 +384,7 @@ def live_server_url():
         patch("src.api.remove_watchlist_ticker", side_effect=_fake_remove_watchlist_ticker),
         patch("src.api.list_watchlist_tickers", side_effect=_fake_list_watchlist_tickers),
         patch("src.api.list_announcements_for_watchlist", side_effect=_fake_list_announcements_for_watchlist),
+        patch("src.api.list_top_announcements_public", return_value=_FAKE_PUBLIC_TOP_ROWS),
         patch(
             "src.api.create_user_portfolio_positions_table_if_not_exists",
             side_effect=_fake_create_user_portfolio_positions_table_if_not_exists,

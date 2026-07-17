@@ -1648,6 +1648,49 @@ def list_announcements_for_watchlist(
     ]
 
 
+def list_top_announcements_public(limit: int = 3) -> list[dict]:
+    """Return the highest-score approved announcements for the public landing cards.
+
+    Score containment (PUL-72): `analysis_score` is deliberately NOT in the
+    SELECT list — it orders the result server-side but never leaves the DB
+    layer, so the admin-only score convention holds for public callers.
+    Bounded to the last {_ANNOUNCEMENTS_DEFAULT_DAYS} days so cards stay
+    fresh; excludes 'inne' (same eligibility rule as X posts). Returns dicts
+    with keys: company, ticker, title, event_type, published_at,
+    structured_analysis. Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT
+            company, ticker, title, event_type, published_at, structured_analysis
+        FROM `{_table_ref(client)}`
+        WHERE analysis_approved = TRUE
+          AND analysis_score IS NOT NULL
+          AND event_type != 'inne'
+          AND published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {_ANNOUNCEMENTS_DEFAULT_DAYS} DAY)
+        ORDER BY analysis_score DESC, published_at DESC
+        LIMIT @limit
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("limit", "INT64", limit)]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_top_announcements_public failed: {exc}") from exc
+    return [
+        {
+            "company": row.company,
+            "ticker": row.ticker,
+            "title": row.title,
+            "event_type": row.event_type,
+            "published_at": row.published_at,
+            "structured_analysis": row.structured_analysis,
+        }
+        for row in rows
+    ]
+
+
 def save_x_post(
     announcement_ids: list[str],
     post_text: str | None,
