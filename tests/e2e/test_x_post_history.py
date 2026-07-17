@@ -28,8 +28,9 @@ def test_topbar_nav_shows_x_history_for_admin(page: Page, live_server_url: str):
 
     page.get_by_role("button", name="admin").click()
     menu_items = page.get_by_role("menuitem")
-    expect(menu_items).to_have_count(1)
-    expect(menu_items.nth(0)).to_have_text("Wyloguj")
+    expect(menu_items).to_have_count(2)
+    expect(menu_items.nth(0)).to_have_text("Tryb ciemny")
+    expect(menu_items.nth(1)).to_have_text("Wyloguj")
 
 
 def test_clicking_menu_item_renders_x_posts_table(page: Page, live_server_url: str):
