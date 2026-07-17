@@ -229,21 +229,21 @@ sees the element. Follow `/10x-e2e` hard rules: role/label/text locators, no
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [x] 1.2 New role-contract tests for my-wallet green (admin gets sentiment+score, user gets neither)
-- [x] 1.3 Query-string regression assert covers `analysis_score` in the watchlist SELECT
+- [x] 1.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q` — 6de79ac
+- [x] 1.2 New role-contract tests for my-wallet green (admin gets sentiment+score, user gets neither) — 6de79ac
+- [x] 1.3 Query-string regression assert covers `analysis_score` in the watchlist SELECT — 6de79ac
 
 #### Manual
 
-- [x] 1.4 Round-trip on real BQ: my-wallet returns non-null `analysis_score` for admin
+- [x] 1.4 Round-trip on real BQ: my-wallet returns non-null `analysis_score` for admin — 6de79ac
 
 ### Phase 2: Frontend gate + E2E
 
 #### Automated
 
-- [ ] 2.1 Full e2e suite passes: `uv run pytest tests/e2e -q`
-- [ ] 2.2 New admin test asserts populated bar (counts + avg score visible)
-- [ ] 2.3 New user test asserts the bar is absent
+- [x] 2.1 Full e2e suite passes: `uv run pytest tests/e2e -q`
+- [x] 2.2 New admin test asserts populated bar (counts + avg score visible)
+- [x] 2.3 New user test asserts the bar is absent
 
 #### Manual
 

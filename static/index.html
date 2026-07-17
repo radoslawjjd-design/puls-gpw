@@ -1000,6 +1000,11 @@ function doLogout() {
   sessionStorage.clear();
   apiKey = null; role = null;
   currentView = 'announcements';
+  // Reset per-session My Wallet state — the next login may be a different role,
+  // and a stale admin-rendered sentiment bar must not survive into a user session.
+  _watchlistFetched = false;
+  const wlSentiment = $('wl-sentiment-summary');
+  if (wlSentiment) { wlSentiment.style.display = 'none'; wlSentiment.innerHTML = ''; }
   // Session state is gone — a stale `?view=treemap`/`?view=x-history` in the
   // address bar would otherwise sit there through the login screen and get
   // silently re-applied on the next login. replaceState (not pushState) so
@@ -1844,6 +1849,9 @@ async function fetchMyWalletAnnouncements(push = true) {
 async function fetchWlSentimentSummary() {
   const box = $('wl-sentiment-summary');
   if (!box) return;
+  // Sentiment/score are admin-only (same convention as the announcement modal) —
+  // skip the fetch entirely for other roles, the backend strips the fields anyway.
+  if (role !== 'admin') { box.style.display = 'none'; return; }
   try {
     const r = await fetch('/announcements/my-wallet?page=1&page_size=100', {
       headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
@@ -1862,7 +1870,7 @@ async function fetchWlSentimentSummary() {
     });
     const avg = scoreN ? Math.round(scoreSum / scoreN) : null;
     box.innerHTML =
-      '<span class="wss-label">Sentyment 7 dni</span>'
+      '<span class="wss-label">Ostatnie 7 dni</span>'
       + '<span class="wss-item"><span class="wss-dot" style="background:var(--positive)"></span>Pozytywny: <strong>' + cnt.pozytywny + '</strong></span>'
       + '<span class="wss-item"><span class="wss-dot" style="background:var(--gold-mid)"></span>Neutralny: <strong>' + cnt.neutralny + '</strong></span>'
       + '<span class="wss-item"><span class="wss-dot" style="background:var(--negative)"></span>Negatywny: <strong>' + cnt.negatywny + '</strong></span>'
