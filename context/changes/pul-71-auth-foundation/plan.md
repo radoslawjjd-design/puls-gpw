@@ -281,11 +281,11 @@ Brak migracji danych. Istniejący anonimowy UUID (X-Client-Id) i Firebase UID ws
 ### Phase 2: Tabela BigQuery `users` + round-trip
 
 #### Automated
-- [x] 2.1 Testy jednostkowe CRUD users (mock `_get_client`) zielone
-- [x] 2.2 Pełna suita pytest zielona
+- [x] 2.1 Testy jednostkowe CRUD users (mock `_get_client`) zielone — b53d6f2
+- [x] 2.2 Pełna suita pytest zielona — b53d6f2
 
 #### Manual
-- [x] 2.3 `scripts/test_bq_users.py` na realnym BQ przechodzi
+- [x] 2.3 `scripts/test_bq_users.py` na realnym BQ przechodzi — b53d6f2
 
 ### Phase 3: Rdzeń auth (TDD)
 
