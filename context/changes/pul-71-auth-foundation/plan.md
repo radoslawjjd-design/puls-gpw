@@ -50,9 +50,9 @@ Backend-only, addytywnie. Nowy moduł `src/auth.py` (pierwszy `APIRouter`) trzym
 
 ## Critical Implementation Details
 
-- **IP za proxy Cloud Run**: `request.client.host` to IP proxy, nie klienta. Rate limiter musi czytać pierwszy element `X-Forwarded-For` z fallbackiem na `request.client.host` (lokalny dev). Bez tego wszyscy użytkownicy prod zlewają się w jeden limit.
+- **IP za proxy Cloud Run**: `request.client.host` to IP proxy, nie klienta. Rate limiter czyta **OSTATNI** element `X-Forwarded-For` (`split(",")[-1].strip()`) z fallbackiem na `request.client.host` (lokalny dev). Ostatni, bo Google Front End dopisuje realny IP klienta na końcu — elementy wcześniejsze są kontrolowane przez klienta (pierwszy element = trywialny spoofing: ominięcie limitu i zatruwanie kubełków cudzych IP). W fazie 4 (manual) potwierdzić na prod, że ostatni element = realny IP. Uwaga na przyszłość: zewnętrzny LB przed serwisem przesunie pozycję IP w XFF.
 - **Secure cookie**: Cloud Run ustawia env `K_SERVICE` automatycznie — `secure=bool(os.environ.get("K_SERVICE"))` daje Secure=True na prod i False lokalnie bez nowego env vara.
-- **Sliding refresh w dependency**: FastAPI dependency może przyjąć `response: Response` i wywołać `set_cookie` — rozszerzony `_get_role` re-emituje cookie, gdy token starszy niż 24h. To jedyny nieoczywisty mechanizm „refresh on activity" bez middleware.
+- **Sliding refresh w dependency**: FastAPI dependency może przyjąć `response: Response` i wywołać `set_cookie` — rozszerzony `_get_role` re-emituje cookie, gdy token starszy niż 24h. To jedyny nieoczywisty mechanizm „refresh on activity" bez middleware. Zweryfikowane: żaden chroniony endpoint nie zwraca dziś gołego obiektu `Response`/`JSONResponse` — ale endpoint dodany w przyszłości, który zwróci własny `Response`, po cichu pominie re-emisję cookie (nagłówki z dependency-Response nie są wtedy scalane).
 - **`FIREBASE_SERVICE_ACCOUNT_JSON` to treść JSON, nie ścieżka** — `json.loads(...)` → `credentials.Certificate(dict)`. Lazy singleton z lockiem wzorem `_get_client()` w `db/bigquery.py:85-105`; inicjalizacja NIE przy imporcie (E2E/unit testy nie mają tego env vara).
 - **Firebase może być wolny/niedostępny** — wywołania Admin SDK i REST w `try/except` → 503 z czytelnym komunikatem (nie 500 ze stack trace); timeout na REST 10s.
 
@@ -133,21 +133,18 @@ Czysta logika w nowym `src/auth.py`, bez endpointów. Fazy 3-5 są TDD-owalne.
 #### 2. JWT
 **File**: `src/auth.py`
 **Intent**: `create_session_token(user_id, email, auth_type)` / `decode_session_token(token)` — pyjwt HS256, exp 7 dni, payload `{user_id, email, auth_type, iat, exp}`; `set_session_cookie(response, token)` / `clear_session_cookie(response)` z HttpOnly, SameSite=Lax, `secure=bool(os.environ.get("K_SERVICE"))`.
-**Contract**: Nazwa cookie: `session`. `decode_session_token` zwraca payload lub `None` (nieważny/wygasły — nigdy nie rzuca do handlera). `auth_type` ∈ {"firebase", "api_key"} — pole jest w kontrakcie payloadu od razu (grunt pod przyszłość), choć w PUL-71 wystawiamy tylko "firebase".
+**Contract**: Nazwa cookie: `session`. `decode_session_token` zwraca payload lub `None` (nieważny/wygasły — nigdy nie rzuca do handlera). `auth_type` ∈ {"firebase", "api_key"} — pole jest w kontrakcie payloadu od razu (grunt pod przyszłość), choć w PUL-71 wystawiamy tylko "firebase". `JWT_SECRET` czytany **w call-time** (`os.environ.get` wewnątrz funkcji, wzorem `_get_role` w `src/api.py:100`), NIE przy imporcie modułu — inaczej unit testy (monkeypatch po imporcie) i E2E się wywrócą; nie kopiować import-time konwencji z `db/bigquery.py`.
 
 #### 3. Rate limiter
 **File**: `src/auth.py`
 **Intent**: Własny licznik in-memory (decyzja Q4): `dict[str, deque[float]]` + lock, okno 60s; fabryka dependency `rate_limit(max_per_minute)` → 429 z nagłówkiem `Retry-After` (sekundy do zwolnienia najstarszego slotu).
-**Contract**: IP z pierwszego elementu `X-Forwarded-For`, fallback `request.client.host`. Wstrzykiwalny zegar (`time_fn`) dla testów. Stan per-instancja — świadomy trade-off (max 2 instancje).
+**Contract**: IP z **ostatniego** elementu `X-Forwarded-For` (dopisywanego przez Google Front End; wcześniejsze elementy są spoofowalne przez klienta), fallback `request.client.host`. Wstrzykiwalny zegar (`time_fn`) dla testów; test na spoofing (fałszywy XFF nie omija limitu). Stan per-instancja — świadomy trade-off (max 2 instancje).
 
 ### Success Criteria:
 
 #### Automated Verification:
-- `uv run pytest tests/test_auth.py` — walidacje (8/128/litera/cyfra/strip/email), JWT (roundtrip, zły podpis, wygasły), rate limiter (limit, okno, Retry-After, X-Forwarded-For) zielone
+- `uv run pytest tests/test_auth.py` — walidacje (8/128/litera/cyfra/strip/email), JWT (roundtrip, zły podpis, wygasły), rate limiter (limit, okno, Retry-After, X-Forwarded-For anty-spoofing) zielone
 - `uv run ruff check .` i `uv run mypy .` zielone
-
-#### Manual Verification:
-- (brak — czysta logika pokryta testami)
 
 ---
 
@@ -167,7 +164,7 @@ Router + integracja Firebase; testy z mockami Admin SDK i respx dla REST.
 **File**: `src/auth.py`, `src/api.py`
 **Intent**: `router = APIRouter(prefix="/api/auth")` — pierwszy router w repo (decyzja Q2); `app.include_router(...)` w `create_app()`. Endpointy:
 - `POST /register` (`rate_limit(5)`): walidacja → `auth.create_user` → `insert_user` (błąd BQ tylko logowany — samonaprawa w loginie, Q6) → cookie; `EmailAlreadyExistsError` → 409 „Email jest już zarejestrowany" (Q7)
-- `POST /login` (`rate_limit(10)`): `verify_password_rest` → `upsert_user_login` (błąd BQ logowany, nie blokuje) → świeże cookie; złe dane → 401 (jednolity komunikat, bez rozróżniania email/hasło)
+- `POST /login` (`rate_limit(10)`): `verify_password_rest` → `upsert_user_login` (błąd BQ logowany, nie blokuje) → świeże cookie. Mapowanie błędów Identity Toolkit REST: `INVALID_LOGIN_CREDENTIALS` / `EMAIL_NOT_FOUND` / `INVALID_PASSWORD` / `USER_DISABLED` → **401** z jednym wspólnym komunikatem (bez rozróżniania — anty-enumeracja, spójnie z Q7); `TOO_MANY_ATTEMPTS_TRIED_LATER` (limiter po stronie Firebase) → **429** bez Retry-After; wszystkie inne kody, 5xx i timeout → **503**; default nieznanego kodu → 503
 - `POST /logout`: `clear_session_cookie` → 204
 - `GET /api/auth/me`: dekoduje cookie, zwraca `{user_id, email}`; bez BQ; 401 gdy brak/nieważny
 **Contract**: Register i login zwracają 200 z `{user_id, email}` + `Set-Cookie`. Odpowiedzi błędów w kształcie FastAPI `{"detail": ...}`.
