@@ -284,6 +284,9 @@ WHERE email = 'radoslaw.jjd@gmail.com';
   startup). No backfill: NULL role reads as `user` via COALESCE.
 - Legacy sessions (no claim) keep working as `user`; roles activate at next login.
 - Rollback = revert PR; the `role` column is inert without the claim code.
+- **Revocation kill-switch** (impl-review F1): demotion propagates only at
+  re-login (absolute cap 30d). The only immediate revocation is rotating
+  `JWT_SECRET` — it invalidates every live session at once.
 
 ## References
 
@@ -313,11 +316,11 @@ WHERE email = 'radoslaw.jjd@gmail.com';
 
 #### Automated
 
-- [x] 2.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [x] 2.2 Full e2e suite green incl. admin-flow tests: `uv run pytest tests/e2e -q`
-- [x] 2.3 index.html and faro-v8.html byte-identical (hash check)
+- [x] 2.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q` — d426e19
+- [x] 2.2 Full e2e suite green incl. admin-flow tests: `uv run pytest tests/e2e -q` — d426e19
+- [x] 2.3 index.html and faro-v8.html byte-identical (hash check) — d426e19
 
 #### Manual
 
-- [x] 2.4 Local round-trip: user email flow unchanged, reload keeps session
+- [x] 2.4 Local round-trip: user email flow unchanged, reload keeps session — d426e19
 - [ ] 2.5 Post-merge: owner promotion UPDATE run + prod email login shows full admin view; non-promoted account stays user

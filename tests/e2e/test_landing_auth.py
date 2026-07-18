@@ -121,11 +121,13 @@ def test_admin_email_login_gets_admin_dashboard_and_survives_reload(
 
 def test_user_email_login_sees_no_admin_surface(page: Page, live_server_url: str):
     """Regression for the no-leak boundary: a plain email user gets no Score
-    column, no admin-table styling, no sentiment text."""
+    column, no admin-table styling, and no score/sentiment data attributes in
+    the rendered rows (admin rows carry data-score/data-sc)."""
     _login_via_email(page, live_server_url)
     expect(page.locator("#role-badge")).to_have_text("Użytkownik")
     expect(page.get_by_role("columnheader", name="Score")).to_have_count(0)
     expect(page.locator("#data-table")).not_to_have_class(re.compile(r"\badmin-table\b"))
+    expect(page.locator("#table-body [data-score]")).to_have_count(0)
 
 
 def test_api_key_path_still_reaches_dashboard(page: Page, live_server_url: str):
