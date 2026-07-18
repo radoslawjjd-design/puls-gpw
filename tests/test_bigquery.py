@@ -849,6 +849,18 @@ def test_ensure_watchlist_schema_backfills_user_id():
     assert "WHERE user_id IS NULL" in query_str
 
 
+def test_watchlist_backfill_is_non_fatal_on_bq_error():
+    """Startup must survive a failing backfill — log-and-continue, never raise (impl-review F1)."""
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = RuntimeError("bq down")
+    with (
+        patch("db.bigquery.ensure_schema_current"),
+        patch("db.bigquery._get_client", return_value=client),
+    ):
+        ensure_watchlist_schema_current()  # must not raise
+
+
 def test_upsert_user_portfolio_position_merge_scoped_to_user():
     """PUL-74: the MERGE key must include user_id so cross-user rows can never match."""
     with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:

@@ -497,7 +497,10 @@ def ensure_watchlist_schema_current() -> None:
 def _backfill_watchlist_user_id() -> None:
     """Copy client_id into user_id for rows predating PUL-74; idempotent.
 
-    Raises BigQueryError on query failure.
+    Non-fatal by design (impl-review F1): a missing table or a transient BQ
+    error must not crash Cloud Run startup — the idempotent backfill simply
+    converges on a later cold start. Mirrors ensure_schema_current's
+    graceful-NotFound contract.
     """
     client = _get_client()
     query = f"""
@@ -508,10 +511,17 @@ def _backfill_watchlist_user_id() -> None:
     try:
         job = client.query(query)
         job.result()
+    except NotFound:
+        logger.info("watchlist user_id backfill skipped — table not found")
+        return
     except Exception as exc:
-        raise BigQueryError(f"_backfill_watchlist_user_id failed: {exc}") from exc
+        logger.warning(
+            "watchlist user_id backfill failed (non-fatal, retries on next cold start): %s", exc
+        )
+        return
     if job.errors:
-        raise BigQueryError(f"_backfill_watchlist_user_id failed: {job.errors}")
+        logger.warning("watchlist user_id backfill errors (non-fatal): %s", job.errors)
+        return
     logger.info("watchlist user_id backfill: affected=%s", job.num_dml_affected_rows)
 
 
