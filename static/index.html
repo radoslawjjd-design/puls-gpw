@@ -1389,13 +1389,18 @@ async function _bootProbeSession() {
       $('boot-loader').hidden = true;
       sessionStorage.setItem('role', 'user');
       role = 'user';
+      // Spójnie z _enterUserSession: stary hash #/logowanie|#/rejestracja
+      // nie może przetrwać do dashboardu.
+      history.replaceState(null, '', location.pathname + location.search);
       showDashboard('user');
       return;
     }
-  } catch { /* błąd sieci → potraktuj jak brak sesji */ }
-  // 401/wygasła sesja MUSI zdjąć flagę przed pokazaniem landingu — inaczej
-  // każdy kolejny boot kręciłby loader w pętli.
-  localStorage.removeItem('hasSession');
+    // Flagę zdejmuje tylko definitywna odmowa (401/403 — wygasła/nieważna
+    // sesja). Błąd przejściowy (5xx) zostawia flagę: landing się pokaże,
+    // a następny reload ponowi probe (1 tani request). Pętli loadera nie
+    // ma — każda ścieżka kończy na showLogin().
+    if (r.status === 401 || r.status === 403) localStorage.removeItem('hasSession');
+  } catch { /* błąd sieci → zostaw flagę, następny reload ponowi probe */ }
   $('boot-loader').hidden = true;
   showLogin();
 }
@@ -1473,6 +1478,9 @@ function _enterUserSession() {
   localStorage.setItem('hasSession', '1');
   sessionStorage.setItem('role', 'user');
   role = 'user';
+  // Higiena: hasło nie może siedzieć w ukrytym inpucie przez całą sesję
+  // dashboardu — czyść od razu po sukcesie, nie dopiero przy showLogin().
+  ['login-password', 'reg-password', 'reg-password2'].forEach(id => { $(id).value = ''; });
   // Zdejmij #/logowanie|#/rejestracja z paska adresu — inaczej stary hash
   // przetrwałby do dashboardu (F3 z review fazy 2).
   history.replaceState(null, '', location.pathname + location.search);
