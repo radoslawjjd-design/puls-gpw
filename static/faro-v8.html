@@ -1386,13 +1386,17 @@ async function _bootProbeSession() {
   try {
     const r = await fetch('/api/auth/me');
     if (r.ok) {
+      // PUL-83: /api/auth/me zwraca znormalizowaną rolę z claima JWT.
+      let data = null;
+      try { data = await r.json(); } catch { /* body nie-JSON → rola 'user' */ }
+      const rr = data && data.role === 'admin' ? 'admin' : 'user';
       $('boot-loader').hidden = true;
-      sessionStorage.setItem('role', 'user');
-      role = 'user';
+      sessionStorage.setItem('role', rr);
+      role = rr;
       // Spójnie z _enterUserSession: stary hash #/logowanie|#/rejestracja
       // nie może przetrwać do dashboardu.
       history.replaceState(null, '', location.pathname + location.search);
-      showDashboard('user');
+      showDashboard(rr);
       return;
     }
     // Flagę zdejmuje tylko definitywna odmowa (401/403 — wygasła/nieważna
@@ -1474,17 +1478,21 @@ async function _renderAuthError(r, fieldPrefix, errBoxId) {
 
 // Wspólne wejście do sesji JWT po udanym login/register: cookie już ustawione
 // przez backend, flaga hasSession steruje probe przy starcie (init()).
-function _enterUserSession() {
+// PUL-83: rola przychodzi z odpowiedzi serwera (claim w podpisanym JWT jest
+// źródłem prawdy — sessionStorage to tylko podpowiedź dla UI); wszystko poza
+// dokładnym 'admin' degraduje do 'user'.
+function _enterUserSession(serverRole) {
+  const r = serverRole === 'admin' ? 'admin' : 'user';
   localStorage.setItem('hasSession', '1');
-  sessionStorage.setItem('role', 'user');
-  role = 'user';
+  sessionStorage.setItem('role', r);
+  role = r;
   // Higiena: hasło nie może siedzieć w ukrytym inpucie przez całą sesję
   // dashboardu — czyść od razu po sukcesie, nie dopiero przy showLogin().
   ['login-password', 'reg-password', 'reg-password2'].forEach(id => { $(id).value = ''; });
   // Zdejmij #/logowanie|#/rejestracja z paska adresu — inaczej stary hash
   // przetrwałby do dashboardu (F3 z review fazy 2).
   history.replaceState(null, '', location.pathname + location.search);
-  showDashboard('user');
+  showDashboard(r);
 }
 
 function _clearAuthFormErrors(ids) {
@@ -1513,7 +1521,12 @@ $('email-login-form').addEventListener('submit', async e => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    if (r.ok) { _enterUserSession(); return; }
+    if (r.ok) {
+      let data = null;
+      try { data = await r.json(); } catch { /* body nie-JSON → rola 'user' */ }
+      _enterUserSession(data && data.role);
+      return;
+    }
     await _renderAuthError(r, 'login', 'email-login-error');
   } catch {
     _setAuthError('email-login-error', 'Błąd połączenia, spróbuj ponownie.');
@@ -1543,7 +1556,12 @@ $('register-form').addEventListener('submit', async e => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    if (r.ok) { _enterUserSession(); return; }
+    if (r.ok) {
+      let data = null;
+      try { data = await r.json(); } catch { /* body nie-JSON → rola 'user' */ }
+      _enterUserSession(data && data.role);
+      return;
+    }
     await _renderAuthError(r, 'reg', 'register-error');
   } catch {
     _setAuthError('register-error', 'Błąd połączenia, spróbuj ponownie.');

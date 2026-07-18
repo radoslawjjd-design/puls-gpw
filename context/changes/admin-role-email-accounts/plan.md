@@ -300,24 +300,24 @@ WHERE email = 'radoslaw.jjd@gmail.com';
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [x] 1.2 Role-claim contract tests green (token claim, _get_role mapping, /me role, legacy + BQ-failure fallbacks)
-- [x] 1.3 Query-string regressions green (COALESCE read; MERGE UPDATE without role, INSERTs with role)
-- [x] 1.4 Full e2e suite still green: `uv run pytest tests/e2e -q`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q` — c076e65
+- [x] 1.2 Role-claim contract tests green (token claim, _get_role mapping, /me role, legacy + BQ-failure fallbacks) — c076e65
+- [x] 1.3 Query-string regressions green (COALESCE read; MERGE UPDATE without role, INSERTs with role) — c076e65
+- [x] 1.4 Full e2e suite still green: `uv run pytest tests/e2e -q` — c076e65
 
 #### Manual
 
-- [x] 1.5 BQ round-trip: role column lands via ensure_users_schema_current; NULL-role row reads "user"
+- [x] 1.5 BQ round-trip: role column lands via ensure_users_schema_current; NULL-role row reads "user" — c076e65
 
 ### Phase 2: UI consumes the role + e2e admin flow
 
 #### Automated
 
-- [ ] 2.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [ ] 2.2 Full e2e suite green incl. admin-flow tests: `uv run pytest tests/e2e -q`
-- [ ] 2.3 index.html and faro-v8.html byte-identical (hash check)
+- [x] 2.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
+- [x] 2.2 Full e2e suite green incl. admin-flow tests: `uv run pytest tests/e2e -q`
+- [x] 2.3 index.html and faro-v8.html byte-identical (hash check)
 
 #### Manual
 
-- [ ] 2.4 Local round-trip: user email flow unchanged, reload keeps session
+- [x] 2.4 Local round-trip: user email flow unchanged, reload keeps session
 - [ ] 2.5 Post-merge: owner promotion UPDATE run + prod email login shows full admin view; non-promoted account stays user
