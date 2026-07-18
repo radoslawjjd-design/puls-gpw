@@ -1496,7 +1496,9 @@ const _LC_SAMPLES = [
     title: 'KĘTY: Szacunkowe wyniki skonsolidowane za 2 kwartał 2026 r.',
     summary: 'Grupa Kęty S.A. publikuje szacunkowe, skonsolidowane wyniki za 2 kwartał 2026 r., które wskazują na znaczący wzrost przychodów do 1 680 mln PLN (+17% r/r) oraz zysku netto do 234 mln PLN (+38% r/r). Spółka odnotowuje również poprawę wskaźników EBITDA i zysku operacyjnego, a także redukcję zadłużenia netto.' },
 ];
-const _LC_PREVIEW = /\.html$/i.test(location.pathname);
+// Podgląd sampli TYLKO przy otwarciu pliku z dysku (designer preview) —
+// pathname-check objąłby też serwowane /static/*.html na produkcji.
+const _LC_PREVIEW = location.protocol === 'file:';
 async function fetchLandingCards() {
   const section = $('landing-cards');
   let rows = null;
@@ -3501,18 +3503,18 @@ function renderTable(data, r, containerId = 'table-body') {
 
     if (r === 'admin') {
       return `<tr class="clickable" ${modalAttrs}>
-        <td>${date}${newBadge}</td>
+        <td>${esc(date)}${newBadge}</td>
         <td>${esc(row.company || '—')}</td>
         <td>${esc(row.ticker || '—')}</td>
         <td><span class="type-badge">${esc(eventLabel)}</span></td>
-        <td class="col-score"><span class="score ${sc}">${score}</span></td>
+        <td class="col-score"><span class="score ${esc(sc)}">${esc(score)}</span></td>
         <td class="col-analysis analysis-summary">${summaryPreviewEsc}</td>
         <td class="col-url">${(row.url && /^https?:\/\//.test(row.url)) ? `<a class="url-link" href="${esc(row.url)}" target="_blank" title="Otwórz źródło" aria-label="Otwórz źródło">${_SRC_ICON}</a>` : (row.url ? esc(row.url) : '—')}</td>
         <td><button class="btn-del" data-id="${esc(row.announcement_id)}" title="Usuń ogłoszenie" aria-label="Usuń ogłoszenie">${_DEL_ICON}</button></td>
       </tr>`;
     } else {
       return `<tr class="clickable" ${modalAttrs}>
-        <td>${date}${newBadge}</td>
+        <td>${esc(date)}${newBadge}</td>
         <td>${esc(row.company || '—')}</td>
         <td>${esc(row.ticker || '—')}</td>
         <td><span class="type-badge">${esc(eventLabel)}</span></td>
