@@ -1,10 +1,10 @@
 ---
 change_id: admin-role-email-accounts
 title: Admin role for email accounts — BQ role column + JWT claim + role-aware UI
-status: implemented
+status: archived
 created: 2026-07-18
 updated: 2026-07-18
-archived_at: null
+archived_at: 2026-07-18T13:49:25Z
 tracking:
   linear: PUL-83
   github: 146
