@@ -463,6 +463,9 @@ _WATCHLIST_SCHEMA = [
     bigquery.SchemaField("client_id", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("ticker", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("added_at", "TIMESTAMP", mode="REQUIRED"),
+    # PUL-74: canonical identity column; client_id stays only until the human-run
+    # DROP (rollback safety — see the change's Migration Notes).
+    bigquery.SchemaField("user_id", "STRING", mode="NULLABLE"),
 ]
 
 
@@ -480,12 +483,36 @@ def create_watchlist_table_if_not_exists() -> None:
 
 
 def ensure_watchlist_schema_current() -> None:
-    """Migrate the watchlist table — add any missing schema columns.
+    """Migrate the watchlist table — add missing columns and backfill user_id.
 
-    Thin binding over `ensure_schema_current()`; idempotent and safe to call on
-    every API service startup (cold start of every Cloud Run instance).
+    Thin binding over `ensure_schema_current()` plus the PUL-74 idempotent
+    backfill (`user_id = client_id` for legacy rows). Safe to call on every API
+    service startup (cold start of every Cloud Run instance) — the backfill
+    matches zero rows once complete.
     """
     ensure_schema_current(_WATCHLIST_TABLE_NAME, _WATCHLIST_SCHEMA)
+    _backfill_watchlist_user_id()
+
+
+def _backfill_watchlist_user_id() -> None:
+    """Copy client_id into user_id for rows predating PUL-74; idempotent.
+
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    query = f"""
+        UPDATE `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
+        SET user_id = client_id
+        WHERE user_id IS NULL
+    """
+    try:
+        job = client.query(query)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"_backfill_watchlist_user_id failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"_backfill_watchlist_user_id failed: {job.errors}")
+    logger.info("watchlist user_id backfill: affected=%s", job.num_dml_affected_rows)
 
 
 _USER_PORTFOLIO_POSITIONS_TABLE_NAME = "user_portfolio_positions"
@@ -542,7 +569,7 @@ def upsert_user_portfolio_position(
                    @ticker AS ticker, @company_name AS company_name,
                    @shares AS shares, @avg_buy_price AS avg_buy_price
         ) S
-        ON T.portfolio_id = S.portfolio_id AND T.ticker = S.ticker
+        ON T.portfolio_id = S.portfolio_id AND T.ticker = S.ticker AND T.user_id = S.user_id
         WHEN MATCHED THEN
           UPDATE SET
             company_name  = S.company_name,
@@ -801,7 +828,7 @@ def delete_user_portfolio(user_id: str, portfolio_id: str) -> None:
     client = _get_client()
     pos_query = f"""
         DELETE FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}`
-        WHERE portfolio_id = @portfolio_id
+        WHERE user_id = @user_id AND portfolio_id = @portfolio_id
     """
     wallet_query = f"""
         DELETE FROM `{_table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)}`
@@ -969,24 +996,26 @@ def get_user_role(user_id: str) -> str:
     return role
 
 
-def add_watchlist_ticker(client_id: str, ticker: str) -> None:
-    """Add `ticker` to `client_id`'s watchlist; silent no-op if already present.
+def add_watchlist_ticker(user_id: str, ticker: str) -> None:
+    """Add `ticker` to `user_id`'s watchlist; silent no-op if already present.
 
-    Raises BigQueryError if the query job fails.
+    Dual-writes client_id with the same value until the legacy column is
+    dropped (PUL-74 rollback safety). Raises BigQueryError if the query job
+    fails.
     """
     client = _get_client()
     query = f"""
-        INSERT INTO `{_table_ref(client, _WATCHLIST_TABLE_NAME)}` (client_id, ticker, added_at)
-        SELECT @client_id, @ticker, CURRENT_TIMESTAMP()
+        INSERT INTO `{_table_ref(client, _WATCHLIST_TABLE_NAME)}` (user_id, client_id, ticker, added_at)
+        SELECT @user_id, @user_id, @ticker, CURRENT_TIMESTAMP()
         FROM (SELECT 1)
         WHERE NOT EXISTS (
             SELECT 1 FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
-            WHERE client_id = @client_id AND ticker = @ticker
+            WHERE user_id = @user_id AND ticker = @ticker
         )
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
             bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
         ]
     )
@@ -997,22 +1026,22 @@ def add_watchlist_ticker(client_id: str, ticker: str) -> None:
         raise BigQueryError(f"add_watchlist_ticker failed: {exc}") from exc
     if job.errors:
         raise BigQueryError(f"add_watchlist_ticker failed: {job.errors}")
-    logger.debug("add_watchlist_ticker: client_id=%s ticker=%s", client_id, ticker)
+    logger.debug("add_watchlist_ticker: user_id=%s ticker=%s", user_id, ticker)
 
 
-def remove_watchlist_ticker(client_id: str, ticker: str) -> None:
-    """Remove `ticker` from `client_id`'s watchlist; no-op if not present.
+def remove_watchlist_ticker(user_id: str, ticker: str) -> None:
+    """Remove `ticker` from `user_id`'s watchlist; no-op if not present.
 
     Raises BigQueryError if the query job fails.
     """
     client = _get_client()
     query = f"""
         DELETE FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
-        WHERE client_id = @client_id AND ticker = @ticker
+        WHERE user_id = @user_id AND ticker = @ticker
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
             bigquery.ScalarQueryParameter("ticker", "STRING", ticker),
         ]
     )
@@ -1023,11 +1052,11 @@ def remove_watchlist_ticker(client_id: str, ticker: str) -> None:
         raise BigQueryError(f"remove_watchlist_ticker failed: {exc}") from exc
     if job.errors:
         raise BigQueryError(f"remove_watchlist_ticker failed: {job.errors}")
-    logger.debug("remove_watchlist_ticker: client_id=%s ticker=%s", client_id, ticker)
+    logger.debug("remove_watchlist_ticker: user_id=%s ticker=%s", user_id, ticker)
 
 
-def list_watchlist_tickers(client_id: str) -> list[str]:
-    """Return `client_id`'s watchlisted tickers, most recently added first.
+def list_watchlist_tickers(user_id: str) -> list[str]:
+    """Return `user_id`'s watchlisted tickers, most recently added first.
 
     Raises BigQueryError if the query job fails.
     """
@@ -1035,12 +1064,12 @@ def list_watchlist_tickers(client_id: str) -> list[str]:
     query = f"""
         SELECT ticker
         FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
-        WHERE client_id = @client_id
+        WHERE user_id = @user_id
         ORDER BY added_at DESC
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
         ]
     )
     try:
@@ -1618,13 +1647,13 @@ def list_announcements_user(
 
 
 def list_announcements_for_watchlist(
-    client_id: str,
+    user_id: str,
     page: int = 1,
     page_size: int = 20,
     from_dt: datetime | None = None,
     to_dt: datetime | None = None,
 ) -> list[dict]:
-    """Return approved announcements for tickers in `client_id`'s watchlist.
+    """Return approved announcements for tickers in `user_id`'s watchlist.
 
     Column set of `list_announcements_user` plus `analysis_score` — the API
     layer decides per role whether the score is exposed. The watchlist
@@ -1648,7 +1677,7 @@ def list_announcements_for_watchlist(
         FROM `{_table_ref(client)}` AS a
         INNER JOIN (
             SELECT ticker FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
-            WHERE client_id = @client_id LIMIT 200
+            WHERE user_id = @user_id LIMIT 200
         ) AS w ON a.ticker = w.ticker
         {where}
         ORDER BY a.published_at DESC
@@ -1656,7 +1685,7 @@ def list_announcements_for_watchlist(
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
             bigquery.ScalarQueryParameter("page_size", "INT64", page_size),
             bigquery.ScalarQueryParameter("offset", "INT64", offset),
             *filter_params,

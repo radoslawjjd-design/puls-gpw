@@ -337,12 +337,12 @@ None material: same query shapes with one extra predicate; caches keep their key
 
 #### Automated
 
-- [ ] 1.1 Full test suite green: `uv run pytest`
-- [ ] 1.2 Query-text regression asserts pass: `uv run pytest tests/test_bigquery.py`
+- [x] 1.1 Full test suite green: `uv run pytest`
+- [x] 1.2 Query-text regression asserts pass: `uv run pytest tests/test_bigquery.py`
 
 #### Manual
 
-- [ ] 1.3 Real-BQ round-trip green: `uv run python scripts/test_bq.py`
+- [x] 1.3 Real-BQ round-trip green: `uv run python scripts/test_bq.py`
 
 ### Phase 2: API — JWT-only identity (401 without session)
 

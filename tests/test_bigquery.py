@@ -20,6 +20,8 @@ from db.bigquery import (
     create_watchlist_table_if_not_exists,
     create_x_posts_table_if_not_exists,
     delete_announcement,
+    delete_user_portfolio,
+    ensure_watchlist_schema_current,
     fetch_top_n_for_window,
     get_latest_snapshot_before,
     get_latest_snapshot_for_wallet,
@@ -44,6 +46,7 @@ from db.bigquery import (
     update_x_post_publish_result,
     upsert_company,
     upsert_user_login,
+    upsert_user_portfolio_position,
     x_post_already_published,
 )
 
@@ -740,17 +743,20 @@ def test_create_watchlist_table_creates_on_not_found():
 
 
 def test_watchlist_schema_has_required_columns():
-    """_WATCHLIST_SCHEMA must define client_id, ticker, added_at — all REQUIRED."""
+    """_WATCHLIST_SCHEMA: legacy trio REQUIRED + PUL-74 user_id NULLABLE (additive migration)."""
     names = {f.name: f for f in _WATCHLIST_SCHEMA}
-    assert set(names) == {"client_id", "ticker", "added_at"}
-    assert all(f.mode == "REQUIRED" for f in names.values())
+    assert set(names) == {"client_id", "ticker", "added_at", "user_id"}
+    assert names["user_id"].mode == "NULLABLE"
+    assert all(
+        f.mode == "REQUIRED" for n, f in names.items() if n != "user_id"
+    )
 
 
 def test_add_watchlist_ticker_inserts_with_not_exists_guard():
     """INSERT must be guarded by WHERE NOT EXISTS so re-adding is a silent no-op."""
     with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
         client = mock_get.return_value
-        add_watchlist_ticker("client1", "PKO")
+        add_watchlist_ticker("uid-1", "PKO")
 
     query_str = client.query.call_args[0][0]
     job_config = client.query.call_args.kwargs["job_config"]
@@ -758,36 +764,41 @@ def test_add_watchlist_ticker_inserts_with_not_exists_guard():
     assert "INSERT INTO" in query_str and "watchlist" in query_str
     assert "WHERE NOT EXISTS" in query_str
     assert "CURRENT_TIMESTAMP()" in query_str
-    assert params["client_id"] == "client1"
+    # PUL-74: dual-write both identity columns with the same value until the
+    # legacy client_id column is dropped.
+    assert "(user_id, client_id, ticker, added_at)" in query_str
+    assert "SELECT @user_id, @user_id, @ticker" in query_str
+    assert "user_id = @user_id AND ticker = @ticker" in query_str
+    assert params["user_id"] == "uid-1"
     assert params["ticker"] == "PKO"
 
 
 def test_remove_watchlist_ticker_deletes_by_composite_key():
-    """remove_watchlist_ticker must DELETE filtered by client_id AND ticker; 0 rows is not an error."""
+    """remove_watchlist_ticker must DELETE filtered by user_id AND ticker; 0 rows is not an error."""
     with patch("db.bigquery._get_client", return_value=_mock_bq_client(affected_rows=0)) as mock_get:
         client = mock_get.return_value
-        remove_watchlist_ticker("client1", "NEVER_ADDED")
+        remove_watchlist_ticker("uid-1", "NEVER_ADDED")
 
     query_str = client.query.call_args[0][0]
     assert "DELETE FROM" in query_str
-    assert "client_id = @client_id AND ticker = @ticker" in query_str
+    assert "user_id = @user_id AND ticker = @ticker" in query_str
 
 
-def test_list_watchlist_tickers_returns_only_calling_clients_rows():
-    """list_watchlist_tickers must filter by client_id and order by added_at DESC."""
+def test_list_watchlist_tickers_returns_only_calling_users_rows():
+    """list_watchlist_tickers must filter by user_id and order by added_at DESC."""
     rows = [{"ticker": "XTB"}, {"ticker": "PKO"}]
     mock = _mock_bq_client_with_rows(rows)
     with patch("db.bigquery._get_client", return_value=mock) as mock_get:
         client = mock_get.return_value
-        result = list_watchlist_tickers("client1")
+        result = list_watchlist_tickers("uid-1")
 
     assert result == ["XTB", "PKO"]
     query_str = client.query.call_args[0][0]
     job_config = client.query.call_args.kwargs["job_config"]
     params = {p.name: p.value for p in job_config.query_parameters}
-    assert "WHERE client_id = @client_id" in query_str
+    assert "WHERE user_id = @user_id" in query_str
     assert "ORDER BY added_at DESC" in query_str
-    assert params["client_id"] == "client1"
+    assert params["user_id"] == "uid-1"
 
 
 def test_list_announcements_for_watchlist_includes_bounded_join():
@@ -795,7 +806,7 @@ def test_list_announcements_for_watchlist_includes_bounded_join():
     mock = _mock_bq_client_with_rows([{"company": "PKO Bank", "ticker": "PKO"}])
     with patch("db.bigquery._get_client", return_value=mock) as mock_get:
         client = mock_get.return_value
-        rows = list_announcements_for_watchlist("client1", page=1, page_size=10)
+        rows = list_announcements_for_watchlist("uid-1", page=1, page_size=10)
 
     query_str = client.query.call_args[0][0]
     job_config = client.query.call_args.kwargs["job_config"]
@@ -804,7 +815,8 @@ def test_list_announcements_for_watchlist_includes_bounded_join():
     assert "LIMIT 200" in query_str
     assert "a.ticker = w.ticker" in query_str
     assert "analysis_approved = TRUE" in query_str
-    assert params["client_id"] == "client1"
+    assert "user_id = @user_id" in query_str
+    assert params["user_id"] == "uid-1"
     assert len(rows) == 1 and rows[0]["ticker"] == "PKO"
 
 
@@ -812,11 +824,58 @@ def test_list_announcements_for_watchlist_offset_math():
     """page=3, page_size=20 must produce OFFSET 40 in the BQ query parameters."""
     mock = _mock_bq_client_with_rows([])
     with patch("db.bigquery._get_client", return_value=mock):
-        list_announcements_for_watchlist("client1", page=3, page_size=20)
+        list_announcements_for_watchlist("uid-1", page=3, page_size=20)
     job_config = mock.query.call_args.kwargs["job_config"]
     params_by_name = {p.name: p.value for p in job_config.query_parameters}
     assert params_by_name["page_size"] == 20
     assert params_by_name["offset"] == 40
+
+
+# ── PUL-74 per-user data isolation ────────────────────────────────────────────
+
+def test_ensure_watchlist_schema_backfills_user_id():
+    """ensure_watchlist_schema_current must run the idempotent user_id backfill after the column add."""
+    with (
+        patch("db.bigquery.ensure_schema_current") as mock_ensure,
+        patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get,
+    ):
+        client = mock_get.return_value
+        ensure_watchlist_schema_current()
+
+    mock_ensure.assert_called_once()
+    query_str = client.query.call_args[0][0]
+    assert "UPDATE" in query_str and "watchlist" in query_str
+    assert "SET user_id = client_id" in query_str
+    assert "WHERE user_id IS NULL" in query_str
+
+
+def test_upsert_user_portfolio_position_merge_scoped_to_user():
+    """PUL-74: the MERGE key must include user_id so cross-user rows can never match."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        upsert_user_portfolio_position("uid-1", "pf-1", "PKO", "PKO SA", 10.0, 42.5)
+
+    query_str = client.query.call_args[0][0]
+    job_config = client.query.call_args.kwargs["job_config"]
+    params = {p.name: p.value for p in job_config.query_parameters}
+    assert "MERGE" in query_str
+    assert (
+        "ON T.portfolio_id = S.portfolio_id AND T.ticker = S.ticker AND T.user_id = S.user_id"
+        in query_str
+    )
+    assert params["user_id"] == "uid-1"
+
+
+def test_delete_user_portfolio_cascade_scoped_to_user():
+    """PUL-74: the positions cascade DELETE must be user_id-scoped (defense-in-depth)."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        delete_user_portfolio("uid-1", "pf-1")
+
+    pos_query = client.query.call_args_list[0][0][0]
+    wallet_query = client.query.call_args_list[1][0][0]
+    assert "user_id = @user_id AND portfolio_id = @portfolio_id" in pos_query
+    assert "user_id = @user_id AND portfolio_id = @portfolio_id" in wallet_query
 
 
 # ── users table + CRUD (PUL-71 auth foundation) ───────────────────────────────

@@ -39,7 +39,7 @@ from db.bigquery import (
     x_post_already_published,
 )
 
-TEST_WATCHLIST_CLIENT_ID = "test-bq-integration-watchlist-client"
+TEST_WATCHLIST_USER_ID = "test-bq-integration-watchlist-client"
 TEST_WATCHLIST_TICKER = "TST"
 
 TEST_URL = "https://www.bankier.pl/gielda/wiadomosci/komunikaty-spolek/test-bq-integration-F02"
@@ -167,20 +167,20 @@ def main() -> None:
         print(f"[11] idempotency guard (poludnie, today): already_published={already}")
 
         # Step 12 — watchlist round-trip: add, list, remove, confirm empty
-        add_watchlist_ticker(TEST_WATCHLIST_CLIENT_ID, TEST_WATCHLIST_TICKER)
-        tickers = list_watchlist_tickers(TEST_WATCHLIST_CLIENT_ID)
+        add_watchlist_ticker(TEST_WATCHLIST_USER_ID, TEST_WATCHLIST_TICKER)
+        tickers = list_watchlist_tickers(TEST_WATCHLIST_USER_ID)
         assert tickers == [TEST_WATCHLIST_TICKER], f"expected one watchlisted ticker, got {tickers!r}"
         print(f"[12] watchlist add+list: {tickers}")
 
-        add_watchlist_ticker(TEST_WATCHLIST_CLIENT_ID, TEST_WATCHLIST_TICKER)
-        tickers_after_dup = list_watchlist_tickers(TEST_WATCHLIST_CLIENT_ID)
+        add_watchlist_ticker(TEST_WATCHLIST_USER_ID, TEST_WATCHLIST_TICKER)
+        tickers_after_dup = list_watchlist_tickers(TEST_WATCHLIST_USER_ID)
         assert tickers_after_dup == [TEST_WATCHLIST_TICKER], (
             f"duplicate add must be a no-op, got {tickers_after_dup!r}"
         )
         print(f"[12] watchlist duplicate add is a no-op: {tickers_after_dup}")
 
-        remove_watchlist_ticker(TEST_WATCHLIST_CLIENT_ID, TEST_WATCHLIST_TICKER)
-        tickers_after_remove = list_watchlist_tickers(TEST_WATCHLIST_CLIENT_ID)
+        remove_watchlist_ticker(TEST_WATCHLIST_USER_ID, TEST_WATCHLIST_TICKER)
+        tickers_after_remove = list_watchlist_tickers(TEST_WATCHLIST_USER_ID)
         assert tickers_after_remove == [], f"expected empty watchlist after remove, got {tickers_after_remove!r}"
         print("[12] watchlist remove: list is empty again")
     finally:
@@ -207,10 +207,10 @@ def main() -> None:
             except Exception as exc:
                 print(f"[9] WARNING: x_posts cleanup failed ({exc}) — delete manually: {x_post_id}")
         try:
-            remove_watchlist_ticker(TEST_WATCHLIST_CLIENT_ID, TEST_WATCHLIST_TICKER)
+            remove_watchlist_ticker(TEST_WATCHLIST_USER_ID, TEST_WATCHLIST_TICKER)
             print("[12] Cleanup: test watchlist row removed (no-op if already removed)")
         except Exception as exc:
-            print(f"[12] WARNING: watchlist cleanup failed ({exc}) — remove manually: {TEST_WATCHLIST_CLIENT_ID}")
+            print(f"[12] WARNING: watchlist cleanup failed ({exc}) — remove manually: {TEST_WATCHLIST_USER_ID}")
 
     print("\nAll steps passed.")
 
