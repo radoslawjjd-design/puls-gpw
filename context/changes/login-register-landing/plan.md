@@ -436,4 +436,4 @@ independent setup/cleanup, unique ids where state is created.
 #### Manual
 
 - [x] 3.3 Local Firebase round-trip: register → dashboard, logout, login, refresh keeps session, wrong-password message — 27f2e9a
-- [ ] 3.4 Post-merge prod check: register + login + logout on prod, cards visible
+- [x] 3.4 Post-merge prod check: register + login + logout on prod, cards visible — bc7034a
