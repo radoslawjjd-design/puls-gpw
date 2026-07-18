@@ -60,6 +60,8 @@
       radial-gradient(900px 500px at -10% 110%, rgba(201,168,106,.12), transparent 55%),
       var(--bg);
   }
+  #boot-loader { display: flex; align-items: center; justify-content: center; min-height: 100vh; color: var(--text-muted); font-size: .95rem; background: var(--bg); }
+  #boot-loader[hidden] { display: none; }
   .landing { max-width: 1140px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; }
   .landing-nav { position: sticky; top: 0; z-index: 60; width: 100%; display: flex; align-items: center; padding: 1rem 0; margin-bottom: 2.2rem; background: rgba(244,246,249,.88); backdrop-filter: blur(8px); }
   .nav-actions { margin-right: calc(50% - 50vw + 1.25rem); }
@@ -910,6 +912,9 @@ html[data-theme="dark"] #pp-ticker-label, html[data-theme="dark"] #pp-company-la
 </head>
 <body>
 
+<!-- BOOT LOADER (probe sesji JWT — bez mignięcia landingu przy odświeżeniu) -->
+<div id="boot-loader" hidden>Ładowanie&hellip;</div>
+
 <!-- LANDING / LOGIN -->
 <div id="login-screen">
   <div class="landing">
@@ -1241,6 +1246,10 @@ function doLogout() {
   stopIdleTracking();
   stopPortfolioTreemapResize();
   closeModal();
+  // PUL-72: unieważnij cookie sesji po stronie serwera (fire-and-forget,
+  // keepalive przeżyje nawigację) i zdejmij flagę bootowego probe'a.
+  fetch('/api/auth/logout', { method: 'POST', keepalive: true }).catch(() => {});
+  localStorage.removeItem('hasSession');
   sessionStorage.clear();
   apiKey = null; role = null;
   currentView = 'announcements';
@@ -1363,8 +1372,32 @@ async function _doLoadAutocomplete() {
 function init() {
   initClientId();
   initGdpr();
-  if (apiKey && role) showDashboard(role);
-  else                showLogin();
+  // Ścieżka API-key (sessionStorage, synchroniczna) ma pierwszeństwo; probe
+  // sesji JWT tylko przy fladze hasSession — anonimowy gość dostaje landing
+  // natychmiast, bez żadnego żądania auth (PUL-60 perceived-load).
+  if (apiKey && role) { showDashboard(role); return; }
+  if (localStorage.getItem('hasSession')) { _bootProbeSession(); return; }
+  showLogin();
+}
+
+async function _bootProbeSession() {
+  $('login-screen').style.display = 'none';
+  $('boot-loader').hidden = false;
+  try {
+    const r = await fetch('/api/auth/me');
+    if (r.ok) {
+      $('boot-loader').hidden = true;
+      sessionStorage.setItem('role', 'user');
+      role = 'user';
+      showDashboard('user');
+      return;
+    }
+  } catch { /* błąd sieci → potraktuj jak brak sesji */ }
+  // 401/wygasła sesja MUSI zdjąć flagę przed pokazaniem landingu — inaczej
+  // każdy kolejny boot kręciłby loader w pętli.
+  localStorage.removeItem('hasSession');
+  $('boot-loader').hidden = true;
+  showLogin();
 }
 
 // ── auth ───────────────────────────────────────────────────────────────
@@ -1387,10 +1420,128 @@ $('api-key-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') $('login-btn').click();
 });
 
-// Auth forms are wired to /api/auth in the next phase — until then only the
-// native GET submit (page reload with query params) must be blocked.
-$('email-login-form').addEventListener('submit', e => e.preventDefault());
-$('register-form').addEventListener('submit', e => e.preventDefault());
+// ── auth: formularze e-mail → /api/auth (PUL-72) ───────────────────────
+const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function _setFieldError(id, msg) {
+  const el = $(id);
+  el.textContent = msg || '';
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function _setAuthError(id, msg) {
+  const el = $(id);
+  el.textContent = msg || '';
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// Lustrzane odbicie reguł z src/auth.py (RegisterIn/LoginIn): 8-128 znaków,
+// co najmniej jedna litera i jedna cyfra.
+function _passwordIssue(v) {
+  if (v.length < 8 || v.length > 128) return 'Hasło musi mieć od 8 do 128 znaków.';
+  if (!/\p{L}/u.test(v)) return 'Hasło musi zawierać co najmniej jedną literę.';
+  if (!/\d/.test(v)) return 'Hasło musi zawierać co najmniej jedną cyfrę.';
+  return null;
+}
+
+// Rendering błędów backendu: 422 → komunikaty pod polami z detail[].loc,
+// pozostałe statusy → polski `detail` w ramce błędu formularza.
+async function _renderAuthError(r, fieldPrefix, errBoxId) {
+  let detail = null;
+  try { detail = (await r.json()).detail; } catch { /* nie-JSON — fallback niżej */ }
+  if (r.status === 422 && Array.isArray(detail)) {
+    let anyField = false;
+    detail.forEach(d => {
+      const field = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : '';
+      const target = $(fieldPrefix + '-' + field + '-error');
+      if (target) {
+        _setFieldError(target.id, String(d.msg || 'Nieprawidłowa wartość').replace(/^Value error,\s*/, ''));
+        anyField = true;
+      }
+    });
+    if (!anyField) _setAuthError(errBoxId, 'Nieprawidłowe dane formularza.');
+    return;
+  }
+  _setAuthError(errBoxId, typeof detail === 'string' && detail
+    ? detail
+    : 'Coś poszło nie tak, spróbuj ponownie.');
+}
+
+// Wspólne wejście do sesji JWT po udanym login/register: cookie już ustawione
+// przez backend, flaga hasSession steruje probe przy starcie (init()).
+function _enterUserSession() {
+  localStorage.setItem('hasSession', '1');
+  sessionStorage.setItem('role', 'user');
+  role = 'user';
+  // Zdejmij #/logowanie|#/rejestracja z paska adresu — inaczej stary hash
+  // przetrwałby do dashboardu (F3 z review fazy 2).
+  history.replaceState(null, '', location.pathname + location.search);
+  showDashboard('user');
+}
+
+function _clearAuthFormErrors(ids) {
+  ids.forEach(id => _setFieldError(id, ''));
+}
+
+$('email-login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('email-login-btn');
+  if (btn.disabled) return;
+  const email = $('login-email').value.trim();
+  const password = $('login-password').value;
+  _clearAuthFormErrors(['login-email-error', 'login-password-error']);
+  _setAuthError('email-login-error', '');
+  let bad = false;
+  if (!_EMAIL_RE.test(email)) { _setFieldError('login-email-error', 'Podaj poprawny adres e-mail.'); bad = true; }
+  const pwIssue = _passwordIssue(password);
+  if (pwIssue) { _setFieldError('login-password-error', pwIssue); bad = true; }
+  if (bad) return;
+  // Synchronna blokada przycisku PRZED fetchem (lessons.md — guard przed
+  // podwójnym submitem nie może żyć w asynchronicznym ciele po żądaniu).
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (r.ok) { _enterUserSession(); return; }
+    await _renderAuthError(r, 'login', 'email-login-error');
+  } catch {
+    _setAuthError('email-login-error', 'Błąd połączenia, spróbuj ponownie.');
+  }
+  btn.disabled = false;
+});
+
+$('register-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('register-btn');
+  if (btn.disabled) return;
+  const email = $('reg-email').value.trim();
+  const password = $('reg-password').value;
+  const password2 = $('reg-password2').value;
+  _clearAuthFormErrors(['reg-email-error', 'reg-password-error', 'reg-password2-error']);
+  _setAuthError('register-error', '');
+  let bad = false;
+  if (!_EMAIL_RE.test(email)) { _setFieldError('reg-email-error', 'Podaj poprawny adres e-mail.'); bad = true; }
+  const pwIssue = _passwordIssue(password);
+  if (pwIssue) { _setFieldError('reg-password-error', pwIssue); bad = true; }
+  if (password2 !== password) { _setFieldError('reg-password2-error', 'Hasła muszą być identyczne.'); bad = true; }
+  if (bad) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (r.ok) { _enterUserSession(); return; }
+    await _renderAuthError(r, 'reg', 'register-error');
+  } catch {
+    _setAuthError('register-error', 'Błąd połączenia, spróbuj ponownie.');
+  }
+  btn.disabled = false;
+});
 
 $('logout-btn').addEventListener('click', () => {
   closeProfileMenu();
@@ -1624,6 +1775,15 @@ function showLogin() {
   // logout never strands the next visitor inside the API-key sub-panel.
   $('api-key-panel').hidden = true;
   $('email-auth-panel').hidden = false;
+  // Reset formularzy e-mail: przyciski odblokowane (mogły zostać disabled po
+  // udanym submicie), hasła i komunikaty błędów wyczyszczone.
+  $('email-login-btn').disabled = false;
+  $('register-btn').disabled = false;
+  ['login-password', 'reg-password', 'reg-password2'].forEach(id => { $(id).value = ''; });
+  document.querySelectorAll('.field-error, .auth-error').forEach(el => {
+    el.textContent = '';
+    el.style.display = 'none';
+  });
   fetchLandingCards();
 }
 

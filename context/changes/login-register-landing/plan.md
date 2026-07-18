@@ -430,10 +430,10 @@ independent setup/cleanup, unique ids where state is created.
 
 #### Automated
 
-- [ ] 3.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [ ] 3.2 Full e2e suite green incl. `test_landing_auth.py`: `uv run pytest tests/e2e -q`
+- [x] 3.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
+- [x] 3.2 Full e2e suite green incl. `test_landing_auth.py`: `uv run pytest tests/e2e -q`
 
 #### Manual
 
-- [ ] 3.3 Local Firebase round-trip: register → dashboard, logout, login, refresh keeps session, wrong-password message
+- [x] 3.3 Local Firebase round-trip: register → dashboard, logout, login, refresh keeps session, wrong-password message
 - [ ] 3.4 Post-merge prod check: register + login + logout on prod, cards visible

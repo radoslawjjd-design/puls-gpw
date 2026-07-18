@@ -10,10 +10,21 @@ import pytest
 import uvicorn
 
 from src.api import create_app
+from src.auth import InvalidCredentialsError
 
 
 _ADMIN_KEY = "e2e-admin-key"
 _USER_KEY  = "e2e-user-key"
+
+# Hasło, które fake verify_password_rest ZAWSZE odrzuca — pozwala e2e pokryć
+# ścieżkę 401 "Nieprawidłowy email lub hasło" bez prawdziwego Firebase.
+E2E_WRONG_PASSWORD = "ZleHaslo999"
+
+
+def _fake_verify_password_rest(email, password):
+    if password == E2E_WRONG_PASSWORD:
+        raise InvalidCredentialsError("INVALID_LOGIN_CREDENTIALS")
+    return ("e2e-firebase-uid", email)
 
 _FAKE_ADMIN_ROWS = [
     {
@@ -429,7 +440,7 @@ def live_server_url():
         ),
         patch(
             "src.auth.verify_password_rest",
-            return_value=("e2e-firebase-uid", "e2e@example.com"),
+            side_effect=_fake_verify_password_rest,
         ),
     ]
 
