@@ -1,8 +1,9 @@
+import re
 import time
 
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import E2E_WRONG_PASSWORD
+from tests.e2e.conftest import E2E_ADMIN_EMAIL, E2E_WRONG_PASSWORD
 
 _ADMIN_KEY = "e2e-admin-key"
 _GOOD_PASSWORD = "DobreHaslo1"
@@ -18,9 +19,9 @@ def _open_login_form(page: Page, base_url: str) -> None:
     expect(page.locator("#email-login-form")).to_be_visible()
 
 
-def _login_via_email(page: Page, base_url: str) -> None:
+def _login_via_email(page: Page, base_url: str, email: str | None = None) -> None:
     _open_login_form(page, base_url)
-    page.locator("#email-login-form").get_by_label("E-mail").fill(_unique_email())
+    page.locator("#email-login-form").get_by_label("E-mail").fill(email or _unique_email())
     page.locator("#email-login-form").get_by_label("Hasło", exact=True).fill(_GOOD_PASSWORD)
     page.locator("#email-login-form").get_by_role("button", name="Zaloguj się").click()
     expect(page.locator("#page-label")).to_have_text("Strona 1")
@@ -100,6 +101,33 @@ def test_logout_returns_to_landing_and_reload_stays_there(
     # hasSession zdjęte przy logout — reload zostaje na landingu, bez probe-loopa.
     expect(page.locator(".landing-hero")).to_be_visible()
     expect(page.locator("#page-label")).to_be_hidden()
+
+
+def test_admin_email_login_gets_admin_dashboard_and_survives_reload(
+    page: Page, live_server_url: str
+):
+    """PUL-83 full parity: an email admin sees the admin surface (Score column,
+    admin-table), and the boot probe keeps the admin role across a reload."""
+    _login_via_email(page, live_server_url, email=E2E_ADMIN_EMAIL)
+    expect(page.locator("#role-badge")).to_have_text("Admin")
+    expect(page.get_by_role("columnheader", name="Score")).to_be_visible()
+    expect(page.locator("#data-table")).to_have_class(re.compile(r"\badmin-table\b"))
+
+    page.reload()
+    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#role-badge")).to_have_text("Admin")
+    expect(page.get_by_role("columnheader", name="Score")).to_be_visible()
+
+
+def test_user_email_login_sees_no_admin_surface(page: Page, live_server_url: str):
+    """Regression for the no-leak boundary: a plain email user gets no Score
+    column, no admin-table styling, and no score/sentiment data attributes in
+    the rendered rows (admin rows carry data-score/data-sc)."""
+    _login_via_email(page, live_server_url)
+    expect(page.locator("#role-badge")).to_have_text("Użytkownik")
+    expect(page.get_by_role("columnheader", name="Score")).to_have_count(0)
+    expect(page.locator("#data-table")).not_to_have_class(re.compile(r"\badmin-table\b"))
+    expect(page.locator("#table-body [data-score]")).to_have_count(0)
 
 
 def test_api_key_path_still_reaches_dashboard(page: Page, live_server_url: str):

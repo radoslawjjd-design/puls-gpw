@@ -840,11 +840,13 @@ def test_create_users_table_creates_on_not_found():
 def test_users_schema_columns_and_modes():
     """_USERS_SCHEMA: user_id/email/created_at REQUIRED, last_login_at NULLABLE."""
     names = {f.name: f for f in _USERS_SCHEMA}
-    assert set(names) == {"user_id", "email", "created_at", "last_login_at"}
+    assert set(names) == {"user_id", "email", "created_at", "last_login_at", "role"}
     assert names["user_id"].mode == "REQUIRED"
     assert names["email"].mode == "REQUIRED"
     assert names["created_at"].mode == "REQUIRED"
     assert names["last_login_at"].mode == "NULLABLE"
+    # PUL-83: NULLABLE by design — NULL reads as "user", no backfill was run
+    assert names["role"].mode == "NULLABLE"
 
 
 def test_insert_user_sql_and_params():
@@ -857,7 +859,8 @@ def test_insert_user_sql_and_params():
     job_config = client.query.call_args.kwargs["job_config"]
     params = {p.name: p.value for p in job_config.query_parameters}
     assert "INSERT INTO" in query_str and "users" in query_str
-    assert "(user_id, email, created_at)" in query_str
+    assert "(user_id, email, created_at, role)" in query_str
+    assert "'user'" in query_str  # fresh registrations are always plain users
     assert "CURRENT_TIMESTAMP()" in query_str
     assert params["user_id"] == "firebase-uid-1"
     assert params["email"] == "user@example.com"
@@ -888,9 +891,49 @@ def test_upsert_user_login_merge_sql_and_params():
     assert "MERGE" in query_str and "users" in query_str
     assert "ON T.user_id = S.user_id" in query_str
     assert "UPDATE SET last_login_at = CURRENT_TIMESTAMP()" in query_str
-    assert "INSERT (user_id, email, created_at, last_login_at)" in query_str
+    assert "INSERT (user_id, email, created_at, last_login_at, role)" in query_str
     assert params["user_id"] == "firebase-uid-1"
     assert params["email"] == "user@example.com"
+    # PUL-83 containment: the MATCHED branch must NEVER touch role — a login
+    # updating role would wipe an admin promotion back to 'user'/NULL.
+    matched_clause = query_str.split("WHEN MATCHED THEN")[1].split("WHEN NOT MATCHED")[0]
+    assert "role" not in matched_clause
+
+
+def test_get_user_role_sql_uses_coalesce_and_falls_back_to_user():
+    """Role read: COALESCE(role, 'user') (NULL = user, no backfill) and a
+    missing row also reads 'user' (register insert may have failed)."""
+    from types import SimpleNamespace
+
+    from db.bigquery import get_user_role
+
+    client = _mock_bq_client()
+    client.query.return_value.result.return_value = [SimpleNamespace(role="admin")]
+    with patch("db.bigquery._get_client", return_value=client):
+        assert get_user_role("firebase-uid-1") == "admin"
+
+    query_str = client.query.call_args[0][0]
+    job_config = client.query.call_args.kwargs["job_config"]
+    params = {p.name: p.value for p in job_config.query_parameters}
+    assert "COALESCE(role, 'user')" in query_str
+    assert "LIMIT 1" in query_str
+    assert params["user_id"] == "firebase-uid-1"
+
+    client.query.return_value.result.return_value = []
+    with patch("db.bigquery._get_client", return_value=client):
+        assert get_user_role("missing-uid") == "user"
+
+
+def test_get_user_role_raises_bigquery_error_on_failure():
+    from db.bigquery import BigQueryError, get_user_role
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = RuntimeError("boom")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="get_user_role failed"):
+            get_user_role("uid")
 
 
 def test_upsert_user_login_raises_bigquery_error_on_job_errors():

@@ -22,7 +22,7 @@ from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
 from firebase_admin import credentials as firebase_credentials  # type: ignore[import-untyped]
 from pydantic import BaseModel, field_validator
 
-from db.bigquery import BigQueryError, insert_user, upsert_user_login
+from db.bigquery import BigQueryError, get_user_role, insert_user, upsert_user_login
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +66,21 @@ def _jwt_secret() -> str:
 
 
 def create_session_token(
-    user_id: str, email: str, auth_type: str, login_at: int | None = None
+    user_id: str,
+    email: str,
+    auth_type: str,
+    login_at: int | None = None,
+    role: str = "user",
 ) -> str:
     """Issue an HS256 session JWT valid for 7 days.
 
     `login_at` records the ORIGINAL login time and survives sliding refreshes —
     it is what the absolute session cap is measured against. Fresh logins omit
     it (login_at == iat); refresh passes the old value through.
+
+    `role` (PUL-83) is read from BQ once at login and rides the token from
+    then on — refresh MUST pass the old payload's role through, or an admin
+    would silently degrade to "user" at the first 24h refresh.
     """
     if not _jwt_secret():
         raise RuntimeError("JWT_SECRET is not set — cannot issue session tokens")
@@ -84,6 +92,7 @@ def create_session_token(
         "iat": now,
         "exp": now + _SESSION_TTL_SECONDS,
         "login_at": login_at if login_at is not None else now,
+        "role": role,
     }
     return jwt.encode(payload, _jwt_secret(), algorithm="HS256")
 
@@ -159,6 +168,8 @@ def refresh_session_if_stale(response: Response, payload: dict[str, Any]) -> Non
     token = create_session_token(
         payload["user_id"], payload["email"], payload.get("auth_type", "firebase"),
         login_at=login_at,
+        # Pre-PUL-83 tokens carry no role claim — degrade to "user", never KeyError.
+        role=payload.get("role", "user"),
     )
     set_session_cookie(response, token)
 
@@ -328,10 +339,12 @@ async def _login_rate_dep(request: Request) -> None:
     _login_rate_limiter.check(client_ip(request))
 
 
-def _session_response(response: Response, user_id: str, email: str) -> dict[str, str]:
-    token = create_session_token(user_id, email, "firebase")
+def _session_response(
+    response: Response, user_id: str, email: str, role: str = "user"
+) -> dict[str, str]:
+    token = create_session_token(user_id, email, "firebase", role=role)
     set_session_cookie(response, token)
-    return {"user_id": user_id, "email": email}
+    return {"user_id": user_id, "email": email, "role": role}
 
 
 @router.post("/register")
@@ -377,7 +390,15 @@ def login(body: LoginIn, response: Response, _rl: None = Depends(_login_rate_dep
         # Not fatal — the row self-heals on the next successful login
         logger.warning("login: upsert_user_login failed for %s: %s", user_id, exc)
 
-    return _session_response(response, user_id, email)
+    # Availability over freshness: a BQ blip must not turn into a 5xx on
+    # login — degrade to "user"; the owner regains admin at the next login.
+    try:
+        role = get_user_role(user_id)
+    except BigQueryError as exc:
+        logger.warning("login: get_user_role failed for %s: %s — defaulting to 'user'", user_id, exc)
+        role = "user"
+
+    return _session_response(response, user_id, email, role)
 
 
 @router.post("/logout", status_code=204)
@@ -392,4 +413,10 @@ def me(request: Request):
     payload = decode_session_token(token) if token else None
     if payload is None:
         raise HTTPException(status_code=401, detail="Brak ważnej sesji")
-    return {"user_id": payload["user_id"], "email": payload["email"]}
+    return {
+        "user_id": payload["user_id"],
+        "email": payload["email"],
+        # Normalized like _get_role: only the exact "admin" survives — the UI
+        # never sees raw/garbage claim values.
+        "role": "admin" if payload.get("role") == "admin" else "user",
+    }

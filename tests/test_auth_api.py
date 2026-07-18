@@ -57,7 +57,7 @@ def test_register_happy_path_sets_cookie_and_inserts_user(client):
         r = client.post("/api/auth/register", json={"email": "user@example.com", "password": "haslo123"})
 
     assert r.status_code == 200
-    assert r.json() == {"user_id": "fb-uid-1", "email": "user@example.com"}
+    assert r.json() == {"user_id": "fb-uid-1", "email": "user@example.com", "role": "user"}
     cookie_header = r.headers["set-cookie"]
     assert cookie_header.startswith("session=")
     assert "HttpOnly" in cookie_header
@@ -127,13 +127,15 @@ def test_login_happy_path_sets_cookie_and_upserts_login(client):
         respx.post(_SIGNIN_URL).mock(
             return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
         )
-        with patch("src.auth.upsert_user_login") as upsert:
+        with patch("src.auth.upsert_user_login") as upsert, \
+             patch("src.auth.get_user_role", return_value="user") as get_role:
             r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})
 
     assert r.status_code == 200
-    assert r.json() == {"user_id": "fb-uid-1", "email": "user@example.com"}
+    assert r.json() == {"user_id": "fb-uid-1", "email": "user@example.com", "role": "user"}
     assert "session=" in r.headers["set-cookie"]
     upsert.assert_called_once_with("fb-uid-1", "user@example.com")
+    get_role.assert_called_once_with("fb-uid-1")
 
 
 @pytest.mark.parametrize(
@@ -203,11 +205,79 @@ def test_login_bq_upsert_failure_is_logged_not_blocking(client):
         respx.post(_SIGNIN_URL).mock(
             return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
         )
-        with patch("src.auth.upsert_user_login", side_effect=BigQueryError("boom")):
+        with patch("src.auth.upsert_user_login", side_effect=BigQueryError("boom")), \
+             patch("src.auth.get_user_role", return_value="user"):
             r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})
 
     assert r.status_code == 200
     assert "session=" in r.headers["set-cookie"]
+
+
+def test_login_admin_role_lands_in_body_cookie_and_auth_role(client):
+    """PUL-83: get_user_role='admin' → role in the body, in /api/auth/me, and
+    _get_role maps the cookie to admin (checked via GET /auth/role, no API key)."""
+    import respx
+    from httpx import Response as HttpxResponse
+
+    with respx.mock:
+        respx.post(_SIGNIN_URL).mock(
+            return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
+        )
+        with patch("src.auth.upsert_user_login"), \
+             patch("src.auth.get_user_role", return_value="admin"):
+            r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})
+
+    assert r.status_code == 200
+    assert r.json()["role"] == "admin"
+    assert client.get("/api/auth/me").json()["role"] == "admin"
+    assert client.get("/auth/role").json() == {"role": "admin"}
+
+
+def test_login_get_user_role_failure_defaults_to_user(client):
+    """Availability over freshness: a BQ blip on the role read must not 5xx the login."""
+    from db.bigquery import BigQueryError
+
+    import respx
+    from httpx import Response as HttpxResponse
+
+    with respx.mock:
+        respx.post(_SIGNIN_URL).mock(
+            return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
+        )
+        with patch("src.auth.upsert_user_login"), \
+             patch("src.auth.get_user_role", side_effect=BigQueryError("boom")):
+            r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})
+
+    assert r.status_code == 200
+    assert r.json()["role"] == "user"
+
+
+def test_garbage_role_claim_degrades_to_user(client):
+    """A signed token with role='root' (not 'admin') must map to plain user."""
+    from src.auth import create_session_token
+
+    client.cookies.set(
+        "session", create_session_token("uid-1", "a@b.pl", "firebase", role="root")
+    )
+    assert client.get("/auth/role").json() == {"role": "user"}
+    assert client.get("/api/auth/me").json()["role"] == "user"  # /me normalizes like the gates
+
+
+def test_legacy_token_without_role_claim_maps_to_user(client):
+    """Sessions issued before PUL-83 carry no role claim — they stay valid as user."""
+    import time
+
+    import jwt as pyjwt
+
+    now = int(time.time())
+    legacy = pyjwt.encode(
+        {"user_id": "uid-1", "email": "a@b.pl", "auth_type": "firebase",
+         "iat": now, "exp": now + 3600, "login_at": now},
+        _SECRET, algorithm="HS256",
+    )
+    client.cookies.set("session", legacy)
+    assert client.get("/auth/role").json() == {"role": "user"}
+    assert client.get("/api/auth/me").json()["role"] == "user"
 
 
 # ── POST /api/auth/logout + GET /api/auth/me ──────────────────────────────────
@@ -236,7 +306,7 @@ def test_me_after_register_returns_identity_from_jwt_only(client):
     with patch("src.auth.upsert_user_login") as upsert, patch("src.auth.insert_user") as insert:
         r = client.get("/api/auth/me")
     assert r.status_code == 200
-    assert r.json() == {"user_id": "fb-uid-1", "email": "user@example.com"}
+    assert r.json() == {"user_id": "fb-uid-1", "email": "user@example.com", "role": "user"}
     upsert.assert_not_called()
     insert.assert_not_called()
 

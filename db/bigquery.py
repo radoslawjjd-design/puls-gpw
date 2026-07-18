@@ -853,6 +853,9 @@ _USERS_SCHEMA = [
     bigquery.SchemaField("email",         "STRING",    mode="REQUIRED"),
     bigquery.SchemaField("created_at",    "TIMESTAMP", mode="REQUIRED"),
     bigquery.SchemaField("last_login_at", "TIMESTAMP", mode="NULLABLE"),
+    # PUL-83: NULL means "user" — no backfill was run when the column was added;
+    # every reader must COALESCE(role, 'user').
+    bigquery.SchemaField("role",          "STRING",    mode="NULLABLE"),
 ]
 
 
@@ -881,8 +884,8 @@ def insert_user(user_id: str, email: str) -> None:
     """
     client = _get_client()
     query = f"""
-        INSERT INTO `{_table_ref(client, _USERS_TABLE_NAME)}` (user_id, email, created_at)
-        VALUES (@user_id, @email, CURRENT_TIMESTAMP())
+        INSERT INTO `{_table_ref(client, _USERS_TABLE_NAME)}` (user_id, email, created_at, role)
+        VALUES (@user_id, @email, CURRENT_TIMESTAMP(), 'user')
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
@@ -918,8 +921,8 @@ def upsert_user_login(user_id: str, email: str) -> None:
         WHEN MATCHED THEN
           UPDATE SET last_login_at = CURRENT_TIMESTAMP()
         WHEN NOT MATCHED THEN
-          INSERT (user_id, email, created_at, last_login_at)
-          VALUES (S.user_id, S.email, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
+          INSERT (user_id, email, created_at, last_login_at, role)
+          VALUES (S.user_id, S.email, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(), 'user')
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
@@ -935,6 +938,35 @@ def upsert_user_login(user_id: str, email: str) -> None:
     if job.errors:
         raise BigQueryError(f"upsert_user_login failed: {job.errors}")
     logger.debug("upsert_user_login: user_id=%s", user_id)
+
+
+def get_user_role(user_id: str) -> str:
+    """Read a user's role — called ONLY at login (the claim then rides the JWT).
+
+    NULL role means "user": the column was added without a backfill (PUL-83),
+    so every read goes through COALESCE. A missing row also reads "user" —
+    register's insert may have failed and upsert_user_login self-heals it on
+    this very login. Raises BigQueryError on failure (caller decides fallback).
+    """
+    client = _get_client()
+    query = f"""
+        SELECT COALESCE(role, 'user') AS role
+        FROM `{_table_ref(client, _USERS_TABLE_NAME)}`
+        WHERE user_id = @user_id
+        LIMIT 1
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_user_role failed: {exc}") from exc
+    role = rows[0].role if rows else "user"
+    logger.debug("get_user_role: user_id=%s role=%s", user_id, role)
+    return role
 
 
 def add_watchlist_ticker(client_id: str, ticker: str) -> None:

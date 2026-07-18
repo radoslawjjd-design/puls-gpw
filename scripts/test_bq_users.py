@@ -28,6 +28,7 @@ from db.bigquery import (
     _USERS_TABLE_NAME,
     create_users_table_if_not_exists,
     ensure_users_schema_current,
+    get_user_role,
     insert_user,
     upsert_user_login,
 )
@@ -84,10 +85,10 @@ def main() -> None:
     table = client.get_table(_table_ref(client, _USERS_TABLE_NAME))
     cols = [f.name for f in table.schema]
     print(f"    Columns: {cols}")
-    expected = {"user_id", "email", "created_at", "last_login_at"}
+    expected = {"user_id", "email", "created_at", "last_login_at", "role"}
     missing = expected - set(cols)
     assert not missing, f"FAIL: missing columns: {missing}"
-    print("    OK: users table exists with correct schema")
+    print("    OK: users table exists with correct schema (incl. role, PUL-83)")
 
     try:
         # --- 2.b: insert_user ---
@@ -119,6 +120,12 @@ def main() -> None:
         assert row3 is not None, "FAIL: self-heal did not insert a row"
         assert row3["created_at"] is not None and row3["last_login_at"] is not None
         print("    OK: missing row self-healed with created_at + last_login_at")
+
+        # --- 2.e (PUL-83): get_user_role reads 'user' for fresh + missing rows ---
+        print("=== 2.e: get_user_role ===")
+        assert get_user_role(TEST_USER_ID) == "user", "FAIL: fresh insert should read role 'user'"
+        assert get_user_role("no-such-user-id") == "user", "FAIL: missing row should read 'user'"
+        print("    OK: get_user_role -> 'user' for fresh row and for missing row")
     finally:
         _cleanup(client)
 
