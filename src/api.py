@@ -313,8 +313,11 @@ def create_app() -> FastAPI:
             rows = list_top_announcements_public()
         except BigQueryError as exc:
             logger.error("BQ error in /api/public/top-announcements: %s", exc)
-            # Unauthenticated surface — never echo internal error details.
-            raise HTTPException(status_code=500, detail="Internal error")
+            # Negative cache: a BQ outage on this unauthenticated surface must
+            # not let every request fire a fresh query — serve an empty card
+            # list (the landing hides the strip) and retry after the TTL.
+            _perf_set("public:top-announcements", [])
+            return []
         result = []
         for r in rows:
             structured_analysis = _parse_structured_analysis(r.get("structured_analysis"))

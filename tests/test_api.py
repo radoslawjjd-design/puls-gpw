@@ -634,12 +634,16 @@ def test_public_top_announcements_cache_hit_skips_bq(api_client):
     assert mock_fn.call_count == 1
 
 
-def test_public_top_announcements_bq_error_returns_generic_500(api_client):
+def test_public_top_announcements_bq_error_serves_empty_and_negative_caches(api_client):
     from src.exceptions import BigQueryError
-    with patch("src.api.list_top_announcements_public", side_effect=BigQueryError("secret-detail")):
-        r = api_client.get("/api/public/top-announcements")
-    assert r.status_code == 500
-    assert "secret-detail" not in r.text
+    with patch("src.api.list_top_announcements_public", side_effect=BigQueryError("secret-detail")) as mock_fn:
+        r1 = api_client.get("/api/public/top-announcements")
+        r2 = api_client.get("/api/public/top-announcements")
+    assert r1.status_code == 200 and r1.json() == []
+    assert "secret-detail" not in r1.text
+    # Negative cache: the failing BQ fn is not re-called within the TTL.
+    assert r2.json() == []
+    assert mock_fn.call_count == 1
 
 
 def test_list_top_announcements_public_query_orders_by_score_without_selecting_it():

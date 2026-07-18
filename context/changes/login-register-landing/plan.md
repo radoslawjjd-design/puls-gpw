@@ -406,14 +406,14 @@ independent setup/cleanup, unique ids where state is created.
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [x] 1.2 Public-contract tests green (no-auth 200, field set without score/sentiment, cache hit)
-- [x] 1.3 Query-string regression assert green (score in ORDER BY only, approved filter present)
-- [x] 1.4 Full e2e suite still green: `uv run pytest tests/e2e -q`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q` — 74361de
+- [x] 1.2 Public-contract tests green (no-auth 200, field set without score/sentiment, cache hit) — 74361de
+- [x] 1.3 Query-string regression assert green (score in ORDER BY only, approved filter present) — 74361de
+- [x] 1.4 Full e2e suite still green: `uv run pytest tests/e2e -q` — 74361de
 
 #### Manual
 
-- [x] 1.5 BQ round-trip: endpoint returns 3 rows locally, no score/sentiment keys
+- [x] 1.5 BQ round-trip: endpoint returns 3 rows locally, no score/sentiment keys — 74361de
 
 ### Phase 2: Landing page UI + e2e suite kept green
 

@@ -1654,12 +1654,13 @@ def list_top_announcements_public(limit: int = 3) -> list[dict]:
     Score containment (PUL-72): `analysis_score` is deliberately NOT in the
     SELECT list — it orders the result server-side but never leaves the DB
     layer, so the admin-only score convention holds for public callers.
-    Bounded to the last {_ANNOUNCEMENTS_DEFAULT_DAYS} days so cards stay
-    fresh; excludes 'inne' (same eligibility rule as X posts). Returns dicts
+    Bounded to the last 90 days (see _ANNOUNCEMENTS_DEFAULT_DAYS) so cards
+    stay fresh; excludes 'inne' (same eligibility rule as X posts). Returns dicts
     with keys: company, ticker, title, event_type, published_at,
     structured_analysis. Raises BigQueryError on query failure.
     """
     client = _get_client()
+    _t = time.time()
     query = f"""
         SELECT
             company, ticker, title, event_type, published_at, structured_analysis
@@ -1678,6 +1679,7 @@ def list_top_announcements_public(limit: int = 3) -> list[dict]:
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"list_top_announcements_public failed: {exc}") from exc
+    logger.debug("BQ list_top_announcements_public: %.0fms", (time.time() - _t) * 1000)
     return [
         {
             "company": row.company,
