@@ -20,11 +20,28 @@ _USER_KEY  = "e2e-user-key"
 # ścieżkę 401 "Nieprawidłowy email lub hasło" bez prawdziwego Firebase.
 E2E_WRONG_PASSWORD = "ZleHaslo999"
 
+# PUL-83: konto e-mail z rolą admin w fake'owym BQ. Uid MUSI być wyprowadzany
+# z e-maila IDENTYCZNIE w obu mockach (verify_password_rest i create_user) —
+# inaczej register→login rozjechałby stan portfela/watchlisty na dwa uid-y.
+E2E_ADMIN_EMAIL = "admin@example.com"
+
+
+def _e2e_uid(email):
+    return "e2e-uid-" + email
+
 
 def _fake_verify_password_rest(email, password):
     if password == E2E_WRONG_PASSWORD:
         raise InvalidCredentialsError("INVALID_LOGIN_CREDENTIALS")
-    return ("e2e-firebase-uid", email)
+    return (_e2e_uid(email), email)
+
+
+def _fake_firebase_create_user(email, password):
+    return SimpleNamespace(uid=_e2e_uid(email))
+
+
+def _fake_get_user_role(user_id):
+    return "admin" if user_id == _e2e_uid(E2E_ADMIN_EMAIL) else "user"
 
 _FAKE_ADMIN_ROWS = [
     {
@@ -433,10 +450,11 @@ def live_server_url():
         # and _get_firebase_app/verify_password_rest live there.
         patch("src.auth.insert_user"),
         patch("src.auth.upsert_user_login"),
+        patch("src.auth.get_user_role", side_effect=_fake_get_user_role),
         patch("src.auth._get_firebase_app"),
         patch(
             "src.auth.firebase_auth.create_user",
-            return_value=SimpleNamespace(uid="e2e-firebase-uid"),
+            side_effect=_fake_firebase_create_user,
         ),
         patch(
             "src.auth.verify_password_rest",

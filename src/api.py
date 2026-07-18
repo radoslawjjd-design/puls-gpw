@@ -111,7 +111,9 @@ def _get_role(
     payload = session_payload_from_request(request)
     if payload is not None:
         refresh_session_if_stale(response, payload)
-        return "user"
+        # PUL-83: role comes from the signed claim; anything but the exact
+        # "admin" value (missing claim, legacy token, garbage) degrades to user.
+        return "admin" if payload.get("role") == "admin" else "user"
     if key == os.environ.get("ADMIN_API_KEY"):
         return "admin"
     if key == os.environ.get("USER_API_KEY"):

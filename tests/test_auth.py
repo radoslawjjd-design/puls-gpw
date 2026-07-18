@@ -136,6 +136,46 @@ def test_decode_returns_none_for_token_missing_required_claims(jwt_secret):
     assert decode_session_token(no_identity) is None
 
 
+def test_session_token_carries_role_claim(jwt_secret):
+    """PUL-83: role rides the token — explicit 'admin' sticks, default is 'user'."""
+    from src.auth import create_session_token, decode_session_token
+
+    admin_token = create_session_token("uid-1", "a@b.pl", "firebase", role="admin")
+    assert decode_session_token(admin_token)["role"] == "admin"
+
+    default_token = create_session_token("uid-1", "a@b.pl", "firebase")
+    assert decode_session_token(default_token)["role"] == "user"
+
+
+def test_refresh_carries_role_claim_and_degrades_legacy_tokens(jwt_secret):
+    """Sliding refresh must pass the role claim through — the demotion trap is an
+    admin degrading to 'user' at the first 24h refresh. Legacy payloads without
+    the claim refresh to 'user' (never KeyError)."""
+    import time
+
+    from fastapi import Response
+
+    from src.auth import decode_session_token, refresh_session_if_stale
+
+    now = int(time.time())
+    base = {
+        "user_id": "uid-1", "email": "user@example.com", "auth_type": "firebase",
+        "iat": now - 25 * 3600, "exp": now + 6 * 24 * 3600,
+        "login_at": now - 2 * 24 * 3600,
+    }
+
+    def _refreshed_role(payload):
+        resp = Response()
+        refresh_session_if_stale(resp, payload)
+        cookie_header = resp.headers.get("set-cookie", "")
+        assert cookie_header.startswith("session=")
+        token = cookie_header.split("session=", 1)[1].split(";", 1)[0]
+        return decode_session_token(token)["role"]
+
+    assert _refreshed_role({**base, "role": "admin"}) == "admin"
+    assert _refreshed_role(dict(base)) == "user"  # legacy token, no claim
+
+
 def test_new_session_token_carries_login_at(jwt_secret):
     """A fresh session token records the original login time (login_at == iat)."""
     from src.auth import create_session_token, decode_session_token
