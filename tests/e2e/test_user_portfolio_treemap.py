@@ -9,8 +9,10 @@ _USER_KEY = "e2e-user-key"
 
 def _login(page: Page, base_url: str, key: str = _USER_KEY) -> None:
     page.goto(base_url)
+    page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
+    page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(key)
-    page.get_by_role("button", name="Zaloguj się").click()
+    page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
     expect(page.locator("#page-label")).to_have_text("Strona 1")
 
 
@@ -82,8 +84,10 @@ def test_treemap_cell_popup_opens_on_click(page: Page, live_server_url: str):
 def test_portfolio_positions_url_deeplink(page: Page, live_server_url: str):
     """Risk: ?view=portfolio-positions in the URL must restore the portfolio view after login."""
     page.goto(f"{live_server_url}/?view=portfolio-positions")
+    page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
+    page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(_USER_KEY)
-    page.get_by_role("button", name="Zaloguj się").click()
+    page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
 
     # _applyUrlState reads ?view=portfolio-positions and calls showPortfolioPositionsView()
     expect(page.locator("#portfolio-positions-view")).to_be_visible()

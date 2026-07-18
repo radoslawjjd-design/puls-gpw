@@ -419,12 +419,12 @@ independent setup/cleanup, unique ids where state is created.
 
 #### Automated
 
-- [ ] 2.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [ ] 2.2 Full e2e suite green after helper updates: `uv run pytest tests/e2e -q`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/ --ignore=tests/e2e -q`
+- [x] 2.2 Full e2e suite green after helper updates: `uv run pytest tests/e2e -q`
 
 #### Manual
 
-- [ ] 2.3 Local visual check: landing light/dark/mobile, cards, tabs, API-key path to dashboard
+- [x] 2.3 Local visual check: landing light/dark/mobile, cards, tabs, API-key path to dashboard
 
 ### Phase 3: Auth wiring + boot probe + e2e auth coverage
 

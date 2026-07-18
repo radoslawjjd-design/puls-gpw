@@ -10,8 +10,10 @@ def _login(page: Page, base_url: str) -> None:
     # passes — without pause_at, the virtual clock keeps ticking at
     # real-time speed and the live countdown drifts during assertion polling.
     page.clock.pause_at(page.evaluate("() => Date.now()"))
+    page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
+    page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
-    page.get_by_role("button", name="Zaloguj się").click()
+    page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
     expect(page.locator("#page-label")).to_have_text("Strona 1")
     # showDashboard() kicks off a fire-and-forget fetchAnnouncements() call.
     # fast_forward()/run_for() drive Chromium's virtual-time-policy CDP command,
