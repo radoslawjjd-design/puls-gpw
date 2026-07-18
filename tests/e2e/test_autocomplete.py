@@ -7,8 +7,10 @@ _ADMIN_KEY = "e2e-admin-key"
 
 def _login(page: Page, base_url: str) -> None:
     page.goto(base_url)
+    page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
+    page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
-    page.get_by_role("button", name="Zaloguj się").click()
+    page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
     expect(page.locator("#page-label")).to_have_text("Strona 1")
 
 
@@ -39,7 +41,8 @@ def test_event_type_label_translates_to_code_in_filter(page: Page, live_server_u
     page.wait_for_function("document.querySelector('#dl-event-types').options.length > 0")
 
     # Fill the event type input with a Polish label produced by _toLabel()
-    page.locator("#f-event-type").fill("Wyniki sprzedazowe")
+    # (faro-v8 added proper diacritics via the _EVENT_TYPE_PL map)
+    page.locator("#f-event-type").fill("Wyniki sprzedażowe")
 
     with page.expect_request(re.compile(r"/announcements")) as req_info:
         page.get_by_role("button", name="Filtruj").click()

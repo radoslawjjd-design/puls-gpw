@@ -593,6 +593,85 @@ def test_list_announcements_for_watchlist_query_selects_analysis_score():
     assert "a.analysis_score" in captured["query"]
 
 
+# ── public top-announcements endpoint (PUL-72) ────────────────────────────────
+
+_PUBLIC_TOP_ROWS = [
+    {"company": "PKO SA", "ticker": "PKO", "title": "Wyniki Q2 2026",
+     "event_type": "wyniki", "published_at": "2026-07-01T00:00:00",
+     "structured_analysis": '{"summary_pl": "Rekordowe wyniki kwartalne", "sentiment": "pozytywny"}'},
+    {"company": "CD Projekt SA", "ticker": "CDR", "title": "Nowa gra",
+     "event_type": "umowa", "published_at": "2026-07-02T00:00:00",
+     "structured_analysis": None},
+]
+
+
+def test_public_top_announcements_no_auth_returns_200(api_client):
+    with patch("src.api.list_top_announcements_public", return_value=_PUBLIC_TOP_ROWS):
+        r = api_client.get("/api/public/top-announcements")
+    assert r.status_code == 200
+    assert len(r.json()) == 2
+
+
+def test_public_top_announcements_field_set_has_no_score_or_sentiment(api_client):
+    with patch("src.api.list_top_announcements_public", return_value=_PUBLIC_TOP_ROWS):
+        r = api_client.get("/api/public/top-announcements")
+    data = r.json()
+    assert set(data[0].keys()) == {
+        "company", "ticker", "title", "event_type", "published_at", "summary",
+    }
+    assert data[0]["summary"] == "Rekordowe wyniki kwartalne"
+    assert data[1]["summary"] is None
+    # Containment guard: neither the score nor the raw analysis JSON may leak.
+    assert "analysis_score" not in r.text
+    assert "sentiment" not in r.text
+
+
+def test_public_top_announcements_cache_hit_skips_bq(api_client):
+    with patch("src.api.list_top_announcements_public", return_value=_PUBLIC_TOP_ROWS) as mock_fn:
+        r1 = api_client.get("/api/public/top-announcements")
+        r2 = api_client.get("/api/public/top-announcements")
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert mock_fn.call_count == 1
+
+
+def test_public_top_announcements_bq_error_serves_empty_and_negative_caches(api_client):
+    from src.exceptions import BigQueryError
+    with patch("src.api.list_top_announcements_public", side_effect=BigQueryError("secret-detail")) as mock_fn:
+        r1 = api_client.get("/api/public/top-announcements")
+        r2 = api_client.get("/api/public/top-announcements")
+    assert r1.status_code == 200 and r1.json() == []
+    assert "secret-detail" not in r1.text
+    # Negative cache: the failing BQ fn is not re-called within the TTL.
+    assert r2.json() == []
+    assert mock_fn.call_count == 1
+
+
+def test_list_top_announcements_public_query_orders_by_score_without_selecting_it():
+    """Regression (lessons.md): mocked BQ tests don't parse SQL — assert the query string.
+    Score containment: analysis_score orders the query but must not be selected."""
+    from unittest.mock import MagicMock
+    from db import bigquery as bq
+
+    captured = {}
+
+    def _capture(query, job_config=None):
+        captured["query"] = query
+        job = MagicMock()
+        job.result.return_value = []
+        return job
+
+    client = MagicMock()
+    client.query.side_effect = _capture
+    with patch.object(bq, "_get_client", return_value=client):
+        bq.list_top_announcements_public()
+    q = captured["query"]
+    assert "ORDER BY analysis_score DESC, published_at DESC" in q
+    assert "analysis_approved = TRUE" in q
+    assert "analysis_score IS NOT NULL" in q
+    select_clause = q.split("FROM")[0]
+    assert "analysis_score" not in select_clause
+
+
 # ── portfolio positions endpoints (PUL-65) ────────────────────────────────────
 
 _POSITION_WITH_PRICE = {

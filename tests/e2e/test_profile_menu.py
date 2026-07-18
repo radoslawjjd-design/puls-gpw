@@ -5,8 +5,10 @@ _ADMIN_KEY = "e2e-admin-key"
 
 def _login(page: Page, base_url: str) -> None:
     page.goto(base_url)
+    page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
+    page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
-    page.get_by_role("button", name="Zaloguj się").click()
+    page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
     expect(page.locator("#page-label")).to_have_text("Strona 1")
 
 
@@ -29,6 +31,26 @@ def test_trigger_click_opens_menu_and_escape_closes_with_focus_management(
     expect(menu).to_be_hidden()
     expect(trigger).to_have_attribute("aria-expanded", "false")
     expect(trigger).to_be_focused()
+
+
+def test_public_screens_stay_light_after_dark_mode_logout(
+    page: Page, live_server_url: str
+):
+    """Public screens (landing, #/logowanie, #/rejestracja) always render in
+    light mode; the dark preference survives in localStorage and returns
+    after the next login."""
+    _login(page, live_server_url)
+    page.get_by_role("button", name="admin").click()
+    page.get_by_role("menuitem", name="Tryb ciemny").click()
+    expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+
+    page.get_by_role("button", name="admin").click()
+    page.get_by_role("menuitem", name="Wyloguj").click()
+    expect(page.locator(".landing-hero")).to_be_visible()
+    expect(page.locator("html")).to_have_attribute("data-theme", "light")
+
+    _login(page, live_server_url)
+    expect(page.locator("html")).to_have_attribute("data-theme", "dark")
 
 
 def test_clicking_outside_closes_menu_without_the_opening_click_closing_it(

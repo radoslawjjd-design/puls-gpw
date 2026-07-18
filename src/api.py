@@ -43,6 +43,7 @@ from db.bigquery import (
     list_distinct_tickers,
     list_distinct_portfolio_tickers,
     list_etf_instruments_for_autocomplete,
+    list_top_announcements_public,
     list_user_portfolio_positions,
     get_portfolio_calendar_data,
     list_user_portfolios,
@@ -222,6 +223,18 @@ class AnnouncementUser(BaseModel):
     published_at: datetime | None = None
 
 
+class PublicAnnouncement(BaseModel):
+    # Public landing-card contract (PUL-72): no analysis_score, no sentiment,
+    # no raw structured_analysis — only the parsed summary_pl survives as `summary`.
+    model_config = ConfigDict(extra="ignore")
+    company: str | None = None
+    ticker: str | None = None
+    title: str | None = None
+    event_type: str | None = None
+    published_at: datetime | None = None
+    summary: str | None = None
+
+
 class PortfolioWalletCreate(BaseModel):
     model_config = ConfigDict(extra="ignore")
     portfolio_type: Literal["glowny", "ikze", "ike", "ppk", "ppe", "inny"]
@@ -288,6 +301,39 @@ def create_app() -> FastAPI:
     @app.get("/auth/role")
     async def auth_role(role: Role = Depends(_get_role)):
         return {"role": role}
+
+    @app.get("/api/public/top-announcements")
+    async def public_top_announcements():
+        # Public route by design (PUL-72): no _get_role dependency. The 60s
+        # cache bounds BQ load regardless of landing-page traffic.
+        cached = _perf_get("public:top-announcements", ttl=60)
+        if cached is not None:
+            return cached
+        try:
+            rows = list_top_announcements_public()
+        except BigQueryError as exc:
+            logger.error("BQ error in /api/public/top-announcements: %s", exc)
+            # Negative cache: a BQ outage on this unauthenticated surface must
+            # not let every request fire a fresh query — serve an empty card
+            # list (the landing hides the strip) and retry after the TTL.
+            _perf_set("public:top-announcements", [])
+            return []
+        result = []
+        for r in rows:
+            structured_analysis = _parse_structured_analysis(r.get("structured_analysis"))
+            summary = structured_analysis.get("summary_pl") if structured_analysis else None
+            result.append(
+                PublicAnnouncement(
+                    company=r.get("company"),
+                    ticker=r.get("ticker"),
+                    title=r.get("title"),
+                    event_type=r.get("event_type"),
+                    published_at=r.get("published_at"),
+                    summary=summary,
+                ).model_dump()
+            )
+        _perf_set("public:top-announcements", result)
+        return result
 
     @app.get("/announcements")
     async def announcements(

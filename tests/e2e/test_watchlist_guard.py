@@ -15,8 +15,10 @@ _USER_KEY = "e2e-user-key"
 
 def _login(page: Page, base_url: str) -> None:
     page.goto(base_url)
+    page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
+    page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(_USER_KEY)
-    page.get_by_role("button", name="Zaloguj się").click()
+    page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
     expect(page.locator("#page-label")).to_have_text("Strona 1")
 
 
