@@ -323,4 +323,4 @@ WHERE email = 'radoslaw.jjd@gmail.com';
 #### Manual
 
 - [x] 2.4 Local round-trip: user email flow unchanged, reload keeps session — d426e19
-- [ ] 2.5 Post-merge: owner promotion UPDATE run + prod email login shows full admin view; non-promoted account stays user
+- [x] 2.5 Post-merge: owner promotion UPDATE run + prod email login shows full admin view; non-promoted account stays user — df4d7cb
