@@ -18,13 +18,13 @@ import firebase_admin  # type: ignore[import-untyped]
 import httpx
 import jwt
 from email_validator import EmailNotValidError, validate_email
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
 from firebase_admin import credentials as firebase_credentials  # type: ignore[import-untyped]
 from pydantic import BaseModel, field_validator
 
 from db.bigquery import BigQueryError, get_user_role, insert_user, upsert_user_login
-from src.notifier import send_password_reset_email
+from src.notifier import send_alert, send_password_reset_email
 
 logger = logging.getLogger(__name__)
 
@@ -448,11 +448,38 @@ def login(body: LoginIn, response: Response, _rl: None = Depends(_login_rate_dep
     return _session_response(response, user_id, email, role)
 
 
+def _send_reset_email_background(email: str, origin: str) -> None:
+    """Link generation + branded mail, run AFTER the 204 went out (impl-review F1).
+
+    Post-existence-check work must not shape the response: a synchronous
+    link-gen/SMTP call made known accounts slower (timing channel) and turned
+    any SMTP outage into a 503-known / 204-unknown account oracle. Failures
+    here are silent for the requester by design — the owner gets an alert.
+    """
+    try:
+        link = firebase_auth.generate_password_reset_link(
+            email,
+            action_code_settings=firebase_auth.ActionCodeSettings(url=origin),
+        )
+        # PUL-85 phase 3: the e-mail is ours (Faro branding, Polish copy) —
+        # Firebase only hosts the action page the link points at.
+        send_password_reset_email(email, link, origin)
+    except Exception as exc:
+        logger.error("reset-password: background link/mail failed: %s", exc)
+        try:
+            send_alert(exc)
+        except Exception as alert_exc:
+            logger.error("reset-password: owner alert failed: %s", alert_exc)
+
+
 @router.post("/reset-password", status_code=204)
 def reset_password(
-    body: ResetPasswordIn, request: Request, _rl: None = Depends(_reset_rate_dep)
+    body: ResetPasswordIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    _rl: None = Depends(_reset_rate_dep),
 ) -> None:
-    # sync like login/register — blocking Firebase/SMTP calls run in the threadpool.
+    # sync like login/register — the blocking Firebase call runs in the threadpool.
     # Always 204 for a syntactically valid e-mail: unknown accounts short-circuit
     # into the same empty 204 (anti-enumeration), so there is no 404 path.
     try:
@@ -464,26 +491,16 @@ def reset_password(
         # złapane na prodzie jako sygnał enumeracyjny (znany 204 vs nieznany
         # 503). get_user_by_email ma poprawne mapowanie wyjątku.
         firebase_auth.get_user_by_email(body.email)
-        link = firebase_auth.generate_password_reset_link(
-            body.email,
-            action_code_settings=firebase_auth.ActionCodeSettings(url=origin),
-        )
     except firebase_auth.UserNotFoundError:
         return
     except AuthUnavailableError as exc:
         logger.warning("reset-password: auth unavailable: %s", exc)
         raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
     except Exception as exc:
-        logger.error("reset-password: link generation failed: %s", exc)
+        logger.error("reset-password: existence check failed: %s", exc)
         raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
 
-    # PUL-85 phase 3: the e-mail is ours (Faro branding, Polish copy) — Firebase
-    # only hosts the action page the link points at.
-    try:
-        send_password_reset_email(body.email, link, origin)
-    except Exception as exc:
-        logger.error("reset-password: e-mail send failed: %s", exc)
-        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+    background_tasks.add_task(_send_reset_email_background, body.email, origin)
 
 
 @router.post("/logout", status_code=204)
