@@ -1,10 +1,10 @@
 ---
 change_id: password-reset-firebase
 title: Password reset via Firebase e-mail flow
-status: impl_reviewed
+status: archived
 created: 2026-07-19
 updated: 2026-07-19
-archived_at: null
+archived_at: 2026-07-19T20:33:40Z
 tracking:
   linear: PUL-85
   github: 153
