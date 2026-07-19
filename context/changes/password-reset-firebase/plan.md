@@ -277,12 +277,12 @@ continueUrl reachability (noted on GitHub #20).
 
 #### Automated
 
-- [ ] 1.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [ ] 1.2 Reset contract tests green (204×2 identical, 422, 429, 503, helper taxonomy)
+- [x] 1.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
+- [x] 1.2 Reset contract tests green (204×2 identical, 422, 429, 503, helper taxonomy)
 
 #### Manual
 
-- [ ] 1.3 Real-Firebase round-trip: owner e-mail delivers, unknown e-mail 204 + no mail
+- [x] 1.3 Real-Firebase round-trip: owner e-mail delivers, unknown e-mail 204 + no mail
 
 ### Phase 2: Frontend — #/reset-hasla view + E2E
 

@@ -30,6 +30,15 @@ SESSION_COOKIE_NAME = "session"
 _SESSION_TTL_SECONDS = 7 * 24 * 3600
 
 
+def _normalized_email(v: str) -> str:
+    v = v.strip()
+    try:
+        # check_deliverability=False: syntax-only — no DNS lookups on request path
+        return validate_email(v, check_deliverability=False).normalized
+    except EmailNotValidError as exc:
+        raise ValueError(f"Invalid email address: {exc}") from exc
+
+
 class RegisterIn(BaseModel):
     email: str
     password: str
@@ -37,12 +46,7 @@ class RegisterIn(BaseModel):
     @field_validator("email")
     @classmethod
     def _valid_email(cls, v: str) -> str:
-        v = v.strip()
-        try:
-            # check_deliverability=False: syntax-only — no DNS lookups on request path
-            return validate_email(v, check_deliverability=False).normalized
-        except EmailNotValidError as exc:
-            raise ValueError(f"Invalid email address: {exc}") from exc
+        return _normalized_email(v)
 
     @field_validator("password")
     @classmethod
@@ -58,6 +62,17 @@ class RegisterIn(BaseModel):
 
 class LoginIn(RegisterIn):
     """Same validation rules as RegisterIn — junk never reaches Firebase."""
+
+
+class ResetPasswordIn(BaseModel):
+    """PUL-85: e-mail only — the reset request carries no password."""
+
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, v: str) -> str:
+        return _normalized_email(v)
 
 
 def _jwt_secret() -> str:
@@ -323,12 +338,60 @@ def verify_password_rest(email: str, password: str) -> tuple[str, str]:
     raise AuthUnavailableError(f"Identity Toolkit error: {code}")
 
 
+_OOB_CODE_URL = "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode"
+
+
+def send_password_reset_rest(email: str, continue_url: str) -> None:
+    """PUL-85: request a password-reset e-mail via Identity Toolkit sendOobCode.
+
+    Firebase sends the e-mail and hosts the reset action page; `continue_url`
+    puts a back-to-app link on it. Returns None on success — including for
+    EMAIL_NOT_FOUND (see below). Raises FirebaseRateLimitedError /
+    AuthUnavailableError.
+    """
+    api_key = os.environ.get("FIREBASE_WEB_API_KEY")
+    if not api_key:
+        raise AuthUnavailableError("FIREBASE_WEB_API_KEY is not set")
+    try:
+        resp = httpx.post(
+            _OOB_CODE_URL,
+            params={"key": api_key},
+            json={
+                "requestType": "PASSWORD_RESET",
+                "email": email,
+                "continueUrl": continue_url,
+            },
+            timeout=10.0,
+        )
+    except httpx.HTTPError as exc:
+        raise AuthUnavailableError(f"Identity Toolkit unreachable: {exc}") from exc
+
+    if resp.status_code == 200:
+        return
+    if resp.status_code >= 500:
+        raise AuthUnavailableError(f"Identity Toolkit 5xx: {resp.status_code}")
+
+    try:
+        code = resp.json()["error"]["message"]
+    except Exception as exc:
+        raise AuthUnavailableError("Identity Toolkit returned an unparseable error") from exc
+    # EMAIL_NOT_FOUND → silent success: the endpoint answers 204 whether or not
+    # the account exists (anti-enumeration). This is the ONE deliberate
+    # difference from login's error taxonomy, where the same code maps to 401.
+    if code.startswith("EMAIL_NOT_FOUND"):
+        return
+    if code.startswith("TOO_MANY_ATTEMPTS_TRIED_LATER"):
+        raise FirebaseRateLimitedError(code)
+    raise AuthUnavailableError(f"Identity Toolkit error: {code}")
+
+
 # ── /api/auth router ──────────────────────────────────────────────────────────
 
 router = APIRouter(prefix="/api/auth")
 
 _register_rate_limiter = RateLimiter(5)
 _login_rate_limiter = RateLimiter(10)
+_reset_rate_limiter = RateLimiter(5)
 
 
 async def _register_rate_dep(request: Request) -> None:
@@ -337,6 +400,21 @@ async def _register_rate_dep(request: Request) -> None:
 
 async def _login_rate_dep(request: Request) -> None:
     _login_rate_limiter.check(client_ip(request))
+
+
+async def _reset_rate_dep(request: Request) -> None:
+    _reset_rate_limiter.check(client_ip(request))
+
+
+def _request_origin(request: Request) -> str:
+    """Origin of the incoming request for continueUrl — no hardcoded domain.
+
+    Behind Cloud Run the request scheme reaching uvicorn is http; the real
+    scheme rides X-Forwarded-Proto (GFE-set), so prefer it when present.
+    """
+    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+    host = request.headers.get("Host", request.url.netloc)
+    return f"{scheme}://{host}"
 
 
 def _session_response(
@@ -399,6 +477,22 @@ def login(body: LoginIn, response: Response, _rl: None = Depends(_login_rate_dep
         role = "user"
 
     return _session_response(response, user_id, email, role)
+
+
+@router.post("/reset-password", status_code=204)
+def reset_password(
+    body: ResetPasswordIn, request: Request, _rl: None = Depends(_reset_rate_dep)
+) -> None:
+    # sync like login/register — the blocking Firebase call runs in the threadpool.
+    # Always 204 for a syntactically valid e-mail: unknown accounts are swallowed
+    # inside send_password_reset_rest (anti-enumeration), so there is no 404 path.
+    try:
+        send_password_reset_rest(body.email, _request_origin(request))
+    except FirebaseRateLimitedError:
+        raise HTTPException(status_code=429, detail="Zbyt wiele prób, spróbuj później")
+    except AuthUnavailableError as exc:
+        logger.warning("reset-password: auth unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
 
 
 @router.post("/logout", status_code=204)

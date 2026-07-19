@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api import create_app
+from src.auth import send_password_reset_rest as _real_send_password_reset_rest
 from src.auth import verify_password_rest as _real_verify_password_rest
 
 _SECRET = "test-jwt-secret"
@@ -23,6 +24,8 @@ def _env(monkeypatch):
     # the real function (captured at import/collection time, before fixtures
     # start) to exercise the actual Identity Toolkit error mapping.
     monkeypatch.setattr("src.auth.verify_password_rest", _real_verify_password_rest)
+    # Same story for the PUL-85 OOB helper once e2e patches it session-wide.
+    monkeypatch.setattr("src.auth.send_password_reset_rest", _real_send_password_reset_rest)
 
 
 @pytest.fixture(autouse=True)
@@ -32,9 +35,11 @@ def _reset_rate_limits():
 
     auth_module._register_rate_limiter._hits.clear()
     auth_module._login_rate_limiter._hits.clear()
+    auth_module._reset_rate_limiter._hits.clear()
     yield
     auth_module._register_rate_limiter._hits.clear()
     auth_module._login_rate_limiter._hits.clear()
+    auth_module._reset_rate_limiter._hits.clear()
 
 
 @pytest.fixture
@@ -278,6 +283,121 @@ def test_legacy_token_without_role_claim_maps_to_user(client):
     client.cookies.set("session", legacy)
     assert client.get("/auth/role").json() == {"role": "user"}
     assert client.get("/api/auth/me").json()["role"] == "user"
+
+
+# ── POST /api/auth/reset-password (PUL-85) ────────────────────────────────────
+
+_OOB_URL = "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode"
+
+
+def test_reset_password_existing_email_returns_204_and_sends_oob(client):
+    """Happy path: 204, empty body, and the OOB request carries requestType,
+    the e-mail, and a continueUrl derived from the request origin."""
+    import json as json_module
+
+    import respx
+    from httpx import Response as HttpxResponse
+
+    with respx.mock:
+        route = respx.post(_OOB_URL).mock(
+            return_value=HttpxResponse(200, json={"email": "user@example.com"})
+        )
+        r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+
+    assert r.status_code == 204
+    assert r.content == b""
+    sent = json_module.loads(route.calls.last.request.content)
+    assert sent["requestType"] == "PASSWORD_RESET"
+    assert sent["email"] == "user@example.com"
+    assert sent["continueUrl"] == "http://testserver"
+
+
+def test_reset_password_unknown_email_returns_identical_204(client):
+    """EMAIL_NOT_FOUND must be swallowed into the same 204 + empty body as the
+    happy path — no account enumeration through status, body, or headers."""
+    import respx
+    from httpx import Response as HttpxResponse
+
+    with respx.mock:
+        respx.post(_OOB_URL).mock(
+            return_value=HttpxResponse(400, json={"error": {"message": "EMAIL_NOT_FOUND"}})
+        )
+        r = client.post("/api/auth/reset-password", json={"email": "ghost@example.com"})
+
+    assert r.status_code == 204
+    assert r.content == b""
+
+
+def test_reset_password_invalid_email_returns_422_without_calling_firebase(client):
+    import respx
+
+    with respx.mock:
+        route = respx.post(_OOB_URL)
+        r = client.post("/api/auth/reset-password", json={"email": "not-an-email"})
+
+    assert r.status_code == 422
+    assert not route.called
+
+
+def test_reset_password_firebase_lockout_maps_to_429(client):
+    import respx
+    from httpx import Response as HttpxResponse
+
+    with respx.mock:
+        respx.post(_OOB_URL).mock(
+            return_value=HttpxResponse(
+                400,
+                json={"error": {"message": "TOO_MANY_ATTEMPTS_TRIED_LATER : Try later."}},
+            )
+        )
+        r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+
+    assert r.status_code == 429
+
+
+@pytest.mark.parametrize("failure", ["timeout", "http_500", "unknown_code", "unparseable"])
+def test_reset_password_service_failures_map_to_503(client, failure):
+    import httpx as httpx_module
+    import respx
+    from httpx import Response as HttpxResponse
+
+    with respx.mock:
+        route = respx.post(_OOB_URL)
+        if failure == "timeout":
+            route.mock(side_effect=httpx_module.ConnectTimeout("timeout"))
+        elif failure == "http_500":
+            route.mock(return_value=HttpxResponse(500, json={}))
+        elif failure == "unparseable":
+            route.mock(return_value=HttpxResponse(400, content=b"not-json"))
+        else:
+            route.mock(return_value=HttpxResponse(400, json={"error": {"message": "WEIRD_CODE"}}))
+        r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+
+    assert r.status_code == 503
+
+
+def test_reset_password_sixth_request_in_minute_returns_429_with_retry_after(client):
+    """The endpoint's own limiter (5/min) throttles before Firebase is reached."""
+    import respx
+    from httpx import Response as HttpxResponse
+
+    with respx.mock:
+        route = respx.post(_OOB_URL).mock(return_value=HttpxResponse(200, json={}))
+        for _ in range(5):
+            assert client.post(
+                "/api/auth/reset-password", json={"email": "user@example.com"}
+            ).status_code == 204
+        r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
+    assert route.call_count == 5  # the throttled request never reached Firebase
+
+
+def test_reset_password_missing_web_api_key_returns_503(client, monkeypatch):
+    monkeypatch.delenv("FIREBASE_WEB_API_KEY", raising=False)
+    r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+    assert r.status_code == 503
 
 
 # ── POST /api/auth/logout + GET /api/auth/me ──────────────────────────────────

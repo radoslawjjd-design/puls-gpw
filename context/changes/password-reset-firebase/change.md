@@ -1,7 +1,7 @@
 ---
 change_id: password-reset-firebase
 title: Password reset via Firebase e-mail flow
-status: planned
+status: implementing
 created: 2026-07-19
 updated: 2026-07-19
 archived_at: null
