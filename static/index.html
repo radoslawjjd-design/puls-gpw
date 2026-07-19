@@ -1620,11 +1620,22 @@ document.addEventListener('click', e => {
 
 $('topbar-home').addEventListener('click', () => _navigateToView('announcements'));
 
-window.addEventListener('popstate', () => {
+window.addEventListener('popstate', (e) => {
   // PUL-84: any authenticated session gets back/forward — `role` is set in both
   // auth paths (API key and JWT cookie) before showDashboard and nulled by
   // doLogout, so this stays inert on the login screen.
-  if (!role) return;
+  if (!role) {
+    // Wylogowany (impl-review F1): Back/Forward nie może wskrzesić ?view=…
+    // poprzedniej sesji nad ekranem logowania — parametry przetrwałyby do
+    // następnego loginu wbrew intencji doLogout. Czyścimy WYŁĄCZNIE wpisy
+    // utworzone przez zalogowaną sesję (state.view z _writeUrl/_navigateToView)
+    // — wpisy hashowe (#/logowanie, state=null) też odpalają popstate, a
+    // bookmarkowy deep-link ?view=… musi przeżyć do zalogowania.
+    if (e.state && e.state.view && location.search) {
+      history.replaceState(null, '', location.pathname + location.hash);
+    }
+    return;
+  }
   _applyUrlState();
 });
 
