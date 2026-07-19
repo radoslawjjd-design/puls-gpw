@@ -88,16 +88,15 @@ def _perf_set(key: str, data: Any) -> None:
     _PERF_CACHE[key] = (data, time.time())
 
 
-def _perf_invalidate_portfolio(client_id: str, portfolio_id: str) -> None:
-    _PERF_CACHE.pop(f"positions:{client_id}:{portfolio_id}", None)
-    _PERF_CACHE.pop(f"treemap:{client_id}", None)
-    prefix = f"calendar:{client_id}:{portfolio_id}:"
+def _perf_invalidate_portfolio(user_id: str, portfolio_id: str) -> None:
+    _PERF_CACHE.pop(f"positions:{user_id}:{portfolio_id}", None)
+    _PERF_CACHE.pop(f"treemap:{user_id}", None)
+    prefix = f"calendar:{user_id}:{portfolio_id}:"
     for k in [k for k in _PERF_CACHE if k.startswith(prefix)]:
         _PERF_CACHE.pop(k, None)
 
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
-_CLIENT_ID_HEADER = APIKeyHeader(name="X-Client-Id", auto_error=False)
 Role = Literal["admin", "user"]
 
 
@@ -127,17 +126,13 @@ def _require_admin(role: Role = Depends(_get_role)) -> Role:
     return role
 
 
-def _get_client_id(
-    request: Request,
-    client_id: str | None = Security(_CLIENT_ID_HEADER),
-) -> str:
-    # JWT session → Firebase UID becomes the client_id (groundwork for PUL-74)
+def _get_user_id(request: Request) -> str:
+    # PUL-74: per-user endpoints are JWT-only — identity comes exclusively from
+    # the signed session cookie; the anonymous X-Client-Id path is retired.
     payload = session_payload_from_request(request)
-    if payload is not None:
-        return payload["user_id"]
-    if not client_id:
-        raise HTTPException(status_code=400, detail="Missing X-Client-Id header")
-    return client_id
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Valid session required")
+    return payload["user_id"]
 
 
 def _parse_structured_analysis(raw: str | None) -> dict | None:
@@ -423,10 +418,10 @@ def create_app() -> FastAPI:
     @app.get("/watchlist")
     async def get_watchlist(
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
         try:
-            tickers = list_watchlist_tickers(client_id)
+            tickers = list_watchlist_tickers(user_id)
         except BigQueryError as exc:
             logger.error("BQ error in GET /watchlist: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -436,13 +431,13 @@ def create_app() -> FastAPI:
     async def post_watchlist(
         ticker: str,
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
         try:
             known_tickers = list_distinct_tickers()
             if ticker not in known_tickers:
                 raise HTTPException(status_code=422, detail="Unknown ticker")
-            add_watchlist_ticker(client_id, ticker)
+            add_watchlist_ticker(user_id, ticker)
         except BigQueryError as exc:
             logger.error("BQ error in POST /watchlist/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -452,10 +447,10 @@ def create_app() -> FastAPI:
     async def delete_watchlist(
         ticker: str,
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
         try:
-            remove_watchlist_ticker(client_id, ticker)
+            remove_watchlist_ticker(user_id, ticker)
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /watchlist/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -467,11 +462,11 @@ def create_app() -> FastAPI:
         from_dt: datetime | None = Query(None, alias="from"),
         to_dt: datetime | None = Query(None, alias="to"),
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
         try:
             rows = list_announcements_for_watchlist(
-                client_id, page=page, page_size=page_size, from_dt=from_dt, to_dt=to_dt,
+                user_id, page=page, page_size=page_size, from_dt=from_dt, to_dt=to_dt,
             )
             if role == "admin":
                 return [
@@ -573,21 +568,21 @@ def create_app() -> FastAPI:
     async def get_portfolio_positions(
         portfolio_id: str = Query(...),
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
-        cache_key = f"positions:{client_id}:{portfolio_id}"
+        cache_key = f"positions:{user_id}:{portfolio_id}"
         cached = _perf_get(cache_key, ttl=30)
         if cached is not None:
             return cached
         try:
-            wallets = list_user_portfolios(client_id)
+            wallets = list_user_portfolios(user_id)
         except BigQueryError as exc:
             logger.error("BQ error listing wallets in GET /api/portfolio/positions: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
         if not any(w["portfolio_id"] == portfolio_id for w in wallets):
             raise HTTPException(status_code=404, detail="Wallet not found")
         try:
-            rows = list_user_portfolio_positions(client_id, portfolio_id)
+            rows = list_user_portfolio_positions(user_id, portfolio_id)
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/positions: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -610,12 +605,12 @@ def create_app() -> FastAPI:
     async def post_portfolio_position(
         body: PortfolioPositionIn,
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
         if body.shares <= 0 or body.avg_buy_price <= 0:
             raise HTTPException(status_code=422, detail="shares and avg_buy_price must be > 0")
         try:
-            wallets = list_user_portfolios(client_id)
+            wallets = list_user_portfolios(user_id)
         except BigQueryError as exc:
             logger.error("BQ error listing wallets in POST /api/portfolio/positions: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -626,9 +621,9 @@ def create_app() -> FastAPI:
             if body.ticker not in known_tickers:
                 raise HTTPException(status_code=422, detail="Unknown ticker")
             upsert_user_portfolio_position(
-                client_id, body.portfolio_id, body.ticker, body.company_name, body.shares, body.avg_buy_price
+                user_id, body.portfolio_id, body.ticker, body.company_name, body.shares, body.avg_buy_price
             )
-            _perf_invalidate_portfolio(client_id, body.portfolio_id)
+            _perf_invalidate_portfolio(user_id, body.portfolio_id)
         except BigQueryError as exc:
             logger.error("BQ error in POST /api/portfolio/positions: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -639,18 +634,18 @@ def create_app() -> FastAPI:
         ticker: str,
         portfolio_id: str = Query(...),
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
         try:
-            wallets = list_user_portfolios(client_id)
+            wallets = list_user_portfolios(user_id)
         except BigQueryError as exc:
             logger.error("BQ error listing wallets in DELETE /api/portfolio/positions/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
         if not any(w["portfolio_id"] == portfolio_id for w in wallets):
             raise HTTPException(status_code=404, detail="Wallet not found")
         try:
-            delete_user_portfolio_position(client_id, portfolio_id, ticker)
-            _perf_invalidate_portfolio(client_id, portfolio_id)
+            delete_user_portfolio_position(user_id, portfolio_id, ticker)
+            _perf_invalidate_portfolio(user_id, portfolio_id)
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /api/portfolio/positions/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -658,10 +653,10 @@ def create_app() -> FastAPI:
     @app.get("/api/portfolio/wallets")
     async def get_portfolio_wallets(
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
         try:
-            return list_user_portfolios(client_id)
+            return list_user_portfolios(user_id)
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/wallets: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -670,10 +665,10 @@ def create_app() -> FastAPI:
     async def post_portfolio_wallet(
         body: PortfolioWalletCreate,
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
         try:
-            existing = list_user_portfolios(client_id)
+            existing = list_user_portfolios(user_id)
         except BigQueryError as exc:
             logger.error("BQ error listing wallets in POST /api/portfolio/wallets: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -684,9 +679,9 @@ def create_app() -> FastAPI:
             if sum(1 for w in existing if w["portfolio_type"] == "inny") >= 2:
                 raise HTTPException(status_code=409, detail="Maximum 2 'Inny' wallets allowed")
         try:
-            portfolio_id = create_user_portfolio(client_id, body.portfolio_type, body.portfolio_name)
+            portfolio_id = create_user_portfolio(user_id, body.portfolio_type, body.portfolio_name)
             if body.portfolio_type == "glowny":
-                assign_orphan_positions_to_portfolio(client_id, portfolio_id)
+                assign_orphan_positions_to_portfolio(user_id, portfolio_id)
         except BigQueryError as exc:
             err = str(exc)
             if "Wallet type already exists" in err:
@@ -701,17 +696,17 @@ def create_app() -> FastAPI:
     async def delete_portfolio_wallet(
         portfolio_id: str,
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
         try:
-            existing = list_user_portfolios(client_id)
+            existing = list_user_portfolios(user_id)
         except BigQueryError as exc:
             logger.error("BQ error listing wallets in DELETE /api/portfolio/wallets/%s: %s", portfolio_id, exc)
             raise HTTPException(status_code=500, detail=str(exc))
         if not any(w["portfolio_id"] == portfolio_id for w in existing):
             raise HTTPException(status_code=404, detail="Wallet not found")
         try:
-            delete_user_portfolio(client_id, portfolio_id)
+            delete_user_portfolio(user_id, portfolio_id)
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /api/portfolio/wallets/%s: %s", portfolio_id, exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -719,21 +714,21 @@ def create_app() -> FastAPI:
     @app.get("/api/portfolio/treemap")
     async def get_portfolio_treemap(
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
-        cache_key = f"treemap:{client_id}"
+        cache_key = f"treemap:{user_id}"
         cached = _perf_get(cache_key, ttl=60)
         if cached is not None:
             return cached
         try:
-            wallets = list_user_portfolios(client_id)
+            wallets = list_user_portfolios(user_id)
         except BigQueryError as exc:
             logger.error("BQ error listing wallets in GET /api/portfolio/treemap: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
         if not wallets:
             return {"portfolios": [], "as_of": None}
         try:
-            all_rows = list_user_portfolio_positions(client_id)
+            all_rows = list_user_portfolio_positions(user_id)
         except BigQueryError as exc:
             logger.error("BQ error fetching positions in GET /api/portfolio/treemap: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -775,26 +770,26 @@ def create_app() -> FastAPI:
         month: int,
         portfolio_id: str,
         role: Role = Depends(_get_role),
-        client_id: str = Depends(_get_client_id),
+        user_id: str = Depends(_get_user_id),
     ):
         current_year = date.today().year
         if not (1 <= month <= 12):
             raise HTTPException(status_code=422, detail="month must be 1–12")
         if not (current_year - 5 <= year <= current_year + 1):
             raise HTTPException(status_code=422, detail=f"year must be in [{current_year - 5}, {current_year + 1}]")
-        cache_key = f"calendar:{client_id}:{portfolio_id}:{year}:{month}"
+        cache_key = f"calendar:{user_id}:{portfolio_id}:{year}:{month}"
         cached = _perf_get(cache_key, ttl=300)
         if cached is not None:
             return cached
         try:
-            wallets = list_user_portfolios(client_id)
+            wallets = list_user_portfolios(user_id)
         except BigQueryError as exc:
             logger.error("BQ error listing wallets in GET /api/portfolio/calendar: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
         if not any(w["portfolio_id"] == portfolio_id for w in wallets):
             raise HTTPException(status_code=403, detail="Portfolio not found or access denied")
         try:
-            rows = get_portfolio_calendar_data(portfolio_id, client_id, year, month)
+            rows = get_portfolio_calendar_data(portfolio_id, user_id, year, month)
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/calendar: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))

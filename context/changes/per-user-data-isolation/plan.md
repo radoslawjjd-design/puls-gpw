@@ -348,13 +348,13 @@ None material: same query shapes with one extra predicate; caches keep their key
 
 #### Automated
 
-- [ ] 2.1 Full unit suite green: `uv run pytest tests/`
-- [ ] 2.2 Isolation tests pass + deliberate-break check on a `user_id` predicate
+- [x] 2.1 Full unit suite green: `uv run pytest tests/` (bez e2e — te wracają do zieleni w Fazie 4 zgodnie z sekwencją planu)
+- [x] 2.2 Isolation tests pass + deliberate-break check on a `user_id` predicate
 
 #### Manual
 
-- [ ] 2.3 Local: `/watchlist` bez cookie → 401; z sesją → własne dane
-- [ ] 2.4 `GET /announcements` z `USER_API_KEY` nadal działa
+- [x] 2.3 Local: `/watchlist` bez cookie → 401; z sesją → własne dane
+- [x] 2.4 `GET /announcements` z `USER_API_KEY` nadal działa
 
 ### Phase 3: Frontend — remove X-Client-Id, hide per-user nav for API-key sessions
 

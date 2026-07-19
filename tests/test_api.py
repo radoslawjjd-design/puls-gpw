@@ -430,94 +430,107 @@ def test_root_route_still_serves_html_after_static_mount(api_client):
 _CLIENT_ID = "11111111-1111-1111-1111-111111111111"
 
 
-def test_get_watchlist_missing_client_id_returns_400(api_client):
+@pytest.fixture
+def user_client(api_client, jwt_env):
+    """Client with a valid user session cookie — PUL-74: per-user endpoints are JWT-only."""
+    api_client.cookies.set("session", _make_session_token(user_id=_CLIENT_ID))
+    return api_client
+
+
+@pytest.fixture
+def admin_client(api_client, jwt_env):
+    """Client with a valid admin session cookie (role claim from PUL-83)."""
+    api_client.cookies.set("session", _make_session_token(user_id=_CLIENT_ID, role="admin"))
+    return api_client
+
+
+def test_get_watchlist_api_key_only_returns_401(api_client):
     r = api_client.get("/watchlist", headers={"X-API-Key": _USER_KEY})
-    assert r.status_code == 400
+    assert r.status_code == 401
 
 
-def test_get_watchlist_returns_tickers(api_client):
+def test_get_watchlist_returns_tickers(user_client):
     with patch("src.api.list_watchlist_tickers", return_value=["PKO", "CDR"]):
-        r = api_client.get(
-            "/watchlist", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        r = user_client.get(
+            "/watchlist"
         )
     assert r.status_code == 200
     assert r.json() == {"tickers": ["PKO", "CDR"]}
 
 
-def test_post_watchlist_missing_client_id_returns_400(api_client):
+def test_post_watchlist_api_key_only_returns_401(api_client):
     r = api_client.post("/watchlist/PKO", headers={"X-API-Key": _USER_KEY})
-    assert r.status_code == 400
+    assert r.status_code == 401
 
 
-def test_post_watchlist_unknown_ticker_returns_422(api_client):
+def test_post_watchlist_unknown_ticker_returns_422(user_client):
     with patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]):
-        r = api_client.post(
-            "/watchlist/NOPE", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        r = user_client.post(
+            "/watchlist/NOPE"
         )
     assert r.status_code == 422
 
 
-def test_post_watchlist_known_ticker_returns_200(api_client):
+def test_post_watchlist_known_ticker_returns_200(user_client):
     with (
         patch("src.api.list_distinct_tickers", return_value=["PKO", "CDR"]),
         patch("src.api.add_watchlist_ticker", return_value=None) as mock_add,
     ):
-        r = api_client.post(
-            "/watchlist/PKO", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        r = user_client.post(
+            "/watchlist/PKO"
         )
     assert r.status_code == 200
     assert r.json() == {"ticker": "PKO", "added": True}
     mock_add.assert_called_once_with(_CLIENT_ID, "PKO")
 
 
-def test_post_watchlist_duplicate_add_is_no_op(api_client):
+def test_post_watchlist_duplicate_add_is_no_op(user_client):
     with (
         patch("src.api.list_distinct_tickers", return_value=["PKO"]),
         patch("src.api.add_watchlist_ticker", return_value=None) as mock_add,
     ):
-        api_client.post("/watchlist/PKO", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID})
-        r = api_client.post(
-            "/watchlist/PKO", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        user_client.post("/watchlist/PKO")
+        r = user_client.post(
+            "/watchlist/PKO"
         )
     assert r.status_code == 200
     assert mock_add.call_count == 2
 
 
-def test_delete_watchlist_missing_client_id_returns_400(api_client):
+def test_delete_watchlist_api_key_only_returns_401(api_client):
     r = api_client.delete("/watchlist/PKO", headers={"X-API-Key": _USER_KEY})
-    assert r.status_code == 400
+    assert r.status_code == 401
 
 
-def test_delete_watchlist_nonexistent_ticker_returns_204(api_client):
+def test_delete_watchlist_nonexistent_ticker_returns_204(user_client):
     with patch("src.api.remove_watchlist_ticker", return_value=None) as mock_remove:
-        r = api_client.delete(
-            "/watchlist/NEVERADDED", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        r = user_client.delete(
+            "/watchlist/NEVERADDED"
         )
     assert r.status_code == 204
     mock_remove.assert_called_once_with(_CLIENT_ID, "NEVERADDED")
 
 
-def test_watchlist_bq_error_returns_500(api_client):
+def test_watchlist_bq_error_returns_500(user_client):
     from src.exceptions import BigQueryError
     with patch("src.api.list_watchlist_tickers", side_effect=BigQueryError("boom")):
-        r = api_client.get(
-            "/watchlist", headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
+        r = user_client.get(
+            "/watchlist"
         )
     assert r.status_code == 500
 
 
-def test_announcements_my_wallet_missing_client_id_returns_400(api_client):
+def test_announcements_my_wallet_api_key_only_returns_401(api_client):
     r = api_client.get("/announcements/my-wallet", headers={"X-API-Key": _USER_KEY})
-    assert r.status_code == 400
+    assert r.status_code == 401
 
 
-def test_announcements_my_wallet_returns_filtered_announcements(api_client):
+def test_announcements_my_wallet_returns_filtered_announcements(user_client):
     mock_rows = [{"company": "PKO", "ticker": "PKO", "event_type": "ESPI",
                   "structured_analysis": None, "published_at": "2024-01-01T00:00:00"}]
     with patch("src.api.list_announcements_for_watchlist", return_value=mock_rows) as mock_fn:
-        r = api_client.get(
+        r = user_client.get(
             "/announcements/my-wallet",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
     data = r.json()
@@ -526,12 +539,11 @@ def test_announcements_my_wallet_returns_filtered_announcements(api_client):
     assert mock_fn.call_args.args[0] == _CLIENT_ID
 
 
-def test_announcements_my_wallet_bq_error_returns_500(api_client):
+def test_announcements_my_wallet_bq_error_returns_500(user_client):
     from src.exceptions import BigQueryError
     with patch("src.api.list_announcements_for_watchlist", side_effect=BigQueryError("boom")):
-        r = api_client.get(
+        r = user_client.get(
             "/announcements/my-wallet",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 500
 
@@ -543,29 +555,25 @@ _MY_WALLET_ROW_WITH_ANALYSIS = {
 }
 
 
-def test_announcements_my_wallet_admin_gets_sentiment_and_score(api_client):
+def test_announcements_my_wallet_admin_gets_sentiment_and_score(admin_client):
     with patch(
         "src.api.list_announcements_for_watchlist",
         return_value=[dict(_MY_WALLET_ROW_WITH_ANALYSIS)],
     ):
-        r = api_client.get(
-            "/announcements/my-wallet",
-            headers={"X-API-Key": _ADMIN_KEY, "X-Client-Id": _CLIENT_ID},
-        )
+        r = admin_client.get("/announcements/my-wallet")
     assert r.status_code == 200
     data = r.json()
     assert data[0]["analysis_score"] == 85.0
     assert data[0]["structured_analysis"]["sentiment"] == "pozytywny"
 
 
-def test_announcements_my_wallet_user_never_gets_sentiment_or_score(api_client):
+def test_announcements_my_wallet_user_never_gets_sentiment_or_score(user_client):
     with patch(
         "src.api.list_announcements_for_watchlist",
         return_value=[dict(_MY_WALLET_ROW_WITH_ANALYSIS)],
     ):
-        r = api_client.get(
+        r = user_client.get(
             "/announcements/my-wallet",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
     data = r.json()
@@ -695,27 +703,25 @@ _POSITION_NO_PRICE = {
 }
 
 
-def test_get_portfolio_positions_returns_empty_list(api_client):
+def test_get_portfolio_positions_returns_empty_list(user_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_user_portfolio_positions", return_value=[]),
     ):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
     assert r.json() == []
 
 
-def test_get_portfolio_positions_with_price_computes_pnl(api_client):
+def test_get_portfolio_positions_with_price_computes_pnl(user_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_user_portfolio_positions", return_value=[_POSITION_WITH_PRICE]),
     ):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
     data = r.json()
@@ -728,14 +734,13 @@ def test_get_portfolio_positions_with_price_computes_pnl(api_client):
     assert pos["pnl_pct"] == pytest.approx((52.0 - 40.0) / 40.0 * 100)
 
 
-def test_get_portfolio_positions_without_price_has_null_pnl(api_client):
+def test_get_portfolio_positions_without_price_has_null_pnl(user_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_user_portfolio_positions", return_value=[_POSITION_NO_PRICE]),
     ):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
     data = r.json()
@@ -746,9 +751,9 @@ def test_get_portfolio_positions_without_price_has_null_pnl(api_client):
     assert pos["pnl_pct"] is None
 
 
-def test_get_portfolio_positions_missing_client_id_returns_400(api_client):
+def test_get_portfolio_positions_api_key_only_returns_401(api_client):
     r = api_client.get("/api/portfolio/positions", headers={"X-API-Key": _USER_KEY})
-    assert r.status_code == 400
+    assert r.status_code == 401
 
 
 def test_get_portfolio_positions_no_key_returns_401(api_client):
@@ -756,80 +761,75 @@ def test_get_portfolio_positions_no_key_returns_401(api_client):
     assert r.status_code == 401
 
 
-def test_get_portfolio_positions_bq_error_returns_500(api_client):
+def test_get_portfolio_positions_bq_error_returns_500(user_client):
     from src.exceptions import BigQueryError
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_user_portfolio_positions", side_effect=BigQueryError("boom")),
     ):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 500
 
 
-def test_post_portfolio_position_valid_ticker_returns_200(api_client):
+def test_post_portfolio_position_valid_ticker_returns_200(user_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_distinct_portfolio_tickers", return_value=["PKO", "CDR"]),
         patch("src.api.upsert_user_portfolio_position", return_value=None) as mock_upsert,
     ):
-        r = api_client.post(
+        r = user_client.post(
             "/api/portfolio/positions",
             json={"portfolio_id": _WALLET_ID, "ticker": "PKO",
                   "company_name": "PKO Bank Polski SA",
                   "shares": 10.0, "avg_buy_price": 40.0},
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
     assert r.json() == {"ticker": "PKO", "upserted": True}
     mock_upsert.assert_called_once_with(_CLIENT_ID, _WALLET_ID, "PKO", "PKO Bank Polski SA", 10.0, 40.0)
 
 
-def test_post_portfolio_position_unknown_ticker_returns_422(api_client):
+def test_post_portfolio_position_unknown_ticker_returns_422(user_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_distinct_portfolio_tickers", return_value=["PKO", "CDR"]),
     ):
-        r = api_client.post(
+        r = user_client.post(
             "/api/portfolio/positions",
             json={"portfolio_id": _WALLET_ID, "ticker": "NOPE",
                   "company_name": "Firma", "shares": 10.0, "avg_buy_price": 40.0},
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 422
     assert "Unknown ticker" in r.json()["detail"]
 
 
-def test_post_portfolio_position_zero_shares_returns_422(api_client):
-    r = api_client.post(
+def test_post_portfolio_position_zero_shares_returns_422(user_client):
+    r = user_client.post(
         "/api/portfolio/positions",
         json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
               "shares": 0.0, "avg_buy_price": 40.0},
-        headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
     )
     assert r.status_code == 422
 
 
-def test_post_portfolio_position_negative_shares_returns_422(api_client):
-    r = api_client.post(
+def test_post_portfolio_position_negative_shares_returns_422(user_client):
+    r = user_client.post(
         "/api/portfolio/positions",
         json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
               "shares": -5.0, "avg_buy_price": 40.0},
-        headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
     )
     assert r.status_code == 422
 
 
-def test_post_portfolio_position_missing_client_id_returns_400(api_client):
+def test_post_portfolio_position_api_key_only_returns_401(api_client):
     r = api_client.post(
         "/api/portfolio/positions",
         json={"ticker": "PKO", "company_name": "PKO Bank Polski SA",
               "shares": 10.0, "avg_buy_price": 40.0},
         headers={"X-API-Key": _USER_KEY},
     )
-    assert r.status_code == 400
+    assert r.status_code == 401
 
 
 def test_post_portfolio_position_no_key_returns_401(api_client):
@@ -841,39 +841,37 @@ def test_post_portfolio_position_no_key_returns_401(api_client):
     assert r.status_code == 401
 
 
-def test_post_portfolio_position_bq_error_returns_500(api_client):
+def test_post_portfolio_position_bq_error_returns_500(user_client):
     from src.exceptions import BigQueryError
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_distinct_portfolio_tickers", return_value=["PKO"]),
         patch("src.api.upsert_user_portfolio_position", side_effect=BigQueryError("boom")),
     ):
-        r = api_client.post(
+        r = user_client.post(
             "/api/portfolio/positions",
             json={"portfolio_id": _WALLET_ID, "ticker": "PKO",
                   "company_name": "PKO Bank Polski SA",
                   "shares": 10.0, "avg_buy_price": 40.0},
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 500
 
 
-def test_delete_portfolio_position_returns_204(api_client):
+def test_delete_portfolio_position_returns_204(user_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.delete_user_portfolio_position", return_value=None) as mock_del,
     ):
-        r = api_client.delete(
+        r = user_client.delete(
             f"/api/portfolio/positions/PKO?portfolio_id={_WALLET_ID}",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 204
     mock_del.assert_called_once_with(_CLIENT_ID, _WALLET_ID, "PKO")
 
 
-def test_delete_portfolio_position_missing_client_id_returns_400(api_client):
+def test_delete_portfolio_position_api_key_only_returns_401(api_client):
     r = api_client.delete("/api/portfolio/positions/PKO", headers={"X-API-Key": _USER_KEY})
-    assert r.status_code == 400
+    assert r.status_code == 401
 
 
 def test_delete_portfolio_position_no_key_returns_401(api_client):
@@ -881,15 +879,14 @@ def test_delete_portfolio_position_no_key_returns_401(api_client):
     assert r.status_code == 401
 
 
-def test_delete_portfolio_position_bq_error_returns_500(api_client):
+def test_delete_portfolio_position_bq_error_returns_500(user_client):
     from src.exceptions import BigQueryError
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.delete_user_portfolio_position", side_effect=BigQueryError("boom")),
     ):
-        r = api_client.delete(
+        r = user_client.delete(
             f"/api/portfolio/positions/PKO?portfolio_id={_WALLET_ID}",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 500
 
@@ -925,12 +922,10 @@ _WALLET_INNY_2 = {
     "created_at": "2026-01-03T00:00:00+00:00",
 }
 
-_AUTH = {"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID}
 
-
-def test_get_wallets_returns_list(api_client):
+def test_get_wallets_returns_list(user_client):
     with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
-        r = api_client.get("/api/portfolio/wallets", headers=_AUTH)
+        r = user_client.get("/api/portfolio/wallets")
     assert r.status_code == 200
     data = r.json()
     assert len(data) == 1
@@ -943,16 +938,15 @@ def test_get_wallets_no_key_returns_401(api_client):
     assert r.status_code == 401
 
 
-def test_post_wallet_glowny_creates_and_assigns_orphans(api_client):
+def test_post_wallet_glowny_creates_and_assigns_orphans(user_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[]),
         patch("src.api.create_user_portfolio", return_value=_WALLET_ID) as mock_create,
         patch("src.api.assign_orphan_positions_to_portfolio") as mock_assign,
     ):
-        r = api_client.post(
+        r = user_client.post(
             "/api/portfolio/wallets",
             json={"portfolio_type": "glowny"},
-            headers=_AUTH,
         )
     assert r.status_code == 201
     body = r.json()
@@ -962,73 +956,67 @@ def test_post_wallet_glowny_creates_and_assigns_orphans(api_client):
     mock_assign.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
 
 
-def test_post_wallet_duplicate_type_returns_409(api_client):
+def test_post_wallet_duplicate_type_returns_409(user_client):
     with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
-        r = api_client.post(
+        r = user_client.post(
             "/api/portfolio/wallets",
             json={"portfolio_type": "glowny"},
-            headers=_AUTH,
         )
     assert r.status_code == 409
     assert "already exists" in r.json()["detail"]
 
 
-def test_post_wallet_third_inny_returns_409(api_client):
+def test_post_wallet_third_inny_returns_409(user_client):
     with patch("src.api.list_user_portfolios", return_value=[_WALLET_INNY_1, _WALLET_INNY_2]):
-        r = api_client.post(
+        r = user_client.post(
             "/api/portfolio/wallets",
             json={"portfolio_type": "inny", "portfolio_name": "Trzeci"},
-            headers=_AUTH,
         )
     assert r.status_code == 409
     assert "Maximum 2" in r.json()["detail"]
 
 
-def test_delete_wallet_own_returns_204(api_client):
+def test_delete_wallet_own_returns_204(user_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.delete_user_portfolio") as mock_del,
     ):
-        r = api_client.delete(
+        r = user_client.delete(
             f"/api/portfolio/wallets/{_WALLET_ID}",
-            headers=_AUTH,
         )
     assert r.status_code == 204
     mock_del.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
 
 
-def test_delete_wallet_wrong_user_returns_404(api_client):
+def test_delete_wallet_wrong_user_returns_404(user_client):
     with patch("src.api.list_user_portfolios", return_value=[]):
-        r = api_client.delete(
+        r = user_client.delete(
             "/api/portfolio/wallets/nonexistent-id",
-            headers=_AUTH,
         )
     assert r.status_code == 404
 
 
-def test_post_wallet_bq_error_returns_500(api_client):
+def test_post_wallet_bq_error_returns_500(user_client):
     from src.exceptions import BigQueryError
     with (
         patch("src.api.list_user_portfolios", return_value=[]),
         patch("src.api.create_user_portfolio", side_effect=BigQueryError("bq down")),
     ):
-        r = api_client.post(
+        r = user_client.post(
             "/api/portfolio/wallets",
             json={"portfolio_type": "glowny"},
-            headers=_AUTH,
         )
     assert r.status_code == 500
 
 
-def test_delete_wallet_bq_error_returns_500(api_client):
+def test_delete_wallet_bq_error_returns_500(user_client):
     from src.exceptions import BigQueryError
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.delete_user_portfolio", side_effect=BigQueryError("bq down")),
     ):
-        r = api_client.delete(
+        r = user_client.delete(
             f"/api/portfolio/wallets/{_WALLET_ID}",
-            headers=_AUTH,
         )
     assert r.status_code == 500
 
@@ -1041,58 +1029,54 @@ _POSITION_WITH_PRICE_AS_OF = {
 }
 
 
-def test_get_portfolio_positions_without_portfolio_id_returns_422(api_client):
+def test_get_portfolio_positions_without_portfolio_id_returns_422(user_client):
     """portfolio_id is now a required query parameter."""
     with patch("src.api.list_user_portfolio_positions", return_value=[]):
-        r = api_client.get(
+        r = user_client.get(
             "/api/portfolio/positions",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 422
 
 
-def test_get_portfolio_positions_scoped_to_portfolio(api_client):
+def test_get_portfolio_positions_scoped_to_portfolio(user_client):
     """GET positions with portfolio_id passes it to BQ and validates ownership."""
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_user_portfolio_positions", return_value=[]) as mock_list,
     ):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
     mock_list.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
 
 
-def test_get_portfolio_positions_wrong_portfolio_returns_404(api_client):
+def test_get_portfolio_positions_wrong_portfolio_returns_404(user_client):
     """portfolio_id not owned by user → 404."""
     with patch("src.api.list_user_portfolios", return_value=[]):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 404
 
 
-def test_delete_portfolio_position_without_portfolio_id_returns_422(api_client):
+def test_delete_portfolio_position_without_portfolio_id_returns_422(user_client):
     """portfolio_id query param is now required for DELETE."""
     with patch("src.api.delete_user_portfolio_position", return_value=None):
-        r = api_client.delete(
+        r = user_client.delete(
             "/api/portfolio/positions/PKO",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 422
 
 
-def test_post_portfolio_position_passes_portfolio_id_to_bq(api_client):
+def test_post_portfolio_position_passes_portfolio_id_to_bq(user_client):
     """POST positions includes portfolio_id in body and passes it to BQ."""
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.list_distinct_portfolio_tickers", return_value=["PKO"]),
         patch("src.api.upsert_user_portfolio_position", return_value=None) as mock_upsert,
     ):
-        r = api_client.post(
+        r = user_client.post(
             "/api/portfolio/positions",
             json={
                 "portfolio_id": _WALLET_ID,
@@ -1101,7 +1085,6 @@ def test_post_portfolio_position_passes_portfolio_id_to_bq(api_client):
                 "shares": 10.0,
                 "avg_buy_price": 40.0,
             },
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": _CLIENT_ID},
         )
     assert r.status_code == 200
     mock_upsert.assert_called_once_with(
@@ -1109,7 +1092,7 @@ def test_post_portfolio_position_passes_portfolio_id_to_bq(api_client):
     )
 
 
-def test_get_portfolio_treemap_returns_correct_shape(api_client):
+def test_get_portfolio_treemap_returns_correct_shape(user_client):
     _computed = [{
         "ticker": "PKO",
         "position_value_pln": 520.0,
@@ -1128,7 +1111,7 @@ def test_get_portfolio_treemap_returns_correct_shape(api_client):
             return_value=_computed,
         ),
     ):
-        r = api_client.get("/api/portfolio/treemap", headers=_AUTH)
+        r = user_client.get("/api/portfolio/treemap")
     assert r.status_code == 200
     data = r.json()
     assert "portfolios" in data
@@ -1141,9 +1124,9 @@ def test_get_portfolio_treemap_returns_correct_shape(api_client):
     assert portfolios[0]["positions"][0]["ticker"] == "PKO"
 
 
-def test_get_portfolio_treemap_zero_portfolios_returns_empty(api_client):
+def test_get_portfolio_treemap_zero_portfolios_returns_empty(user_client):
     with patch("src.api.list_user_portfolios", return_value=[]):
-        r = api_client.get("/api/portfolio/treemap", headers=_AUTH)
+        r = user_client.get("/api/portfolio/treemap")
     assert r.status_code == 200
     assert r.json() == {"portfolios": [], "as_of": None}
 
@@ -1175,15 +1158,14 @@ _CAL_DAYS = [
 _CAL_RESPONSE = {"year": 2026, "month": 6, "days": _CAL_DAYS}
 
 
-def test_get_portfolio_calendar_returns_200_with_valid_params(api_client):
+def test_get_portfolio_calendar_returns_200_with_valid_params(user_client):
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.get_portfolio_calendar_data", return_value=[]),
         patch("src.api.compute_calendar_pnl", return_value=_CAL_RESPONSE),
     ):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/calendar?year=2026&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
-            headers=_AUTH,
         )
     assert r.status_code == 200
     body = r.json()
@@ -1199,61 +1181,56 @@ def test_get_portfolio_calendar_returns_401_without_key(api_client):
     assert r.status_code == 401
 
 
-def test_get_portfolio_calendar_returns_400_without_client_id(api_client):
+def test_get_portfolio_calendar_returns_401_with_api_key_only(api_client):
     r = api_client.get(
         f"/api/portfolio/calendar?year=2026&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
         headers={"X-API-Key": _USER_KEY},
     )
-    assert r.status_code == 400
+    assert r.status_code == 401
 
 
-def test_get_portfolio_calendar_returns_403_for_wrong_portfolio(api_client):
+def test_get_portfolio_calendar_returns_403_for_wrong_portfolio(user_client):
     """portfolio_id belonging to a different user → 403."""
     with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
-        r = api_client.get(
+        r = user_client.get(
             "/api/portfolio/calendar?year=2026&month=6&portfolio_id=other-user-portfolio",
-            headers=_AUTH,
         )
     assert r.status_code == 403
 
 
-def test_get_portfolio_calendar_returns_422_when_month_out_of_range(api_client):
+def test_get_portfolio_calendar_returns_422_when_month_out_of_range(user_client):
     with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/calendar?year=2026&month=13&portfolio_id={_CAL_PORTFOLIO_ID}",
-            headers=_AUTH,
         )
     assert r.status_code == 422
 
 
-def test_get_portfolio_calendar_returns_422_when_month_zero(api_client):
+def test_get_portfolio_calendar_returns_422_when_month_zero(user_client):
     with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/calendar?year=2026&month=0&portfolio_id={_CAL_PORTFOLIO_ID}",
-            headers=_AUTH,
         )
     assert r.status_code == 422
 
 
-def test_get_portfolio_calendar_returns_422_when_year_too_old(api_client):
+def test_get_portfolio_calendar_returns_422_when_year_too_old(user_client):
     with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/calendar?year=2010&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
-            headers=_AUTH,
         )
     assert r.status_code == 422
 
 
-def test_get_portfolio_calendar_returns_500_on_bq_error(api_client):
+def test_get_portfolio_calendar_returns_500_on_bq_error(user_client):
     from src.exceptions import BigQueryError
 
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch("src.api.get_portfolio_calendar_data", side_effect=BigQueryError("boom")),
     ):
-        r = api_client.get(
+        r = user_client.get(
             f"/api/portfolio/calendar?year=2026&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
-            headers=_AUTH,
         )
     assert r.status_code == 500
 
@@ -1280,14 +1257,13 @@ def test_autocomplete_etf_instruments_no_key_returns_401(api_client):
     assert r.status_code == 401
 
 
-def test_portfolio_positions_accepts_etf_ticker(api_client):
+def test_portfolio_positions_accepts_etf_ticker(user_client):
     """POST /api/portfolio/positions must accept ETF ticker via list_distinct_portfolio_tickers."""
     with patch("src.api.list_distinct_portfolio_tickers", return_value=["CDR", "ETFBW20TR", "PKO"]), \
          patch("src.api.list_user_portfolios", return_value=[{"portfolio_id": "port-1"}]), \
          patch("src.api.upsert_user_portfolio_position"):
-        r = api_client.post(
+        r = user_client.post(
             "/api/portfolio/positions",
-            headers={"X-API-Key": _USER_KEY, "X-Client-Id": "test-user"},
             json={"ticker": "ETFBW20TR", "company_name": "ETFBW20TR",
                   "shares": 5.0, "avg_buy_price": 70.0, "portfolio_id": "port-1"},
         )
@@ -1299,7 +1275,9 @@ def test_portfolio_positions_accepts_etf_ticker(api_client):
 _JWT_SECRET = "test-jwt-secret"
 
 
-def _make_session_token(iat_offset_seconds: int = 0, user_id: str = "fb-uid-1") -> str:
+def _make_session_token(
+    iat_offset_seconds: int = 0, user_id: str = "fb-uid-1", role: str | None = None
+) -> str:
     import time as _time
 
     import jwt as pyjwt
@@ -1307,6 +1285,8 @@ def _make_session_token(iat_offset_seconds: int = 0, user_id: str = "fb-uid-1") 
     iat = int(_time.time()) + iat_offset_seconds
     payload = {"user_id": user_id, "email": "user@example.com",
                "auth_type": "firebase", "iat": iat, "exp": iat + 7 * 24 * 3600}
+    if role is not None:
+        payload["role"] = role
     return pyjwt.encode(payload, _JWT_SECRET, algorithm="HS256")
 
 
@@ -1351,7 +1331,7 @@ def test_admin_endpoint_with_cookie_returns_403(api_client, jwt_env):
 
 
 def test_watchlist_with_cookie_uses_jwt_user_id(api_client, jwt_env):
-    """With a session cookie, client_id comes from the JWT (Firebase UID) — no X-Client-Id header."""
+    """Identity is the JWT user_id (Firebase UID) — the only source since PUL-74."""
     api_client.cookies.set("session", _make_session_token(user_id="fb-uid-42"))
     with patch("src.api.list_watchlist_tickers", return_value=["PKO"]) as lw:
         r = api_client.get("/watchlist")
@@ -1370,3 +1350,76 @@ def test_sliding_refresh_reissues_cookie_after_24h(api_client, jwt_env):
     r2 = api_client.get("/auth/role")
     assert r2.status_code == 200
     assert "set-cookie" not in r2.headers
+
+
+# ── PUL-74 cross-user isolation ───────────────────────────────────────────────
+
+def test_watchlist_scoped_to_calling_users_jwt(api_client, jwt_env):
+    """User B's session must query with B's uid — never anyone else's."""
+    api_client.cookies.set("session", _make_session_token(user_id="uid-b"))
+    with patch("src.api.list_watchlist_tickers", return_value=[]) as lw:
+        r = api_client.get("/watchlist")
+    assert r.status_code == 200
+    assert r.json() == {"tickers": []}
+    lw.assert_called_once_with("uid-b")
+
+
+def test_watchlist_delete_scoped_to_caller(api_client, jwt_env):
+    """DELETE runs with the caller's uid — cannot reach another user's rows."""
+    api_client.cookies.set("session", _make_session_token(user_id="uid-b"))
+    with patch("src.api.remove_watchlist_ticker", return_value=None) as rm:
+        r = api_client.delete("/watchlist/PKO")
+    assert r.status_code == 204
+    rm.assert_called_once_with("uid-b", "PKO")
+
+
+def test_positions_user_b_cannot_read_user_a_wallet(api_client, jwt_env):
+    """B asking for A's portfolio_id → 404: ownership checked against B's wallets."""
+    api_client.cookies.set("session", _make_session_token(user_id="uid-b"))
+    with patch("src.api.list_user_portfolios", return_value=[]) as lp:
+        r = api_client.get(f"/api/portfolio/positions?portfolio_id={_WALLET_ID}")
+    assert r.status_code == 404
+    lp.assert_called_once_with("uid-b")
+
+
+def test_positions_user_b_cannot_write_to_user_a_wallet(api_client, jwt_env):
+    """B posting into A's portfolio_id → 404 and the upsert must never run."""
+    api_client.cookies.set("session", _make_session_token(user_id="uid-b"))
+    with (
+        patch("src.api.list_user_portfolios", return_value=[]),
+        patch("src.api.upsert_user_portfolio_position") as up,
+    ):
+        r = api_client.post(
+            "/api/portfolio/positions",
+            json={"portfolio_id": _WALLET_ID, "ticker": "PKO",
+                  "company_name": "PKO Bank Polski SA",
+                  "shares": 10.0, "avg_buy_price": 40.0},
+        )
+    assert r.status_code == 404
+    up.assert_not_called()
+
+
+def test_positions_user_b_cannot_delete_from_user_a_wallet(api_client, jwt_env):
+    """B deleting from A's portfolio_id → 404 and the delete must never run."""
+    api_client.cookies.set("session", _make_session_token(user_id="uid-b"))
+    with (
+        patch("src.api.list_user_portfolios", return_value=[]),
+        patch("src.api.delete_user_portfolio_position") as dl,
+    ):
+        r = api_client.delete(f"/api/portfolio/positions/PKO?portfolio_id={_WALLET_ID}")
+    assert r.status_code == 404
+    dl.assert_not_called()
+
+
+def test_calendar_user_b_cannot_read_user_a_wallet(api_client, jwt_env):
+    """B requesting A's calendar → 403 and the data query must never run."""
+    api_client.cookies.set("session", _make_session_token(user_id="uid-b"))
+    with (
+        patch("src.api.list_user_portfolios", return_value=[]),
+        patch("src.api.get_portfolio_calendar_data") as gc,
+    ):
+        r = api_client.get(
+            f"/api/portfolio/calendar?portfolio_id={_WALLET_ID}&year=2026&month=7"
+        )
+    assert r.status_code == 403
+    gc.assert_not_called()
