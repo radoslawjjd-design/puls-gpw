@@ -64,9 +64,24 @@ Tracking: Linear PUL-85, GitHub #153.
   domain. Human step: current Cloud Run origin must be in Firebase authorized domains;
   note for the future custom domain landed as a comment on GitHub #20.
 
+> **Scope addendum (2026-07-19, user decision):** the reset E-MAIL is now sent by us
+> (branded: Faro logo, Polish copy) via the existing SMTP stack +
+> `generate_password_reset_link` — Phase 3. The Firebase-hosted ACTION PAGE stays
+> (no custom handler). Original "no custom SMTP" bullet superseded.
+>
+> **Infra fixes landed during Phase 1 manual verification (console/API, no code):**
+> PUL-71's rotation had deleted the auto Browser key that Identity Platform pins in
+> `client.apiKey` (output-only — not patchable), which 400-ed every action link.
+> Fixed by undeleting the key + restricting it to identitytoolkit.googleapis.com
+> (browser keys are public by design; rotation's goal preserved). Also created web
+> app "Faro web" (fresh restricted browser key) along the way. Still pending
+> (human, console): Public-facing name → "Faro", template language → Polish (both
+> affect the action page), authorized domains += Cloud Run domain.
+
 ## What We're NOT Doing
 
-- No custom SMTP, no custom action handler/page — Firebase hosts the reset page.
+- No custom action handler/page — Firebase hosts the reset page (its branding is
+  limited to Public-facing name + language).
 - No change to login/register/logout/me endpoints or their limiters.
 - No password-change-while-logged-in (profile settings) — separate feature.
 - No e-mail verification at registration — that is PUL-86, the next change.
@@ -236,6 +251,74 @@ reset view directly (hash routing regression).
 
 ---
 
+## Phase 3: Branded reset e-mail via own SMTP
+
+### Overview
+
+Swap delivery: our endpoint generates the reset link via Admin SDK and sends a
+Faro-branded, Polish HTML e-mail through the existing SMTP stack. Firebase no longer
+sends the e-mail (its hosted action page still handles the actual password change).
+
+### Changes Required:
+
+#### 1. Branded mailer
+
+**File**: `src/notifier.py`
+
+**Intent**: Add `send_password_reset_email(to_email, reset_link, origin)` building a
+Faro-branded HTML mail (logo `<origin>/static/img/faro-mark.png`, Polish copy, CTA
+button with the link, footer consistent with `_post_email_html`'s style). Extend the
+private `_send` path to accept an explicit recipient (default stays `OWNER_EMAIL` so
+existing callers are untouched).
+
+**Contract**: `_send(subject, body, html=False, to=None)` — `to=None` keeps today's
+behavior byte-identical. New function raises on SMTP failure (caller maps to 503).
+
+#### 2. Endpoint delivery swap
+
+**File**: `src/auth.py`
+
+**Intent**: `reset_password` stops calling `send_password_reset_rest` (remove the
+helper and its OOB constants — dead code after this phase). New flow:
+`firebase_auth.generate_password_reset_link(email, ActionCodeSettings(url=origin))`
+via the Admin SDK (`_get_firebase_app` first, like register), then
+`send_password_reset_email(...)`. `UserNotFoundError` → silent 204 (anti-enumeration
+moves from the REST helper to the Admin SDK exception). SMTP/Firebase failures → 503;
+rate limiting unchanged.
+
+**Contract**: Endpoint status contract identical to Phase 1 (204 always for valid
+syntax, 422/429/503). The e-mail's From = SMTP_USER; recipient = requesting e-mail.
+
+#### 3. Tests update
+
+**File**: `tests/test_auth_api.py`, `tests/test_auth.py`, `tests/e2e/conftest.py`
+
+**Intent**: Rewrite the reset endpoint tests for the new flow (patch
+`generate_password_reset_link` + `send_password_reset_email`): 204 known/unknown
+identical (unknown = `UserNotFoundError` side effect, mailer NOT called), 422, 429
+(limiter), 503 (link-gen failure and SMTP failure). Drop the OOB-helper tests along
+with the helper. E2E conftest: patch `src.auth.generate-link + mailer` path instead
+of `send_password_reset_rest` (conftest-mocking lesson).
+
+**Contract**: Unit + e2e suites green; no network/SMTP I/O in tests.
+
+### Success Criteria:
+
+#### Automated Verification:
+
+- Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
+- Full e2e suite passes: `uv run pytest tests/e2e -q`
+- Reset contract preserved (204×2 identical incl. mailer-not-called for unknown,
+  422, 429, 503×2) with the new delivery path
+
+#### Manual Verification:
+
+- Real round-trip: branded mail arrives (logo renders, Polish copy, CTA works),
+  reset page changes the password, new password logs in
+- Unknown e-mail: 204, no mail sent
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests:
@@ -277,12 +360,12 @@ continueUrl reachability (noted on GitHub #20).
 
 #### Automated
 
-- [x] 1.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [x] 1.2 Reset contract tests green (204×2 identical, 422, 429, 503, helper taxonomy)
+- [x] 1.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q` — b7f9a10
+- [x] 1.2 Reset contract tests green (204×2 identical, 422, 429, 503, helper taxonomy) — b7f9a10
 
 #### Manual
 
-- [x] 1.3 Real-Firebase round-trip: owner e-mail delivers, unknown e-mail 204 + no mail
+- [x] 1.3 Real-Firebase round-trip: owner e-mail delivers, unknown e-mail 204 + no mail — b7f9a10
 
 ### Phase 2: Frontend — #/reset-hasla view + E2E
 
@@ -296,4 +379,18 @@ continueUrl reachability (noted on GitHub #20).
 
 - [ ] 2.4 Prod round-trip: e-mail → new password → login; continue link OK; unknown
       e-mail identical
-- [ ] 2.5 Firebase console: template/sender + authorized domains reviewed
+- [ ] 2.5 Firebase console: Public-facing name "Faro" + language PL + authorized
+      domains (Cloud Run) reviewed
+
+### Phase 3: Branded reset e-mail via own SMTP
+
+#### Automated
+
+- [ ] 3.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
+- [ ] 3.2 Full e2e suite passes: `uv run pytest tests/e2e -q`
+- [ ] 3.3 Reset contract preserved on the new delivery path (204×2, 422, 429, 503×2)
+
+#### Manual
+
+- [ ] 3.4 Branded mail round-trip: logo + polska treść + CTA → reset → login
+- [ ] 3.5 Unknown e-mail: 204 and no mail

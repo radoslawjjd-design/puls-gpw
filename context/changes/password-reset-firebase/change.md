@@ -33,3 +33,16 @@ in; unknown e-mail gets the same 204; endpoint rate-limited.
 
 Pair note: PUL-86 (e-mail verification at registration, GH #154) builds in the same
 files (src/auth.py + login panel) — planned as the immediate follow-up change.
+
+2026-07-19 session findings (Phase 1 manual verification):
+- Scope extended (user): branded reset e-mail (Faro logo, PL) via own SMTP +
+  generate_password_reset_link — plan Phase 3. Firebase action page stays.
+- Infra fix: PUL-71 rotation deleted the Firebase auto Browser key, but Identity
+  Platform pins it in output-only `client.apiKey` → every action link 400-ed
+  ("API key expired"). Fixed: undelete key 4e569a03 + identitytoolkit-only
+  restriction. Web app "Faro web" created (fresh restricted key ...UEBXQA, not
+  used by action links). PATCH of client.apiKey is silently ignored — key
+  selection is not user-controllable.
+- authorizedDomains = [localhost, puls-gpw.firebaseapp.com, puls-gpw.web.app] —
+  Cloud Run domain missing; UNAUTHORIZED_DOMAIN → 503 confirmed for 127.0.0.1.
+  Must be added before prod verification (2.5).
