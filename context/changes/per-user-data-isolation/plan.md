@@ -386,10 +386,10 @@ None material: same query shapes with one extra predicate; caches keep their key
 
 #### Automated
 
-- [x] 5.1 Script tests green: `uv run pytest tests/test_migrate_owner_identity.py`
-- [x] 5.2 Full suite green: `uv run pytest` (593 passed, 1 skipped)
+- [x] 5.1 Script tests green: `uv run pytest tests/test_migrate_owner_identity.py` — 23debaf
+- [x] 5.2 Full suite green: `uv run pytest` (593 passed, 1 skipped) — 23debaf
 
 #### Manual
 
-- [x] 5.3 Owner runbook executed on prod (dry-run → run → e-mail login shows historical data)
+- [x] 5.3 Owner runbook executed on prod (dry-run → run → e-mail login shows historical data) — 23debaf
 - [ ] 5.4 Prod smoke: `/health` OK; dwa świeże konta widzą rozłączne dane

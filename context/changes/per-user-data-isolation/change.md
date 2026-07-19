@@ -1,7 +1,7 @@
 ---
 change_id: per-user-data-isolation
 title: Per-user data isolation for watchlist, portfolio, treemap and calendar
-status: implementing
+status: implemented
 created: 2026-07-18
 updated: 2026-07-19
 archived_at: null
