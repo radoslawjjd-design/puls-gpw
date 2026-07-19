@@ -342,21 +342,28 @@ def test_reset_password_invalid_email_returns_422_without_calling_firebase(clien
     gen_link.assert_not_called()
 
 
-def test_reset_password_link_generation_failure_maps_to_503(client):
+def test_reset_password_link_generation_failure_is_silent_204_with_alert(client):
+    """Impl-review F1: failures AFTER the existence check must not shape the
+    response (a 503 here was a known-vs-unknown oracle) — requester gets 204,
+    the owner gets an alert."""
     with patch("src.auth._get_firebase_app"), \
          patch("src.auth.firebase_auth.get_user_by_email"), \
          patch(
              "src.auth.firebase_auth.generate_password_reset_link",
              side_effect=RuntimeError("boom"),
          ), \
-         patch("src.auth.send_password_reset_email") as send_mail:
+         patch("src.auth.send_password_reset_email") as send_mail, \
+         patch("src.auth.send_alert") as alert:
         r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
 
-    assert r.status_code == 503
+    assert r.status_code == 204
+    assert r.content == b""
     send_mail.assert_not_called()
+    alert.assert_called_once()
 
 
 def test_reset_password_firebase_unavailable_maps_to_503(client):
+    """Pre-existence-check failures 503 for every input — no oracle."""
     from src.auth import AuthUnavailableError
 
     with patch("src.auth._get_firebase_app", side_effect=AuthUnavailableError("no config")):
@@ -365,17 +372,22 @@ def test_reset_password_firebase_unavailable_maps_to_503(client):
     assert r.status_code == 503
 
 
-def test_reset_password_smtp_failure_maps_to_503(client):
+def test_reset_password_smtp_failure_is_silent_204_with_alert(client):
+    """Impl-review F1: an SMTP outage must not turn the endpoint into an
+    account oracle — 204 for the requester, alert for the owner."""
     with patch("src.auth._get_firebase_app"), \
          patch("src.auth.firebase_auth.get_user_by_email"), \
          patch(
              "src.auth.firebase_auth.generate_password_reset_link",
              return_value=_FAKE_RESET_LINK,
          ), \
-         patch("src.auth.send_password_reset_email", side_effect=OSError("smtp down")):
+         patch("src.auth.send_password_reset_email", side_effect=OSError("smtp down")), \
+         patch("src.auth.send_alert") as alert:
         r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
 
-    assert r.status_code == 503
+    assert r.status_code == 204
+    assert r.content == b""
+    alert.assert_called_once()
 
 
 def test_reset_password_crafted_host_header_is_rejected_with_503(client):
