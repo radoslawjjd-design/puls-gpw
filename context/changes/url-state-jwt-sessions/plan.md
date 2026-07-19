@@ -223,6 +223,6 @@ passes, pause for manual confirmation before closing out.
 
 #### Manual
 
-- [ ] 1.5 Prod JWT session: URL updates, reload restores, back/forward works, logout resets
-- [ ] 1.6 Prod API-key session: URL-state unchanged (regression spot-check)
-- [ ] 1.7 `/static/faro-v8.html` → 404 (expected)
+- [x] 1.5 Prod JWT session: URL updates, reload restores, back/forward works, logout resets — a97e82b
+- [x] 1.6 Prod API-key session: URL-state unchanged (regression spot-check) — a97e82b
+- [x] 1.7 `/static/faro-v8.html` → 404 (expected) — a97e82b

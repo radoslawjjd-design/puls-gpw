@@ -1,7 +1,7 @@
 ---
 change_id: url-state-jwt-sessions
 title: URL state persistence for JWT sessions — deep links no longer gated on apiKey
-status: implementing
+status: implemented
 created: 2026-07-19
 updated: 2026-07-19
 archived_at: null
