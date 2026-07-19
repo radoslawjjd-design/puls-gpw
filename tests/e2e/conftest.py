@@ -494,6 +494,13 @@ def live_server_url():
             "src.auth.verify_password_rest",
             side_effect=_fake_verify_password_rest,
         ),
+        # PUL-85: reset hasła nie może dotykać realnego Firebase ani SMTP —
+        # fake link + no-op mailer; kontrakt 204 identyczny dla każdego e-maila.
+        patch(
+            "src.auth.firebase_auth.generate_password_reset_link",
+            return_value="https://puls-gpw.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=e2e-fake",
+        ),
+        patch("src.auth.send_password_reset_email"),
     ]
 
     with ExitStack() as stack:

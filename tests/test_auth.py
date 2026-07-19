@@ -64,6 +64,17 @@ def test_login_in_applies_same_rules():
         LoginIn(email="user@example.com", password="short")
 
 
+def test_reset_password_in_validates_email_only():
+    """PUL-85: ResetPasswordIn shares the e-mail validator and has no password field."""
+    from src.auth import ResetPasswordIn
+
+    model = ResetPasswordIn(email="  user@example.com  ")
+    assert model.email == "user@example.com"
+    assert "password" not in model.model_fields
+    with pytest.raises(ValidationError):
+        ResetPasswordIn(email="not-an-email")
+
+
 # ── JWT session tokens + cookie helpers ───────────────────────────────────────
 
 _SECRET = "test-jwt-secret"

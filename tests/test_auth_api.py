@@ -32,9 +32,11 @@ def _reset_rate_limits():
 
     auth_module._register_rate_limiter._hits.clear()
     auth_module._login_rate_limiter._hits.clear()
+    auth_module._reset_rate_limiter._hits.clear()
     yield
     auth_module._register_rate_limiter._hits.clear()
     auth_module._login_rate_limiter._hits.clear()
+    auth_module._reset_rate_limiter._hits.clear()
 
 
 @pytest.fixture
@@ -278,6 +280,143 @@ def test_legacy_token_without_role_claim_maps_to_user(client):
     client.cookies.set("session", legacy)
     assert client.get("/auth/role").json() == {"role": "user"}
     assert client.get("/api/auth/me").json()["role"] == "user"
+
+
+# ── POST /api/auth/reset-password (PUL-85, phase 3: branded mail via own SMTP) ─
+
+_FAKE_RESET_LINK = "https://puls-gpw.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=fake"
+
+
+def test_reset_password_existing_email_returns_204_and_sends_branded_mail(client):
+    """Happy path: 204 + empty body; link generated with the request origin as
+    continue URL and handed to the branded mailer with the requester as recipient."""
+    with patch("src.auth._get_firebase_app"), \
+         patch(
+             "src.auth.firebase_auth.generate_password_reset_link",
+             return_value=_FAKE_RESET_LINK,
+         ) as gen_link, \
+         patch("src.auth.send_password_reset_email") as send_mail:
+        r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+
+    assert r.status_code == 204
+    assert r.content == b""
+    args, kwargs = gen_link.call_args
+    assert args[0] == "user@example.com"
+    assert kwargs["action_code_settings"].url == "http://testserver"
+    send_mail.assert_called_once_with(
+        "user@example.com", _FAKE_RESET_LINK, "http://testserver"
+    )
+
+
+def test_reset_password_unknown_email_returns_identical_204_without_mail(client):
+    """UserNotFoundError must collapse into the same 204 + empty body as the
+    happy path and the mailer must NOT be called — no account enumeration."""
+    from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
+
+    with patch("src.auth._get_firebase_app"), \
+         patch(
+             "src.auth.firebase_auth.generate_password_reset_link",
+             side_effect=firebase_auth.UserNotFoundError("no user"),
+         ), \
+         patch("src.auth.send_password_reset_email") as send_mail:
+        r = client.post("/api/auth/reset-password", json={"email": "ghost@example.com"})
+
+    assert r.status_code == 204
+    assert r.content == b""
+    send_mail.assert_not_called()
+
+
+def test_reset_password_invalid_email_returns_422_without_calling_firebase(client):
+    with patch("src.auth.firebase_auth.generate_password_reset_link") as gen_link:
+        r = client.post("/api/auth/reset-password", json={"email": "not-an-email"})
+
+    assert r.status_code == 422
+    gen_link.assert_not_called()
+
+
+def test_reset_password_link_generation_failure_maps_to_503(client):
+    with patch("src.auth._get_firebase_app"), \
+         patch(
+             "src.auth.firebase_auth.generate_password_reset_link",
+             side_effect=RuntimeError("boom"),
+         ), \
+         patch("src.auth.send_password_reset_email") as send_mail:
+        r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+
+    assert r.status_code == 503
+    send_mail.assert_not_called()
+
+
+def test_reset_password_firebase_unavailable_maps_to_503(client):
+    from src.auth import AuthUnavailableError
+
+    with patch("src.auth._get_firebase_app", side_effect=AuthUnavailableError("no config")):
+        r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+
+    assert r.status_code == 503
+
+
+def test_reset_password_smtp_failure_maps_to_503(client):
+    with patch("src.auth._get_firebase_app"), \
+         patch(
+             "src.auth.firebase_auth.generate_password_reset_link",
+             return_value=_FAKE_RESET_LINK,
+         ), \
+         patch("src.auth.send_password_reset_email", side_effect=OSError("smtp down")):
+        r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+
+    assert r.status_code == 503
+
+
+def test_reset_password_crafted_host_header_is_rejected_with_503(client):
+    """AI-sec (PR #159): a Host header that breaks the strict origin shape
+    (quotes, tags) must be rejected BEFORE any link/mail work — the origin is
+    later embedded in HTML e-mail attributes."""
+    with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.generate_password_reset_link") as gen_link, \
+         patch("src.auth.send_password_reset_email") as send_mail:
+        r = client.post(
+            "/api/auth/reset-password",
+            json={"email": "user@example.com"},
+            headers={"Host": 'evil"><script>alert(1)</script>'},
+        )
+
+    assert r.status_code == 503
+    gen_link.assert_not_called()
+    send_mail.assert_not_called()
+
+
+def test_password_reset_html_escapes_attribute_breakout():
+    """Even if a hostile origin/link reached the template, quotes must be
+    neutralized inside HTML attributes."""
+    from src.notifier import _password_reset_html
+
+    html = _password_reset_html(
+        'https://x.pl/act?a=1&b=2"onmouseover="alert(1)',
+        'https://evil"><img src=x onerror=alert(1)>',
+    )
+    assert '"onmouseover=' not in html
+    assert '"><img' not in html
+    assert "&quot;" in html
+
+
+def test_reset_password_sixth_request_in_minute_returns_429_with_retry_after(client):
+    """The endpoint's own limiter (5/min) throttles before Firebase is reached."""
+    with patch("src.auth._get_firebase_app"), \
+         patch(
+             "src.auth.firebase_auth.generate_password_reset_link",
+             return_value=_FAKE_RESET_LINK,
+         ) as gen_link, \
+         patch("src.auth.send_password_reset_email"):
+        for _ in range(5):
+            assert client.post(
+                "/api/auth/reset-password", json={"email": "user@example.com"}
+            ).status_code == 204
+        r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
+    assert gen_link.call_count == 5  # the throttled request never reached Firebase
 
 
 # ── POST /api/auth/logout + GET /api/auth/me ──────────────────────────────────

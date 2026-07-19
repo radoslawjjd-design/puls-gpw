@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -23,11 +24,21 @@ from firebase_admin import credentials as firebase_credentials  # type: ignore[i
 from pydantic import BaseModel, field_validator
 
 from db.bigquery import BigQueryError, get_user_role, insert_user, upsert_user_login
+from src.notifier import send_password_reset_email
 
 logger = logging.getLogger(__name__)
 
 SESSION_COOKIE_NAME = "session"
 _SESSION_TTL_SECONDS = 7 * 24 * 3600
+
+
+def _normalized_email(v: str) -> str:
+    v = v.strip()
+    try:
+        # check_deliverability=False: syntax-only — no DNS lookups on request path
+        return validate_email(v, check_deliverability=False).normalized
+    except EmailNotValidError as exc:
+        raise ValueError(f"Invalid email address: {exc}") from exc
 
 
 class RegisterIn(BaseModel):
@@ -37,12 +48,7 @@ class RegisterIn(BaseModel):
     @field_validator("email")
     @classmethod
     def _valid_email(cls, v: str) -> str:
-        v = v.strip()
-        try:
-            # check_deliverability=False: syntax-only — no DNS lookups on request path
-            return validate_email(v, check_deliverability=False).normalized
-        except EmailNotValidError as exc:
-            raise ValueError(f"Invalid email address: {exc}") from exc
+        return _normalized_email(v)
 
     @field_validator("password")
     @classmethod
@@ -58,6 +64,17 @@ class RegisterIn(BaseModel):
 
 class LoginIn(RegisterIn):
     """Same validation rules as RegisterIn — junk never reaches Firebase."""
+
+
+class ResetPasswordIn(BaseModel):
+    """PUL-85: e-mail only — the reset request carries no password."""
+
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, v: str) -> str:
+        return _normalized_email(v)
 
 
 def _jwt_secret() -> str:
@@ -323,12 +340,15 @@ def verify_password_rest(email: str, password: str) -> tuple[str, str]:
     raise AuthUnavailableError(f"Identity Toolkit error: {code}")
 
 
+
+
 # ── /api/auth router ──────────────────────────────────────────────────────────
 
 router = APIRouter(prefix="/api/auth")
 
 _register_rate_limiter = RateLimiter(5)
 _login_rate_limiter = RateLimiter(10)
+_reset_rate_limiter = RateLimiter(5)
 
 
 async def _register_rate_dep(request: Request) -> None:
@@ -337,6 +357,33 @@ async def _register_rate_dep(request: Request) -> None:
 
 async def _login_rate_dep(request: Request) -> None:
     _login_rate_limiter.check(client_ip(request))
+
+
+async def _reset_rate_dep(request: Request) -> None:
+    _reset_rate_limiter.check(client_ip(request))
+
+
+# Strict origin shape: scheme + host[:port] built only from URL-safe host chars.
+# Both parts come from request headers (user-influenced), and the origin is
+# later embedded in HTML e-mail attributes — a crafted Host containing quotes
+# must never survive to that template (AI-sec finding on PR #159).
+_ORIGIN_RE = re.compile(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?")
+
+
+def _request_origin(request: Request) -> str:
+    """Origin of the incoming request for continueUrl — no hardcoded domain.
+
+    Behind Cloud Run the request scheme reaching uvicorn is http; the real
+    scheme rides X-Forwarded-Proto (GFE-set), so prefer it when present.
+    Raises AuthUnavailableError when the reconstructed origin doesn't match
+    the strict shape (bogus/crafted Host header) — the endpoint maps it to 503.
+    """
+    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+    host = request.headers.get("Host", request.url.netloc)
+    origin = f"{scheme}://{host}"
+    if not _ORIGIN_RE.fullmatch(origin):
+        raise AuthUnavailableError(f"suspicious request origin rejected: {origin!r}")
+    return origin
 
 
 def _session_response(
@@ -399,6 +446,38 @@ def login(body: LoginIn, response: Response, _rl: None = Depends(_login_rate_dep
         role = "user"
 
     return _session_response(response, user_id, email, role)
+
+
+@router.post("/reset-password", status_code=204)
+def reset_password(
+    body: ResetPasswordIn, request: Request, _rl: None = Depends(_reset_rate_dep)
+) -> None:
+    # sync like login/register — blocking Firebase/SMTP calls run in the threadpool.
+    # Always 204 for a syntactically valid e-mail: unknown accounts short-circuit
+    # into the same empty 204 (anti-enumeration), so there is no 404 path.
+    try:
+        origin = _request_origin(request)
+        _get_firebase_app()
+        link = firebase_auth.generate_password_reset_link(
+            body.email,
+            action_code_settings=firebase_auth.ActionCodeSettings(url=origin),
+        )
+    except firebase_auth.UserNotFoundError:
+        return
+    except AuthUnavailableError as exc:
+        logger.warning("reset-password: auth unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+    except Exception as exc:
+        logger.error("reset-password: link generation failed: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+
+    # PUL-85 phase 3: the e-mail is ours (Faro branding, Polish copy) — Firebase
+    # only hosts the action page the link points at.
+    try:
+        send_password_reset_email(body.email, link, origin)
+    except Exception as exc:
+        logger.error("reset-password: e-mail send failed: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
 
 
 @router.post("/logout", status_code=204)

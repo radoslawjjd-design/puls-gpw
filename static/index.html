@@ -1010,6 +1010,7 @@ html[data-theme="dark"] #pp-ticker-label, html[data-theme="dark"] #pp-company-la
                 <div class="field-error" id="login-password-error"></div>
                 <button type="submit" id="email-login-btn">Zaloguj się</button>
                 <div class="auth-error" id="email-login-error"></div>
+                <button type="button" id="forgot-password-link" class="auth-alt-link">Nie pamiętasz hasła?</button>
                 <button type="button" id="auth-swap-register" class="auth-alt-link">Nie masz konta? Załóż je</button>
               </form>
               <form id="register-form" hidden novalidate>
@@ -1034,6 +1035,21 @@ html[data-theme="dark"] #pp-ticker-label, html[data-theme="dark"] #pp-company-la
                 <div class="auth-error" id="register-error"></div>
                 <button type="button" id="auth-swap-login" class="auth-alt-link">Masz już konto? Zaloguj się</button>
               </form>
+              <form id="reset-form" hidden novalidate>
+                <p class="login-hint">Podaj adres e-mail konta — wyślemy link do ustawienia nowego hasła.</p>
+                <label for="reset-email">E-mail</label>
+                <input id="reset-email" type="email" autocomplete="email" placeholder="twoj@email.pl">
+                <div class="field-error" id="reset-email-error"></div>
+                <button type="submit" id="reset-btn">Wyślij link</button>
+                <div class="auth-error" id="reset-error"></div>
+                <button type="button" id="reset-back-login" class="auth-alt-link">Wróć do logowania</button>
+              </form>
+              <div id="reset-confirmation" hidden>
+                <p class="login-hint">Jeśli konto istnieje, wysłaliśmy link do resetu hasła na podany adres. Sprawdź skrzynkę — także folder spam.</p>
+                <button type="button" id="reset-resend-btn">Wyślij ponownie</button>
+                <div class="auth-error" id="reset-resend-error"></div>
+                <button type="button" id="reset-confirm-back-login" class="auth-alt-link">Wróć do logowania</button>
+              </div>
               <button type="button" id="api-key-toggle" class="auth-alt-link">Mam klucz API</button>
             </div>
             <div id="api-key-panel" hidden>
@@ -1717,18 +1733,22 @@ function _showAuthTab(which) {
   $('auth-tab-register').classList.toggle('active', which === 'register');
   $('email-login-form').hidden = which !== 'login';
   $('register-form').hidden    = which !== 'register';
+  // PUL-85: trzeci widok auth — reset hasła (bez własnej zakładki). Wejście w
+  // widok zawsze pokazuje formularz; stan potwierdzenia włącza dopiero submit.
+  $('reset-form').hidden = which !== 'reset';
+  $('reset-confirmation').hidden = true;
 }
 $('auth-tab-login').addEventListener('click', () => { _showAuthTab('login'); history.replaceState(null, '', '#/logowanie'); });
 $('auth-tab-register').addEventListener('click', () => { _showAuthTab('register'); history.replaceState(null, '', '#/rejestracja'); });
 
-// routing landing <-> ekran logowania: #/rejestracja i #/logowanie
+// routing landing <-> ekran logowania: #/rejestracja, #/logowanie, #/reset-hasla
 function _applyAuthHash() {
   const h = location.hash.replace(/^#\//, '');
-  const auth = h === 'rejestracja' || h === 'logowanie';
+  const auth = h === 'rejestracja' || h === 'logowanie' || h === 'reset-hasla';
   $('landing-view').hidden = auth;
   $('auth-view').hidden = !auth;
   if (auth) {
-    _showAuthTab(h === 'rejestracja' ? 'register' : 'login');
+    _showAuthTab(h === 'rejestracja' ? 'register' : h === 'reset-hasla' ? 'reset' : 'login');
     window.scrollTo({ top: 0 });
   }
 }
@@ -1738,6 +1758,57 @@ $('nav-login-btn').addEventListener('click', () => { location.hash = '#/logowani
 $('nav-register-btn').addEventListener('click', () => { location.hash = '#/rejestracja'; });
 $('auth-swap-register').addEventListener('click', () => { location.hash = '#/rejestracja'; });
 $('auth-swap-login').addEventListener('click', () => { location.hash = '#/logowanie'; });
+
+// ── PUL-85: reset hasła ────────────────────────────────────────────────
+$('forgot-password-link').addEventListener('click', () => { location.hash = '#/reset-hasla'; });
+$('reset-back-login').addEventListener('click', () => { location.hash = '#/logowanie'; });
+$('reset-confirm-back-login').addEventListener('click', () => { location.hash = '#/logowanie'; });
+
+let _lastResetEmail = '';
+
+async function _submitPasswordReset(btn, email, fieldErrId, authErrId) {
+  if (btn.disabled) return;
+  if (fieldErrId) _clearAuthFormErrors([fieldErrId]);
+  _setAuthError(authErrId, '');
+  if (!_EMAIL_RE.test(email)) {
+    if (fieldErrId) _setFieldError(fieldErrId, 'Podaj poprawny adres e-mail.');
+    return;
+  }
+  // Synchroniczna blokada przycisku PRZED fetchem (lessons.md — guard przed
+  // podwójnym submitem nie może żyć w asynchronicznym ciele po żądaniu).
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (r.status === 204) {
+      // Odpowiedź jest identyczna dla istniejącego i nieznanego konta
+      // (anty-enumeracja) — stan UI też musi być identyczny.
+      _lastResetEmail = email;
+      $('reset-form').hidden = true;
+      $('reset-confirmation').hidden = false;
+      btn.disabled = false;
+      return;
+    }
+    if (r.status === 429) _setAuthError(authErrId, 'Zbyt wiele prób — spróbuj ponownie za chwilę.');
+    else _setAuthError(authErrId, 'Nie udało się wysłać linku, spróbuj ponownie.');
+  } catch {
+    _setAuthError(authErrId, 'Błąd połączenia, spróbuj ponownie.');
+  }
+  btn.disabled = false;
+}
+
+$('reset-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  await _submitPasswordReset(
+    $('reset-btn'), $('reset-email').value.trim(), 'reset-email-error', 'reset-error'
+  );
+});
+$('reset-resend-btn').addEventListener('click', async () => {
+  await _submitPasswordReset($('reset-resend-btn'), _lastResetEmail, null, 'reset-resend-error');
+});
 $('auth-back').addEventListener('click', () => {
   history.replaceState(null, '', location.pathname + location.search);
   _applyAuthHash();
@@ -1813,6 +1884,8 @@ function showLogin() {
   // udanym submicie), hasła i komunikaty błędów wyczyszczone.
   $('email-login-btn').disabled = false;
   $('register-btn').disabled = false;
+  $('reset-btn').disabled = false;
+  $('reset-resend-btn').disabled = false;
   ['login-password', 'reg-password', 'reg-password2'].forEach(id => { $(id).value = ''; });
   document.querySelectorAll('.field-error, .auth-error').forEach(el => {
     el.textContent = '';
