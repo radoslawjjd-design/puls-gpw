@@ -30,6 +30,33 @@ def _e2e_uid(email):
     return "e2e-uid-" + email
 
 
+# ── PUL-74: wspólny login e-mailowy dla speców per-user ───────────────────────
+# Widoki per-user są JWT-only; fake verify_password_rest przyjmuje dowolne
+# email/hasło (uid = "e2e-uid-" + email). Unikalny e-mail per wywołanie izoluje
+# stan fake-BQ między testami (stan modułowy przeżywa cały serwer sesyjny).
+E2E_PASSWORD = "E2eHaslo123"
+
+
+def e2e_unique_email() -> str:
+    return f"e2e-{time.time_ns()}@example.com"
+
+
+def e2e_login_email(page, base_url, email=None):
+    """Zaloguj przez prawdziwy formularz e-mail; zwraca użyty e-mail."""
+    from playwright.sync_api import expect
+
+    email = email or e2e_unique_email()
+    page.goto(base_url)
+    page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
+    form = page.locator("#email-login-form")
+    expect(form).to_be_visible()
+    form.get_by_label("E-mail").fill(email)
+    form.get_by_label("Hasło", exact=True).fill(E2E_PASSWORD)
+    form.get_by_role("button", name="Zaloguj się").click()
+    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    return email
+
+
 def _fake_verify_password_rest(email, password):
     if password == E2E_WRONG_PASSWORD:
         raise InvalidCredentialsError("INVALID_LOGIN_CREDENTIALS")
@@ -169,10 +196,12 @@ def _fake_get_latest_snapshot_before(wallet, before_date):
     return None
 
 
-# In-memory watchlist store keyed by client_id, mirroring the real BQ
+# In-memory watchlist store keyed by the identity string, mirroring the real BQ
 # semantics (idempotent add, no-op-safe remove, most-recently-added first).
-# Session-scoped like live_server_url, but each test gets a fresh browser
-# context (and so a fresh `watchlist_client_id`), so tests never collide.
+# Session-scoped like live_server_url; od PUL-74 kluczem jest uid z JWT —
+# izolację między testami daje unikalny e-mail per test (e2e_unique_email);
+# jedynie stałe konto adminowe (E2E_ADMIN_EMAIL) współdzieli stan przez cały
+# przebieg, więc asercje adminowe nie mogą liczyć wierszy watchlisty.
 _watchlist_store: dict[str, list[str]] = {}
 
 _FAKE_WATCHLIST_ANNOUNCEMENT = {
@@ -394,6 +423,11 @@ def live_server_url():
     os.environ["JWT_SECRET"]    = "e2e-jwt-secret"
 
     _patches = [
+        # PUL-74: specy per-user logują się e-mailem dziesiątki razy z jednego
+        # IP (127.0.0.1) — realny limiter (10 loginów/min) dawałby losowe 429.
+        # Tylko login: patch rejestracji wyciekałby do unit-testu limitera
+        # (fixture sesyjny żyje do końca pełnego przebiegu pytest).
+        patch("src.auth._login_rate_limiter"),
         patch("src.api.list_announcements_admin", return_value=_FAKE_ADMIN_ROWS),
         patch("src.api.list_announcements_user", return_value=[]),
         patch("src.api.list_distinct_tickers",            return_value=["CDR", "PKO", "XTB"]),

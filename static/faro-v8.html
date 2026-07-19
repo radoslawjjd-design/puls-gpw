@@ -1179,7 +1179,6 @@ const X_STATUS_LABELS = { published: 'Opublikowany', skipped: 'Pominięty', fail
 // ── state ──────────────────────────────────────────────────────────────
 let apiKey      = sessionStorage.getItem('apiKey');
 let role        = sessionStorage.getItem('role');
-let clientId    = null;
 let currentPage = 1;
 let xpPage      = 1;
 let wlPage      = 1;
@@ -1292,17 +1291,6 @@ function _setupAcInput(inputId, dropId, data, onSelect = null) {
   input.addEventListener('blur',  () => setTimeout(() => { drop.style.display = 'none'; }, 200));
 }
 
-// ── client id (watchlist identity) ──────────────────────────────────────
-// Throwaway, registration-free per-browser id — survives logout/reload (same
-// browser, localStorage) but not shared across browsers/devices.
-function initClientId() {
-  clientId = localStorage.getItem('watchlist_client_id');
-  if (!clientId) {
-    clientId = crypto.randomUUID();
-    localStorage.setItem('watchlist_client_id', clientId);
-  }
-}
-
 // ── GDPR ───────────────────────────────────────────────────────────────
 function initGdpr() {
   if (!localStorage.getItem('gdpr_consent_v1')) {
@@ -1370,7 +1358,9 @@ async function _doLoadAutocomplete() {
 
 // ── init ───────────────────────────────────────────────────────────────
 function init() {
-  initClientId();
+  // PUL-74: tożsamość per-user pochodzi wyłącznie z JWT — sprzątnij osierocony
+  // identyfikator przeglądarkowy z ery X-Client-Id (jednorazowe, idempotentne).
+  localStorage.removeItem('watchlist_client_id');
   initGdpr();
   // Ścieżka API-key (sessionStorage, synchroniczna) ma pierwszeństwo; probe
   // sesji JWT tylko przy fladze hasSession — anonimowy gość dostaje landing
@@ -1486,6 +1476,10 @@ function _enterUserSession(serverRole) {
   localStorage.setItem('hasSession', '1');
   sessionStorage.setItem('role', r);
   role = r;
+  // PUL-74 (review F1): sesja JWT nigdy nie może nieść resztkowego klucza API
+  // (szczątkowy sessionStorage bez role mis-gate'owałby nav per-user).
+  sessionStorage.removeItem('apiKey');
+  apiKey = null;
   // Higiena: hasło nie może siedzieć w ukrytym inpucie przez całą sesję
   // dashboardu — czyść od razu po sukcesie, nie dopiero przy showLogin().
   ['login-password', 'reg-password', 'reg-password2'].forEach(id => { $(id).value = ''; });
@@ -1830,6 +1824,11 @@ function showDashboard(r) {
   $('role-badge').textContent = r === 'admin' ? 'Admin' : 'Użytkownik';
   $('role-icon').innerHTML = r === 'admin' ? _ROLE_ICONS.admin : _ROLE_ICONS.user;
   $('data-table').classList.toggle('admin-table', r === 'admin');
+  // PUL-74: widoki per-user (Obserwowane, Mój portfel) wymagają sesji JWT —
+  // sesja API-key (apiKey ustawiony) dostaje tylko widoki globalne/adminowe.
+  const perUserNav = !apiKey ? '' : 'none';
+  $('nav-my-wallet-btn').style.display = perUserNav;
+  $('nav-portfolio-positions-btn').style.display = perUserNav;
   renderHeaders(r);
   injectAdminOnlyChrome(r);
   loadAutocomplete();
@@ -2217,7 +2216,9 @@ function _applyMyWalletParams(params) {
 function _applyUrlState() {
   const params = new URLSearchParams(location.search);
   const view = params.get('view');
-  if (view === 'portfolio-positions') {
+  // PUL-74: deep-linki do widoków per-user na sesji API-key spadają na widok
+  // domyślny — backend i tak odpowie 401, a martwy widok wywołałby doLogout().
+  if (view === 'portfolio-positions' && !apiKey) {
     currentView = 'portfolio-positions';
     const yearP = parseInt(params.get('year'), 10);
     const monthP = parseInt(params.get('month'), 10);
@@ -2228,7 +2229,7 @@ function _applyUrlState() {
     _showXHistoryViewDom();
     _applyXPostsParams(params);
     fetchXPosts(false);
-  } else if (view === 'my-wallet') {
+  } else if (view === 'my-wallet' && !apiKey) {
     currentView = 'my-wallet';
     _showMyWalletViewDom();
     _applyMyWalletParams(params);
@@ -2402,7 +2403,7 @@ async function fetchMyWalletAnnouncements(push = true) {
 
   try {
     const r = await fetch('/announcements/my-wallet?' + params, {
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+      headers: { 'X-API-Key': apiKey }
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -2429,7 +2430,7 @@ async function fetchWlSentimentSummary() {
   if (role !== 'admin') { box.style.display = 'none'; return; }
   try {
     const r = await fetch('/announcements/my-wallet?page=1&page_size=100', {
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+      headers: { 'X-API-Key': apiKey }
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
@@ -2463,7 +2464,7 @@ let _watchlistFetched = false;
 async function fetchWatchlistTickers() {
   try {
     const r = await fetch('/watchlist', {
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+      headers: { 'X-API-Key': apiKey }
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -2550,7 +2551,7 @@ async function addWatchlistTicker() {
     }
     const r = await fetch(`/watchlist/${encodeURIComponent(ticker)}`, {
       method: 'POST',
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+      headers: { 'X-API-Key': apiKey }
     });
     if (r.status === 401) { doLogout(); return; }
     if (r.status === 422) {
@@ -2578,7 +2579,7 @@ async function removeWatchlistTicker(ticker) {
   try {
     const r = await fetch(`/watchlist/${encodeURIComponent(ticker)}`, {
       method: 'DELETE',
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+      headers: { 'X-API-Key': apiKey }
     });
     if (r.status === 401) { doLogout(); return; }
     if (r.status !== 204 && !r.ok) throw new Error('HTTP ' + r.status);
@@ -2603,7 +2604,7 @@ async function fetchPortfolioPositions() {
   _showSkeleton('pp-tbody', 9);
   try {
     const r = await fetch('/api/portfolio/positions?portfolio_id=' + encodeURIComponent(_activePortfolioId), {
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+      headers: { 'X-API-Key': apiKey }
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -2622,7 +2623,7 @@ async function _upsertPortfolioPosition(ticker, companyName, shares, avgBuyPrice
   try {
     const r = await fetch('/api/portfolio/positions', {
       method: 'POST',
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId, 'Content-Type': 'application/json' },
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ticker, company_name: companyName, shares, avg_buy_price: avgBuyPrice, portfolio_id: _activePortfolioId })
     });
     if (r.status === 401) { doLogout(); return; }
@@ -2644,7 +2645,7 @@ async function _deletePortfolioPosition(ticker) {
   try {
     const r = await fetch('/api/portfolio/positions/' + encodeURIComponent(ticker) + '?portfolio_id=' + encodeURIComponent(_activePortfolioId || ''), {
       method: 'DELETE',
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+      headers: { 'X-API-Key': apiKey }
     });
     if (r.status === 401) { doLogout(); return; }
     if (r.status !== 204 && !r.ok) throw new Error('HTTP ' + r.status);
@@ -2902,7 +2903,7 @@ async function fetchUserPortfolios() {
   if (!tabs) return;
   try {
     const r = await fetch('/api/portfolio/wallets', {
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+      headers: { 'X-API-Key': apiKey }
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -2958,7 +2959,7 @@ async function _submitAddPortfolio() {
   try {
     const r = await fetch('/api/portfolio/wallets', {
       method: 'POST',
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId, 'Content-Type': 'application/json' },
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ portfolio_type: type, portfolio_name: name })
     });
     if (r.status === 401) { doLogout(); return; }
@@ -2983,7 +2984,7 @@ async function _deletePortfolio(portfolioId, label) {
   try {
     const r = await fetch(`/api/portfolio/wallets/${encodeURIComponent(portfolioId)}`, {
       method: 'DELETE',
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+      headers: { 'X-API-Key': apiKey }
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -3362,7 +3363,7 @@ function renderXPostsTable(data) {
 async function fetchPortfolioTreemap() {
   try {
     const r = await fetch('/api/portfolio/treemap', {
-      headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId }
+      headers: { 'X-API-Key': apiKey }
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -3383,7 +3384,7 @@ async function fetchPortfolioCalendar() {
   $('pp-cal-next').disabled = true;
   try {
     const url = `/api/portfolio/calendar?year=${_ppCalYear}&month=${_ppCalMonth}&portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
-    const r = await fetch(url, { headers: { 'X-API-Key': apiKey, 'X-Client-Id': clientId } });
+    const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
