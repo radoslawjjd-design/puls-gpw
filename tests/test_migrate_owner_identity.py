@@ -57,23 +57,34 @@ def _all_params(client):
 
 
 def test_dry_run_issues_only_count_selects():
-    client = _mk_client(counts=[1, 2, 3])
+    # counts: [0]=pre-check (unconverged), potem 3 per-table
+    client = _mk_client(counts=[0, 1, 2, 3])
     with patch.object(mig, "_get_client", return_value=client):
         rc = mig.main(["--old-uuid", _OLD, "--new-uid", _NEW, "--dry-run"])
 
     assert rc == 0
     qs = _queries(client)
-    assert len(qs) == 3
+    assert len(qs) == 4
     assert all("SELECT COUNT" in q for q in qs)
     assert not any("UPDATE" in q for q in qs)
+    assert "user_id IS NULL AND client_id = @old_uuid" in qs[0]
     for params in _all_params(client):
         assert params["old_uuid"] == _OLD
-        assert params["new_uid"] == _NEW
+
+
+def test_aborts_when_backfill_not_converged():
+    """Wiersze z user_id IS NULL pod starym client_id → abort, zero UPDATE."""
+    client = _mk_client(counts=[3])
+    with patch.object(mig, "_get_client", return_value=client):
+        rc = mig.main(["--old-uuid", _OLD, "--new-uid", _NEW])
+
+    assert rc == 1
+    assert not any("UPDATE" in q for q in _queries(client))
 
 
 def test_real_run_issues_three_scoped_updates():
-    # per table: matched-count, then post-update remaining-count (0)
-    client = _mk_client(counts=[2, 0, 1, 0, 3, 0])
+    # pre-check 0, potem per table: matched-count, post-update remaining-count (0)
+    client = _mk_client(counts=[0, 2, 0, 1, 0, 3, 0])
     with patch.object(mig, "_get_client", return_value=client):
         rc = mig.main(["--old-uuid", _OLD, "--new-uid", _NEW])
 
@@ -100,8 +111,8 @@ def test_identical_ids_refused_without_queries():
 
 
 def test_real_run_fails_when_rows_remain_under_old_uuid():
-    # first table: 2 matched, 1 still remaining after the UPDATE → exit 1
-    client = _mk_client(counts=[2, 1])
+    # pre-check 0; first table: 2 matched, 1 still remaining after UPDATE → exit 1
+    client = _mk_client(counts=[0, 2, 1])
     with patch.object(mig, "_get_client", return_value=client):
         rc = mig.main(["--old-uuid", _OLD, "--new-uid", _NEW])
 
@@ -109,7 +120,7 @@ def test_real_run_fails_when_rows_remain_under_old_uuid():
 
 
 def test_dry_run_with_zero_matches_signals_wrong_uuid():
-    client = _mk_client(counts=[0, 0, 0])
+    client = _mk_client(counts=[0, 0, 0, 0])
     with patch.object(mig, "_get_client", return_value=client):
         rc = mig.main(["--old-uuid", _OLD, "--new-uid", _NEW, "--dry-run"])
 

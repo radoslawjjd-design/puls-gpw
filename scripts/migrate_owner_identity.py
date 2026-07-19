@@ -49,22 +49,36 @@ _MIGRATIONS = [
 ]
 
 
-def _params(old_uuid: str, new_uid: str) -> bigquery.QueryJobConfig:
-    return bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("old_uuid", "STRING", old_uuid),
-            bigquery.ScalarQueryParameter("new_uid", "STRING", new_uid),
-        ]
-    )
+def _params(old_uuid: str, new_uid: str | None = None) -> bigquery.QueryJobConfig:
+    params = [bigquery.ScalarQueryParameter("old_uuid", "STRING", old_uuid)]
+    if new_uid is not None:
+        params.append(bigquery.ScalarQueryParameter("new_uid", "STRING", new_uid))
+    return bigquery.QueryJobConfig(query_parameters=params)
 
 
-def count_rows(client, table: str, column: str, old_uuid: str, new_uid: str) -> int:
+def count_rows(client, table: str, column: str, old_uuid: str) -> int:
     query = f"""
         SELECT COUNT(*) AS n
         FROM `{_table_ref(client, table)}`
         WHERE {column} = @old_uuid
     """
-    rows = list(client.query(query, job_config=_params(old_uuid, new_uid)).result())
+    rows = list(client.query(query, job_config=_params(old_uuid)).result())
+    return int(rows[0].n)
+
+
+def count_unconverged_watchlist(client, old_uuid: str) -> int:
+    """Legacy watchlist rows the phase-1 startup backfill hasn't converged yet.
+
+    The re-key predicate is `user_id = @old_uuid`, so rows with user_id IS NULL
+    (written before the backfill ran, or while it kept failing non-fatally)
+    would be silently missed — abort instead of migrating half the data.
+    """
+    query = f"""
+        SELECT COUNT(*) AS n
+        FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
+        WHERE user_id IS NULL AND client_id = @old_uuid
+    """
+    rows = list(client.query(query, job_config=_params(old_uuid)).result())
     return int(rows[0].n)
 
 
@@ -98,23 +112,35 @@ def main(argv: list[str] | None = None) -> int:
 
     client = _get_client()
 
+    unconverged = count_unconverged_watchlist(client, args.old_uuid)
+    if unconverged:
+        print(
+            f"error: watchlist has {unconverged} row(s) with user_id IS NULL for this "
+            "client_id — the phase-1 startup backfill has not converged; deploy/restart "
+            "the API (or run ensure_watchlist_schema_current) first"
+        )
+        return 1
+
     print(f"{'DRY-RUN' if args.dry_run else 'RE-KEY'}: {args.old_uuid} -> {args.new_uid}")
     total = 0
     for table, column, set_clause in _MIGRATIONS:
-        matched = count_rows(client, table, column, args.old_uuid, args.new_uid)
+        matched = count_rows(client, table, column, args.old_uuid)
         total += matched
         print(f"  {table}: {matched} row(s) match {column} = old-uuid")
         if not args.dry_run and matched:
             affected = rekey_rows(client, table, column, set_clause,
                                   args.old_uuid, args.new_uid)
-            remaining = count_rows(client, table, column, args.old_uuid, args.new_uid)
+            remaining = count_rows(client, table, column, args.old_uuid)
             print(f"  {table}: re-keyed {affected}, remaining under old-uuid: {remaining}")
             if remaining:
                 print(f"error: {table} still has {remaining} row(s) under the old uuid")
                 return 1
 
     if total == 0:
-        print("no rows matched the old uuid in any table — check the value")
+        print(
+            "no rows matched the old uuid in any table — either already migrated "
+            "(idempotent re-run) or a wrong --old-uuid; use --dry-run to inspect"
+        )
         return 1 if args.dry_run else 0
 
     print("done" if not args.dry_run else "dry-run complete — re-run without --dry-run to apply")

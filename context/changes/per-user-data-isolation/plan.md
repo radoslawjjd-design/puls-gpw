@@ -317,9 +317,9 @@ None material: same query shapes with one extra predicate; caches keep their key
 ## Migration Notes
 
 - **Deploy**: merge to master → CI deploys `puls-gpw-api`; verify `/health`.
-- **Owner re-key**: human-run per Phase 5 runbook (needs the browser UUID from the owner's old browser profile — ask before running).
-- **Column DROP (later, human-only)**: after ≥1 week of verified prod operation, drop `watchlist.client_id` and remove the dual-write + backfill code in a follow-up chore. Destructive → never automated.
-- **Rollback**: any phase alone is safe to revert; dual-write guarantees the previous revision still reads `client_id` correctly.
+- **Owner re-key**: human-run per Phase 5 runbook (needs the browser UUID from the owner's old browser profile — ask before running). *Executed 2026-07-19: 5 watchlist + 2 wallets + 18 positions re-keyed; owner confirmed data visible.* Note: per-user caches (TTL 60-300 s) may serve pre-re-key data for up to the TTL after the script finishes — self-heals.
+- **Column DROP (later, human-only)**: after ≥1 week of verified prod operation, drop `watchlist.client_id` and remove the dual-write + backfill code in a follow-up chore; also delete `static/index_old.html` (last live copy of the retired X-Client-Id machinery) and the one-time `localStorage.removeItem` line. Destructive → never automated.
+- **Rollback**: any phase alone is safe to revert. *Post-re-key nuance (final review F2): the owner's data survives a rollback only via the JWT login path (old code prefers the JWT uid); the anonymous X-Client-Id path returns empty — the script rewrote `client_id` to the UID and the new frontend deletes the browser's stored UUID on first load.*
 
 ## References
 
