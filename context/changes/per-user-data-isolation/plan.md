@@ -392,4 +392,4 @@ None material: same query shapes with one extra predicate; caches keep their key
 #### Manual
 
 - [x] 5.3 Owner runbook executed on prod (dry-run → run → e-mail login shows historical data) — 23debaf
-- [ ] 5.4 Prod smoke: `/health` OK; dwa świeże konta widzą rozłączne dane
+- [x] 5.4 Prod smoke: `/health` OK; dwa świeże konta widzą rozłączne dane (post-merge #151: /health 200, /watchlist bez sesji 401, owner potwierdził dane 2026-07-19)
