@@ -196,10 +196,12 @@ def _fake_get_latest_snapshot_before(wallet, before_date):
     return None
 
 
-# In-memory watchlist store keyed by client_id, mirroring the real BQ
+# In-memory watchlist store keyed by the identity string, mirroring the real BQ
 # semantics (idempotent add, no-op-safe remove, most-recently-added first).
-# Session-scoped like live_server_url, but each test gets a fresh browser
-# context (and so a fresh `watchlist_client_id`), so tests never collide.
+# Session-scoped like live_server_url; od PUL-74 kluczem jest uid z JWT —
+# izolację między testami daje unikalny e-mail per test (e2e_unique_email);
+# jedynie stałe konto adminowe (E2E_ADMIN_EMAIL) współdzieli stan przez cały
+# przebieg, więc asercje adminowe nie mogą liczyć wierszy watchlisty.
 _watchlist_store: dict[str, list[str]] = {}
 
 _FAKE_WATCHLIST_ANNOUNCEMENT = {

@@ -3,7 +3,12 @@ import re
 
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import E2E_ADMIN_EMAIL, E2E_PASSWORD, e2e_login_email
+from tests.e2e.conftest import (
+    E2E_ADMIN_EMAIL,
+    E2E_PASSWORD,
+    e2e_login_email,
+    e2e_unique_email,
+)
 
 
 def _login(page: Page, base_url: str, admin: bool = False) -> None:
@@ -83,7 +88,7 @@ def test_portfolio_positions_url_deeplink(page: Page, live_server_url: str):
     page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
     form = page.locator("#email-login-form")
     expect(form).to_be_visible()
-    form.get_by_label("E-mail").fill("e2e-deeplink@example.com")
+    form.get_by_label("E-mail").fill(e2e_unique_email())
     form.get_by_label("Hasło", exact=True).fill(E2E_PASSWORD)
     form.get_by_role("button", name="Zaloguj się").click()
 

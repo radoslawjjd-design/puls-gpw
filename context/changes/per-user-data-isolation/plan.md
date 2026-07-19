@@ -375,12 +375,12 @@ None material: same query shapes with one extra predicate; caches keep their key
 
 #### Automated
 
-- [x] 4.1 E2E suite green: `uv run pytest tests/e2e` (85 passed, 1 skipped — skip udokumentowany PUL-84)
-- [x] 4.2 Whole suite green: `uv run pytest` (588 passed, 1 skipped)
+- [x] 4.1 E2E suite green: `uv run pytest tests/e2e` (85 passed, 1 skipped — skip udokumentowany PUL-84) — 11a5784
+- [x] 4.2 Whole suite green: `uv run pytest` (588 passed, 1 skipped) — 11a5784
 
 #### Manual
 
-- [x] 4.3 Headed run my-wallet spec — email-login flow drives the UI
+- [x] 4.3 Headed run my-wallet spec — email-login flow drives the UI — 11a5784
 
 ### Phase 5: Owner data re-key script (human-run)
 
