@@ -2,21 +2,18 @@ import re
 
 from playwright.sync_api import Page, expect
 
-_USER_KEY = "e2e-user-key"
+from tests.e2e.conftest import e2e_login_email
 
 
-def _login(page: Page, base_url: str, key: str = _USER_KEY) -> None:
-    page.goto(base_url)
-    page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
-    page.get_by_role("button", name="Mam klucz API").click()
-    page.get_by_label("Klucz API").fill(key)
-    page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+
+def _login(page: Page, base_url: str) -> None:
+    # PUL-74: widoki per-user są JWT-only — logowanie przez formularz e-mail.
+    e2e_login_email(page, base_url)
 
 
 def test_user_role_has_no_treemap_menu_item_or_dom_node(page: Page, live_server_url: str):
     """The old admin-only XTB treemap button and view must never appear for user role."""
-    _login(page, live_server_url, key=_USER_KEY)
+    _login(page, live_server_url)
 
     expect(page.locator("#treemap-btn")).not_to_be_attached()
     expect(page.locator("#treemap-view")).not_to_be_attached()
@@ -27,7 +24,7 @@ def test_user_role_never_triggers_treemap_network_request(page: Page, live_serve
     requests: list[str] = []
     page.on("request", lambda r: requests.append(r.url))
 
-    _login(page, live_server_url, key=_USER_KEY)
+    _login(page, live_server_url)
     with page.expect_response(re.compile(r"/announcements")):
         page.get_by_role("button", name="Filtruj").click()
 

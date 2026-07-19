@@ -3,17 +3,13 @@ import re
 
 from playwright.sync_api import Page, expect
 
-_ADMIN_KEY = "e2e-admin-key"
-_USER_KEY = "e2e-user-key"
+from tests.e2e.conftest import E2E_ADMIN_EMAIL, E2E_PASSWORD, e2e_login_email
 
 
-def _login(page: Page, base_url: str, key: str = _USER_KEY) -> None:
-    page.goto(base_url)
-    page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
-    page.get_by_role("button", name="Mam klucz API").click()
-    page.get_by_label("Klucz API").fill(key)
-    page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+def _login(page: Page, base_url: str, admin: bool = False) -> None:
+    # PUL-74: widoki per-user są JWT-only — logowanie przez formularz e-mail;
+    # wariant admin używa stałego konta z rolą admin w fake'owym BQ.
+    e2e_login_email(page, base_url, email=E2E_ADMIN_EMAIL if admin else None)
 
 
 def _open_portfolio_positions(page: Page) -> None:
@@ -28,7 +24,7 @@ def _open_treemap_tab(page: Page) -> None:
 
 def test_admin_nav_has_no_old_treemap_btn(page: Page, live_server_url: str):
     """Risk: Phase 5 removed the admin-only XTB treemap nav button — must not exist in DOM."""
-    _login(page, live_server_url, key=_ADMIN_KEY)
+    _login(page, live_server_url, admin=True)
 
     expect(page.locator("#treemap-btn")).not_to_be_attached()
     expect(page.locator("#treemap-view")).not_to_be_attached()
@@ -85,9 +81,11 @@ def test_portfolio_positions_url_deeplink(page: Page, live_server_url: str):
     """Risk: ?view=portfolio-positions in the URL must restore the portfolio view after login."""
     page.goto(f"{live_server_url}/?view=portfolio-positions")
     page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
-    page.get_by_role("button", name="Mam klucz API").click()
-    page.get_by_label("Klucz API").fill(_USER_KEY)
-    page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
+    form = page.locator("#email-login-form")
+    expect(form).to_be_visible()
+    form.get_by_label("E-mail").fill("e2e-deeplink@example.com")
+    form.get_by_label("Hasło", exact=True).fill(E2E_PASSWORD)
+    form.get_by_role("button", name="Zaloguj się").click()
 
     # _applyUrlState reads ?view=portfolio-positions and calls showPortfolioPositionsView()
     expect(page.locator("#portfolio-positions-view")).to_be_visible()

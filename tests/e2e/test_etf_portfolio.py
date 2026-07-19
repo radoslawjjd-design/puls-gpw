@@ -11,16 +11,13 @@ Seed: tests/e2e/test_portfolio_positions.py
 """
 from playwright.sync_api import Page, expect
 
-_USER_KEY = "e2e-user-key"
+from tests.e2e.conftest import e2e_login_email
+
 
 
 def _login(page: Page, base_url: str) -> None:
-    page.goto(base_url)
-    page.locator(".landing-nav").get_by_role("button", name="Zaloguj się").click()
-    page.get_by_role("button", name="Mam klucz API").click()
-    page.get_by_label("Klucz API").fill(_USER_KEY)
-    page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    # PUL-74: widoki per-user są JWT-only — logowanie przez formularz e-mail.
+    e2e_login_email(page, base_url)
 
 
 def _open_portfolio(page: Page) -> None:
