@@ -1476,6 +1476,10 @@ function _enterUserSession(serverRole) {
   localStorage.setItem('hasSession', '1');
   sessionStorage.setItem('role', r);
   role = r;
+  // PUL-74 (review F1): sesja JWT nigdy nie może nieść resztkowego klucza API
+  // (szczątkowy sessionStorage bez role mis-gate'owałby nav per-user).
+  sessionStorage.removeItem('apiKey');
+  apiKey = null;
   // Higiena: hasło nie może siedzieć w ukrytym inpucie przez całą sesję
   // dashboardu — czyść od razu po sukcesie, nie dopiero przy showLogin().
   ['login-password', 'reg-password', 'reg-password2'].forEach(id => { $(id).value = ''; });

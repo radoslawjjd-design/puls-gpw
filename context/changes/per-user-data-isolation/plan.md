@@ -360,16 +360,16 @@ None material: same query shapes with one extra predicate; caches keep their key
 
 #### Automated
 
-- [x] 3.1 Unit suite green: `uv run pytest tests/ --ignore=tests/e2e`
-- [x] 3.2 Zero occurrences of `X-Client-Id` / `watchlist_client_id` in `static/index.html` (poza planowaną jednorazową linią `localStorage.removeItem` + komentarzem)
-- [x] 3.3 `faro-v8.html` byte-identical to `index.html`
+- [x] 3.1 Unit suite green: `uv run pytest tests/ --ignore=tests/e2e` — efdb5c3
+- [x] 3.2 Zero occurrences of `X-Client-Id` / `watchlist_client_id` in `static/index.html` (poza planowaną jednorazową linią `localStorage.removeItem` + komentarzem) — efdb5c3
+- [x] 3.3 `faro-v8.html` byte-identical to `index.html` — efdb5c3
 
 #### Manual
 
-- [x] 3.4 Email login: wszystkie widoki per-user działają
-- [x] 3.5 API-key admin: brak nav per-user, widoki admin obecne
-- [x] 3.6 API-key user: tylko widoki globalne
-- [x] 3.7 Logout → landing; re-login e-mail → te same dane
+- [x] 3.4 Email login: wszystkie widoki per-user działają — efdb5c3
+- [x] 3.5 API-key admin: brak nav per-user, widoki admin obecne — efdb5c3
+- [x] 3.6 API-key user: tylko widoki globalne — efdb5c3
+- [x] 3.7 Logout → landing; re-login e-mail → te same dane — efdb5c3
 
 ### Phase 4: E2E — per-user tests switch to email login
 
