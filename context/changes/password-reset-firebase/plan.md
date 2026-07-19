@@ -377,20 +377,20 @@ continueUrl reachability (noted on GitHub #20).
 
 #### Manual
 
-- [ ] 2.4 Prod round-trip: e-mail → new password → login; continue link OK; unknown
-      e-mail identical
-- [ ] 2.5 Firebase console: Public-facing name "Faro" + language PL + authorized
-      domains (Cloud Run) reviewed
+- [x] 2.4 Prod round-trip: e-mail → new password → login; continue link OK; unknown
+      e-mail identical — 1494e99
+- [x] 2.5 Firebase console: Public-facing name "Faro" + language PL + authorized
+      domains (Cloud Run) reviewed — 1494e99
 
 ### Phase 3: Branded reset e-mail via own SMTP
 
 #### Automated
 
-- [x] 3.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [x] 3.2 Full e2e suite passes: `uv run pytest tests/e2e -q`
-- [x] 3.3 Reset contract preserved on the new delivery path (204×2, 422, 429, 503×2)
+- [x] 3.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q` — 5261094
+- [x] 3.2 Full e2e suite passes: `uv run pytest tests/e2e -q` — 5261094
+- [x] 3.3 Reset contract preserved on the new delivery path (204×2, 422, 429, 503×2) — 5261094
 
 #### Manual
 
-- [ ] 3.4 Branded mail round-trip: logo + polska treść + CTA → reset → login
-- [ ] 3.5 Unknown e-mail: 204 and no mail
+- [x] 3.4 Branded mail round-trip: logo (biały badge) + polska treść + CTA → reset → login — 1494e99
+- [x] 3.5 Unknown e-mail: 204 and no mail — 1494e99
