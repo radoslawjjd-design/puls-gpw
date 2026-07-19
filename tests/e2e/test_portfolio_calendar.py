@@ -9,7 +9,6 @@ Seed: tests/e2e/test_user_portfolio_treemap.py
 import re
 from datetime import date
 
-import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import e2e_login_email
@@ -107,10 +106,6 @@ def test_calendar_prev_navigation_changes_month_label(page: Page, live_server_ur
     expect(page.locator("#pp-cal-grid")).to_be_visible()
 
 
-@pytest.mark.skip(
-    reason="PUL-84: zapis URL-state działa tylko na sesji API-key, a kalendarz "
-    "jest od PUL-74 JWT-only — test wraca do życia z URL-state dla JWT"
-)
 def test_calendar_url_contains_tab_calendar_after_switch(page: Page, live_server_url: str):
     """Risk: switching to the Kalendarz tab must write tab=calendar into the URL so the
     view is deeplink-restorable — proving URL routing is wired to the tab toggle."""
