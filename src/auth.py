@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -362,15 +363,27 @@ async def _reset_rate_dep(request: Request) -> None:
     _reset_rate_limiter.check(client_ip(request))
 
 
+# Strict origin shape: scheme + host[:port] built only from URL-safe host chars.
+# Both parts come from request headers (user-influenced), and the origin is
+# later embedded in HTML e-mail attributes — a crafted Host containing quotes
+# must never survive to that template (AI-sec finding on PR #159).
+_ORIGIN_RE = re.compile(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?")
+
+
 def _request_origin(request: Request) -> str:
     """Origin of the incoming request for continueUrl — no hardcoded domain.
 
     Behind Cloud Run the request scheme reaching uvicorn is http; the real
     scheme rides X-Forwarded-Proto (GFE-set), so prefer it when present.
+    Raises AuthUnavailableError when the reconstructed origin doesn't match
+    the strict shape (bogus/crafted Host header) — the endpoint maps it to 503.
     """
     scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
     host = request.headers.get("Host", request.url.netloc)
-    return f"{scheme}://{host}"
+    origin = f"{scheme}://{host}"
+    if not _ORIGIN_RE.fullmatch(origin):
+        raise AuthUnavailableError(f"suspicious request origin rejected: {origin!r}")
+    return origin
 
 
 def _session_response(
@@ -442,8 +455,8 @@ def reset_password(
     # sync like login/register — blocking Firebase/SMTP calls run in the threadpool.
     # Always 204 for a syntactically valid e-mail: unknown accounts short-circuit
     # into the same empty 204 (anti-enumeration), so there is no 404 path.
-    origin = _request_origin(request)
     try:
+        origin = _request_origin(request)
         _get_firebase_app()
         link = firebase_auth.generate_password_reset_link(
             body.email,

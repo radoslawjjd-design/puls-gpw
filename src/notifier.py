@@ -6,6 +6,7 @@ import ssl
 import traceback
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
+from html import escape as _html_escape
 
 
 def _smtp_creds() -> tuple[str, int, str, str, str]:
@@ -180,7 +181,11 @@ def send_no_post_email(window_name: str, date_str: str, reason: str) -> None:
 
 
 def _password_reset_html(reset_link: str, origin: str) -> str:
-    logo_url = f"{origin}/static/img/faro-mark.png"
+    # Defense-in-depth: origin derives from request headers and the link from
+    # Firebase — escape both so no crafted value can break out of an HTML
+    # attribute in the e-mail (AI-sec finding, PR #159). quote=True covers ".
+    logo_url = _html_escape(f"{origin}/static/img/faro-mark.png", quote=True)
+    reset_link = _html_escape(reset_link, quote=True)
     return f"""<!DOCTYPE html>
 <html>
 <body style="margin:0;padding:20px;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">

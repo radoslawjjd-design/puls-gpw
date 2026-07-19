@@ -368,6 +368,38 @@ def test_reset_password_smtp_failure_maps_to_503(client):
     assert r.status_code == 503
 
 
+def test_reset_password_crafted_host_header_is_rejected_with_503(client):
+    """AI-sec (PR #159): a Host header that breaks the strict origin shape
+    (quotes, tags) must be rejected BEFORE any link/mail work — the origin is
+    later embedded in HTML e-mail attributes."""
+    with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.generate_password_reset_link") as gen_link, \
+         patch("src.auth.send_password_reset_email") as send_mail:
+        r = client.post(
+            "/api/auth/reset-password",
+            json={"email": "user@example.com"},
+            headers={"Host": 'evil"><script>alert(1)</script>'},
+        )
+
+    assert r.status_code == 503
+    gen_link.assert_not_called()
+    send_mail.assert_not_called()
+
+
+def test_password_reset_html_escapes_attribute_breakout():
+    """Even if a hostile origin/link reached the template, quotes must be
+    neutralized inside HTML attributes."""
+    from src.notifier import _password_reset_html
+
+    html = _password_reset_html(
+        'https://x.pl/act?a=1&b=2"onmouseover="alert(1)',
+        'https://evil"><img src=x onerror=alert(1)>',
+    )
+    assert '"onmouseover=' not in html
+    assert '"><img' not in html
+    assert "&quot;" in html
+
+
 def test_reset_password_sixth_request_in_minute_returns_429_with_retry_after(client):
     """The endpoint's own limiter (5/min) throttles before Firebase is reached."""
     with patch("src.auth._get_firebase_app"), \
