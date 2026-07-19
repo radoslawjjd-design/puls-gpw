@@ -212,3 +212,29 @@ def test_jwt_logout_resets_url_and_relogin_lands_on_announcements(
 
     expect(page.locator("#announcements-view")).to_be_visible()
     expect(page).not_to_have_url(re.compile(r"view="))
+
+
+def test_jwt_back_after_logout_does_not_resurrect_previous_session_url(
+    page: Page, live_server_url: str
+):
+    """Risk (impl-review F1): after logout, pressing Back walks history back to
+    an entry carrying the previous session's ?view=/params — those must be
+    stripped on the login screen so the next login cannot inherit them."""
+    e2e_login_email(page, live_server_url)
+
+    page.get_by_role("button", name="Obserwowane").click()
+    expect(page).to_have_url(re.compile(r"view=my-wallet"))
+
+    page.get_by_role("button", name="Użytkownik").click()
+    page.get_by_role("menuitem", name="Wyloguj").click()
+    expect(page.locator("#login-screen")).to_be_visible()
+
+    page.go_back()
+
+    expect(page.locator("#login-screen")).to_be_visible()
+    expect(page).not_to_have_url(re.compile(r"[?&](view|page|ticker)="))
+
+    e2e_login_email(page, live_server_url)
+
+    expect(page.locator("#announcements-view")).to_be_visible()
+    expect(page).not_to_have_url(re.compile(r"view="))
