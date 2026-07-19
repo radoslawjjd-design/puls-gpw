@@ -371,9 +371,9 @@ continueUrl reachability (noted on GitHub #20).
 
 #### Automated
 
-- [x] 2.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [x] 2.2 Full e2e suite passes: `uv run pytest tests/e2e -q`
-- [x] 2.3 New reset e2e tests green (happy, enumeration, validation, back)
+- [x] 2.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q` — b038e4b
+- [x] 2.2 Full e2e suite passes: `uv run pytest tests/e2e -q` — b038e4b
+- [x] 2.3 New reset e2e tests green (happy, enumeration, validation, back) — b038e4b
 
 #### Manual
 
@@ -386,9 +386,9 @@ continueUrl reachability (noted on GitHub #20).
 
 #### Automated
 
-- [ ] 3.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [ ] 3.2 Full e2e suite passes: `uv run pytest tests/e2e -q`
-- [ ] 3.3 Reset contract preserved on the new delivery path (204×2, 422, 429, 503×2)
+- [x] 3.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
+- [x] 3.2 Full e2e suite passes: `uv run pytest tests/e2e -q`
+- [x] 3.3 Reset contract preserved on the new delivery path (204×2, 422, 429, 503×2)
 
 #### Manual
 

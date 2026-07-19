@@ -129,12 +129,23 @@ def _post_email_html(
 </html>"""
 
 
-def _send(subject: str, body: str, html: bool = False) -> None:
+def _send(
+    subject: str,
+    body: str,
+    html: bool = False,
+    to: str | None = None,
+    from_name: str | None = None,
+) -> None:
+    # `to=None` keeps the historical owner-only behavior; PUL-85 introduced
+    # user-facing mail (password reset) that needs an explicit recipient.
+    # `from_name` sets only the DISPLAY name — Gmail SMTP rewrites any From
+    # address that doesn't match the authenticated account, so the address
+    # part must stay SMTP_USER until a custom sending domain exists (see #20).
     host, port, user, password, owner = _smtp_creds()
     msg = MIMEText(body, "html" if html else "plain", "utf-8")
     msg["Subject"] = subject
-    msg["From"] = user
-    msg["To"] = owner
+    msg["From"] = f"{from_name} <{user}>" if from_name else user
+    msg["To"] = to or owner
     with smtplib.SMTP(host, port, timeout=10) as smtp:
         smtp.starttls(context=ssl.create_default_context())
         smtp.login(user, password)
@@ -166,6 +177,61 @@ def send_post_email(
 def send_no_post_email(window_name: str, date_str: str, reason: str) -> None:
     """Email the owner that no post was generated for this window."""
     _send(f"ESPI {window_name} {date_str} — brak posta", reason)
+
+
+def _password_reset_html(reset_link: str, origin: str) -> str:
+    logo_url = f"{origin}/static/img/faro-mark.png"
+    return f"""<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:20px;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<div style="max-width:520px;margin:0 auto;">
+
+<div style="background:#14304A;color:#ffffff;padding:18px 24px;border-radius:8px 8px 0 0;">
+  <img src="{logo_url}" alt="Faro" height="28" style="vertical-align:middle;height:28px;">
+  <span style="font-size:20px;font-weight:700;vertical-align:middle;margin-left:10px;">Faro</span>
+</div>
+
+<div style="background:#ffffff;padding:24px;">
+  <p style="font-size:15px;line-height:1.6;color:#111827;margin:0 0 12px;">Cześć,</p>
+  <p style="font-size:15px;line-height:1.6;color:#111827;margin:0 0 20px;">
+    Otrzymaliśmy prośbę o zresetowanie hasła do Twojego konta w Faro.
+    Kliknij poniższy przycisk, aby ustawić nowe hasło:
+  </p>
+  <p style="text-align:center;margin:0 0 20px;">
+    <a href="{reset_link}" style="display:inline-block;background:#b8964f;color:#ffffff;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:700;text-decoration:none;">Ustaw nowe hasło</a>
+  </p>
+  <p style="font-size:13px;line-height:1.6;color:#6b7280;margin:0 0 8px;">
+    Jeśli przycisk nie działa, skopiuj ten link do przeglądarki:<br>
+    <a href="{reset_link}" style="color:#8a6d23;word-break:break-all;">{reset_link}</a>
+  </p>
+  <p style="font-size:13px;line-height:1.6;color:#6b7280;margin:0;">
+    Jeśli to nie Ty prosiłeś(-aś) o reset hasła, zignoruj tę wiadomość — Twoje
+    hasło pozostaje bez zmian.
+  </p>
+</div>
+
+<div style="background:#f9fafb;border:1px solid #e5e7eb;border-top:none;padding:12px 18px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280;text-align:center;">
+  Faro — jasne treści komunikatów ESPI/EBI. Wiadomość wysłana automatycznie.
+</div>
+
+</div>
+</body>
+</html>"""
+
+
+def send_password_reset_email(to_email: str, reset_link: str, origin: str) -> None:
+    """PUL-85: Faro-branded password-reset e-mail (Polish) sent via own SMTP.
+
+    Raises on SMTP failure — the caller maps it to 503. Never called for
+    unknown accounts (the endpoint swallows those into a silent 204).
+    """
+    _send(
+        "Faro — ustaw nowe hasło",
+        _password_reset_html(reset_link, origin),
+        html=True,
+        to=to_email,
+        from_name="Faro",
+    )
 
 
 def send_alert(exc: BaseException) -> None:

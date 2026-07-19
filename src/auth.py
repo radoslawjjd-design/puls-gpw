@@ -23,6 +23,7 @@ from firebase_admin import credentials as firebase_credentials  # type: ignore[i
 from pydantic import BaseModel, field_validator
 
 from db.bigquery import BigQueryError, get_user_role, insert_user, upsert_user_login
+from src.notifier import send_password_reset_email
 
 logger = logging.getLogger(__name__)
 
@@ -338,51 +339,6 @@ def verify_password_rest(email: str, password: str) -> tuple[str, str]:
     raise AuthUnavailableError(f"Identity Toolkit error: {code}")
 
 
-_OOB_CODE_URL = "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode"
-
-
-def send_password_reset_rest(email: str, continue_url: str) -> None:
-    """PUL-85: request a password-reset e-mail via Identity Toolkit sendOobCode.
-
-    Firebase sends the e-mail and hosts the reset action page; `continue_url`
-    puts a back-to-app link on it. Returns None on success — including for
-    EMAIL_NOT_FOUND (see below). Raises FirebaseRateLimitedError /
-    AuthUnavailableError.
-    """
-    api_key = os.environ.get("FIREBASE_WEB_API_KEY")
-    if not api_key:
-        raise AuthUnavailableError("FIREBASE_WEB_API_KEY is not set")
-    try:
-        resp = httpx.post(
-            _OOB_CODE_URL,
-            params={"key": api_key},
-            json={
-                "requestType": "PASSWORD_RESET",
-                "email": email,
-                "continueUrl": continue_url,
-            },
-            timeout=10.0,
-        )
-    except httpx.HTTPError as exc:
-        raise AuthUnavailableError(f"Identity Toolkit unreachable: {exc}") from exc
-
-    if resp.status_code == 200:
-        return
-    if resp.status_code >= 500:
-        raise AuthUnavailableError(f"Identity Toolkit 5xx: {resp.status_code}")
-
-    try:
-        code = resp.json()["error"]["message"]
-    except Exception as exc:
-        raise AuthUnavailableError("Identity Toolkit returned an unparseable error") from exc
-    # EMAIL_NOT_FOUND → silent success: the endpoint answers 204 whether or not
-    # the account exists (anti-enumeration). This is the ONE deliberate
-    # difference from login's error taxonomy, where the same code maps to 401.
-    if code.startswith("EMAIL_NOT_FOUND"):
-        return
-    if code.startswith("TOO_MANY_ATTEMPTS_TRIED_LATER"):
-        raise FirebaseRateLimitedError(code)
-    raise AuthUnavailableError(f"Identity Toolkit error: {code}")
 
 
 # ── /api/auth router ──────────────────────────────────────────────────────────
@@ -483,15 +439,31 @@ def login(body: LoginIn, response: Response, _rl: None = Depends(_login_rate_dep
 def reset_password(
     body: ResetPasswordIn, request: Request, _rl: None = Depends(_reset_rate_dep)
 ) -> None:
-    # sync like login/register — the blocking Firebase call runs in the threadpool.
-    # Always 204 for a syntactically valid e-mail: unknown accounts are swallowed
-    # inside send_password_reset_rest (anti-enumeration), so there is no 404 path.
+    # sync like login/register — blocking Firebase/SMTP calls run in the threadpool.
+    # Always 204 for a syntactically valid e-mail: unknown accounts short-circuit
+    # into the same empty 204 (anti-enumeration), so there is no 404 path.
+    origin = _request_origin(request)
     try:
-        send_password_reset_rest(body.email, _request_origin(request))
-    except FirebaseRateLimitedError:
-        raise HTTPException(status_code=429, detail="Zbyt wiele prób, spróbuj później")
+        _get_firebase_app()
+        link = firebase_auth.generate_password_reset_link(
+            body.email,
+            action_code_settings=firebase_auth.ActionCodeSettings(url=origin),
+        )
+    except firebase_auth.UserNotFoundError:
+        return
     except AuthUnavailableError as exc:
         logger.warning("reset-password: auth unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+    except Exception as exc:
+        logger.error("reset-password: link generation failed: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+
+    # PUL-85 phase 3: the e-mail is ours (Faro branding, Polish copy) — Firebase
+    # only hosts the action page the link points at.
+    try:
+        send_password_reset_email(body.email, link, origin)
+    except Exception as exc:
+        logger.error("reset-password: e-mail send failed: %s", exc)
         raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
 
 
