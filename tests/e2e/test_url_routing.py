@@ -2,7 +2,7 @@ import re
 
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import e2e_login_email
+from tests.e2e.conftest import E2E_ADMIN_EMAIL, e2e_login_email
 
 _ADMIN_KEY = "e2e-admin-key"
 
@@ -35,8 +35,8 @@ def _persist_session_across_goto(page: Page) -> None:
 def test_view_switch_sequence_updates_url_and_is_back_navigable(
     page: Page, live_server_url: str
 ):
-    # PUL-74: widoki per-user są JWT-only, a URL-state działa tylko na sesji
-    # API-key (PUL-84) — sekwencja routingu testowana na widokach globalnych.
+    # PUL-74: widoki per-user są JWT-only — sekwencja routingu na sesji API-key
+    # jest testowana na widokach globalnych (regresja ścieżki API-key po PUL-84).
     _login(page, live_server_url)
 
     _open_x_history(page)
@@ -127,4 +127,88 @@ def test_logout_resets_url_to_root(page: Page, live_server_url: str):
 
     expect(page.locator("#login-screen")).to_be_visible()
     expect(page).to_have_url(re.compile(r"/$"))
+    expect(page).not_to_have_url(re.compile(r"view="))
+
+
+# ── PUL-84: URL-state dla sesji JWT ──────────────────────────────────────────
+# _writeUrl i popstate były gate'owane na apiKey, więc sesja JWT (jedyna dla
+# zwykłych użytkowników od PUL-74) nie miała zapisu URL-a, restore po reloadzie
+# ani działającego back/forward. Guard zmieniony na `role` — te testy pinują
+# nowe zachowanie po stronie e-mailowej ścieżki logowania.
+
+
+def test_jwt_my_wallet_writes_url_and_survives_reload(page: Page, live_server_url: str):
+    """Risk: JWT user navigates to Obserwowane — the URL must gain ?view=my-wallet
+    and a reload must restore the view instead of dumping to Ogłoszenia."""
+    e2e_login_email(page, live_server_url)
+
+    page.get_by_role("button", name="Obserwowane").click()
+    expect(page.locator("#my-wallet-view")).to_be_visible()
+    expect(page).to_have_url(re.compile(r"view=my-wallet"))
+
+    page.reload()
+
+    expect(page.locator("#my-wallet-view")).to_be_visible()
+    expect(page.locator("#announcements-view")).to_be_hidden()
+    expect(page).to_have_url(re.compile(r"view=my-wallet"))
+
+
+def test_jwt_back_from_portfolio_restores_announcements_view_and_url(
+    page: Page, live_server_url: str
+):
+    """Risk (pre-PUL-84 desync): entering Mój portfel pushed a history entry even
+    on JWT, but back only changed the URL — the view stayed, desyncing view↔URL.
+    After un-gating popstate, back must restore BOTH the view and the URL."""
+    e2e_login_email(page, live_server_url)
+
+    page.get_by_role("button", name="Mój portfel").click()
+    expect(page.locator("#portfolio-positions-view")).to_be_visible()
+    expect(page).to_have_url(re.compile(r"view=portfolio-positions"))
+
+    page.go_back()
+
+    expect(page.locator("#announcements-view")).to_be_visible()
+    expect(page.locator("#portfolio-positions-view")).to_be_hidden()
+    expect(page).not_to_have_url(re.compile(r"view="))
+
+
+def test_jwt_admin_x_history_page_2_survives_reload(page: Page, live_server_url: str):
+    """Risk: URL params (not just the view) must round-trip for a JWT admin —
+    x-history page 2 must be written to the URL and restored after reload."""
+    e2e_login_email(page, live_server_url, email=E2E_ADMIN_EMAIL)
+
+    _open_x_history(page)
+    expect(page.locator("#xp-page-label")).to_have_text("Strona 1")
+
+    page.get_by_role("button", name=re.compile("Następna")).click()
+    expect(page.locator("#xp-page-label")).to_have_text("Strona 2")
+    expect(page).to_have_url(re.compile(r"page=2"))
+
+    page.reload()
+
+    expect(page.locator("#x-history-view")).to_be_visible()
+    expect(page.locator("#xp-page-label")).to_have_text("Strona 2")
+    expect(page).to_have_url(re.compile(r"view=x-history"))
+
+
+def test_jwt_logout_resets_url_and_relogin_lands_on_announcements(
+    page: Page, live_server_url: str
+):
+    """Risk: after a JWT logout the address bar must reset to '/' and a fresh
+    login must land on Ogłoszenia — no stale view resurrection, and no
+    in-flight URL write may undo doLogout's replaceState."""
+    e2e_login_email(page, live_server_url)
+
+    page.get_by_role("button", name="Obserwowane").click()
+    expect(page).to_have_url(re.compile(r"view=my-wallet"))
+
+    page.get_by_role("button", name="Użytkownik").click()
+    page.get_by_role("menuitem", name="Wyloguj").click()
+
+    expect(page.locator("#login-screen")).to_be_visible()
+    expect(page).not_to_have_url(re.compile(r"view="))
+
+    e2e_login_email(page, live_server_url)
+
+    expect(page.locator("#announcements-view")).to_be_visible()
     expect(page).not_to_have_url(re.compile(r"view="))

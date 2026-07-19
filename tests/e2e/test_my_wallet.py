@@ -18,9 +18,9 @@ def test_added_ticker_persists_across_reload_and_filters_announcements(
 ):
     """Risk: My Wallet's only real value is that a watched ticker survives a
     genuine page reload — the persistence now comes from BQ keyed by the JWT
-    uid (PUL-74), not browser state. Po reloadzie sesja JWT bootuje do widoku
-    Ogłoszeń (URL-state dla JWT = PUL-84), więc test wraca do Obserwowanych
-    nawigacją i dopiero wtedy asertuje trwałość."""
+    uid (PUL-74), not browser state. Od PUL-84 URL-state działa też na JWT,
+    więc reload przywraca widok Obserwowanych bezpośrednio (?view=my-wallet)
+    — trwałość tickera asertujemy od razu po restore."""
     _login(page, live_server_url)
     _open_my_wallet(page)
 
@@ -34,8 +34,7 @@ def test_added_ticker_persists_across_reload_and_filters_announcements(
     expect(page.locator("#my-wallet-table-body")).to_contain_text("PKO SA")
 
     page.reload()
-    expect(page.locator("#announcements-view")).to_be_visible()
-    _open_my_wallet(page)
+    expect(page.locator("#my-wallet-view")).to_be_visible()
 
     expect(page.get_by_role("button", name="Usuń PKO z obserwowanych")).to_be_visible()
     expect(page.locator("#my-wallet-table-body")).to_contain_text("PKO SA")

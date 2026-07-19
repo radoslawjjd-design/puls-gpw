@@ -47,7 +47,9 @@ def test_register_lands_in_dashboard_without_relogin(page: Page, live_server_url
     expect(page.locator("#page-label")).to_have_text("Strona 1")
     expect(page.locator("#role-badge")).to_have_text("Użytkownik")
     # Stary hash #/rejestracja nie może przetrwać do dashboardu (F3, review p2).
-    expect(page).to_have_url(f"{live_server_url}/")
+    # PUL-84: sesja JWT pisze URL-state, więc dashboard dokleja ?page=1&page_size=20
+    # — asercja pilnuje zniknięcia hasha, nie dokładnego URL-a.
+    expect(page).not_to_have_url(re.compile(r"#/"))
 
 
 def test_register_password_mismatch_shows_inline_error(page: Page, live_server_url: str):
@@ -65,7 +67,8 @@ def test_register_password_mismatch_shows_inline_error(page: Page, live_server_u
 def test_login_lands_in_dashboard(page: Page, live_server_url: str):
     _login_via_email(page, live_server_url)
     expect(page.locator("#role-badge")).to_have_text("Użytkownik")
-    expect(page).to_have_url(f"{live_server_url}/")
+    # PUL-84: URL-state działa też na JWT — hash auth znika, query params zostają.
+    expect(page).not_to_have_url(re.compile(r"#/"))
 
 
 def test_wrong_password_shows_backend_error_and_stays_on_landing(
