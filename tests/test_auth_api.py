@@ -291,6 +291,7 @@ def test_reset_password_existing_email_returns_204_and_sends_branded_mail(client
     """Happy path: 204 + empty body; link generated with the request origin as
     continue URL and handed to the branded mailer with the requester as recipient."""
     with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.get_user_by_email"), \
          patch(
              "src.auth.firebase_auth.generate_password_reset_link",
              return_value=_FAKE_RESET_LINK,
@@ -309,20 +310,27 @@ def test_reset_password_existing_email_returns_204_and_sends_branded_mail(client
 
 
 def test_reset_password_unknown_email_returns_identical_204_without_mail(client):
-    """UserNotFoundError must collapse into the same 204 + empty body as the
-    happy path and the mailer must NOT be called — no account enumeration."""
+    """Unknown account must collapse into the same 204 + empty body as the happy
+    path, and neither link generation nor the mailer may run — no enumeration.
+
+    The existence check is an explicit get_user_by_email: on the REAL SDK,
+    generate_password_reset_link for a missing user raises a generic
+    UnexpectedResponseError (NOT UserNotFoundError) — caught on prod as a
+    known-204 / unknown-503 enumeration signal."""
     from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
 
     with patch("src.auth._get_firebase_app"), \
          patch(
-             "src.auth.firebase_auth.generate_password_reset_link",
+             "src.auth.firebase_auth.get_user_by_email",
              side_effect=firebase_auth.UserNotFoundError("no user"),
          ), \
+         patch("src.auth.firebase_auth.generate_password_reset_link") as gen_link, \
          patch("src.auth.send_password_reset_email") as send_mail:
         r = client.post("/api/auth/reset-password", json={"email": "ghost@example.com"})
 
     assert r.status_code == 204
     assert r.content == b""
+    gen_link.assert_not_called()
     send_mail.assert_not_called()
 
 
@@ -336,6 +344,7 @@ def test_reset_password_invalid_email_returns_422_without_calling_firebase(clien
 
 def test_reset_password_link_generation_failure_maps_to_503(client):
     with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.get_user_by_email"), \
          patch(
              "src.auth.firebase_auth.generate_password_reset_link",
              side_effect=RuntimeError("boom"),
@@ -358,6 +367,7 @@ def test_reset_password_firebase_unavailable_maps_to_503(client):
 
 def test_reset_password_smtp_failure_maps_to_503(client):
     with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.get_user_by_email"), \
          patch(
              "src.auth.firebase_auth.generate_password_reset_link",
              return_value=_FAKE_RESET_LINK,
@@ -373,6 +383,7 @@ def test_reset_password_crafted_host_header_is_rejected_with_503(client):
     (quotes, tags) must be rejected BEFORE any link/mail work — the origin is
     later embedded in HTML e-mail attributes."""
     with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.get_user_by_email") as get_user, \
          patch("src.auth.firebase_auth.generate_password_reset_link") as gen_link, \
          patch("src.auth.send_password_reset_email") as send_mail:
         r = client.post(
@@ -382,6 +393,7 @@ def test_reset_password_crafted_host_header_is_rejected_with_503(client):
         )
 
     assert r.status_code == 503
+    get_user.assert_not_called()
     gen_link.assert_not_called()
     send_mail.assert_not_called()
 
@@ -395,14 +407,18 @@ def test_password_reset_html_escapes_attribute_breakout():
         'https://x.pl/act?a=1&b=2"onmouseover="alert(1)',
         'https://evil"><img src=x onerror=alert(1)>',
     )
+    # Attack payloads must never appear raw — only in &quot;-escaped form.
+    # (Plain '"><img' would false-positive on the template's own markup.)
     assert '"onmouseover=' not in html
-    assert '"><img' not in html
+    assert 'evil"><img' not in html
+    assert "onerror=alert(1)" not in html.replace("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;", "")
     assert "&quot;" in html
 
 
 def test_reset_password_sixth_request_in_minute_returns_429_with_retry_after(client):
     """The endpoint's own limiter (5/min) throttles before Firebase is reached."""
     with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.get_user_by_email"), \
          patch(
              "src.auth.firebase_auth.generate_password_reset_link",
              return_value=_FAKE_RESET_LINK,

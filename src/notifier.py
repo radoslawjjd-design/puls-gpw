@@ -192,7 +192,7 @@ def _password_reset_html(reset_link: str, origin: str) -> str:
 <div style="max-width:520px;margin:0 auto;">
 
 <div style="background:#14304A;color:#ffffff;padding:18px 24px;border-radius:8px 8px 0 0;">
-  <img src="{logo_url}" alt="Faro" height="28" style="vertical-align:middle;height:28px;">
+  <span style="display:inline-block;background:#ffffff;border-radius:8px;padding:5px 7px;vertical-align:middle;"><img src="{logo_url}" alt="Faro" height="28" style="display:block;height:28px;"></span>
   <span style="font-size:20px;font-weight:700;vertical-align:middle;margin-left:10px;">Faro</span>
 </div>
 

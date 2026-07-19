@@ -458,6 +458,12 @@ def reset_password(
     try:
         origin = _request_origin(request)
         _get_firebase_app()
+        # Jawny pre-check istnienia konta: generate_password_reset_link dla
+        # nieistniejącego e-maila NIE rzuca UserNotFoundError, tylko generyczny
+        # UnexpectedResponseError ("Failed to generate email action link") —
+        # złapane na prodzie jako sygnał enumeracyjny (znany 204 vs nieznany
+        # 503). get_user_by_email ma poprawne mapowanie wyjątku.
+        firebase_auth.get_user_by_email(body.email)
         link = firebase_auth.generate_password_reset_link(
             body.email,
             action_code_settings=firebase_auth.ActionCodeSettings(url=origin),
