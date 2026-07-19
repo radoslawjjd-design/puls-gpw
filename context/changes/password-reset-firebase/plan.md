@@ -371,9 +371,9 @@ continueUrl reachability (noted on GitHub #20).
 
 #### Automated
 
-- [ ] 2.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [ ] 2.2 Full e2e suite passes: `uv run pytest tests/e2e -q`
-- [ ] 2.3 New reset e2e tests green (happy, enumeration, validation, back)
+- [x] 2.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
+- [x] 2.2 Full e2e suite passes: `uv run pytest tests/e2e -q`
+- [x] 2.3 New reset e2e tests green (happy, enumeration, validation, back)
 
 #### Manual
 

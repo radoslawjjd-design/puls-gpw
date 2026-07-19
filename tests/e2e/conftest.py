@@ -494,6 +494,9 @@ def live_server_url():
             "src.auth.verify_password_rest",
             side_effect=_fake_verify_password_rest,
         ),
+        # PUL-85: reset hasła nie może strzelać do realnego Identity Toolkit —
+        # fake zwraca None (sukces) dla każdego e-maila, jak kontrakt 204.
+        patch("src.auth.send_password_reset_rest"),
     ]
 
     with ExitStack() as stack:
