@@ -216,10 +216,10 @@ passes, pause for manual confirmation before closing out.
 
 #### Automated
 
-- [x] 1.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q`
-- [x] 1.2 Full e2e suite passes with 0 skipped: `uv run pytest tests/e2e -q`
-- [x] 1.3 New JWT URL-state tests green (restore, back/forward, desync, post-logout)
-- [x] 1.4 `static/*.html` == `index.html` only; no code references to removed files
+- [x] 1.1 Unit suite passes: `uv run pytest tests/ --ignore=tests/e2e -q` — 20d82d8
+- [x] 1.2 Full e2e suite passes with 0 skipped: `uv run pytest tests/e2e -q` — 20d82d8
+- [x] 1.3 New JWT URL-state tests green (restore, back/forward, desync, post-logout) — 20d82d8
+- [x] 1.4 `static/*.html` == `index.html` only; no code references to removed files — 20d82d8
 
 #### Manual
 
