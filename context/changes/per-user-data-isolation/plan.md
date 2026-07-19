@@ -348,28 +348,28 @@ None material: same query shapes with one extra predicate; caches keep their key
 
 #### Automated
 
-- [x] 2.1 Full unit suite green: `uv run pytest tests/` (bez e2e — te wracają do zieleni w Fazie 4 zgodnie z sekwencją planu)
-- [x] 2.2 Isolation tests pass + deliberate-break check on a `user_id` predicate
+- [x] 2.1 Full unit suite green: `uv run pytest tests/` (bez e2e — te wracają do zieleni w Fazie 4 zgodnie z sekwencją planu) — e21cfcf
+- [x] 2.2 Isolation tests pass + deliberate-break check on a `user_id` predicate — e21cfcf
 
 #### Manual
 
-- [x] 2.3 Local: `/watchlist` bez cookie → 401; z sesją → własne dane
-- [x] 2.4 `GET /announcements` z `USER_API_KEY` nadal działa
+- [x] 2.3 Local: `/watchlist` bez cookie → 401; z sesją → własne dane — e21cfcf
+- [x] 2.4 `GET /announcements` z `USER_API_KEY` nadal działa — e21cfcf
 
 ### Phase 3: Frontend — remove X-Client-Id, hide per-user nav for API-key sessions
 
 #### Automated
 
-- [ ] 3.1 Unit suite green: `uv run pytest tests/ --ignore=tests/e2e`
-- [ ] 3.2 Zero occurrences of `X-Client-Id` / `watchlist_client_id` in `static/index.html`
-- [ ] 3.3 `faro-v8.html` byte-identical to `index.html`
+- [x] 3.1 Unit suite green: `uv run pytest tests/ --ignore=tests/e2e`
+- [x] 3.2 Zero occurrences of `X-Client-Id` / `watchlist_client_id` in `static/index.html` (poza planowaną jednorazową linią `localStorage.removeItem` + komentarzem)
+- [x] 3.3 `faro-v8.html` byte-identical to `index.html`
 
 #### Manual
 
-- [ ] 3.4 Email login: wszystkie widoki per-user działają
-- [ ] 3.5 API-key admin: brak nav per-user, widoki admin obecne
-- [ ] 3.6 API-key user: tylko widoki globalne
-- [ ] 3.7 Logout → landing; re-login e-mail → te same dane
+- [x] 3.4 Email login: wszystkie widoki per-user działają
+- [x] 3.5 API-key admin: brak nav per-user, widoki admin obecne
+- [x] 3.6 API-key user: tylko widoki globalne
+- [x] 3.7 Logout → landing; re-login e-mail → te same dane
 
 ### Phase 4: E2E — per-user tests switch to email login
 
