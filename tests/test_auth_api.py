@@ -407,8 +407,11 @@ def test_password_reset_html_escapes_attribute_breakout():
         'https://x.pl/act?a=1&b=2"onmouseover="alert(1)',
         'https://evil"><img src=x onerror=alert(1)>',
     )
+    # Attack payloads must never appear raw — only in &quot;-escaped form.
+    # (Plain '"><img' would false-positive on the template's own markup.)
     assert '"onmouseover=' not in html
-    assert '"><img' not in html
+    assert 'evil"><img' not in html
+    assert "onerror=alert(1)" not in html.replace("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;", "")
     assert "&quot;" in html
 
 
