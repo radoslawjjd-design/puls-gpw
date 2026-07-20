@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 import uvicorn
+from firebase_admin import auth as firebase_admin_auth  # type: ignore[import-untyped]
 
 from src.api import create_app
 from src.auth import InvalidCredentialsError
@@ -64,7 +65,20 @@ def _fake_verify_password_rest(email, password):
 
 
 def _fake_firebase_create_user(email, password):
+    # PUL-86: marker "taken" w e-mailu symuluje 409 (konto już istnieje) —
+    # pozwala e2e pokryć hint resend przy rejestracji bez realnego Firebase.
+    if "taken" in email:
+        raise firebase_admin_auth.EmailAlreadyExistsError("exists", None, None)
     return SimpleNamespace(uid=_e2e_uid(email))
+
+
+def _fake_firebase_get_user(uid):
+    # PUL-86: bramka logowania czyta email_verified przez Admin SDK. Marker
+    # "unverified" w e-mailu (a więc i uid) symuluje konto przed kliknięciem
+    # linku; wszystkie pozostałe specy logują się jak dotychczas. Jawny
+    # SimpleNamespace, nie goły MagicMock — truthy atrybut przeszedłby bramkę
+    # przypadkiem (plan-review F3).
+    return SimpleNamespace(uid=uid, email_verified="unverified" not in uid)
 
 
 def _fake_get_user_role(user_id):
@@ -511,6 +525,7 @@ def live_server_url():
             return_value="https://puls-gpw.firebaseapp.com/__/auth/action?mode=verifyEmail&oobCode=e2e-fake",
         ),
         patch("src.auth.send_verification_email"),
+        patch("src.auth.firebase_auth.get_user", side_effect=_fake_firebase_get_user),
     ]
 
     with ExitStack() as stack:

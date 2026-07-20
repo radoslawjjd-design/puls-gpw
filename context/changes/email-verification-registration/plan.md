@@ -465,24 +465,24 @@ verification-mail template is already PL (set during PUL-85) — no console work
 
 #### Automated
 
-- [x] 2.1 Unit tests pass: `uv run pytest tests/test_auth_api.py --tb=short`
-- [x] 2.2 Lint passes: `uv run ruff check .`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_auth_api.py --tb=short` — 3b69f08
+- [x] 2.2 Lint passes: `uv run ruff check .` — 3b69f08
 
 #### Manual
 
-- [x] 2.3 Real-Firebase: unverified → 403; after click → login OK; verified resend sends nothing
+- [x] 2.3 Real-Firebase: unverified → 403; after click → login OK; verified resend sends nothing — 3b69f08
 
 ### Phase 3: SPA states + E2E
 
 #### Automated
 
-- [ ] 3.1 Full suite green: `uv run pytest --tb=short`
-- [ ] 3.2 Lint passes: `uv run ruff check .`
+- [x] 3.1 Full suite green: `uv run pytest --tb=short`
+- [x] 3.2 Lint passes: `uv run ruff check .`
 
 #### Manual
 
-- [ ] 3.3 Browser walkthrough: register confirmation, 403 state + resend, post-click login to dashboard
-- [ ] 3.4 Resend button UX (in-flight disable, 429 copy)
+- [x] 3.3 Browser walkthrough: register confirmation, 403 state + resend, post-click login to dashboard
+- [x] 3.4 Resend button UX (in-flight disable, 429 copy)
 
 ### Phase 4: Backfill script + rollout
 

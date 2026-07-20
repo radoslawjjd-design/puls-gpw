@@ -35,7 +35,9 @@ def test_landing_cards_render_without_score_or_sentiment(page: Page, live_server
         expect(cards).not_to_contain_text(forbidden)
 
 
-def test_register_lands_in_dashboard_without_relogin(page: Page, live_server_url: str):
+def test_register_shows_confirmation_screen_without_session(page: Page, live_server_url: str):
+    """PUL-86 — odwrócony kontrakt: rejestracja NIE loguje. Zamiast dashboardu
+    pojawia się ekran "sprawdź skrzynkę"; sesja wymaga potwierdzenia e-maila."""
     page.goto(live_server_url)
     page.locator(".landing-nav").get_by_role("button", name="Załóż konto").click()
     form = page.locator("#register-form")
@@ -44,12 +46,11 @@ def test_register_lands_in_dashboard_without_relogin(page: Page, live_server_url
     form.get_by_label("Hasło", exact=True).fill(_GOOD_PASSWORD)
     form.get_by_label("Powtórz hasło").fill(_GOOD_PASSWORD)
     form.get_by_role("button", name="Załóż konto").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
-    expect(page.locator("#role-badge")).to_have_text("Użytkownik")
-    # Stary hash #/rejestracja nie może przetrwać do dashboardu (F3, review p2).
-    # PUL-84: sesja JWT pisze URL-state, więc dashboard dokleja ?page=1&page_size=20
-    # — asercja pilnuje zniknięcia hasha, nie dokładnego URL-a.
-    expect(page).not_to_have_url(re.compile(r"#/"))
+    confirmation = page.locator("#register-confirmation")
+    expect(confirmation).to_be_visible()
+    expect(confirmation).to_contain_text("Wysłaliśmy link weryfikacyjny")
+    expect(form).to_be_hidden()
+    expect(page.locator("#page-label")).to_be_hidden()
 
 
 def test_register_password_mismatch_shows_inline_error(page: Page, live_server_url: str):
