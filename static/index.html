@@ -120,6 +120,10 @@
     display: none; color: var(--negative); font-size: .85rem; margin-top: .9rem;
     background: #fdf1f0; border: 1px solid #f2c6c2; border-radius: var(--radius-sm); padding: .55rem .8rem;
   }
+  .auth-ok {
+    display: none; color: var(--positive); font-size: .85rem; margin-top: .9rem;
+    background: #f0f7f1; border: 1px solid #c4e0c9; border-radius: var(--radius-sm); padding: .55rem .8rem;
+  }
   .login-box label {
     display: block; font-size: .78rem; font-weight: 600; margin-bottom: .4rem;
     color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em;
@@ -897,6 +901,7 @@ html[data-theme="dark"] .login-box button.auth-tab { background:transparent; col
 html[data-theme="dark"] .login-box button.auth-tab.active { background:#1d2b3c; color:#f3d9a4; }
 html[data-theme="dark"] .login-box button.auth-alt-link { background:none; color:#9fc1e0; }
 html[data-theme="dark"] .auth-error { background:rgba(179,38,30,.15); border-color:rgba(179,38,30,.4); }
+html[data-theme="dark"] .auth-ok { background:rgba(46,125,50,.15); border-color:rgba(46,125,50,.4); }
 html[data-theme="dark"] #pp-export-csv-btn { background:#141f2b; border-color:#2b3a4d; color:#9fc1e0; }
 html[data-theme="dark"] #pp-view-tabs { background:#0d1520; border-color:#243141; }
 html[data-theme="dark"] .pp-view-tab:hover:not(.active) { color:#c9dcee; }
@@ -1010,6 +1015,8 @@ html[data-theme="dark"] #pp-ticker-label, html[data-theme="dark"] #pp-company-la
                 <div class="field-error" id="login-password-error"></div>
                 <button type="submit" id="email-login-btn">Zaloguj się</button>
                 <div class="auth-error" id="email-login-error"></div>
+                <div class="auth-ok" id="login-resend-ok"></div>
+                <button type="button" id="login-resend-btn" class="auth-alt-link" hidden>Wyślij ponownie link weryfikacyjny</button>
                 <button type="button" id="forgot-password-link" class="auth-alt-link">Nie pamiętasz hasła?</button>
                 <button type="button" id="auth-swap-register" class="auth-alt-link">Nie masz konta? Załóż je</button>
               </form>
@@ -1033,8 +1040,17 @@ html[data-theme="dark"] #pp-ticker-label, html[data-theme="dark"] #pp-company-la
                 <p class="login-hint">Min. 8 znaków, w tym co najmniej jedna litera i jedna cyfra.</p>
                 <button type="submit" id="register-btn">Załóż konto</button>
                 <div class="auth-error" id="register-error"></div>
+                <div class="auth-ok" id="reg-resend-ok"></div>
+                <button type="button" id="reg-resend-btn" class="auth-alt-link" hidden>Wyślij ponownie link weryfikacyjny</button>
                 <button type="button" id="auth-swap-login" class="auth-alt-link">Masz już konto? Zaloguj się</button>
               </form>
+              <div id="register-confirmation" hidden>
+                <p class="login-hint">Konto utworzone! Wysłaliśmy link weryfikacyjny na podany adres — potwierdź e-mail, aby się zalogować. Sprawdź skrzynkę, także folder spam.</p>
+                <button type="button" id="register-resend-btn">Wyślij ponownie</button>
+                <div class="auth-error" id="register-resend-error"></div>
+                <div class="auth-ok" id="register-resend-ok"></div>
+                <button type="button" id="register-confirm-login" class="auth-alt-link">Przejdź do logowania</button>
+              </div>
               <form id="reset-form" hidden novalidate>
                 <p class="login-hint">Podaj adres e-mail konta — wyślemy link do ustawienia nowego hasła.</p>
                 <label for="reset-email">E-mail</label>
@@ -1517,6 +1533,8 @@ $('email-login-form').addEventListener('submit', async e => {
   const password = $('login-password').value;
   _clearAuthFormErrors(['login-email-error', 'login-password-error']);
   _setAuthError('email-login-error', '');
+  _setAuthOk('login-resend-ok', '');
+  $('login-resend-btn').hidden = true;
   let bad = false;
   if (!_EMAIL_RE.test(email)) { _setFieldError('login-email-error', 'Podaj poprawny adres e-mail.'); bad = true; }
   const pwIssue = _passwordIssue(password);
@@ -1538,6 +1556,9 @@ $('email-login-form').addEventListener('submit', async e => {
       return;
     }
     await _renderAuthError(r, 'login', 'email-login-error');
+    // PUL-86: 403 to jedyny 403 loginu — konto niezweryfikowane; obok
+    // komunikatu backendu pokaż przycisk ponownej wysyłki linku.
+    if (r.status === 403) $('login-resend-btn').hidden = false;
   } catch {
     _setAuthError('email-login-error', 'Błąd połączenia, spróbuj ponownie.');
   }
@@ -1553,6 +1574,8 @@ $('register-form').addEventListener('submit', async e => {
   const password2 = $('reg-password2').value;
   _clearAuthFormErrors(['reg-email-error', 'reg-password-error', 'reg-password2-error']);
   _setAuthError('register-error', '');
+  _setAuthOk('reg-resend-ok', '');
+  $('reg-resend-btn').hidden = true;
   let bad = false;
   if (!_EMAIL_RE.test(email)) { _setFieldError('reg-email-error', 'Podaj poprawny adres e-mail.'); bad = true; }
   const pwIssue = _passwordIssue(password);
@@ -1567,12 +1590,20 @@ $('register-form').addEventListener('submit', async e => {
       body: JSON.stringify({ email, password }),
     });
     if (r.ok) {
-      let data = null;
-      try { data = await r.json(); } catch { /* body nie-JSON → rola 'user' */ }
-      _enterUserSession(data && data.role);
+      // PUL-86: konto powstało, ale sesji nie ma — pokaż "sprawdź skrzynkę".
+      // Higiena haseł: _enterUserSession czyściło inputy, ta ścieżka już go
+      // nie woła, więc czyścimy tutaj.
+      _lastVerifyEmail = email;
+      ['reg-password', 'reg-password2'].forEach(id => { $(id).value = ''; });
+      $('register-form').hidden = true;
+      $('register-confirmation').hidden = false;
+      btn.disabled = false;
       return;
     }
     await _renderAuthError(r, 'reg', 'register-error');
+    // 409 = konto istnieje; jeśli to niezweryfikowana rejestracja bez maila,
+    // resend jest jedyną drogą naprzód — pokaż ją przy komunikacie błędu.
+    if (r.status === 409) $('reg-resend-btn').hidden = false;
   } catch {
     _setAuthError('register-error', 'Błąd połączenia, spróbuj ponownie.');
   }
@@ -1737,6 +1768,11 @@ function _showAuthTab(which) {
   // widok zawsze pokazuje formularz; stan potwierdzenia włącza dopiero submit.
   $('reset-form').hidden = which !== 'reset';
   $('reset-confirmation').hidden = true;
+  // PUL-86: wejście w widok zawsze pokazuje formularz rejestracji; stan
+  // potwierdzenia i warunkowe przyciski resend włącza dopiero submit.
+  $('register-confirmation').hidden = true;
+  $('login-resend-btn').hidden = true;
+  $('reg-resend-btn').hidden = true;
 }
 $('auth-tab-login').addEventListener('click', () => { _showAuthTab('login'); history.replaceState(null, '', '#/logowanie'); });
 $('auth-tab-register').addEventListener('click', () => { _showAuthTab('register'); history.replaceState(null, '', '#/rejestracja'); });
@@ -1808,6 +1844,58 @@ $('reset-form').addEventListener('submit', async e => {
 });
 $('reset-resend-btn').addEventListener('click', async () => {
   await _submitPasswordReset($('reset-resend-btn'), _lastResetEmail, null, 'reset-resend-error');
+});
+
+// ── PUL-86: weryfikacja e-mail — ponowna wysyłka linku ─────────────────
+let _lastVerifyEmail = '';
+
+function _setAuthOk(id, msg) {
+  const el = $(id);
+  el.textContent = msg || '';
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// Jeden helper dla trzech miejsc: ekran po rejestracji, stan 403 loginu,
+// hint przy 409 rejestracji. Odpowiedź 204 jest identyczna dla każdego konta
+// (anty-enumeracja) — komunikat sukcesu też musi być warunkowy w treści.
+async function _submitResendVerification(btn, email, errBoxId, okBoxId) {
+  if (btn.disabled) return;
+  _setAuthError(errBoxId, '');
+  _setAuthOk(okBoxId, '');
+  if (!_EMAIL_RE.test(email)) { _setAuthError(errBoxId, 'Podaj poprawny adres e-mail.'); return; }
+  // Synchroniczna blokada przycisku PRZED fetchem (lessons.md — guard przed
+  // podwójnym submitem nie może żyć w asynchronicznym ciele po żądaniu).
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (r.status === 204) {
+      // Firebase throttluje sendOobCode per adres — szybki resend po
+      // rejestracji może cicho nie dojść, stąd podpowiedź o odczekaniu.
+      _setAuthOk(okBoxId, 'Jeśli konto wymaga potwierdzenia, wysłaliśmy nowy link. Gdy mail nie dochodzi, odczekaj kilka minut i sprawdź folder spam.');
+      btn.disabled = false;
+      return;
+    }
+    if (r.status === 429) _setAuthError(errBoxId, 'Zbyt wiele prób — spróbuj ponownie za chwilę.');
+    else _setAuthError(errBoxId, 'Nie udało się wysłać linku, spróbuj ponownie.');
+  } catch {
+    _setAuthError(errBoxId, 'Błąd połączenia, spróbuj ponownie.');
+  }
+  btn.disabled = false;
+}
+
+$('register-resend-btn').addEventListener('click', async () => {
+  await _submitResendVerification($('register-resend-btn'), _lastVerifyEmail, 'register-resend-error', 'register-resend-ok');
+});
+$('register-confirm-login').addEventListener('click', () => { location.hash = '#/logowanie'; });
+$('login-resend-btn').addEventListener('click', async () => {
+  await _submitResendVerification($('login-resend-btn'), $('login-email').value.trim(), 'email-login-error', 'login-resend-ok');
+});
+$('reg-resend-btn').addEventListener('click', async () => {
+  await _submitResendVerification($('reg-resend-btn'), $('reg-email').value.trim(), 'register-error', 'reg-resend-ok');
 });
 $('auth-back').addEventListener('click', () => {
   history.replaceState(null, '', location.pathname + location.search);
@@ -1886,8 +1974,11 @@ function showLogin() {
   $('register-btn').disabled = false;
   $('reset-btn').disabled = false;
   $('reset-resend-btn').disabled = false;
+  $('register-resend-btn').disabled = false;
+  $('login-resend-btn').hidden = true;
+  $('reg-resend-btn').hidden = true;
   ['login-password', 'reg-password', 'reg-password2'].forEach(id => { $(id).value = ''; });
-  document.querySelectorAll('.field-error, .auth-error').forEach(el => {
+  document.querySelectorAll('.field-error, .auth-error, .auth-ok').forEach(el => {
     el.textContent = '';
     el.style.display = 'none';
   });
