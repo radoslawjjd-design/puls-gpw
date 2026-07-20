@@ -476,23 +476,23 @@ verification-mail template is already PL (set during PUL-85) — no console work
 
 #### Automated
 
-- [x] 3.1 Full suite green: `uv run pytest --tb=short`
-- [x] 3.2 Lint passes: `uv run ruff check .`
+- [x] 3.1 Full suite green: `uv run pytest --tb=short` — cacf89b
+- [x] 3.2 Lint passes: `uv run ruff check .` — cacf89b
 
 #### Manual
 
-- [x] 3.3 Browser walkthrough: register confirmation, 403 state + resend, post-click login to dashboard
-- [x] 3.4 Resend button UX (in-flight disable, 429 copy)
+- [x] 3.3 Browser walkthrough: register confirmation, 403 state + resend, post-click login to dashboard — cacf89b
+- [x] 3.4 Resend button UX (in-flight disable, 429 copy) — cacf89b
 
 ### Phase 4: Backfill script + rollout
 
 #### Automated
 
-- [ ] 4.1 Script lints: `uv run ruff check scripts/backfill_email_verified.py`
-- [ ] 4.2 `--help` / credless dry-run errors cleanly: `uv run python scripts/backfill_email_verified.py --help`
+- [x] 4.1 Script lints: `uv run ruff check scripts/backfill_email_verified.py`
+- [x] 4.2 `--help` / credless dry-run errors cleanly: `uv run python scripts/backfill_email_verified.py --help`
 
 #### Manual
 
-- [ ] 4.3 Human: prod dry-run lists expected accounts (incl. owner)
-- [ ] 4.4 Human: `--apply` run; re-run reports 0 remaining
+- [x] 4.3 Human: prod dry-run lists expected accounts (incl. owner)
+- [x] 4.4 Human: `--apply` run; re-run reports 0 remaining (no-op: dry-run showed 0 to update — all 4 prod accounts already verified)
 - [ ] 4.5 Post-deploy: owner login OK; new registration gated until link clicked

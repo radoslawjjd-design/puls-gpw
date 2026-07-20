@@ -37,6 +37,19 @@ post-check-shaped responses). Firebase gotchas: [[project-firebase-auth-gotchas]
 
 Human steps: Firebase console — verification template already PL (set during PUL-85).
 
+## Rollout (kolejność KRYTYCZNA — backfill przed deployem)
+
+1. PR z fazami 1-4 gotowy i zielony (`ai-code-review/verdict`).
+2. Human, na prodzie (env z `FIREBASE_SERVICE_ACCOUNT_JSON`):
+   `uv run python scripts/backfill_email_verified.py` (dry-run) — lista powinna
+   objąć wszystkich obecnych użytkowników, w tym ownera; potem `--apply`;
+   re-run raportuje 0 do aktualizacji.
+3. Merge do master → CI deployuje (nigdy ręczny `gcloud run deploy`).
+4. Post-deploy: owner loguje się na prodzie (brak lockoutu); świeża rejestracja
+   nie może się zalogować przed kliknięciem linku, po kliknięciu może.
+   Konta zarejestrowane w oknie między `--apply` a deployem są auto-zaufane
+   (zaakceptowane; skrypt idempotentny — w razie wątpliwości ponowić).
+
 Success criteria (from ticket): new registration cannot log in before clicking the
 link; after clicking, login works; resend rate-limited + enumeration-safe; existing
 verified accounts unaffected (owner admin keeps working). NOTE: existing PROD
