@@ -452,14 +452,14 @@ verification-mail template is already PL (set during PUL-85) — no console work
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_auth_api.py --tb=short`
-- [x] 1.2 Lint passes: `uv run ruff check .`
-- [x] 1.3 Full suite green or E2E scoped out pending Phase 3: `uv run pytest --ignore=tests/e2e --tb=short`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_auth_api.py --tb=short` — 3f37f33
+- [x] 1.2 Lint passes: `uv run ruff check .` — 3f37f33
+- [x] 1.3 Full suite green or E2E scoped out pending Phase 3: `uv run pytest --ignore=tests/e2e --tb=short` — 3f37f33
 
 #### Manual
 
-- [ ] 1.4 Real-Firebase register → branded mail → link verifies; SDK exception behavior confirmed
-- [ ] 1.5 Continue lands on `#/logowanie` (fragment survives) — else fall back to `url=origin`
+- [x] 1.4 Real-Firebase register → branded mail → link verifies; SDK exception behavior confirmed — 3f37f33
+- [x] 1.5 Continue lands on `#/logowanie` (fragment survives) — else fall back to `url=origin` — 3f37f33
 
 ### Phase 2: Backend — login gate + resend-verification endpoint
 

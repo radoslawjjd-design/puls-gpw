@@ -273,7 +273,7 @@ def send_verification_email(to_email: str, verify_link: str, origin: str) -> Non
     """PUL-86: Faro-branded e-mail-verification message (Polish) via own SMTP.
 
     Raises on SMTP failure — the caller runs in a background task and maps the
-    failure to a silent owner alert. Never called for unknown accounts.
+    failure to a silent owner alert; the resend endpoint is the recovery path.
     """
     _send(
         "Faro — potwierdź adres e-mail",

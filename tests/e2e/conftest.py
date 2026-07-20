@@ -503,6 +503,14 @@ def live_server_url():
             return_value="https://puls-gpw.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=e2e-fake",
         ),
         patch("src.auth.send_password_reset_email"),
+        # PUL-86: rejestracja odpala w tle generate_email_verification_link +
+        # branded mail — bez tych patchy realny send_alert może wysłać
+        # fałszywy alert SMTP do ownera przy każdym e2e rejestracji.
+        patch(
+            "src.auth.firebase_auth.generate_email_verification_link",
+            return_value="https://puls-gpw.firebaseapp.com/__/auth/action?mode=verifyEmail&oobCode=e2e-fake",
+        ),
+        patch("src.auth.send_verification_email"),
     ]
 
     with ExitStack() as stack:
