@@ -114,6 +114,10 @@ timing signal).
 **continueUrl.** `ActionCodeSettings(url=f"{origin}/#/logowanie")` — after clicking the
 verification link the Firebase action page's "Continue" lands the user on the login form.
 `origin` is already `_ORIGIN_RE`-validated; the appended fragment is a literal.
+UNVERIFIED ASSUMPTION: Firebase validates/rewrites continueUrl and may drop URL fragments
+(PUL-85 shipped with bare `origin`). Phase 1 manual verification must explicitly confirm
+the Continue button lands on `#/logowanie`; if the fragment is stripped, fall back to
+`url=origin` (proven on prod) — degraded-but-fine UX, user clicks "Zaloguj" from landing.
 
 ---
 
@@ -161,7 +165,12 @@ surfaces to the requester. Response contract consumed by Phase 3: 200 JSON
 
 **File**: `tests/test_auth_api.py`
 
-**Intent**: Update existing register tests (they assert the session cookie today) and add:
+**Intent**: Update existing register tests (they assert the session cookie today:
+`test_register_happy_path_sets_cookie_and_inserts_user` `:55`,
+`test_register_bq_failure_is_logged_not_blocking` `:98`). The `_register` helper (`:452-458`)
+currently supplies the session for `test_me_after_register_returns_identity_from_jwt_only`
+(`:470`) and `test_logout_returns_204_and_clears_cookie` (`:481`) — switch both to a
+login-based session. Then add:
 successful register → 200, no `session` cookie, background task generated link with
 `url == "http://testserver/#/logowanie"` and called `send_verification_email`; link-gen or
 SMTP failure → still 200 + `send_alert` called; crafted Host → 503 and `create_user` NOT
@@ -176,14 +185,16 @@ called; 409 path unchanged.
 - Unit tests pass: `uv run pytest tests/test_auth_api.py --tb=short`
 - Lint passes: `uv run ruff check .`
 - Full suite still green (E2E register flows updated later in Phase 3 may be temporarily
-  red — acceptable only if Phase 3 lands in the same PR; run `uv run pytest tests -k "not e2e"`
-  to scope if needed)
+  red — acceptable only if Phase 3 lands in the same PR; run
+  `uv run pytest --ignore=tests/e2e --tb=short` to scope if needed)
 
 #### Manual Verification:
 
 - On real Firebase (dev creds): register a throwaway address → branded Faro mail arrives,
   link verifies the account; confirm `generate_email_verification_link` exception behavior
   for edge cases matches assumptions (memory: verify SDK exceptions on real Firebase, not mocks)
+- Confirm the action page's "Continue" lands on `#/logowanie` (fragment survives) — if
+  stripped, switch `ActionCodeSettings` to bare `url=origin` (PUL-85 fallback)
 
 ---
 
@@ -270,7 +281,9 @@ stores `_lastVerifyEmail`, hides `#register-form`, shows the confirmation. New s
 `_submitResendVerification(btn, email, authErrId)` mirroring `_submitPasswordReset`
 (`:1769-1801`) but POSTing `/api/auth/resend-verification` (synchronous
 `btn.disabled = true` guard; 204 → confirmation copy; 429 → "Zbyt wiele prób…").
-`_showAuthTab` resets the new block hidden like it does `#reset-confirmation`.
+`_showAuthTab` resets the new block hidden like it does `#reset-confirmation`. When showing
+the confirmation, clear `#reg-password`/`#reg-password2` — today `_enterUserSession`
+(`:1501`) does that wipe, and the new path no longer calls it.
 
 **Contract**: Every resend surface (this block, Phase 3.2, 3.3) calls the one helper.
 
@@ -299,12 +312,21 @@ reveal the same resend link/button wired to the `#reg-email` value — exit path
 **File**: `tests/e2e/conftest.py`
 
 **Intent**: Extend the live-server patch stack (`:485-506`) with everything the new code
-paths touch: `firebase_auth.get_user` (login gate — default mock returns
-`email_verified=True` so all existing login-based E2E keep passing),
+paths touch: `firebase_auth.get_user` (login gate),
 `firebase_auth.generate_email_verification_link` (fake oobCode URL like the reset one),
-`send_verification_email`. Audit existing E2E that register and expect the dashboard —
-register no longer logs in, those flows must assert the confirmation screen or switch to
-login (conftest lesson: mock ALL `src.auth` functions the live server can hit).
+`send_verification_email` (conftest lesson: mock ALL `src.auth` functions the live server
+can hit).
+
+**Contract**: The `get_user` patch must default to verified so ALL existing login-based E2E
+(they authenticate via `e2e_login_email` → fake `verify_password_rest`,
+`tests/e2e/conftest.py:44-63`) keep passing:
+`patch("src.auth.firebase_auth.get_user", side_effect=lambda uid: SimpleNamespace(uid=uid, email_verified=True))`
+— explicit `SimpleNamespace` like `_fake_firebase_create_user` (`:66-67`), NOT a bare
+MagicMock (truthy `email_verified` would pass accidentally). E2E audit result (plan-review
+verified): exactly ONE existing test breaks by design —
+`test_register_lands_in_dashboard_without_relogin` (`tests/e2e/test_landing_auth.py:38`) —
+rewrite it as the inverted contract: register → confirmation screen, NO dashboard. All
+other register-touching E2E either don't submit or fail client-side before the API.
 
 #### 5. E2E tests
 
@@ -432,11 +454,12 @@ verification-mail template is already PL (set during PUL-85) — no console work
 
 - [ ] 1.1 Unit tests pass: `uv run pytest tests/test_auth_api.py --tb=short`
 - [ ] 1.2 Lint passes: `uv run ruff check .`
-- [ ] 1.3 Full suite green or E2E scoped out pending Phase 3: `uv run pytest tests -k "not e2e"`
+- [ ] 1.3 Full suite green or E2E scoped out pending Phase 3: `uv run pytest --ignore=tests/e2e --tb=short`
 
 #### Manual
 
 - [ ] 1.4 Real-Firebase register → branded mail → link verifies; SDK exception behavior confirmed
+- [ ] 1.5 Continue lands on `#/logowanie` (fragment survives) — else fall back to `url=origin`
 
 ### Phase 2: Backend — login gate + resend-verification endpoint
 
@@ -470,5 +493,6 @@ verification-mail template is already PL (set during PUL-85) — no console work
 
 #### Manual
 
-- [ ] 4.3 Human: prod dry-run lists expected accounts; `--apply`; re-run reports 0
-- [ ] 4.4 Post-deploy: owner login OK; new registration gated until link clicked
+- [ ] 4.3 Human: prod dry-run lists expected accounts (incl. owner)
+- [ ] 4.4 Human: `--apply` run; re-run reports 0 remaining
+- [ ] 4.5 Post-deploy: owner login OK; new registration gated until link clicked
