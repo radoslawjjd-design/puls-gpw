@@ -1,9 +1,9 @@
 ---
 change_id: email-verification-registration
 title: E-mail verification at registration — gate login on emailVerified
-status: new
+status: planned
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-07-20
 archived_at: null
 tracking:
   linear: PUL-86
