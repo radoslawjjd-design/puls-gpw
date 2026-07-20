@@ -1,7 +1,7 @@
 ---
 change_id: email-verification-registration
 title: E-mail verification at registration — gate login on emailVerified
-status: implemented
+status: impl_reviewed
 created: 2026-07-19
 updated: 2026-07-20
 archived_at: null

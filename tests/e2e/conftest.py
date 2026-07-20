@@ -511,7 +511,15 @@ def live_server_url():
         # PUL-85: reset hasła nie może dotykać realnego Firebase ani SMTP —
         # fake user-check + fake link + no-op mailer; kontrakt 204 identyczny
         # dla każdego e-maila.
-        patch("src.auth.firebase_auth.get_user_by_email"),
+        # Jawny SimpleNamespace jak _fake_firebase_get_user (impl-review F1):
+        # goły MagicMock miał truthy email_verified, więc żaden e2e resend nie
+        # ćwiczył gałęzi background-send; marker "unverified" spina oba fake'i.
+        patch(
+            "src.auth.firebase_auth.get_user_by_email",
+            side_effect=lambda email: SimpleNamespace(
+                uid=_e2e_uid(email), email_verified="unverified" not in email
+            ),
+        ),
         patch(
             "src.auth.firebase_auth.generate_password_reset_link",
             return_value="https://puls-gpw.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=e2e-fake",
