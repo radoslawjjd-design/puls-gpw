@@ -1,10 +1,10 @@
 ---
 change_id: email-verification-registration
 title: E-mail verification at registration — gate login on emailVerified
-status: impl_reviewed
+status: archived
 created: 2026-07-19
 updated: 2026-07-20
-archived_at: null
+archived_at: 2026-07-20T12:44:17Z
 tracking:
   linear: PUL-86
   github: 154
