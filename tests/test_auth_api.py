@@ -33,10 +33,12 @@ def _reset_rate_limits():
     auth_module._register_rate_limiter._hits.clear()
     auth_module._login_rate_limiter._hits.clear()
     auth_module._reset_rate_limiter._hits.clear()
+    auth_module._resend_verification_rate_limiter._hits.clear()
     yield
     auth_module._register_rate_limiter._hits.clear()
     auth_module._login_rate_limiter._hits.clear()
     auth_module._reset_rate_limiter._hits.clear()
+    auth_module._resend_verification_rate_limiter._hits.clear()
 
 
 @pytest.fixture
@@ -44,10 +46,21 @@ def client(_env):
     return TestClient(create_app())
 
 
-def _mock_firebase_user(uid="fb-uid-1"):
+def _mock_firebase_user(uid="fb-uid-1", email_verified=True):
+    # email_verified is set explicitly — a bare MagicMock attribute is truthy,
+    # which would silently pass the login gate.
     user = MagicMock()
     user.uid = uid
+    user.email_verified = email_verified
     return user
+
+
+def _patch_get_user(email_verified=True):
+    """Patch the login gate's Admin-SDK lookup (PUL-86)."""
+    return patch(
+        "src.auth.firebase_auth.get_user",
+        return_value=_mock_firebase_user(email_verified=email_verified),
+    )
 
 
 # ── POST /api/auth/register (PUL-86: no session — verification mail instead) ──
@@ -164,6 +177,47 @@ def test_register_smtp_failure_is_silent_200_with_alert(client):
     alert.assert_called_once()
 
 
+def test_register_firebase_oob_throttle_is_silent_200_without_alert(client):
+    """TOO_MANY_ATTEMPTS_TRY_LATER on sendOobCode is a user-driven, self-resolving
+    throttle (seen live: register + resend within seconds) — log only, NO owner
+    alert; alerts must keep meaning 'mail infra is broken'."""
+    from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
+
+    with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.create_user", return_value=_mock_firebase_user()), \
+         patch("src.auth.insert_user"), \
+         patch(
+             "src.auth.firebase_auth.generate_email_verification_link",
+             side_effect=firebase_auth.TooManyAttemptsTryLaterError("throttled", None, None),
+         ), \
+         patch("src.auth.send_verification_email") as send_mail, \
+         patch("src.auth.send_alert") as alert:
+        r = client.post("/api/auth/register", json={"email": "user@example.com", "password": "haslo123"})
+
+    assert r.status_code == 200
+    send_mail.assert_not_called()
+    alert.assert_not_called()
+
+
+def test_reset_password_firebase_oob_throttle_is_silent_204_without_alert(client):
+    """The reset flow shares the sendOobCode throttle exposure — same handling."""
+    from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
+
+    with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.get_user_by_email"), \
+         patch(
+             "src.auth.firebase_auth.generate_password_reset_link",
+             side_effect=firebase_auth.TooManyAttemptsTryLaterError("throttled", None, None),
+         ), \
+         patch("src.auth.send_password_reset_email") as send_mail, \
+         patch("src.auth.send_alert") as alert:
+        r = client.post("/api/auth/reset-password", json={"email": "user@example.com"})
+
+    assert r.status_code == 204
+    send_mail.assert_not_called()
+    alert.assert_not_called()
+
+
 def test_register_crafted_host_header_is_rejected_before_account_creation(client):
     """The origin lands in HTML e-mail attributes — a crafted Host must 503
     BEFORE any Firebase account is created (same strict shape as reset)."""
@@ -203,7 +257,8 @@ def test_login_happy_path_sets_cookie_and_upserts_login(client):
         respx.post(_SIGNIN_URL).mock(
             return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
         )
-        with patch("src.auth.upsert_user_login") as upsert, \
+        with patch("src.auth._get_firebase_app"), _patch_get_user(), \
+             patch("src.auth.upsert_user_login") as upsert, \
              patch("src.auth.get_user_role", return_value="user") as get_role:
             r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})
 
@@ -281,7 +336,8 @@ def test_login_bq_upsert_failure_is_logged_not_blocking(client):
         respx.post(_SIGNIN_URL).mock(
             return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
         )
-        with patch("src.auth.upsert_user_login", side_effect=BigQueryError("boom")), \
+        with patch("src.auth._get_firebase_app"), _patch_get_user(), \
+             patch("src.auth.upsert_user_login", side_effect=BigQueryError("boom")), \
              patch("src.auth.get_user_role", return_value="user"):
             r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})
 
@@ -299,7 +355,8 @@ def test_login_admin_role_lands_in_body_cookie_and_auth_role(client):
         respx.post(_SIGNIN_URL).mock(
             return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
         )
-        with patch("src.auth.upsert_user_login"), \
+        with patch("src.auth._get_firebase_app"), _patch_get_user(), \
+             patch("src.auth.upsert_user_login"), \
              patch("src.auth.get_user_role", return_value="admin"):
             r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})
 
@@ -320,12 +377,55 @@ def test_login_get_user_role_failure_defaults_to_user(client):
         respx.post(_SIGNIN_URL).mock(
             return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
         )
-        with patch("src.auth.upsert_user_login"), \
+        with patch("src.auth._get_firebase_app"), _patch_get_user(), \
+             patch("src.auth.upsert_user_login"), \
              patch("src.auth.get_user_role", side_effect=BigQueryError("boom")):
             r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})
 
     assert r.status_code == 200
     assert r.json()["role"] == "user"
+
+
+def test_login_unverified_email_returns_403_without_bq_side_effects(client):
+    """PUL-86: correct password + emailVerified=false → 403 with the distinct
+    message, and NO login row / role read — the gate runs before BQ."""
+    import respx
+    from httpx import Response as HttpxResponse
+
+    with respx.mock:
+        respx.post(_SIGNIN_URL).mock(
+            return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
+        )
+        with patch("src.auth._get_firebase_app"), \
+             _patch_get_user(email_verified=False), \
+             patch("src.auth.upsert_user_login") as upsert, \
+             patch("src.auth.get_user_role") as get_role:
+            r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})
+
+    assert r.status_code == 403
+    assert r.json()["detail"] == "Potwierdź adres e-mail, aby się zalogować"
+    assert "set-cookie" not in r.headers
+    upsert.assert_not_called()
+    get_role.assert_not_called()
+
+
+def test_login_get_user_lookup_failure_maps_to_503(client):
+    """A broken emailVerified lookup must fail closed as 503 — never a 500,
+    never an accidental pass through the gate."""
+    import respx
+    from httpx import Response as HttpxResponse
+
+    with respx.mock:
+        respx.post(_SIGNIN_URL).mock(
+            return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
+        )
+        with patch("src.auth._get_firebase_app"), \
+             patch("src.auth.firebase_auth.get_user", side_effect=RuntimeError("boom")), \
+             patch("src.auth.upsert_user_login") as upsert:
+            r = client.post("/api/auth/login", json={"email": "user@example.com", "password": "haslo123"})
+
+    assert r.status_code == 503
+    upsert.assert_not_called()
 
 
 def test_garbage_role_claim_degrades_to_user(client):
@@ -535,6 +635,142 @@ def test_reset_password_sixth_request_in_minute_returns_429_with_retry_after(cli
     assert gen_link.call_count == 5  # the throttled request never reached Firebase
 
 
+# ── POST /api/auth/resend-verification (PUL-86) ───────────────────────────────
+
+def test_resend_verification_unverified_email_returns_204_and_sends_mail(client):
+    with patch("src.auth._get_firebase_app"), \
+         patch(
+             "src.auth.firebase_auth.get_user_by_email",
+             return_value=_mock_firebase_user(email_verified=False),
+         ), \
+         patch(
+             "src.auth.firebase_auth.generate_email_verification_link",
+             return_value=_FAKE_VERIFY_LINK,
+         ) as gen_link, \
+         patch("src.auth.send_verification_email") as send_mail:
+        r = client.post("/api/auth/resend-verification", json={"email": "user@example.com"})
+
+    assert r.status_code == 204
+    assert r.content == b""
+    args, kwargs = gen_link.call_args
+    assert args[0] == "user@example.com"
+    assert kwargs["action_code_settings"].url == "http://testserver/#/logowanie"
+    send_mail.assert_called_once_with(
+        "user@example.com", _FAKE_VERIFY_LINK, "http://testserver"
+    )
+
+
+def test_resend_verification_unknown_email_returns_identical_204_without_mail(client):
+    """Unknown account → same empty 204, no link, no mail — no enumeration."""
+    from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
+
+    with patch("src.auth._get_firebase_app"), \
+         patch(
+             "src.auth.firebase_auth.get_user_by_email",
+             side_effect=firebase_auth.UserNotFoundError("no user"),
+         ), \
+         patch("src.auth.firebase_auth.generate_email_verification_link") as gen_link, \
+         patch("src.auth.send_verification_email") as send_mail:
+        r = client.post("/api/auth/resend-verification", json={"email": "ghost@example.com"})
+
+    assert r.status_code == 204
+    assert r.content == b""
+    gen_link.assert_not_called()
+    send_mail.assert_not_called()
+
+
+def test_resend_verification_already_verified_returns_identical_204_without_mail(client):
+    """Already-verified account → same empty 204, nothing sent — no signal,
+    no redundant mail (decision from planning)."""
+    with patch("src.auth._get_firebase_app"), \
+         patch(
+             "src.auth.firebase_auth.get_user_by_email",
+             return_value=_mock_firebase_user(email_verified=True),
+         ), \
+         patch("src.auth.firebase_auth.generate_email_verification_link") as gen_link, \
+         patch("src.auth.send_verification_email") as send_mail:
+        r = client.post("/api/auth/resend-verification", json={"email": "user@example.com"})
+
+    assert r.status_code == 204
+    assert r.content == b""
+    gen_link.assert_not_called()
+    send_mail.assert_not_called()
+
+
+def test_resend_verification_invalid_email_returns_422_without_calling_firebase(client):
+    with patch("src.auth.firebase_auth.get_user_by_email") as get_user_by_email:
+        r = client.post("/api/auth/resend-verification", json={"email": "not-an-email"})
+
+    assert r.status_code == 422
+    get_user_by_email.assert_not_called()
+
+
+def test_resend_verification_crafted_host_header_is_rejected_with_503(client):
+    with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.get_user_by_email") as get_user_by_email, \
+         patch("src.auth.send_verification_email") as send_mail:
+        r = client.post(
+            "/api/auth/resend-verification",
+            json={"email": "user@example.com"},
+            headers={"Host": 'evil"><script>alert(1)</script>'},
+        )
+
+    assert r.status_code == 503
+    get_user_by_email.assert_not_called()
+    send_mail.assert_not_called()
+
+
+def test_resend_verification_firebase_unavailable_maps_to_503(client):
+    from src.auth import AuthUnavailableError
+
+    with patch("src.auth._get_firebase_app", side_effect=AuthUnavailableError("no config")):
+        r = client.post("/api/auth/resend-verification", json={"email": "user@example.com"})
+
+    assert r.status_code == 503
+
+
+def test_resend_verification_smtp_failure_is_silent_204_with_alert(client):
+    """F1 discipline: post-existence-check failures never shape the response."""
+    with patch("src.auth._get_firebase_app"), \
+         patch(
+             "src.auth.firebase_auth.get_user_by_email",
+             return_value=_mock_firebase_user(email_verified=False),
+         ), \
+         patch(
+             "src.auth.firebase_auth.generate_email_verification_link",
+             return_value=_FAKE_VERIFY_LINK,
+         ), \
+         patch("src.auth.send_verification_email", side_effect=OSError("smtp down")), \
+         patch("src.auth.send_alert") as alert:
+        r = client.post("/api/auth/resend-verification", json={"email": "user@example.com"})
+
+    assert r.status_code == 204
+    assert r.content == b""
+    alert.assert_called_once()
+
+
+def test_resend_verification_sixth_request_in_minute_returns_429_with_retry_after(client):
+    with patch("src.auth._get_firebase_app"), \
+         patch(
+             "src.auth.firebase_auth.get_user_by_email",
+             return_value=_mock_firebase_user(email_verified=False),
+         ), \
+         patch(
+             "src.auth.firebase_auth.generate_email_verification_link",
+             return_value=_FAKE_VERIFY_LINK,
+         ) as gen_link, \
+         patch("src.auth.send_verification_email"):
+        for _ in range(5):
+            assert client.post(
+                "/api/auth/resend-verification", json={"email": "user@example.com"}
+            ).status_code == 204
+        r = client.post("/api/auth/resend-verification", json={"email": "user@example.com"})
+
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
+    assert gen_link.call_count == 5  # the throttled request never reached Firebase
+
+
 # ── POST /api/auth/logout + GET /api/auth/me ──────────────────────────────────
 
 def _login(client) -> None:
@@ -546,7 +782,8 @@ def _login(client) -> None:
         respx.post(_SIGNIN_URL).mock(
             return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
         )
-        with patch("src.auth.upsert_user_login"), \
+        with patch("src.auth._get_firebase_app"), _patch_get_user(), \
+             patch("src.auth.upsert_user_login"), \
              patch("src.auth.get_user_role", return_value="user"):
             assert client.post(
                 "/api/auth/login", json={"email": "user@example.com", "password": "haslo123"}

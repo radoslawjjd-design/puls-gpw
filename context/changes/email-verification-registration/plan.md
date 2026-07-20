@@ -465,12 +465,12 @@ verification-mail template is already PL (set during PUL-85) — no console work
 
 #### Automated
 
-- [ ] 2.1 Unit tests pass: `uv run pytest tests/test_auth_api.py --tb=short`
-- [ ] 2.2 Lint passes: `uv run ruff check .`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_auth_api.py --tb=short`
+- [x] 2.2 Lint passes: `uv run ruff check .`
 
 #### Manual
 
-- [ ] 2.3 Real-Firebase: unverified → 403; after click → login OK; verified resend sends nothing
+- [x] 2.3 Real-Firebase: unverified → 403; after click → login OK; verified resend sends nothing
 
 ### Phase 3: SPA states + E2E
 

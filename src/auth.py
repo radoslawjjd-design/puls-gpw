@@ -77,6 +77,10 @@ class ResetPasswordIn(BaseModel):
         return _normalized_email(v)
 
 
+class ResendVerificationIn(ResetPasswordIn):
+    """PUL-86: same e-mail-only shape and validation as the reset request."""
+
+
 def _jwt_secret() -> str:
     # Read at call time (not import) so unit/E2E monkeypatching works — see plan phase 3
     return os.environ.get("JWT_SECRET", "")
@@ -349,6 +353,7 @@ router = APIRouter(prefix="/api/auth")
 _register_rate_limiter = RateLimiter(5)
 _login_rate_limiter = RateLimiter(10)
 _reset_rate_limiter = RateLimiter(5)
+_resend_verification_rate_limiter = RateLimiter(5)
 
 
 async def _register_rate_dep(request: Request) -> None:
@@ -361,6 +366,10 @@ async def _login_rate_dep(request: Request) -> None:
 
 async def _reset_rate_dep(request: Request) -> None:
     _reset_rate_limiter.check(client_ip(request))
+
+
+async def _resend_verification_rate_dep(request: Request) -> None:
+    _resend_verification_rate_limiter.check(client_ip(request))
 
 
 # Strict origin shape: scheme + host[:port] built only from URL-safe host chars.
@@ -409,6 +418,11 @@ def _send_verification_email_background(email: str, origin: str) -> None:
             action_code_settings=firebase_auth.ActionCodeSettings(url=f"{origin}/#/logowanie"),
         )
         send_verification_email(email, link, origin)
+    except firebase_auth.TooManyAttemptsTryLaterError as exc:
+        # Firebase throttles sendOobCode per address (seen live in 2.3: register
+        # + resend within seconds). Self-resolving user-driven throttle — log,
+        # no owner alert; alerts must keep meaning "mail infra is broken".
+        logger.warning("register: verification link throttled by Firebase: %s", exc)
     except Exception as exc:
         logger.error("register: background verification link/mail failed: %s", exc)
         try:
@@ -465,6 +479,21 @@ def login(body: LoginIn, response: Response, _rl: None = Depends(_login_rate_dep
         logger.warning("login: auth unavailable: %s", exc)
         raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
 
+    # PUL-86: gate on emailVerified BEFORE any BQ side effects — a blocked
+    # login must not record a login row nor read the role. The 403 (login's
+    # only 403) is the SPA's distinct "unverified" signal.
+    try:
+        _get_firebase_app()
+        fb_user = firebase_auth.get_user(user_id)
+    except AuthUnavailableError as exc:
+        logger.warning("login: auth unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+    except Exception as exc:
+        logger.error("login: emailVerified lookup failed for %s: %s", user_id, exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+    if not fb_user.email_verified:
+        raise HTTPException(status_code=403, detail="Potwierdź adres e-mail, aby się zalogować")
+
     try:
         upsert_user_login(user_id, email)
     except BigQueryError as exc:
@@ -498,6 +527,10 @@ def _send_reset_email_background(email: str, origin: str) -> None:
         # PUL-85 phase 3: the e-mail is ours (Faro branding, Polish copy) —
         # Firebase only hosts the action page the link points at.
         send_password_reset_email(email, link, origin)
+    except firebase_auth.TooManyAttemptsTryLaterError as exc:
+        # Same per-address sendOobCode throttle as the verification flow —
+        # user-driven and self-resolving, not an infra failure.
+        logger.warning("reset-password: reset link throttled by Firebase: %s", exc)
     except Exception as exc:
         logger.error("reset-password: background link/mail failed: %s", exc)
         try:
@@ -535,6 +568,35 @@ def reset_password(
         raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
 
     background_tasks.add_task(_send_reset_email_background, body.email, origin)
+
+
+@router.post("/resend-verification", status_code=204)
+def resend_verification(
+    body: ResendVerificationIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    _rl: None = Depends(_resend_verification_rate_dep),
+) -> None:
+    # PUL-86, same contract as reset_password: identical empty 204 for unknown,
+    # unverified AND already-verified e-mails — no enumeration signal. The
+    # verified check is in-memory on the already-fetched record (no extra call),
+    # and all link/SMTP work runs after the response (F1 discipline).
+    try:
+        origin = _request_origin(request)
+        _get_firebase_app()
+        user = firebase_auth.get_user_by_email(body.email)
+    except firebase_auth.UserNotFoundError:
+        return
+    except AuthUnavailableError as exc:
+        logger.warning("resend-verification: auth unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+    except Exception as exc:
+        logger.error("resend-verification: existence check failed: %s", exc)
+        raise HTTPException(status_code=503, detail=_AUTH_UNAVAILABLE_DETAIL)
+
+    if user.email_verified:
+        return
+    background_tasks.add_task(_send_verification_email_background, body.email, origin)
 
 
 @router.post("/logout", status_code=204)
