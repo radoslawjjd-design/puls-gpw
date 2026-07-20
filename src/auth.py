@@ -24,7 +24,7 @@ from firebase_admin import credentials as firebase_credentials  # type: ignore[i
 from pydantic import BaseModel, field_validator
 
 from db.bigquery import BigQueryError, get_user_role, insert_user, upsert_user_login
-from src.notifier import send_alert, send_password_reset_email
+from src.notifier import send_alert, send_password_reset_email, send_verification_email
 
 logger = logging.getLogger(__name__)
 
@@ -394,11 +394,44 @@ def _session_response(
     return {"user_id": user_id, "email": email, "role": role}
 
 
-@router.post("/register")
-def register(body: RegisterIn, response: Response, _rl: None = Depends(_register_rate_dep)):
-    # sync (not async) on purpose: Firebase calls block up to 10s — FastAPI runs
-    # def endpoints in a threadpool, so a slow Firebase never freezes the event loop
+def _send_verification_email_background(email: str, origin: str) -> None:
+    """Link generation + branded verification mail, run AFTER the response went out.
+
+    Same F1 discipline as the reset flow: no link/SMTP work on the request path.
+    A failure here is silent for the requester (the account exists; the resend
+    endpoint is the recovery path) — the owner gets an alert.
+    """
     try:
+        link = firebase_auth.generate_email_verification_link(
+            email,
+            # Fragment lands the user on the login form after "Continue" —
+            # verify on real Firebase that it survives (plan 1.5); fallback: origin.
+            action_code_settings=firebase_auth.ActionCodeSettings(url=f"{origin}/#/logowanie"),
+        )
+        send_verification_email(email, link, origin)
+    except Exception as exc:
+        logger.error("register: background verification link/mail failed: %s", exc)
+        try:
+            send_alert(exc)
+        except Exception as alert_exc:
+            logger.error("register: owner alert failed: %s", alert_exc)
+
+
+@router.post("/register")
+def register(
+    body: RegisterIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    _rl: None = Depends(_register_rate_dep),
+):
+    # sync (not async) on purpose: Firebase calls block up to 10s — FastAPI runs
+    # def endpoints in a threadpool, so a slow Firebase never freezes the event loop.
+    # PUL-86: no session cookie here — the account stays unusable until the
+    # verification link is clicked; login gates on emailVerified.
+    try:
+        # Origin first: a crafted Host header must be rejected before any
+        # account is created (same strict shape as the reset flow).
+        origin = _request_origin(request)
         _get_firebase_app()
         user = firebase_auth.create_user(email=body.email, password=body.password)
     except firebase_auth.EmailAlreadyExistsError:
@@ -416,7 +449,8 @@ def register(body: RegisterIn, response: Response, _rl: None = Depends(_register
         # Not fatal — upsert_user_login self-heals the row on first login (Q6)
         logger.warning("register: insert_user failed for %s: %s", user.uid, exc)
 
-    return _session_response(response, user.uid, body.email)
+    background_tasks.add_task(_send_verification_email_background, body.email, origin)
+    return {"email": body.email, "verification_required": True}
 
 
 @router.post("/login")

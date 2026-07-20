@@ -224,6 +224,66 @@ def _password_reset_html(reset_link: str, origin: str) -> str:
 </html>"""
 
 
+def _verification_html(verify_link: str, origin: str) -> str:
+    # Same defense-in-depth as _password_reset_html: origin derives from request
+    # headers and the link from Firebase — escape both so no crafted value can
+    # break out of an HTML attribute (AI-sec finding, PR #159). quote=True covers ".
+    logo_url = _html_escape(f"{origin}/static/img/faro-mark.png", quote=True)
+    verify_link = _html_escape(verify_link, quote=True)
+    return f"""<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:20px;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<div style="max-width:520px;margin:0 auto;">
+
+<div style="background:#14304A;color:#ffffff;padding:18px 24px;border-radius:8px 8px 0 0;">
+  <span style="display:inline-block;background:#ffffff;border-radius:8px;padding:5px 7px;vertical-align:middle;"><img src="{logo_url}" alt="Faro" height="28" style="display:block;height:28px;"></span>
+  <span style="font-size:20px;font-weight:700;vertical-align:middle;margin-left:10px;">Faro</span>
+</div>
+
+<div style="background:#ffffff;padding:24px;">
+  <p style="font-size:15px;line-height:1.6;color:#111827;margin:0 0 12px;">Cześć,</p>
+  <p style="font-size:15px;line-height:1.6;color:#111827;margin:0 0 20px;">
+    Dziękujemy za założenie konta w Faro. Twoje konto jest nieaktywne, dopóki
+    nie potwierdzisz adresu e-mail. Kliknij poniższy przycisk, aby dokończyć
+    rejestrację:
+  </p>
+  <p style="text-align:center;margin:0 0 20px;">
+    <a href="{verify_link}" style="display:inline-block;background:#b8964f;color:#ffffff;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:700;text-decoration:none;">Potwierdź e-mail</a>
+  </p>
+  <p style="font-size:13px;line-height:1.6;color:#6b7280;margin:0 0 8px;">
+    Jeśli przycisk nie działa, skopiuj ten link do przeglądarki:<br>
+    <a href="{verify_link}" style="color:#8a6d23;word-break:break-all;">{verify_link}</a>
+  </p>
+  <p style="font-size:13px;line-height:1.6;color:#6b7280;margin:0;">
+    Jeśli to nie Ty zakładałeś(-aś) konto w Faro, zignoruj tę wiadomość —
+    konto pozostanie nieaktywne.
+  </p>
+</div>
+
+<div style="background:#f9fafb;border:1px solid #e5e7eb;border-top:none;padding:12px 18px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280;text-align:center;">
+  Faro — jasne treści komunikatów ESPI/EBI. Wiadomość wysłana automatycznie.
+</div>
+
+</div>
+</body>
+</html>"""
+
+
+def send_verification_email(to_email: str, verify_link: str, origin: str) -> None:
+    """PUL-86: Faro-branded e-mail-verification message (Polish) via own SMTP.
+
+    Raises on SMTP failure — the caller runs in a background task and maps the
+    failure to a silent owner alert. Never called for unknown accounts.
+    """
+    _send(
+        "Faro — potwierdź adres e-mail",
+        _verification_html(verify_link, origin),
+        html=True,
+        to=to_email,
+        from_name="Faro",
+    )
+
+
 def send_password_reset_email(to_email: str, reset_link: str, origin: str) -> None:
     """PUL-85: Faro-branded password-reset e-mail (Polish) sent via own SMTP.
 

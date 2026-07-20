@@ -452,9 +452,9 @@ verification-mail template is already PL (set during PUL-85) — no console work
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `uv run pytest tests/test_auth_api.py --tb=short`
-- [ ] 1.2 Lint passes: `uv run ruff check .`
-- [ ] 1.3 Full suite green or E2E scoped out pending Phase 3: `uv run pytest --ignore=tests/e2e --tb=short`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_auth_api.py --tb=short`
+- [x] 1.2 Lint passes: `uv run ruff check .`
+- [x] 1.3 Full suite green or E2E scoped out pending Phase 3: `uv run pytest --ignore=tests/e2e --tb=short`
 
 #### Manual
 

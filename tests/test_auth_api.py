@@ -50,21 +50,36 @@ def _mock_firebase_user(uid="fb-uid-1"):
     return user
 
 
-# ── POST /api/auth/register ───────────────────────────────────────────────────
+# ── POST /api/auth/register (PUL-86: no session — verification mail instead) ──
 
-def test_register_happy_path_sets_cookie_and_inserts_user(client):
+_FAKE_VERIFY_LINK = "https://puls-gpw.firebaseapp.com/__/auth/action?mode=verifyEmail&oobCode=fake"
+
+
+def test_register_happy_path_returns_pending_state_without_session(client):
+    """PUL-86: register creates the account and fires the branded verification
+    mail in the background — but issues NO session cookie; the continue URL
+    points at the login form."""
     with patch("src.auth._get_firebase_app"), \
          patch("src.auth.firebase_auth.create_user", return_value=_mock_firebase_user()) as create_user, \
-         patch("src.auth.insert_user") as insert_user:
+         patch("src.auth.insert_user") as insert_user, \
+         patch(
+             "src.auth.firebase_auth.generate_email_verification_link",
+             return_value=_FAKE_VERIFY_LINK,
+         ) as gen_link, \
+         patch("src.auth.send_verification_email") as send_mail:
         r = client.post("/api/auth/register", json={"email": "user@example.com", "password": "haslo123"})
 
     assert r.status_code == 200
-    assert r.json() == {"user_id": "fb-uid-1", "email": "user@example.com", "role": "user"}
-    cookie_header = r.headers["set-cookie"]
-    assert cookie_header.startswith("session=")
-    assert "HttpOnly" in cookie_header
+    assert r.json() == {"email": "user@example.com", "verification_required": True}
+    assert "set-cookie" not in r.headers
     create_user.assert_called_once_with(email="user@example.com", password="haslo123")
     insert_user.assert_called_once_with("fb-uid-1", "user@example.com")
+    args, kwargs = gen_link.call_args
+    assert args[0] == "user@example.com"
+    assert kwargs["action_code_settings"].url == "http://testserver/#/logowanie"
+    send_mail.assert_called_once_with(
+        "user@example.com", _FAKE_VERIFY_LINK, "http://testserver"
+    )
 
 
 @pytest.mark.parametrize(
@@ -101,10 +116,69 @@ def test_register_bq_failure_is_logged_not_blocking(client):
 
     with patch("src.auth._get_firebase_app"), \
          patch("src.auth.firebase_auth.create_user", return_value=_mock_firebase_user()), \
-         patch("src.auth.insert_user", side_effect=BigQueryError("boom")):
+         patch("src.auth.insert_user", side_effect=BigQueryError("boom")), \
+         patch(
+             "src.auth.firebase_auth.generate_email_verification_link",
+             return_value=_FAKE_VERIFY_LINK,
+         ), \
+         patch("src.auth.send_verification_email") as send_mail:
         r = client.post("/api/auth/register", json={"email": "user@example.com", "password": "haslo123"})
     assert r.status_code == 200
-    assert "session=" in r.headers.get("set-cookie", "")
+    assert r.json()["verification_required"] is True
+    send_mail.assert_called_once()
+
+
+def test_register_link_generation_failure_is_silent_200_with_alert(client):
+    """F1 discipline: the mail runs in the background — its failure must not
+    surface to the requester (resend is the recovery path); owner gets an alert."""
+    with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.create_user", return_value=_mock_firebase_user()), \
+         patch("src.auth.insert_user"), \
+         patch(
+             "src.auth.firebase_auth.generate_email_verification_link",
+             side_effect=RuntimeError("boom"),
+         ), \
+         patch("src.auth.send_verification_email") as send_mail, \
+         patch("src.auth.send_alert") as alert:
+        r = client.post("/api/auth/register", json={"email": "user@example.com", "password": "haslo123"})
+
+    assert r.status_code == 200
+    assert r.json()["verification_required"] is True
+    send_mail.assert_not_called()
+    alert.assert_called_once()
+
+
+def test_register_smtp_failure_is_silent_200_with_alert(client):
+    with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.create_user", return_value=_mock_firebase_user()), \
+         patch("src.auth.insert_user"), \
+         patch(
+             "src.auth.firebase_auth.generate_email_verification_link",
+             return_value=_FAKE_VERIFY_LINK,
+         ), \
+         patch("src.auth.send_verification_email", side_effect=OSError("smtp down")), \
+         patch("src.auth.send_alert") as alert:
+        r = client.post("/api/auth/register", json={"email": "user@example.com", "password": "haslo123"})
+
+    assert r.status_code == 200
+    alert.assert_called_once()
+
+
+def test_register_crafted_host_header_is_rejected_before_account_creation(client):
+    """The origin lands in HTML e-mail attributes — a crafted Host must 503
+    BEFORE any Firebase account is created (same strict shape as reset)."""
+    with patch("src.auth._get_firebase_app"), \
+         patch("src.auth.firebase_auth.create_user") as create_user, \
+         patch("src.auth.insert_user") as insert_user:
+        r = client.post(
+            "/api/auth/register",
+            json={"email": "user@example.com", "password": "haslo123"},
+            headers={"Host": 'evil"><script>alert(1)</script>'},
+        )
+
+    assert r.status_code == 503
+    create_user.assert_not_called()
+    insert_user.assert_not_called()
 
 
 def test_register_firebase_unavailable_returns_503(client):
@@ -427,6 +501,20 @@ def test_password_reset_html_escapes_attribute_breakout():
     assert "&quot;" in html
 
 
+def test_verification_html_escapes_attribute_breakout():
+    """Same defense-in-depth as the reset template — quotes neutralized in attributes."""
+    from src.notifier import _verification_html
+
+    html = _verification_html(
+        'https://x.pl/act?a=1&b=2"onmouseover="alert(1)',
+        'https://evil"><img src=x onerror=alert(1)>',
+    )
+    assert '"onmouseover=' not in html
+    assert 'evil"><img' not in html
+    assert "onerror=alert(1)" not in html.replace("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;", "")
+    assert "&quot;" in html
+
+
 def test_reset_password_sixth_request_in_minute_returns_429_with_retry_after(client):
     """The endpoint's own limiter (5/min) throttles before Firebase is reached."""
     with patch("src.auth._get_firebase_app"), \
@@ -449,13 +537,20 @@ def test_reset_password_sixth_request_in_minute_returns_429_with_retry_after(cli
 
 # ── POST /api/auth/logout + GET /api/auth/me ──────────────────────────────────
 
-def _register(client) -> None:
-    with patch("src.auth._get_firebase_app"), \
-         patch("src.auth.firebase_auth.create_user", return_value=_mock_firebase_user()), \
-         patch("src.auth.insert_user"):
-        assert client.post(
-            "/api/auth/register", json={"email": "user@example.com", "password": "haslo123"}
-        ).status_code == 200
+def _login(client) -> None:
+    """Obtain a session via login — register no longer issues one (PUL-86)."""
+    import respx
+    from httpx import Response as HttpxResponse
+
+    with respx.mock:
+        respx.post(_SIGNIN_URL).mock(
+            return_value=HttpxResponse(200, json={"localId": "fb-uid-1", "email": "user@example.com"})
+        )
+        with patch("src.auth.upsert_user_login"), \
+             patch("src.auth.get_user_role", return_value="user"):
+            assert client.post(
+                "/api/auth/login", json={"email": "user@example.com", "password": "haslo123"}
+            ).status_code == 200
 
 
 def test_me_without_cookie_returns_401(client):
@@ -467,9 +562,9 @@ def test_me_with_garbage_cookie_returns_401(client):
     assert client.get("/api/auth/me").status_code == 401
 
 
-def test_me_after_register_returns_identity_from_jwt_only(client):
+def test_me_after_login_returns_identity_from_jwt_only(client):
     """/me must answer from the JWT alone — no BQ call (requirement from the ticket)."""
-    _register(client)
+    _login(client)
     with patch("src.auth.upsert_user_login") as upsert, patch("src.auth.insert_user") as insert:
         r = client.get("/api/auth/me")
     assert r.status_code == 200
@@ -479,7 +574,7 @@ def test_me_after_register_returns_identity_from_jwt_only(client):
 
 
 def test_logout_returns_204_and_clears_cookie(client):
-    _register(client)
+    _login(client)
     r = client.post("/api/auth/logout")
     assert r.status_code == 204
     assert client.get("/api/auth/me").status_code == 401  # cookie jar honoured the deletion
@@ -488,7 +583,12 @@ def test_logout_returns_204_and_clears_cookie(client):
 def test_register_sixth_request_in_minute_returns_429_with_retry_after(client):
     with patch("src.auth._get_firebase_app"), \
          patch("src.auth.firebase_auth.create_user", return_value=_mock_firebase_user()), \
-         patch("src.auth.insert_user"):
+         patch("src.auth.insert_user"), \
+         patch(
+             "src.auth.firebase_auth.generate_email_verification_link",
+             return_value=_FAKE_VERIFY_LINK,
+         ), \
+         patch("src.auth.send_verification_email"):
         for _ in range(5):
             assert client.post(
                 "/api/auth/register", json={"email": "user@example.com", "password": "haslo123"}
