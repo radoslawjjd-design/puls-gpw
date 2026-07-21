@@ -294,9 +294,9 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 
 #### Automated
 
-- [x] 2.1 pytest passes incl. summary 403-for-user / 200-for-admin shape + normalization folding tests
-- [x] 2.2 E2E test_watchlist_sentiment.py stays green (conftest patches summarize_watchlist_sentiment; render preserves substrings)
-- [x] 2.3 Lint passes
+- [x] 2.1 pytest passes incl. summary 403-for-user / 200-for-admin shape + normalization folding tests — dd4f2bd
+- [x] 2.2 E2E test_watchlist_sentiment.py stays green (conftest patches summarize_watchlist_sentiment; render preserves substrings) — dd4f2bd
+- [x] 2.3 Lint passes — dd4f2bd
 
 #### Manual
 
@@ -309,9 +309,9 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 
 #### Automated
 
-- [ ] 3.1 pytest passes incl. drill-down 403-for-user, 422-invalid-bucket, bounded list
-- [ ] 3.2 Structural consistency assertion: both BQ fns embed the identical _SENTIMENT_BUCKET_SQL fragment
-- [ ] 3.3 Lint passes
+- [x] 3.1 pytest passes incl. drill-down 403-for-user, 422-invalid-bucket, bounded list
+- [x] 3.2 Structural consistency assertion: both BQ fns embed the identical _SENTIMENT_BUCKET_SQL fragment
+- [x] 3.3 Lint passes
 
 #### Manual
 

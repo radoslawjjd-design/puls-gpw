@@ -1805,6 +1805,66 @@ def summarize_watchlist_sentiment(
     }
 
 
+def list_watchlist_by_sentiment(
+    user_id: str,
+    bucket: str,
+    days: int = _WL_SENTIMENT_WINDOW_DAYS,
+    limit: int = _FETCH_SAFETY_CAP,
+) -> list[dict]:
+    """List approved watchlist announcements whose normalized sentiment equals
+    `bucket`, newest first, bounded (PUL-87 drill-down).
+
+    Embeds `_SENTIMENT_BUCKET_SQL` verbatim — the SAME constant the bar summary
+    uses — so the popup contents can never diverge from the bar counts. Same
+    watchlist INNER-JOIN + 7-day window + approved-only slice as
+    `summarize_watchlist_sentiment`; the day count is the interpolated constant
+    (BQ rejects a param in the INTERVAL slot), while bucket/user_id/limit are
+    bound. Column set mirrors `list_announcements_for_watchlist`. Sentiment/score
+    are admin-only — the API layer gates this behind admin. Raises BigQueryError
+    on query failure.
+    """
+    client = _get_client()
+    _t = time.time()
+    query = f"""
+        SELECT
+            a.company, a.ticker, a.event_type, a.structured_analysis,
+            a.published_at, a.analysis_score
+        FROM `{_table_ref(client)}` AS a
+        INNER JOIN (
+            SELECT ticker FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
+            WHERE user_id = @user_id LIMIT 200
+        ) AS w ON a.ticker = w.ticker
+        WHERE a.analysis_approved = TRUE
+          AND a.published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+          AND {_SENTIMENT_BUCKET_SQL} = @bucket
+        ORDER BY a.published_at DESC
+        LIMIT @limit
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("bucket", "STRING", bucket),
+            bigquery.ScalarQueryParameter("limit", "INT64", limit),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_watchlist_by_sentiment failed: {exc}") from exc
+    logger.debug("BQ list_watchlist_by_sentiment: %.0fms", (time.time() - _t) * 1000)
+    return [
+        {
+            "company": row.company,
+            "ticker": row.ticker,
+            "event_type": row.event_type,
+            "structured_analysis": row.structured_analysis,
+            "published_at": row.published_at,
+            "analysis_score": row.analysis_score,
+        }
+        for row in rows
+    ]
+
+
 def list_top_announcements_public(limit: int = 3) -> list[dict]:
     """Return the highest-score approved announcements for the public landing cards.
 

@@ -417,6 +417,18 @@ def _fake_summarize_watchlist_sentiment(user_id, days=7):
             "avg_score": 85, "days_with_data": 1, "total": 1}
 
 
+def _fake_list_watchlist_by_sentiment(user_id, bucket, days=7, limit=200):
+    """PUL-87 drill-down: mirror the fake summary — after the admin adds PKO, the
+    single pozytywny row shows in the pozytywny bucket only; every bucket is empty
+    beforehand. Shares the store with _fake_summarize_watchlist_sentiment so popup
+    contents match bar counts, exactly as the real functions guarantee by SQL."""
+    if "PKO" not in _watchlist_store.get(user_id, []):
+        return []
+    if bucket != "pozytywny":
+        return []
+    return [dict(_FAKE_WATCHLIST_ANNOUNCEMENT)]
+
+
 def _fake_list_x_posts_admin(
     page=1, page_size=20, window=None, x_publish_status=None,
     post_text=None, from_dt=None, to_dt=None,
@@ -478,6 +490,7 @@ def live_server_url():
         patch("src.api.list_watchlist_tickers", side_effect=_fake_list_watchlist_tickers),
         patch("src.api.list_announcements_for_watchlist", side_effect=_fake_list_announcements_for_watchlist),
         patch("src.api.summarize_watchlist_sentiment", side_effect=_fake_summarize_watchlist_sentiment),
+        patch("src.api.list_watchlist_by_sentiment", side_effect=_fake_list_watchlist_by_sentiment),
         patch("src.api.list_top_announcements_public", return_value=_FAKE_PUBLIC_TOP_ROWS),
         patch(
             "src.api.create_user_portfolio_positions_table_if_not_exists",

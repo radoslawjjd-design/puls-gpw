@@ -845,7 +845,10 @@
   #wl-sentiment-summary { display:none; flex-wrap:wrap; align-items:center; gap:1rem; background:#fff; border:1px solid var(--border); border-radius:var(--radius-md); padding:.7rem 1.1rem; margin-bottom:1rem; font-size:.88rem; box-shadow:var(--shadow-1); }
   #wl-sentiment-summary .wss-label { font-weight:600; color:var(--brand-dark); text-transform:uppercase; font-size:.72rem; letter-spacing:.06em; }
   .wss-item { display:inline-flex; align-items:center; gap:.4rem; font-variant-numeric:tabular-nums; }
+  .wss-item[data-bucket] { cursor:pointer; border-radius:var(--radius-sm); padding:.15rem .4rem; margin:-.15rem -.15rem; transition:background .12s; }
+  .wss-item[data-bucket]:hover { background:var(--brand-soft, rgba(0,0,0,.05)); }
   .wss-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .wss-truncated { font-size:.8rem; color:var(--text-muted); margin-top:.4rem; }
   /* Dark mode */
 html[data-theme="dark"] { --bg:#0f1720; --border:#243141; --fill:#1b2634; --text:#e6edf3; --text-muted:#94a5b8; --brand-tint:#1d2b3c; --gold-tint:#2c2618; --shadow-card:none; }
 html[data-theme="dark"] body { background: var(--bg); color: var(--text); }
@@ -2635,7 +2638,56 @@ async function fetchWlSentimentSummary() {
       + (s.avg_score != null ? '<span class="wss-item">Śr. score: <strong>' + s.avg_score + '</strong></span>' : '')
       + '<span class="wss-item" style="color:var(--text-muted)">(ogłoszenia: ' + s.total + ')</span>';
     box.style.display = 'flex';
+    // Drill-down (PUL-87): each bucket opens the matching announcements in the modal.
+    box.querySelectorAll('.wss-item[data-bucket]').forEach(el => {
+      el.setAttribute('role', 'button');
+      el.setAttribute('tabindex', '0');
+      el.addEventListener('click', () => openSentimentListModal(el.dataset.bucket));
+    });
   } catch (e) { box.style.display = 'none'; }
+}
+
+const _BUCKET_LABEL = { pozytywny: 'Pozytywny', neutralny: 'Neutralny', negatywny: 'Negatywny' };
+
+// Drill-down popup (PUL-87): list the watchlist announcements behind one bar bucket,
+// reusing the shared #modal-overlay + closeModal. Server owns the same normalization
+// as the summary, so this list matches the bar count exactly.
+async function openSentimentListModal(bucket) {
+  if (role !== 'admin') return;
+  $('modal-title').textContent = 'Sentyment: ' + (_BUCKET_LABEL[bucket] || bucket);
+  $('modal-meta').textContent = '';
+  $('modal-body').innerHTML = '<p>Ładowanie…</p>';
+  $('modal-overlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  try {
+    const r = await fetch('/announcements/my-wallet/sentiment/' + encodeURIComponent(bucket), {
+      headers: { 'X-API-Key': apiKey }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const items = data.items || [];
+    $('modal-meta').textContent = items.length + (items.length === 1 ? ' ogłoszenie' : ' ogłoszeń');
+    if (!items.length) {
+      $('modal-body').innerHTML = '<div class="modal-section"><p>Brak ogłoszeń w tym sentymencie.</p></div>';
+      return;
+    }
+    const fmt = d => { try { return new Date(d).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return ''; } };
+    let html = items.map(it => {
+      const a = it.structured_analysis || {};
+      const ticker = it.ticker ? ' ($' + esc(it.ticker) + ')' : '';
+      const meta = [fmt(it.published_at), it.event_type].filter(Boolean).map(esc).join(' · ');
+      let sec = '<div class="modal-section"><h4>' + esc(it.company || '—') + ticker + '</h4>';
+      if (meta) sec += '<p style="color:var(--text-muted);font-size:.82rem;margin:.1rem 0 .4rem">' + meta + '</p>';
+      if (a.summary_pl) sec += '<p>' + esc(a.summary_pl) + '</p>';
+      const badge = '<span class="sentiment-badge sentiment-' + esc(bucket) + '">' + esc(_BUCKET_LABEL[bucket] || bucket) + '</span>';
+      const score = (it.analysis_score != null) ? ' <span class="score">' + esc(String(Math.round(it.analysis_score))) + '</span>' : '';
+      return sec + '<p style="margin-top:.4rem">' + badge + score + '</p></div>';
+    }).join('');
+    if (data.truncated) html += '<div class="wss-truncated">Pokazano pierwsze ' + items.length + ' ogłoszeń.</div>';
+    $('modal-body').innerHTML = html;
+  } catch (e) {
+    $('modal-body').innerHTML = '<div class="modal-section"><p>Błąd ładowania listy.</p></div>';
+  }
 }
 
 // ── My Wallet: ticker list (add/remove) ───────────────────────────────────
