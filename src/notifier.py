@@ -293,6 +293,13 @@ def _pl_announcements_plural(n: int) -> str:
     return "nowych komunikatów"
 
 
+def _event_type_label(code: str | None) -> str:
+    """Humanize an event_type code for display (e.g. 'wyniki_finansowe' → 'Wyniki finansowe')."""
+    if not code:
+        return ""
+    return str(code).replace("_", " ").strip().capitalize()
+
+
 def _announcement_digest_html(items: list[dict], base_url: str) -> str:
     """Faro-branded digest listing a user's new watched-company announcements.
 
@@ -305,7 +312,7 @@ def _announcement_digest_html(items: list[dict], base_url: str) -> str:
         company = _html_escape(str(it.get("company") or it.get("ticker") or ""), quote=True)
         ticker = _html_escape(str(it.get("ticker") or ""), quote=True)
         title = _html_escape(str(it.get("title") or ""), quote=True)
-        event_type = _html_escape(str(it.get("event_type") or ""), quote=True)
+        event_type = _html_escape(_event_type_label(it.get("event_type")), quote=True)
         link = _html_escape(
             f"{base_url}/?view=announcements&ticker={it.get('ticker') or ''}", quote=True
         )

@@ -37,3 +37,15 @@ def test_announcement_digest_html_escapes_fields_and_links_to_faro():
     assert "&lt;script&gt;" in html
     assert "&amp;" in html  # "A & B" escaped
     assert "?view=announcements&amp;ticker=TOA" in html or "?view=announcements&ticker=TOA" in html
+
+
+def test_announcement_digest_humanizes_event_type():
+    """event_type codes render as friendly labels, not raw underscored codes."""
+    from src.notifier import _announcement_digest_html
+
+    html = _announcement_digest_html(
+        [{"company": "Toya SA", "ticker": "TOA", "title": "x", "event_type": "wyniki_finansowe"}],
+        "https://gpw.okiem.ai",
+    )
+    assert "Wyniki finansowe" in html
+    assert "wyniki_finansowe" not in html
