@@ -286,9 +286,9 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 
 #### Manual
 
-- [ ] 1.3 Admin sees populated Score column; row modal shows score/sentiment
-- [ ] 1.4 User sees original 5-column table, no score
-- [ ] 1.5 Skeleton + error states use correct column count per role
+- [x] 1.3 Admin sees populated Score column; row modal shows score/sentiment
+- [x] 1.4 User sees original 5-column table, no score
+- [x] 1.5 Skeleton + error states use correct column count per role
 
 ### Phase 2: Sentiment Summary Endpoint + Period Info
 
@@ -300,10 +300,10 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 
 #### Manual
 
-- [ ] 2.4 Bar counts match a hand-check; avg score + real period label render
-- [ ] 2.5 Only one sentiment data fetch fires (no duplicate 100-row fetch)
-- [ ] 2.6 User: no bar, no summary request (403 if forced)
-- [ ] 2.7 NULL/English-labelled watchlist announcement now counted, not dropped
+- [x] 2.4 Bar counts match a hand-check; avg score + real period label render
+- [x] 2.5 Only one sentiment data fetch fires (no duplicate 100-row fetch)
+- [x] 2.6 User: no bar, no summary request (403 if forced)
+- [x] 2.7 NULL/English-labelled watchlist announcement now counted, not dropped
 
 ### Phase 3: Sentiment Drill-Down Popup
 
@@ -316,16 +316,16 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 #### Manual
 
 - [x] 3.4 Each bucket click opens modal listing exactly the counted announcements
-- [ ] 3.5 Modal closes via ✕/backdrop/Escape without breaking the table
-- [ ] 3.6 User gets 403 on direct call; no clickable bucket for users
-- [ ] 3.7 >200-match bucket shows truncation note (or confirmed unreachable)
+- [x] 3.5 Modal closes via ✕/backdrop/Escape without breaking the table
+- [x] 3.6 User gets 403 on direct call; no clickable bucket for users
+- [x] 3.7 >200-match bucket shows truncation note (or confirmed unreachable)
 
 ### Phase 4: doLogout Cleanup (F1)
 
 #### Automated
 
-- [x] 4.1 pytest / existing logout coverage stays green
-- [x] 4.2 Lint passes
+- [x] 4.1 pytest / existing logout coverage stays green — 95f6ab8
+- [x] 4.2 Lint passes — 95f6ab8
 
 #### Manual
 
