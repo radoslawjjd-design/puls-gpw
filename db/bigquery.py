@@ -638,8 +638,8 @@ def delete_user_portfolio_position(user_id: str, portfolio_id: str, ticker: str)
     logger.debug("delete_user_portfolio_position: user_id=%s portfolio_id=%s ticker=%s", user_id, portfolio_id, ticker)
 
 
-_WL_PRICE_HISTORY_SESSIONS = 30  # trading sessions carried in price_history[]
-_WL_PRICE_HISTORY_SCAN_DAYS = 90  # scan floor — generous margin over 30 sessions given ~31% daily gaps
+_PRICE_HISTORY_SESSIONS = 30  # trading sessions carried in price_history[]
+_PRICE_HISTORY_SCAN_DAYS = 90  # scan floor — generous margin over 30 sessions given ~31% daily gaps
 
 
 def list_user_portfolio_positions(
@@ -667,12 +667,12 @@ def list_user_portfolio_positions(
         hist_raw AS (
           SELECT ticker, snapshot_date, kurs_zamkniecia, 0 AS src
           FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
-          WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL {_WL_PRICE_HISTORY_SCAN_DAYS} DAY)
+          WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL {_PRICE_HISTORY_SCAN_DAYS} DAY)
             AND kurs_zamkniecia IS NOT NULL
           UNION ALL
           SELECT ticker, snapshot_date, kurs_zamkniecia, 1 AS src
           FROM `{_table_ref(client, _ETF_QUOTES_TABLE_NAME)}`
-          WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL {_WL_PRICE_HISTORY_SCAN_DAYS} DAY)
+          WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL {_PRICE_HISTORY_SCAN_DAYS} DAY)
             AND kurs_zamkniecia IS NOT NULL
         ),
         hist_dedup AS (
@@ -688,7 +688,7 @@ def list_user_portfolio_positions(
         price_hist AS (
           SELECT ticker, ARRAY_AGG(kurs_zamkniecia ORDER BY snapshot_date ASC) AS price_history
           FROM hist_ranked
-          WHERE rn <= {_WL_PRICE_HISTORY_SESSIONS}
+          WHERE rn <= {_PRICE_HISTORY_SESSIONS}
           GROUP BY ticker
         )"""
         history_select = ",\n          ph.price_history AS price_history"
