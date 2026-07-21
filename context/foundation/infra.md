@@ -138,9 +138,12 @@ gcloud run jobs create puls-gpw-notifications \
   --project=puls-gpw \
   --service-account=puls-gpw-runner@puls-gpw.iam.gserviceaccount.com \
   --set-secrets="SMTP_HOST=smtp-host:latest,SMTP_PORT=smtp-port:latest,SMTP_USER=smtp-user:latest,SMTP_PASSWORD=smtp-password:latest,OWNER_EMAIL=owner-email:latest" \
-  --set-env-vars="GOOGLE_CLOUD_PROJECT=puls-gpw,BIGQUERY_DATASET=espi_ebi,APP_BASE_URL=https://gpw.okiem.ai" \
+  --set-env-vars="GOOGLE_CLOUD_PROJECT=puls-gpw,BIGQUERY_DATASET=espi_ebi,APP_BASE_URL=https://puls-gpw-api-5zlombicra-lm.a.run.app" \
   --cpu=1 --memory=1Gi \
   --task-timeout=300s
+
+# APP_BASE_URL = publiczny URL appki webowej (run.app), NIE domena nadawcy maili
+# (gpw.okiem.ai to tylko SMTP From). Link w mailu: {APP_BASE_URL}/?view=announcements&ticker=…
 
 # 2. Utwórz trigger Cloud Scheduler (co 5 min, całą dobę, czas warszawski)
 gcloud scheduler jobs create http puls-gpw-notifications-trigger \
