@@ -1,10 +1,10 @@
 ---
 change_id: email-notifications-settings
 title: Account settings page with email notifications opt-in
-status: impl_reviewed
+status: archived
 created: 2026-07-21
 updated: 2026-07-21
-archived_at: null
+archived_at: 2026-07-21T12:44:32Z
 tracking:
   linear: PUL-81
   github: 140
