@@ -271,13 +271,13 @@ Table self-provisions via the startup ensure/DDL hook (additive, cold-start-safe
 
 #### Automated
 
-- [ ] 2.1 Endpoint unit tests pass: `uv run pytest tests/test_api.py -q` (and/or `test_auth_api.py`)
-- [ ] 2.2 E2E session fixture still boots (no unpatched BQ): `uv run pytest tests/e2e -q`
-- [ ] 2.3 Full suite green: `uv run pytest --tb=short`
+- [x] 2.1 Endpoint unit tests pass: `uv run pytest tests/test_api.py -q` (and/or `test_auth_api.py`)
+- [x] 2.2 E2E session fixture still boots (no unpatched BQ): `uv run pytest tests/e2e -q`
+- [x] 2.3 Full suite green: `uv run pytest --tb=short`
 
 #### Manual
 
-- [ ] 2.4 GET returns default, POST toggles + persists against locally-run app with a valid session cookie
+- [x] 2.4 GET returns default, POST toggles + persists against locally-run app with a valid session cookie
 
 ### Phase 3: Frontend — settings view, menu, toggle
 

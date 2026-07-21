@@ -264,6 +264,28 @@ def _fake_list_watchlist_tickers(client_id):
     return list(_watchlist_store.get(client_id, []))
 
 
+# In-memory notification-settings store (PUL-81). Keyed by uid; unknown user
+# reads the opt-in default, mirroring get_notification_settings.
+_notification_store: dict[str, dict] = {}
+
+
+def _fake_get_notification_settings(user_id):
+    return _notification_store.get(
+        user_id, {"enabled": False, "email": None, "min_score": 0, "confirmed_at": None}
+    )
+
+
+def _fake_upsert_notification_settings(user_id, email, enabled, min_score=0):
+    prior = _notification_store.get(user_id, {})
+    _notification_store[user_id] = {
+        "enabled": enabled,
+        "email": email,
+        "min_score": min_score,
+        "confirmed_at": (prior.get("confirmed_at") or "2026-07-21T00:00:00+00:00")
+        if enabled else prior.get("confirmed_at"),
+    }
+
+
 _portfolio_positions_store: dict[str, list[dict]] = {}
 
 _FAKE_PORTFOLIO_ID = "test-portfolio-glowny-001"
@@ -533,6 +555,10 @@ def live_server_url():
         ),
         patch("src.api.create_users_table_if_not_exists"),
         patch("src.api.ensure_users_schema_current"),
+        patch("src.api.create_notification_subscriptions_table_if_not_exists"),
+        patch("src.api.ensure_notification_subscriptions_schema_current"),
+        patch("src.api.get_notification_settings", side_effect=_fake_get_notification_settings),
+        patch("src.api.upsert_notification_settings", side_effect=_fake_upsert_notification_settings),
         # Auth endpoints (PUL-71) — patched at the src.auth import site, not
         # src.api: insert_user/upsert_user_login are imported into src.auth,
         # and _get_firebase_app/verify_password_rest live there.

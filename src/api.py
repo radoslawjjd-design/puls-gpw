@@ -25,6 +25,10 @@ from db.bigquery import (
     create_user_portfolios_table_if_not_exists,
     create_users_table_if_not_exists,
     create_watchlist_table_if_not_exists,
+    create_notification_subscriptions_table_if_not_exists,
+    ensure_notification_subscriptions_schema_current,
+    get_notification_settings,
+    upsert_notification_settings,
     delete_announcement,
     delete_user_portfolio,
     delete_user_portfolio_position,
@@ -155,6 +159,15 @@ def _get_user_id(request: Request) -> str:
     return payload["user_id"]
 
 
+def _get_user_email(request: Request) -> str | None:
+    # Notification address is the verified account email from the JWT claim —
+    # never a client-supplied value. None when the (legacy) token lacks it.
+    payload = session_payload_from_request(request)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Valid session required")
+    return payload.get("email")
+
+
 def _parse_structured_analysis(raw: str | None) -> dict | None:
     if raw is None:
         return None
@@ -267,6 +280,11 @@ class PortfolioPositionIn(BaseModel):
     avg_buy_price: float
 
 
+class NotificationSettingsIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    enabled: bool
+
+
 class PortfolioPositionOut(BaseModel):
     model_config = ConfigDict(extra="ignore")
     ticker: str
@@ -307,6 +325,8 @@ def create_app() -> FastAPI:
         ensure_user_portfolios_schema_current()
         create_users_table_if_not_exists()
         ensure_users_schema_current()
+        create_notification_subscriptions_table_if_not_exists()
+        ensure_notification_subscriptions_schema_current()
 
     @app.get("/health")
     async def health():
@@ -477,6 +497,28 @@ def create_app() -> FastAPI:
             logger.error("BQ error in DELETE /watchlist/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
         _invalidate_wl_sentiment(user_id)
+
+    @app.get("/api/notifications/settings")
+    async def get_notifications_settings(user_id: str = Depends(_get_user_id)):
+        try:
+            return get_notification_settings(user_id)
+        except BigQueryError as exc:
+            logger.error("BQ error in GET /api/notifications/settings: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.post("/api/notifications/settings")
+    async def post_notifications_settings(
+        body: NotificationSettingsIn,
+        user_id: str = Depends(_get_user_id),
+        email: str | None = Depends(_get_user_email),
+    ):
+        # Address is the verified account email from the JWT — never the body.
+        try:
+            upsert_notification_settings(user_id, email, enabled=body.enabled)
+            return get_notification_settings(user_id)
+        except BigQueryError as exc:
+            logger.error("BQ error in POST /api/notifications/settings: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
 
     @app.get("/announcements/my-wallet")
     async def announcements_my_wallet(
