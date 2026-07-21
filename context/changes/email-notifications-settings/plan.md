@@ -260,12 +260,12 @@ Table self-provisions via the startup ensure/DDL hook (additive, cold-start-safe
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -q` (or new test module)
-- [x] 1.2 Full suite still green: `uv run pytest --tb=short`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -q` (or new test module) — 27437b9
+- [x] 1.2 Full suite still green: `uv run pytest --tb=short` — 27437b9
 
 #### Manual
 
-- [x] 1.3 `get_notification_settings` returns opt-in default (`enabled=false`) for unknown user without raising
+- [x] 1.3 `get_notification_settings` returns opt-in default (`enabled=false`) for unknown user without raising — 27437b9
 
 ### Phase 2: API endpoints
 

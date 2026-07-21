@@ -1502,3 +1502,23 @@ def test_upsert_notification_settings_raises_bigquery_error_on_failure():
     with patch("db.bigquery._get_client", return_value=client):
         with pytest.raises(BigQueryError, match="upsert_notification_settings failed"):
             upsert_notification_settings("uid", "a@b.pl", enabled=False, min_score=0)
+
+
+def test_create_notification_subscriptions_table_creates_on_not_found():
+    """create_notification_subscriptions_table_if_not_exists creates the table
+    when get_table raises NotFound."""
+    from google.cloud.exceptions import NotFound
+
+    from db.bigquery import create_notification_subscriptions_table_if_not_exists
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.side_effect = NotFound("missing")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_notification_subscriptions_table_if_not_exists()
+
+    assert client.create_table.called
+    created_table = client.create_table.call_args[0][0]
+    assert "notification_subscriptions" in str(created_table.reference) or \
+        "notification_subscriptions" in str(created_table)
