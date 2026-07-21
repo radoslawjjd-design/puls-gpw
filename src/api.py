@@ -47,9 +47,11 @@ from db.bigquery import (
     list_user_portfolio_positions,
     get_portfolio_calendar_data,
     list_user_portfolios,
+    list_watchlist_by_sentiment,
     list_watchlist_tickers,
     list_x_posts_admin,
     remove_watchlist_ticker,
+    summarize_watchlist_sentiment,
     upsert_user_portfolio_position,
 )
 from src.auth import refresh_session_if_stale, session_payload_from_request
@@ -94,6 +96,24 @@ def _perf_invalidate_portfolio(user_id: str, portfolio_id: str) -> None:
     prefix = f"calendar:{user_id}:{portfolio_id}:"
     for k in [k for k in _PERF_CACHE if k.startswith(prefix)]:
         _PERF_CACHE.pop(k, None)
+
+
+def _invalidate_wl_sentiment(user_id: str) -> None:
+    # PUL-87: the sentiment bar + drill-down are per-user caches; a watchlist
+    # add/remove changes what they aggregate, so drop them immediately (the bar
+    # is refetched right after a mutation and must reflect the new watchlist).
+    _PERF_CACHE.pop(f"wl-sentiment-sum:{user_id}", None)
+    prefix = f"wl-sentiment-list:{user_id}:"
+    for k in [k for k in _PERF_CACHE if k.startswith(prefix)]:
+        _PERF_CACHE.pop(k, None)
+
+
+# PUL-87 drill-down: the three normalized buckets the bar renders. An unknown path
+# segment is a client error (422), not a silent empty list.
+_SENTIMENT_BUCKETS = ("pozytywny", "neutralny", "negatywny")
+# Row cap for a single bucket's drill-down list. Passed to the BQ fn so `truncated`
+# reflects the exact bound the query used (stays in sync if the cap ever changes).
+_WL_SENTIMENT_LIST_CAP = 200
 
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -441,6 +461,7 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in POST /watchlist/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        _invalidate_wl_sentiment(user_id)
         return {"ticker": ticker, "added": True}
 
     @app.delete("/watchlist/{ticker}", status_code=204)
@@ -454,6 +475,7 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /watchlist/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        _invalidate_wl_sentiment(user_id)
 
     @app.get("/announcements/my-wallet")
     async def announcements_my_wallet(
@@ -487,6 +509,54 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in /announcements/my-wallet: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/announcements/my-wallet/sentiment-summary")
+    async def announcements_my_wallet_sentiment_summary(
+        role: Role = Depends(_require_admin),
+        user_id: str = Depends(_get_user_id),
+    ):
+        # Admin-only + per-user (PUL-87): sentiment/score never reach the user role,
+        # so this is gated at the dependency, not via model stripping. Short-TTL
+        # per-user cache mirrors the /admin/portfolio/treemap pattern.
+        cache_key = f"wl-sentiment-sum:{user_id}"
+        cached = _perf_get(cache_key, ttl=60)
+        if cached is not None:
+            return cached
+        try:
+            summary = summarize_watchlist_sentiment(user_id)
+        except BigQueryError as exc:
+            logger.error("BQ error in /announcements/my-wallet/sentiment-summary: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        _perf_set(cache_key, summary)
+        return summary
+
+    @app.get("/announcements/my-wallet/sentiment/{bucket}")
+    async def announcements_my_wallet_sentiment_list(
+        bucket: str,
+        role: Role = Depends(_require_admin),
+        user_id: str = Depends(_get_user_id),
+    ):
+        # Admin-only + per-user drill-down (PUL-87): lists the announcements behind a
+        # single bar bucket, sharing the summary's normalization so contents match the
+        # bar count. Score/sentiment stay admin-gated at the dependency (not stripped).
+        if bucket not in _SENTIMENT_BUCKETS:
+            raise HTTPException(status_code=422, detail=f"invalid sentiment bucket: {bucket}")
+        cache_key = f"wl-sentiment-list:{user_id}:{bucket}"
+        cached = _perf_get(cache_key, ttl=60)
+        if cached is not None:
+            return cached
+        try:
+            rows = list_watchlist_by_sentiment(user_id, bucket, limit=_WL_SENTIMENT_LIST_CAP)
+        except BigQueryError as exc:
+            logger.error("BQ error in /announcements/my-wallet/sentiment/%s: %s", bucket, exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        items = [
+            {**r, "structured_analysis": _parse_structured_analysis(r.get("structured_analysis"))}
+            for r in rows
+        ]
+        result = {"items": items, "truncated": len(items) >= _WL_SENTIMENT_LIST_CAP}
+        _perf_set(cache_key, result)
+        return result
 
     @app.get("/admin/x-posts")
     async def admin_x_posts(

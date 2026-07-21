@@ -601,6 +601,120 @@ def test_list_announcements_for_watchlist_query_selects_analysis_score():
     assert "a.analysis_score" in captured["query"]
 
 
+# ── watchlist sentiment summary endpoint (PUL-87) ─────────────────────────────
+
+_FAKE_SENTIMENT_SUMMARY = {
+    "counts": {"pozytywny": 3, "neutralny": 5, "negatywny": 1},
+    "avg_score": 72,
+    "days_with_data": 4,
+    "window_from": "2026-07-14T00:00:00+00:00",
+    "window_to": "2026-07-21T00:00:00+00:00",
+    "total": 9,
+}
+
+
+def test_sentiment_summary_user_forbidden(user_client):
+    """PUL-87/PUL-82: sentiment/score are admin-only — the summary endpoint must
+    403 a regular user, not merely strip fields."""
+    r = user_client.get("/announcements/my-wallet/sentiment-summary")
+    assert r.status_code == 403
+
+
+def test_sentiment_summary_admin_returns_shape(admin_client):
+    with patch("src.api.summarize_watchlist_sentiment", return_value=dict(_FAKE_SENTIMENT_SUMMARY)):
+        r = admin_client.get("/announcements/my-wallet/sentiment-summary")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["counts"] == {"pozytywny": 3, "neutralny": 5, "negatywny": 1}
+    assert data["avg_score"] == 72
+    assert data["days_with_data"] == 4
+    assert data["total"] == 9
+    assert data["window_from"] and data["window_to"]
+
+
+def test_summarize_watchlist_sentiment_query_normalizes_and_windows():
+    """Structural lock (plan-review F1/F4): BQ is mocked so we can't execute the
+    fold — assert the query interpolates the shared normalization (EN→PL) and the
+    f-string 7-day window, and never binds the interval as a parameter."""
+    from unittest.mock import MagicMock
+    from db import bigquery as bq
+
+    captured = {}
+
+    def _capture(query, job_config=None):
+        captured["query"] = query
+        job = MagicMock()
+        job.result.return_value = []
+        return job
+
+    client = MagicMock()
+    client.query.side_effect = _capture
+    with patch.object(bq, "_get_client", return_value=client):
+        bq.summarize_watchlist_sentiment("client-1")
+
+    q = captured["query"]
+    assert "JSON_VALUE(a.structured_analysis" in q
+    assert "positive" in q and "negative" in q  # English drift folded to PL
+    assert "INTERVAL 7 DAY" in q                 # f-string window, per db-bigquery pattern
+    assert "INTERVAL @" not in q                 # never parameterize the interval
+
+
+# ── watchlist sentiment drill-down endpoint (PUL-87) ──────────────────────────
+
+
+def test_sentiment_drilldown_user_forbidden(user_client):
+    r = user_client.get("/announcements/my-wallet/sentiment/pozytywny")
+    assert r.status_code == 403
+
+
+def test_sentiment_drilldown_invalid_bucket_422(admin_client):
+    r = admin_client.get("/announcements/my-wallet/sentiment/euphoric")
+    assert r.status_code == 422
+
+
+def test_sentiment_drilldown_admin_returns_list(admin_client):
+    with patch(
+        "src.api.list_watchlist_by_sentiment",
+        return_value=[dict(_MY_WALLET_ROW_WITH_ANALYSIS)],
+    ):
+        r = admin_client.get("/announcements/my-wallet/sentiment/pozytywny")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["truncated"] is False
+    assert len(data["items"]) == 1
+    item = data["items"][0]
+    assert item["ticker"] == "PKO"
+    assert item["analysis_score"] == 85.0
+    assert item["structured_analysis"]["sentiment"] == "pozytywny"
+
+
+def test_list_watchlist_by_sentiment_query_shares_normalization():
+    """Structural consistency lock (plan-review F4): the drill-down must embed the
+    SAME normalization fragment as the summary, filter WHERE bucket = @bucket, use
+    the f-string window, and bound the result — so popup contents match bar counts."""
+    from unittest.mock import MagicMock
+    from db import bigquery as bq
+
+    captured = {}
+
+    def _capture(query, job_config=None):
+        captured["query"] = query
+        job = MagicMock()
+        job.result.return_value = []
+        return job
+
+    client = MagicMock()
+    client.query.side_effect = _capture
+    with patch.object(bq, "_get_client", return_value=client):
+        bq.list_watchlist_by_sentiment("client-1", "pozytywny")
+
+    q = captured["query"]
+    assert bq._SENTIMENT_BUCKET_SQL in q       # identical fragment as the summary
+    assert "= @bucket" in q                      # filter on the requested bucket
+    assert "INTERVAL 7 DAY" in q and "INTERVAL @" not in q
+    assert "LIMIT @limit" in q                    # bounded result set
+
+
 # ── public top-announcements endpoint (PUL-72) ────────────────────────────────
 
 _PUBLIC_TOP_ROWS = [

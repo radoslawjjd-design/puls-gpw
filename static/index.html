@@ -845,7 +845,10 @@
   #wl-sentiment-summary { display:none; flex-wrap:wrap; align-items:center; gap:1rem; background:#fff; border:1px solid var(--border); border-radius:var(--radius-md); padding:.7rem 1.1rem; margin-bottom:1rem; font-size:.88rem; box-shadow:var(--shadow-1); }
   #wl-sentiment-summary .wss-label { font-weight:600; color:var(--brand-dark); text-transform:uppercase; font-size:.72rem; letter-spacing:.06em; }
   .wss-item { display:inline-flex; align-items:center; gap:.4rem; font-variant-numeric:tabular-nums; }
+  .wss-item[data-bucket] { cursor:pointer; border-radius:var(--radius-sm); padding:.15rem .4rem; margin:-.15rem -.15rem; transition:background .12s; }
+  .wss-item[data-bucket]:hover { background:rgba(127,127,127,.14); }
   .wss-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .wss-truncated { font-size:.8rem; color:var(--text-muted); margin-top:.4rem; }
   /* Dark mode */
 html[data-theme="dark"] { --bg:#0f1720; --border:#243141; --fill:#1b2634; --text:#e6edf3; --text-muted:#94a5b8; --brand-tint:#1d2b3c; --gold-tint:#2c2618; --shadow-card:none; }
 html[data-theme="dark"] body { background: var(--bg); color: var(--text); }
@@ -1289,6 +1292,19 @@ function doLogout() {
   _watchlistFetched = false;
   const wlSentiment = $('wl-sentiment-summary');
   if (wlSentiment) { wlSentiment.style.display = 'none'; wlSentiment.innerHTML = ''; }
+  // PUL-87 F1: also clear the wallet body/tickers/data AND reset the once-built
+  // role-dependent head. The my-wallet head is built a single time (_myWalletViewBuilt)
+  // and never re-rendered per fetch — unlike the announcements head — so without this
+  // reset an admin→user same-document relogin leaves the stale admin head (Score column,
+  // _ADMIN_COLS) sitting over a user body.
+  _myWalletViewBuilt = false;
+  _wlData = [];
+  _watchlistTickers = [];
+  wlPage = 1;
+  const wlBody = $('my-wallet-table-body');
+  if (wlBody) wlBody.innerHTML = '';
+  const wlTickers = $('wl-tickers-list');
+  if (wlTickers) wlTickers.innerHTML = '';
   // Session state is gone — a stale `?view=treemap`/`?view=x-history` in the
   // address bar would otherwise sit there through the login screen and get
   // silently re-applied on the next login. replaceState (not pushState) so
@@ -2278,7 +2294,7 @@ function _buildMyWalletViewContent(view) {
   `;
 
   $('my-wallet-table-head').innerHTML =
-    '<tr>' + _USER_COLS.map(c => `<th class="${c.cls}">${c.label}</th>`).join('') + '</tr>';
+    '<tr>' + (role === 'admin' ? _ADMIN_COLS : _USER_COLS).map(c => `<th class="${c.cls}">${c.label}</th>`).join('') + '</tr>';
 
   _setupAcInput('wl-ticker-input', 'ac-wl-ticker', _acTickers);
   _setupAcInput('wl-company-input', 'ac-wl-company', _acCompanies);
@@ -2576,7 +2592,7 @@ async function fetchMyWalletAnnouncements(push = true) {
   const btnNext = $('wl-btn-next');
   btnPrev.disabled = true;
   btnNext.disabled = true;
-  _showSkeleton('my-wallet-table-body', _USER_COLS.length);
+  _showSkeleton('my-wallet-table-body', (role === 'admin' ? _ADMIN_COLS : _USER_COLS).length);
   const params   = _myWalletParams();
   const pageSize = params.get('page_size');
 
@@ -2589,50 +2605,102 @@ async function fetchMyWalletAnnouncements(push = true) {
     const data = await r.json();
     _wlData = data;
     $('wl-page-label').textContent = 'Strona ' + wlPage;
-    renderTable(data, 'user', 'my-wallet-table-body');
+    renderTable(data, role, 'my-wallet-table-body');
     btnPrev.disabled = wlPage === 1;
     btnNext.disabled = data.length < Number(pageSize);
     _writeUrl('my-wallet', params, push);
   } catch (e) {
-    $('my-wallet-table-body').innerHTML = `<tr><td colspan="${_USER_COLS.length}" class="empty">Błąd ładowania danych</td></tr>`;
+    $('my-wallet-table-body').innerHTML = `<tr><td colspan="${(role === 'admin' ? _ADMIN_COLS : _USER_COLS).length}" class="empty">Błąd ładowania danych</td></tr>`;
     btnPrev.disabled = wlPage === 1;
     btnNext.disabled = false;
   }
 }
 
 // ── My Wallet: agregacja sentymentu (ostatnie 7 dni) ──────────────────
+// Buduje etykietę okresu: zachowany prefiks „Ostatnie 7 dni" + realny zakres
+// dat i liczba dni, które faktycznie miały ogłoszenia (metadane z endpointu).
+function _wlSentimentPeriodLabel(s) {
+  let label = 'Ostatnie 7 dni';
+  try {
+    const fmt = d => new Date(d).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
+    if (s.window_from && s.window_to) label += ` (${fmt(s.window_from)}–${fmt(s.window_to)})`;
+  } catch (e) { /* zostaje sam prefiks */ }
+  if (s.days_with_data != null) label += ` · ${s.days_with_data} dni z danymi`;
+  return label;
+}
+
 async function fetchWlSentimentSummary() {
   const box = $('wl-sentiment-summary');
   if (!box) return;
-  // Sentiment/score are admin-only (same convention as the announcement modal) —
-  // skip the fetch entirely for other roles, the backend strips the fields anyway.
+  // Sentiment/score are admin-only — skip for other roles; the endpoint 403s anyway.
+  // Server owns the bucketing (PUL-87) so counts match the drill-down popup exactly.
   if (role !== 'admin') { box.style.display = 'none'; return; }
   try {
-    const r = await fetch('/announcements/my-wallet?page=1&page_size=100', {
+    const r = await fetch('/announcements/my-wallet/sentiment-summary', {
       headers: { 'X-API-Key': apiKey }
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    const rows = await r.json();
-    const cutoff = Date.now() - 7 * 86400000;
-    const recent = rows.filter(a => a.published_at && new Date(a.published_at).getTime() >= cutoff);
-    if (!recent.length) { box.style.display = 'none'; return; }
-    const cnt = { pozytywny: 0, neutralny: 0, negatywny: 0 };
-    let scoreSum = 0, scoreN = 0;
-    recent.forEach(a => {
-      const s = a.structured_analysis?.sentiment;
-      if (cnt[s] != null) cnt[s]++;
-      if (a.analysis_score != null) { scoreSum += a.analysis_score; scoreN++; }
-    });
-    const avg = scoreN ? Math.round(scoreSum / scoreN) : null;
+    const s = await r.json();
+    if (!s.total) { box.style.display = 'none'; return; }
+    const c = s.counts || {};
     box.innerHTML =
-      '<span class="wss-label">Ostatnie 7 dni</span>'
-      + '<span class="wss-item"><span class="wss-dot" style="background:var(--positive)"></span>Pozytywny: <strong>' + cnt.pozytywny + '</strong></span>'
-      + '<span class="wss-item"><span class="wss-dot" style="background:var(--gold-mid)"></span>Neutralny: <strong>' + cnt.neutralny + '</strong></span>'
-      + '<span class="wss-item"><span class="wss-dot" style="background:var(--negative)"></span>Negatywny: <strong>' + cnt.negatywny + '</strong></span>'
-      + (avg != null ? '<span class="wss-item">Śr. score: <strong>' + avg + '</strong></span>' : '')
-      + '<span class="wss-item" style="color:var(--text-muted)">(ogłoszenia: ' + recent.length + ')</span>';
+      '<span class="wss-label">' + _wlSentimentPeriodLabel(s) + '</span>'
+      + '<span class="wss-item" data-bucket="pozytywny"><span class="wss-dot" style="background:var(--positive)"></span>Pozytywny: <strong>' + (c.pozytywny || 0) + '</strong></span>'
+      + '<span class="wss-item" data-bucket="neutralny"><span class="wss-dot" style="background:var(--gold-mid)"></span>Neutralny: <strong>' + (c.neutralny || 0) + '</strong></span>'
+      + '<span class="wss-item" data-bucket="negatywny"><span class="wss-dot" style="background:var(--negative)"></span>Negatywny: <strong>' + (c.negatywny || 0) + '</strong></span>'
+      + (s.avg_score != null ? '<span class="wss-item">Śr. score: <strong>' + s.avg_score + '</strong></span>' : '')
+      + '<span class="wss-item" style="color:var(--text-muted)">(ogłoszenia: ' + s.total + ')</span>';
     box.style.display = 'flex';
+    // Drill-down (PUL-87): each bucket opens the matching announcements in the modal.
+    box.querySelectorAll('.wss-item[data-bucket]').forEach(el => {
+      el.setAttribute('role', 'button');
+      el.setAttribute('tabindex', '0');
+      el.addEventListener('click', () => openSentimentListModal(el.dataset.bucket));
+    });
   } catch (e) { box.style.display = 'none'; }
+}
+
+const _BUCKET_LABEL = { pozytywny: 'Pozytywny', neutralny: 'Neutralny', negatywny: 'Negatywny' };
+
+// Drill-down popup (PUL-87): list the watchlist announcements behind one bar bucket,
+// reusing the shared #modal-overlay + closeModal. Server owns the same normalization
+// as the summary, so this list matches the bar count exactly.
+async function openSentimentListModal(bucket) {
+  if (role !== 'admin') return;
+  $('modal-title').textContent = 'Sentyment: ' + (_BUCKET_LABEL[bucket] || bucket);
+  $('modal-meta').textContent = '';
+  $('modal-body').innerHTML = '<p>Ładowanie…</p>';
+  $('modal-overlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  try {
+    const r = await fetch('/announcements/my-wallet/sentiment/' + encodeURIComponent(bucket), {
+      headers: { 'X-API-Key': apiKey }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const items = data.items || [];
+    $('modal-meta').textContent = items.length + (items.length === 1 ? ' ogłoszenie' : ' ogłoszeń');
+    if (!items.length) {
+      $('modal-body').innerHTML = '<div class="modal-section"><p>Brak ogłoszeń w tym sentymencie.</p></div>';
+      return;
+    }
+    const fmt = d => { try { return new Date(d).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return ''; } };
+    let html = items.map(it => {
+      const a = it.structured_analysis || {};
+      const ticker = it.ticker ? ' ($' + esc(it.ticker) + ')' : '';
+      const meta = [fmt(it.published_at), it.event_type].filter(Boolean).map(esc).join(' · ');
+      let sec = '<div class="modal-section"><h4>' + esc(it.company || '—') + ticker + '</h4>';
+      if (meta) sec += '<p style="color:var(--text-muted);font-size:.82rem;margin:.1rem 0 .4rem">' + meta + '</p>';
+      if (a.summary_pl) sec += '<p>' + esc(a.summary_pl) + '</p>';
+      const badge = '<span class="sentiment-badge sentiment-' + esc(bucket) + '">' + esc(_BUCKET_LABEL[bucket] || bucket) + '</span>';
+      const score = (it.analysis_score != null) ? ' <span class="score">' + esc(String(Math.round(it.analysis_score))) + '</span>' : '';
+      return sec + '<p style="margin-top:.4rem">' + badge + score + '</p></div>';
+    }).join('');
+    if (data.truncated) html += '<div class="wss-truncated">Pokazano pierwsze ' + items.length + ' ogłoszeń.</div>';
+    $('modal-body').innerHTML = html;
+  } catch (e) {
+    $('modal-body').innerHTML = '<div class="modal-section"><p>Błąd ładowania listy.</p></div>';
+  }
 }
 
 // ── My Wallet: ticker list (add/remove) ───────────────────────────────────
