@@ -1428,3 +1428,97 @@ def test_get_portfolio_calendar_data_raises_bigquery_error_on_failure():
     with patch("db.bigquery._get_client", return_value=client):
         with pytest.raises(BigQueryError, match="get_portfolio_calendar_data failed"):
             get_portfolio_calendar_data("port-123", "user-abc", 2026, 6)
+
+
+# ── notification subscriptions (PUL-81 slice a) ───────────────────────────────
+
+def test_get_notification_settings_returns_optin_default_when_absent():
+    """No row for the user → opt-in default (enabled=False), never raises."""
+    from db.bigquery import get_notification_settings
+
+    client = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=client):
+        settings = get_notification_settings("firebase-uid-1")
+
+    assert settings["enabled"] is False
+    assert settings["email"] is None
+    assert settings["min_score"] == 0
+    assert settings["confirmed_at"] is None
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["user_id"] == "firebase-uid-1"
+
+
+def test_get_notification_settings_returns_stored_row():
+    """An existing row is mapped through to the returned settings dict."""
+    from db.bigquery import get_notification_settings
+
+    confirmed = datetime(2026, 7, 21, 10, 0, tzinfo=timezone.utc)
+    client = _mock_bq_client_with_rows(
+        [{"enabled": True, "email": "user@example.com", "min_score": 0, "confirmed_at": confirmed}]
+    )
+    with patch("db.bigquery._get_client", return_value=client):
+        settings = get_notification_settings("firebase-uid-1")
+
+    assert settings == {
+        "enabled": True,
+        "email": "user@example.com",
+        "min_score": 0,
+        "confirmed_at": confirmed,
+    }
+
+
+def test_upsert_notification_settings_merges_and_stamps_confirmed_at():
+    """Upsert issues a MERGE on user_id, passes enabled/email/min_score, and
+    stamps confirmed_at via CURRENT_TIMESTAMP() when enabling."""
+    from db.bigquery import upsert_notification_settings
+
+    client = _mock_bq_client()
+    with patch("db.bigquery._get_client", return_value=client):
+        upsert_notification_settings("firebase-uid-1", "user@example.com", enabled=True, min_score=0)
+
+    query_str = client.query.call_args[0][0]
+    job_config = client.query.call_args.kwargs["job_config"]
+    params = {p.name: p.value for p in job_config.query_parameters}
+    types = {p.name: p.type_ for p in job_config.query_parameters}
+    assert "MERGE" in query_str
+    assert "T.user_id = S.user_id" in query_str
+    assert "confirmed_at" in query_str and "CURRENT_TIMESTAMP()" in query_str
+    assert params["user_id"] == "firebase-uid-1"
+    assert params["email"] == "user@example.com"
+    assert params["enabled"] is True
+    assert types["enabled"] == "BOOL"
+    assert params["min_score"] == 0
+    assert types["min_score"] in ("INT64", "INTEGER")
+
+
+def test_upsert_notification_settings_raises_bigquery_error_on_failure():
+    """A client.query failure surfaces as BigQueryError."""
+    from db.bigquery import BigQueryError, upsert_notification_settings
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = RuntimeError("boom")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="upsert_notification_settings failed"):
+            upsert_notification_settings("uid", "a@b.pl", enabled=False, min_score=0)
+
+
+def test_create_notification_subscriptions_table_creates_on_not_found():
+    """create_notification_subscriptions_table_if_not_exists creates the table
+    when get_table raises NotFound."""
+    from google.cloud.exceptions import NotFound
+
+    from db.bigquery import create_notification_subscriptions_table_if_not_exists
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.side_effect = NotFound("missing")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        create_notification_subscriptions_table_if_not_exists()
+
+    assert client.create_table.called
+    created_table = client.create_table.call_args[0][0]
+    assert "notification_subscriptions" in str(created_table.reference) or \
+        "notification_subscriptions" in str(created_table)

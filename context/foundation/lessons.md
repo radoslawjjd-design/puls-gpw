@@ -264,3 +264,27 @@ not close the window — the snapshot already happened.
 **Applies to**: Any vanilla-JS view in `static/index.html` that pairs a
 fetch-on-click pagination/filter control with a URL write
 (`history.pushState`/`replaceState`)
+
+---
+
+## SPA single-file: a new view must be hidden by ALL sibling show*View functions
+
+**Context**: `static/index.html` — view-switch functions (`showAnnouncementsView`,
+`_showXHistoryViewDom`, `_showMyWalletViewDom`, `showPortfolioPositionsView`,
+`_showSettingsViewDom`, …)
+
+**Problem**: The single-file SPA has no central "hide all views" — each `show*View`
+hides its siblings explicitly by id (`$('X-view').style.display = 'none'`). Adding a
+new view (`#settings-view`, PUL-81) it's easy to update only the new view's own
+function (which hides the others) and forget to add the new view's hide to the OTHER
+functions → the new view lingers visible below whatever tab the user switches to.
+Caught manually in impl-review, not anticipated by the plan.
+
+**Rule**: When adding a new `<div id="X-view">` to `static/index.html`: (1) add
+`$('X-view').style.display = 'none';` to EVERY existing `show*View`/`_show*ViewDom`,
+not just the new one; (2) add a regression E2E "open X → switch to another tab →
+`#X-view` is hidden". Consider a central `_hideAllViews()` helper if the view count
+keeps growing. Plans that add a view should list this sibling-update explicitly.
+
+**Applies to**: Every change that adds a new view/tab to the single-file SPA
+(`static/index.html`)

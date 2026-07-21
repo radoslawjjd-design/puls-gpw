@@ -312,6 +312,52 @@
   }
   .profile-menu button:hover { background: var(--brand-tint); color: var(--brand); }
 
+  /* Settings view (PUL-81) */
+  .settings-layout { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+  .settings-sections { display: flex; flex-direction: column; gap: .25rem; min-width: 200px; }
+  .settings-section-item {
+    text-align: left; background: none; border: none; cursor: pointer; font: inherit;
+    padding: .6rem .85rem; border-radius: var(--radius-sm); color: var(--text);
+  }
+  .settings-section-item:hover { background: var(--brand-tint); }
+  .settings-section-item.active { background: var(--brand-tint); color: var(--brand); font-weight: 600; }
+  .settings-panel { flex: 1 1 340px; }
+  .settings-panel-section {
+    background: var(--fill); border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 1.25rem;
+  }
+  .switch-row { position: relative; display: inline-flex; align-items: center; gap: .75rem; cursor: pointer; }
+  /* Native checkbox overlays the track (sized, opacity:0) so it stays a real,
+     clickable, keyboard-focusable switch control — not a zero-size element. */
+  .switch-input {
+    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 42px; height: 24px; margin: 0; opacity: 0; cursor: pointer; z-index: 1;
+  }
+  .switch-track {
+    position: relative; width: 42px; height: 24px; flex: none;
+    background: var(--border); border-radius: var(--radius-pill); transition: background .15s;
+  }
+  .switch-thumb {
+    position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+    background: #fff; border-radius: 50%; transition: transform .15s;
+    box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+  .switch-input:checked + .switch-track { background: #4ec754; }
+  .switch-input:checked + .switch-track .switch-thumb { transform: translateX(18px); }
+  .switch-input:focus-visible + .switch-track { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .switch-input:disabled + .switch-track { opacity: .55; cursor: default; }
+  .switch-label { font-weight: 600; color: var(--text); }
+  .switch-desc { margin: .65rem 0 0; font-size: .8rem; color: var(--text-muted); max-width: 52ch; }
+  .settings-inline-error { margin: .65rem 0 0; font-size: .82rem; color: #b3261e; }
+  html[data-theme="dark"] .settings-inline-error { color: #f4a49e; }
+  /* Dark: --brand (#14304a) on --brand-tint (#1d2b3c) is navy-on-navy — unreadable.
+     Use the same font colour as the "Powiadomienia email" label (var(--text)). */
+  html[data-theme="dark"] .settings-section-item:hover { background: #1d2b3c; color: var(--text); }
+  html[data-theme="dark"] .settings-section-item.active { background: #1d2b3c; color: var(--text); }
+  /* Dark: the off-state --border track blends into the panel (--fill) — use a
+     lighter grey. The on-state green (#4ec754) reads clearly in both themes. */
+  html[data-theme="dark"] .switch-track { background: #3a4a5c; }
+
   /* Filters */
   .filters {
     display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
@@ -1104,6 +1150,7 @@ html[data-theme="dark"] #pp-ticker-label, html[data-theme="dark"] #pp-company-la
         <span class="chevron-icon" aria-hidden="true"></span>
       </button>
       <ul id="profile-menu" class="profile-menu" role="menu" hidden>
+        <li role="none"><button id="settings-btn" role="menuitem">Ustawienia</button></li>
         <li role="none"><button id="theme-toggle-btn" role="menuitem">Tryb ciemny</button></li>
         <li role="none"><button id="logout-btn" role="menuitem">Wyloguj</button></li>
       </ul>
@@ -1153,6 +1200,7 @@ html[data-theme="dark"] #pp-ticker-label, html[data-theme="dark"] #pp-company-la
 
   <div id="my-wallet-view" style="display:none"></div>
   <div id="portfolio-positions-view" style="display:none"></div>
+  <div id="settings-view" style="display:none"></div>
 </div>
 
 <!-- MODAL -->
@@ -1631,6 +1679,11 @@ $('logout-btn').addEventListener('click', () => {
   doLogout();
 });
 
+$('settings-btn').addEventListener('click', () => {
+  closeProfileMenu();
+  _navigateToView('settings');
+});
+
 // ── theme (light/dark) ─────────────────────────────────────────────────
 function _applyTheme(t) {
   document.documentElement.dataset.theme = t;
@@ -2023,6 +2076,8 @@ function showDashboard(r) {
   const perUserNav = !apiKey ? '' : 'none';
   $('nav-my-wallet-btn').style.display = perUserNav;
   $('nav-portfolio-positions-btn').style.display = perUserNav;
+  // Settings (Powiadomienia) is a real-account feature — hidden on API-key sessions.
+  $('settings-btn').closest('li').style.display = perUserNav;
   renderHeaders(r);
   injectAdminOnlyChrome(r);
   loadAutocomplete();
@@ -2227,6 +2282,7 @@ function showAnnouncementsView() {
   if (xView) xView.style.display = 'none';
   $('my-wallet-view').style.display = 'none';
   $('portfolio-positions-view').style.display = 'none';
+  $('settings-view').style.display = 'none';
   stopPortfolioTreemapResize();
   _setActiveNavItem('announcements');
 }
@@ -2244,6 +2300,7 @@ function _showXHistoryViewDom() {
   view.style.display = '';
   $('my-wallet-view').style.display = 'none';
   $('portfolio-positions-view').style.display = 'none';
+  $('settings-view').style.display = 'none';
   stopPortfolioTreemapResize();
   closeProfileMenu();
   _setActiveNavItem('x-history');
@@ -2324,6 +2381,7 @@ function _showMyWalletViewDom() {
   const xView = $('x-history-view');
   if (xView) xView.style.display = 'none';
   $('portfolio-positions-view').style.display = 'none';
+  $('settings-view').style.display = 'none';
   view.style.display = '';
   stopPortfolioTreemapResize();
   closeProfileMenu();
@@ -2337,6 +2395,118 @@ function showMyWalletView(push = true) {
     fetchMyWalletAnnouncements(push);
     fetchWlSentimentSummary();
   }
+}
+
+
+// ── settings view (PUL-81) ──────────────────────────────────────────────
+// JWT-only account settings. Section list on the left, panel on the right;
+// today the only section is Powiadomienia (email on/off preference).
+let _settingsViewBuilt = false;
+
+function _buildSettingsViewContent(view) {
+  view.innerHTML = `
+    <div class="view-header"><h2>Ustawienia</h2></div>
+    <div class="settings-layout">
+      <nav class="settings-sections" aria-label="Sekcje ustawień">
+        <button type="button" class="settings-section-item active" data-section="notifications">Powiadomienia</button>
+      </nav>
+      <div class="settings-panel" id="settings-panel"></div>
+    </div>
+  `;
+  view.querySelectorAll('.settings-section-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      view.querySelectorAll('.settings-section-item').forEach(b => b.classList.toggle('active', b === btn));
+      if (btn.dataset.section === 'notifications') _renderNotificationsPanel();
+    });
+  });
+}
+
+function _showNotifEmailError(msg) {
+  const el = $('notif-email-error');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.display = msg ? '' : 'none';
+}
+
+// Optimistic save: flip the UI immediately, POST in the background, and disable
+// the switch while the request is in flight so rapid toggles serialize (no
+// out-of-order responses). On failure the switch reverts and an inline message
+// appears; a 401 exits through doLogout() like every other authed fetch.
+function _saveNotifEmailPref(toggle) {
+  const desired = toggle.checked;
+  const prior = !desired;
+  _showNotifEmailError('');
+  toggle.disabled = true;
+  fetch('/api/notifications/settings', {
+    method: 'POST',
+    headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: desired }),
+  })
+    .then(r => {
+      if (r.status === 401) { doLogout(); return; }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+    })
+    .catch(() => {
+      toggle.checked = prior;
+      _showNotifEmailError('Nie udało się zapisać, spróbuj ponownie.');
+    })
+    .finally(() => { toggle.disabled = false; });
+}
+
+function _renderNotificationsPanel() {
+  const panel = $('settings-panel');
+  if (!panel) return;
+  panel.innerHTML = `
+    <div class="settings-panel-section">
+      <label class="switch-row">
+        <input type="checkbox" role="switch" id="notif-email-toggle" class="switch-input">
+        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+        <span class="switch-label">Powiadomienia email</span>
+      </label>
+      <p class="switch-desc">Po włączeniu będziesz otrzymywać powiadomienia na swój adres email o nowych oświadczeniach twoich obserwowanych spółek.</p>
+      <p class="settings-inline-error" id="notif-email-error" style="display:none" role="alert"></p>
+    </div>
+  `;
+  const toggle = $('notif-email-toggle');
+  toggle.disabled = true; // until current state loads
+  fetch('/api/notifications/settings', { headers: { 'X-API-Key': apiKey } })
+    .then(r => {
+      if (r.status === 401) { doLogout(); return null; }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(data => {
+      if (!data) return;
+      toggle.checked = !!data.enabled;
+      toggle.disabled = false;
+    })
+    .catch(() => {
+      toggle.disabled = false;
+      _showNotifEmailError('Nie udało się wczytać ustawień, spróbuj ponownie.');
+    });
+  toggle.addEventListener('change', () => _saveNotifEmailPref(toggle));
+}
+
+function _showSettingsViewDom() {
+  const view = $('settings-view');
+  if (!_settingsViewBuilt) {
+    _buildSettingsViewContent(view);
+    _settingsViewBuilt = true;
+  }
+  $('announcements-view').style.display = 'none';
+  const xView = $('x-history-view');
+  if (xView) xView.style.display = 'none';
+  $('my-wallet-view').style.display = 'none';
+  $('portfolio-positions-view').style.display = 'none';
+  view.style.display = '';
+  stopPortfolioTreemapResize();
+  closeProfileMenu();
+  _setActiveNavItem('settings');
+}
+
+function showSettingsView() {
+  _showSettingsViewDom();
+  _renderNotificationsPanel();
 }
 
 
@@ -2354,6 +2524,9 @@ function _navigateToView(view) {
   } else if (view === 'portfolio-positions') {
     history.pushState({ view: 'portfolio-positions' }, '', '?view=portfolio-positions');
     showPortfolioPositionsView();
+  } else if (view === 'settings') {
+    history.pushState({ view: 'settings' }, '', '?view=settings');
+    showSettingsView();
   } else {
     showAnnouncementsView();
     history.pushState({}, '', '/');
@@ -2432,6 +2605,9 @@ function _applyUrlState() {
       fetchMyWalletAnnouncements(false);
       fetchWlSentimentSummary();
     }
+  } else if (view === 'settings' && !apiKey) {
+    currentView = 'settings';
+    showSettingsView();
   } else {
     currentView = 'announcements';
     _applyAnnouncementsParams(params);
@@ -3525,6 +3701,7 @@ function showPortfolioPositionsView() {
   const xView = $('x-history-view');
   if (xView) xView.style.display = 'none';
   $('my-wallet-view').style.display = 'none';
+  $('settings-view').style.display = 'none';
   const ppView = $('portfolio-positions-view');
   if (!ppView.dataset.built) {
     _buildPortfolioPositionsViewContent(ppView);

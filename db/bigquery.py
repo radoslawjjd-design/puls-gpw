@@ -2635,3 +2635,127 @@ def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
         return None
     val = rows[0].fetched_at
     return val.isoformat() if hasattr(val, "isoformat") else str(val)
+
+
+# ── notification subscriptions (PUL-81 slice a) ───────────────────────────────
+
+_NOTIFICATION_SUBSCRIPTIONS_TABLE_NAME = "notification_subscriptions"
+
+_NOTIFICATION_SUBSCRIPTIONS_SCHEMA = [
+    bigquery.SchemaField("user_id",      "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("email",        "STRING",    mode="NULLABLE"),
+    # min_score is stored for slice (b)'s delivery cron; not surfaced in the UI.
+    bigquery.SchemaField("min_score",    "INT64",     mode="NULLABLE"),
+    bigquery.SchemaField("enabled",      "BOOL",      mode="REQUIRED"),
+    # confirmed_at is informational (no double opt-in in slice a — the account
+    # email is already verified). enabled is the authoritative opt-in flag.
+    bigquery.SchemaField("confirmed_at", "TIMESTAMP", mode="NULLABLE"),
+    bigquery.SchemaField("updated_at",   "TIMESTAMP", mode="NULLABLE"),
+]
+
+
+def create_notification_subscriptions_table_if_not_exists() -> None:
+    """Create the notification_subscriptions table in BigQuery if absent."""
+    client = _get_client()
+    table_id = _table_ref(client, _NOTIFICATION_SUBSCRIPTIONS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_NOTIFICATION_SUBSCRIPTIONS_SCHEMA)
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_notification_subscriptions_schema_current() -> None:
+    """Migrate the notification_subscriptions table — add any missing columns."""
+    ensure_schema_current(
+        _NOTIFICATION_SUBSCRIPTIONS_TABLE_NAME, _NOTIFICATION_SUBSCRIPTIONS_SCHEMA
+    )
+
+
+def get_notification_settings(user_id: str) -> dict:
+    """Read a user's email-notification preference.
+
+    Returns the opt-in default (enabled=False) when no row exists — reading a
+    preference must never fail just because the user has never set one. Raises
+    BigQueryError only on an actual query failure.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT enabled, email, min_score, confirmed_at
+        FROM `{_table_ref(client, _NOTIFICATION_SUBSCRIPTIONS_TABLE_NAME)}`
+        WHERE user_id = @user_id
+        LIMIT 1
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_notification_settings failed: {exc}") from exc
+    if not rows:
+        return {"enabled": False, "email": None, "min_score": 0, "confirmed_at": None}
+    row = rows[0]
+    return {
+        "enabled": bool(row.enabled),
+        "email": row.email,
+        "min_score": row.min_score if row.min_score is not None else 0,
+        "confirmed_at": row.confirmed_at,
+    }
+
+
+def upsert_notification_settings(
+    user_id: str, email: str | None, enabled: bool, min_score: int = 0
+) -> None:
+    """Persist a user's email-notification preference (MERGE on user_id).
+
+    enabled is the authoritative opt-in flag. confirmed_at is stamped with
+    CURRENT_TIMESTAMP() on first enable and preserved thereafter (informational,
+    since the account email is already verified — no double opt-in). Raises
+    BigQueryError on failure.
+    """
+    client = _get_client()
+    query = f"""
+        MERGE `{_table_ref(client, _NOTIFICATION_SUBSCRIPTIONS_TABLE_NAME)}` T
+        USING (
+            SELECT @user_id AS user_id, @email AS email,
+                   @enabled AS enabled, @min_score AS min_score
+        ) S
+        ON T.user_id = S.user_id
+        WHEN MATCHED THEN
+          UPDATE SET
+            enabled      = S.enabled,
+            email        = S.email,
+            min_score    = S.min_score,
+            confirmed_at = CASE WHEN S.enabled
+                                THEN COALESCE(T.confirmed_at, CURRENT_TIMESTAMP())
+                                ELSE T.confirmed_at END,
+            updated_at   = CURRENT_TIMESTAMP()
+        WHEN NOT MATCHED THEN
+          INSERT (user_id, email, min_score, enabled, confirmed_at, updated_at)
+          VALUES (
+            S.user_id, S.email, S.min_score, S.enabled,
+            CASE WHEN S.enabled THEN CURRENT_TIMESTAMP() ELSE NULL END,
+            CURRENT_TIMESTAMP()
+          )
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id",   "STRING", user_id),
+            bigquery.ScalarQueryParameter("email",     "STRING", email),
+            bigquery.ScalarQueryParameter("enabled",   "BOOL",   enabled),
+            bigquery.ScalarQueryParameter("min_score", "INT64",  min_score),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"upsert_notification_settings failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"upsert_notification_settings failed: {job.errors}")
+    logger.debug("upsert_notification_settings: user_id=%s enabled=%s", user_id, enabled)

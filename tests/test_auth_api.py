@@ -833,3 +833,46 @@ def test_register_sixth_request_in_minute_returns_429_with_retry_after(client):
         r = client.post("/api/auth/register", json={"email": "user@example.com", "password": "haslo123"})
     assert r.status_code == 429
     assert "Retry-After" in r.headers
+
+
+# ── notification settings endpoints (PUL-81 slice a) ──────────────────────────
+
+def _auth_cookie(client, email="user@example.com", uid="fb-uid-notif"):
+    from src.auth import create_session_token
+
+    client.cookies.set("session", create_session_token(uid, email, "firebase", role="user"))
+
+
+def test_notifications_settings_requires_auth(client):
+    """GET /api/notifications/settings without a session cookie → 401."""
+    client.cookies.clear()
+    assert client.get("/api/notifications/settings").status_code == 401
+
+
+def test_get_notifications_settings_returns_default(client):
+    """A logged-in user with no stored preference reads the opt-in default."""
+    _auth_cookie(client)
+    default = {"enabled": False, "email": None, "min_score": 0, "confirmed_at": None}
+    with patch("src.api.get_notification_settings", return_value=default) as get_fn:
+        r = client.get("/api/notifications/settings")
+    assert r.status_code == 200
+    assert r.json()["enabled"] is False
+    get_fn.assert_called_once_with("fb-uid-notif")
+
+
+def test_post_notifications_settings_enables_using_token_email(client):
+    """POST {enabled: true} upserts with the account email taken from the JWT
+    (not the request body) and echoes the updated state."""
+    _auth_cookie(client, email="notif-user@example.com", uid="fb-uid-notif")
+    stored = {"enabled": True, "email": "notif-user@example.com", "min_score": 0, "confirmed_at": None}
+    with patch("src.api.upsert_notification_settings") as up_fn, \
+         patch("src.api.get_notification_settings", return_value=stored):
+        r = client.post("/api/notifications/settings", json={"enabled": True})
+    assert r.status_code == 200
+    assert r.json()["enabled"] is True
+    up_fn.assert_called_once()
+    args, kwargs = up_fn.call_args
+    called = {**dict(zip(("user_id", "email", "enabled", "min_score"), args)), **kwargs}
+    assert called["user_id"] == "fb-uid-notif"
+    assert called["email"] == "notif-user@example.com"
+    assert called["enabled"] is True
