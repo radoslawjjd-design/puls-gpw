@@ -208,23 +208,23 @@ None — read-only over existing tables, no schema change, no data migration.
 
 #### Automated
 
-- [x] 1.1 Unit tests for history query shape pass (`pytest -k "price_history or sparkline or positions"`)
-- [x] 1.2 Full backend suite green (`uv run pytest -q`)
-- [x] 1.3 price_history present on positions path, absent/None on treemap path (asserted)
+- [x] 1.1 Unit tests for history query shape pass (`pytest -k "price_history or sparkline or positions"`) — c95728e
+- [x] 1.2 Full backend suite green (`uv run pytest -q`) — c95728e
+- [x] 1.3 price_history present on positions path, absent/None on treemap path (asserted) — c95728e
 
 #### Manual
 
-- [x] 1.4 Mixed company+ETF wallet returns non-null price_history for both
-- [x] 1.5 No-history ticker returns price_history: null without error
-- [x] 1.6 Treemap view still renders, no history payload on that path
+- [x] 1.4 Mixed company+ETF wallet returns non-null price_history for both — c95728e
+- [x] 1.5 No-history ticker returns price_history: null without error — c95728e
+- [x] 1.6 Treemap view still renders, no history payload on that path — c95728e
 
 ### Phase 2: E2E fake + render verification
 
 #### Automated
 
-- [ ] 2.1 E2E suite green (`uv run pytest tests/e2e -q`)
-- [ ] 2.2 New assertions pass for both render and fallback cases
+- [x] 2.1 E2E suite green (`uv run pytest tests/e2e -q`)
+- [x] 2.2 New assertions pass for both render and fallback cases
 
 #### Manual
 
-- [ ] 2.3 Browser: sparklines draw for tickers with history, "—" otherwise, ETFs included
+- [x] 2.3 Browser: sparklines draw for tickers with history, "—" otherwise, ETFs included

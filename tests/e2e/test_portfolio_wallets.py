@@ -71,6 +71,24 @@ def test_positions_table_scoped_to_active_tab(page: Page, live_server_url: str):
     expect(page.locator("#pp-tbody")).to_contain_text("CDR")
 
 
+def test_positions_sparkline_renders_with_history_and_dash_without(
+    page: Page, live_server_url: str
+):
+    """Risk: price_history[] drives the 30-day sparkline — a position with history
+    renders an <svg> trend line; one without falls back to '—'."""
+    _login(page, live_server_url)
+    _open_portfolio_positions(page)
+
+    # PKO carries price_history in the fake → sparkline <svg> renders in its "30 dni" cell
+    pko_cell = page.locator("#pp-tbody tr", has_text="PKO").locator('td[data-label="30 dni"]')
+    expect(pko_cell.locator("svg polyline")).to_be_visible()
+
+    # CDR has no price_history → '—' fallback, no <svg>
+    cdr_cell = page.locator("#pp-tbody tr", has_text="CDR").locator('td[data-label="30 dni"]')
+    expect(cdr_cell).to_have_text("—")
+    expect(cdr_cell.locator("svg")).to_have_count(0)
+
+
 def test_add_position_sends_portfolio_id(page: Page, live_server_url: str):
     """Risk: POST /api/portfolio/positions must include portfolio_id in the request body."""
     _login(page, live_server_url)
