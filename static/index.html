@@ -2278,7 +2278,7 @@ function _buildMyWalletViewContent(view) {
   `;
 
   $('my-wallet-table-head').innerHTML =
-    '<tr>' + _USER_COLS.map(c => `<th class="${c.cls}">${c.label}</th>`).join('') + '</tr>';
+    '<tr>' + (role === 'admin' ? _ADMIN_COLS : _USER_COLS).map(c => `<th class="${c.cls}">${c.label}</th>`).join('') + '</tr>';
 
   _setupAcInput('wl-ticker-input', 'ac-wl-ticker', _acTickers);
   _setupAcInput('wl-company-input', 'ac-wl-company', _acCompanies);
@@ -2576,7 +2576,7 @@ async function fetchMyWalletAnnouncements(push = true) {
   const btnNext = $('wl-btn-next');
   btnPrev.disabled = true;
   btnNext.disabled = true;
-  _showSkeleton('my-wallet-table-body', _USER_COLS.length);
+  _showSkeleton('my-wallet-table-body', (role === 'admin' ? _ADMIN_COLS : _USER_COLS).length);
   const params   = _myWalletParams();
   const pageSize = params.get('page_size');
 
@@ -2589,12 +2589,12 @@ async function fetchMyWalletAnnouncements(push = true) {
     const data = await r.json();
     _wlData = data;
     $('wl-page-label').textContent = 'Strona ' + wlPage;
-    renderTable(data, 'user', 'my-wallet-table-body');
+    renderTable(data, role, 'my-wallet-table-body');
     btnPrev.disabled = wlPage === 1;
     btnNext.disabled = data.length < Number(pageSize);
     _writeUrl('my-wallet', params, push);
   } catch (e) {
-    $('my-wallet-table-body').innerHTML = `<tr><td colspan="${_USER_COLS.length}" class="empty">Błąd ładowania danych</td></tr>`;
+    $('my-wallet-table-body').innerHTML = `<tr><td colspan="${(role === 'admin' ? _ADMIN_COLS : _USER_COLS).length}" class="empty">Błąd ładowania danych</td></tr>`;
     btnPrev.disabled = wlPage === 1;
     btnNext.disabled = false;
   }
