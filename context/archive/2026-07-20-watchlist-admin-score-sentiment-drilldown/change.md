@@ -1,10 +1,10 @@
 ---
 change_id: watchlist-admin-score-sentiment-drilldown
 title: Watchlist admin view — score column, sentiment bar period info, and drill-down popup
-status: impl_reviewed
+status: archived
 created: 2026-07-20
 updated: 2026-07-21
-archived_at: null
+archived_at: 2026-07-21T08:52:02Z
 tracking:
   linear: PUL-87
   github: 155
