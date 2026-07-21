@@ -249,12 +249,12 @@ Trivial at current volume. The recipient query is partition-pruned (`published_a
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -q`
-- [x] 1.2 Full suite green: `uv run pytest --tb=short`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -q` — 633bf26
+- [x] 1.2 Full suite green: `uv run pytest --tb=short` — 633bf26
 
 #### Manual
 
-- [x] 1.3 `select_pending_notifications` with empty mocked result returns `[]` without raising
+- [x] 1.3 `select_pending_notifications` with empty mocked result returns `[]` without raising — 633bf26
 
 ### Phase 2: Branded digest email
 
