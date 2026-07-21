@@ -260,19 +260,19 @@ Trivial at current volume. The recipient query is partition-pruned (`published_a
 
 #### Automated
 
-- [x] 2.1 Unit tests pass: `uv run pytest tests/test_notifier.py -q`
-- [x] 2.2 Full suite green: `uv run pytest --tb=short`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_notifier.py -q` — 8ae7ddc
+- [x] 2.2 Full suite green: `uv run pytest --tb=short` — 8ae7ddc
 
 #### Manual
 
-- [x] 2.3 Digest HTML renders for 1 and 3 items; subject pluralizes; links point at `{base_url}/?view=announcements&ticker=…`
+- [x] 2.3 Digest HTML renders for 1 and 3 items; subject pluralizes; links point at `{base_url}/?view=announcements&ticker=…` — 8ae7ddc
 
 ### Phase 3: Delivery job + deploy wiring + runbook
 
 #### Automated
 
-- [ ] 3.1 Job unit tests pass: `uv run pytest tests/test_notification_main.py -q`
-- [ ] 3.2 Full suite green: `uv run pytest --tb=short`
+- [x] 3.1 Job unit tests pass: `uv run pytest tests/test_notification_main.py -q`
+- [x] 3.2 Full suite green: `uv run pytest --tb=short`
 
 #### Manual
 

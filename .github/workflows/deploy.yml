@@ -78,6 +78,14 @@ jobs:
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }}
 
+      - name: Update Cloud Run Job (notifications)
+        run: |
+          gcloud run jobs update puls-gpw-notifications \
+            --image="${{ env.IMAGE }}:${{ github.sha }}" \
+            --command=uv --args="run,--no-dev,python,notification_main.py" \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }}
+
       - name: Deploy Cloud Run Service (api)
         run: |
           gcloud run deploy puls-gpw-api \
