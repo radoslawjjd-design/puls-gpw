@@ -1,10 +1,10 @@
 ---
 change_id: portfolio-sparklines-price-history
 title: Portfolio sparklines — price_history on /api/portfolio/positions
-status: impl_reviewed
+status: archived
 created: 2026-07-21
 updated: 2026-07-21
-archived_at: null
+archived_at: 2026-07-21T10:12:30Z
 tracking:
   linear: PUL-78
   github: 137
