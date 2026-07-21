@@ -51,7 +51,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    base_url = os.environ.get("APP_BASE_URL", "https://gpw.okiem.ai")
+    base_url = os.environ.get("APP_BASE_URL", "https://puls-gpw-api-5zlombicra-lm.a.run.app")
 
     try:
         # Jobs do not go through the API startup hook — bootstrap our own tables.
