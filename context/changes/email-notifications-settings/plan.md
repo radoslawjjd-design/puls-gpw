@@ -271,24 +271,24 @@ Table self-provisions via the startup ensure/DDL hook (additive, cold-start-safe
 
 #### Automated
 
-- [x] 2.1 Endpoint unit tests pass: `uv run pytest tests/test_api.py -q` (and/or `test_auth_api.py`)
-- [x] 2.2 E2E session fixture still boots (no unpatched BQ): `uv run pytest tests/e2e -q`
-- [x] 2.3 Full suite green: `uv run pytest --tb=short`
+- [x] 2.1 Endpoint unit tests pass: `uv run pytest tests/test_api.py -q` (and/or `test_auth_api.py`) — 8b4be55
+- [x] 2.2 E2E session fixture still boots (no unpatched BQ): `uv run pytest tests/e2e -q` — 8b4be55
+- [x] 2.3 Full suite green: `uv run pytest --tb=short` — 8b4be55
 
 #### Manual
 
-- [x] 2.4 GET returns default, POST toggles + persists against locally-run app with a valid session cookie
+- [x] 2.4 GET returns default, POST toggles + persists against locally-run app with a valid session cookie — 8b4be55
 
 ### Phase 3: Frontend — settings view, menu, toggle
 
 #### Automated
 
-- [ ] 3.1 E2E test passes: `uv run pytest tests/e2e/test_notifications_settings.py -q`
-- [ ] 3.2 Full suite green: `uv run pytest --tb=short`
+- [x] 3.1 E2E test passes: `uv run pytest tests/e2e/test_notifications_settings.py -q`
+- [x] 3.2 Full suite green: `uv run pytest --tb=short`
 
 #### Manual
 
-- [ ] 3.3 "Ustawienia" shows in JWT session, hidden in API-key session
-- [ ] 3.4 `?view=settings` opens/deep-links/back-forward/logout behave correctly
-- [ ] 3.5 Toggle reflects stored state, saves optimistically, reverts + inline error on forced failure
-- [ ] 3.6 Description copy + switch styling correct in light and dark themes
+- [x] 3.3 "Ustawienia" shows in JWT session, hidden in API-key session
+- [x] 3.4 `?view=settings` opens/deep-links/back-forward/logout behave correctly
+- [x] 3.5 Toggle reflects stored state, saves optimistically, reverts + inline error on forced failure
+- [x] 3.6 Description copy + switch styling correct in light and dark themes
