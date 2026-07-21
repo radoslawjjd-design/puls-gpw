@@ -222,9 +222,9 @@ None — read-only over existing tables, no schema change, no data migration.
 
 #### Automated
 
-- [x] 2.1 E2E suite green (`uv run pytest tests/e2e -q`)
-- [x] 2.2 New assertions pass for both render and fallback cases
+- [x] 2.1 E2E suite green (`uv run pytest tests/e2e -q`) — 441662a
+- [x] 2.2 New assertions pass for both render and fallback cases — 441662a
 
 #### Manual
 
-- [x] 2.3 Browser: sparklines draw for tickers with history, "—" otherwise, ETFs included
+- [x] 2.3 Browser: sparklines draw for tickers with history, "—" otherwise, ETFs included — 441662a
