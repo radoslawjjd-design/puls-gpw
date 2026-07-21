@@ -2759,3 +2759,125 @@ def upsert_notification_settings(
     if job.errors:
         raise BigQueryError(f"upsert_notification_settings failed: {job.errors}")
     logger.debug("upsert_notification_settings: user_id=%s enabled=%s", user_id, enabled)
+
+
+# ── notification delivery: sent-log + recipient select (PUL-81 slice b) ───────
+
+_NOTIFICATION_SENT_LOG_TABLE_NAME = "notification_sent_log"
+
+_NOTIFICATION_SENT_LOG_SCHEMA = [
+    bigquery.SchemaField("user_id",         "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("announcement_id", "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("email",           "STRING",    mode="NULLABLE"),
+    bigquery.SchemaField("sent_at",         "TIMESTAMP", mode="REQUIRED"),
+]
+
+
+def create_notification_sent_log_table_if_not_exists() -> None:
+    """Create the notification_sent_log dedup table in BigQuery if absent."""
+    client = _get_client()
+    table_id = _table_ref(client, _NOTIFICATION_SENT_LOG_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_NOTIFICATION_SENT_LOG_SCHEMA)
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_notification_sent_log_schema_current() -> None:
+    """Migrate the notification_sent_log table — add any missing columns."""
+    ensure_schema_current(_NOTIFICATION_SENT_LOG_TABLE_NAME, _NOTIFICATION_SENT_LOG_SCHEMA)
+
+
+def select_pending_notifications(candidate_cutoff: datetime) -> list[dict]:
+    """Recipients × announcements that qualify for an email but haven't been sent.
+
+    Joins announcements → watchlist (by ticker) → notification_subscriptions (by
+    user_id). A row qualifies when the subscription is enabled with an email, the
+    announcement is approved + scored at/above the user's min_score, published
+    within the candidate window AND after the user opted in (confirmed_at floor,
+    F1), and the (user, announcement) pair is not already in the sent-log.
+    Returns one dict per (user, announcement); empty list when nothing qualifies.
+    Raises BigQueryError on failure.
+    """
+    client = _get_client()
+    query = f"""
+        SELECT ns.user_id AS user_id, ns.email AS email,
+               a.announcement_id AS announcement_id, a.ticker AS ticker,
+               a.company AS company, a.title AS title, a.event_type AS event_type
+        FROM `{_table_ref(client, _TABLE_NAME)}` AS a
+        JOIN `{_table_ref(client, _WATCHLIST_TABLE_NAME)}` AS w
+          ON w.ticker = a.ticker
+        JOIN `{_table_ref(client, _NOTIFICATION_SUBSCRIPTIONS_TABLE_NAME)}` AS ns
+          ON ns.user_id = w.user_id
+        WHERE a.analysis_approved = TRUE
+          AND a.analysis_score IS NOT NULL
+          AND ns.enabled = TRUE
+          AND ns.email IS NOT NULL
+          AND a.analysis_score >= COALESCE(ns.min_score, 0)
+          AND a.published_at >= @candidate_cutoff
+          AND a.published_at >= COALESCE(ns.confirmed_at, ns.updated_at)
+          AND NOT EXISTS (
+              SELECT 1 FROM `{_table_ref(client, _NOTIFICATION_SENT_LOG_TABLE_NAME)}` AS l
+              WHERE l.user_id = ns.user_id AND l.announcement_id = a.announcement_id
+          )
+        ORDER BY ns.user_id, a.published_at
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("candidate_cutoff", "TIMESTAMP", candidate_cutoff),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"select_pending_notifications failed: {exc}") from exc
+    return [
+        {
+            "user_id": row.user_id,
+            "email": row.email,
+            "announcement_id": row.announcement_id,
+            "ticker": row.ticker,
+            "company": row.company,
+            "title": row.title,
+            "event_type": row.event_type,
+        }
+        for row in rows
+    ]
+
+
+def record_notification_sent(user_id: str, announcement_id: str, email: str | None) -> None:
+    """Mark a (user, announcement) pair as emailed — idempotent.
+
+    INSERT…WHERE NOT EXISTS so re-running with the same pair is a silent no-op
+    (the dedup key is enforced here, since BigQuery has no unique constraint).
+    Raises BigQueryError on failure.
+    """
+    client = _get_client()
+    table = _table_ref(client, _NOTIFICATION_SENT_LOG_TABLE_NAME)
+    query = f"""
+        INSERT INTO `{table}` (user_id, announcement_id, email, sent_at)
+        SELECT @user_id, @announcement_id, @email, CURRENT_TIMESTAMP()
+        FROM (SELECT 1)
+        WHERE NOT EXISTS (
+            SELECT 1 FROM `{table}`
+            WHERE user_id = @user_id AND announcement_id = @announcement_id
+        )
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id",         "STRING", user_id),
+            bigquery.ScalarQueryParameter("announcement_id", "STRING", announcement_id),
+            bigquery.ScalarQueryParameter("email",           "STRING", email),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"record_notification_sent failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"record_notification_sent failed: {job.errors}")
+    logger.debug("record_notification_sent: user_id=%s announcement_id=%s", user_id, announcement_id)
