@@ -271,8 +271,8 @@ Trivial at current volume. The recipient query is partition-pruned (`published_a
 
 #### Automated
 
-- [x] 3.1 Job unit tests pass: `uv run pytest tests/test_notification_main.py -q`
-- [x] 3.2 Full suite green: `uv run pytest --tb=short`
+- [x] 3.1 Job unit tests pass: `uv run pytest tests/test_notification_main.py -q` — 3c084e3
+- [x] 3.2 Full suite green: `uv run pytest --tb=short` — 3c084e3
 
 #### Manual
 
