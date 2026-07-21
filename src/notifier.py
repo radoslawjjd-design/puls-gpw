@@ -284,6 +284,81 @@ def send_verification_email(to_email: str, verify_link: str, origin: str) -> Non
     )
 
 
+def _pl_announcements_plural(n: int) -> str:
+    """Polish plural of 'komunikat' for a count (1 komunikat / 2-4 komunikaty / komunikatów)."""
+    if n == 1:
+        return "nowy komunikat"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return "nowe komunikaty"
+    return "nowych komunikatów"
+
+
+def _announcement_digest_html(items: list[dict], base_url: str) -> str:
+    """Faro-branded digest listing a user's new watched-company announcements.
+
+    Every embedded field is HTML-escaped (defense-in-depth, PR #159); each entry
+    links to the Faro announcements view filtered by the ticker.
+    """
+    logo_url = _html_escape(f"{base_url}/static/img/faro-mark.png", quote=True)
+    rows = []
+    for it in items:
+        company = _html_escape(str(it.get("company") or it.get("ticker") or ""), quote=True)
+        ticker = _html_escape(str(it.get("ticker") or ""), quote=True)
+        title = _html_escape(str(it.get("title") or ""), quote=True)
+        event_type = _html_escape(str(it.get("event_type") or ""), quote=True)
+        link = _html_escape(
+            f"{base_url}/?view=announcements&ticker={it.get('ticker') or ''}", quote=True
+        )
+        rows.append(f"""
+  <div style="border:1px solid #e5e7eb;border-radius:6px;padding:14px 16px;margin:0 0 10px;">
+    <div style="font-size:15px;font-weight:700;color:#14304A;margin:0 0 4px;">{company} <span style="color:#6b7280;font-weight:400;">({ticker})</span></div>
+    <div style="font-size:14px;color:#111827;margin:0 0 6px;">{title}</div>
+    <div style="font-size:12px;color:#6b7280;margin:0 0 10px;">{event_type}</div>
+    <a href="{link}" style="display:inline-block;background:#b8964f;color:#ffffff;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:700;text-decoration:none;">Zobacz w Faro</a>
+  </div>""")
+    return f"""<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:20px;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<div style="max-width:520px;margin:0 auto;">
+
+<div style="background:#14304A;color:#ffffff;padding:18px 24px;border-radius:8px 8px 0 0;">
+  <span style="display:inline-block;background:#ffffff;border-radius:8px;padding:5px 7px;vertical-align:middle;"><img src="{logo_url}" alt="Faro" height="28" style="display:block;height:28px;"></span>
+  <span style="font-size:20px;font-weight:700;vertical-align:middle;margin-left:10px;">Faro</span>
+</div>
+
+<div style="background:#ffffff;padding:24px;">
+  <p style="font-size:15px;line-height:1.6;color:#111827;margin:0 0 16px;">
+    Nowe komunikaty Twoich obserwowanych spółek:
+  </p>
+  {''.join(rows)}
+</div>
+
+<div style="background:#f9fafb;border:1px solid #e5e7eb;border-top:none;padding:12px 18px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280;text-align:center;">
+  Faro — jasne treści komunikatów ESPI/EBI. Powiadomienia możesz wyłączyć w Ustawieniach.
+</div>
+
+</div>
+</body>
+</html>"""
+
+
+def send_announcement_digest_email(to_email: str, items: list[dict], base_url: str) -> None:
+    """Send a user their digest of new watched-company announcements via own SMTP.
+
+    Raises on SMTP failure — the delivery job catches per-recipient and retries
+    next pass (the pair is not recorded in the sent-log).
+    """
+    n = len(items)
+    subject = f"Faro — {n} {_pl_announcements_plural(n)} Twoich spółek"
+    _send(
+        subject,
+        _announcement_digest_html(items, base_url),
+        html=True,
+        to=to_email,
+        from_name="Faro",
+    )
+
+
 def send_password_reset_email(to_email: str, reset_link: str, origin: str) -> None:
     """PUL-85: Faro-branded password-reset e-mail (Polish) sent via own SMTP.
 
