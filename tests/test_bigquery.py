@@ -1522,3 +1522,94 @@ def test_create_notification_subscriptions_table_creates_on_not_found():
     created_table = client.create_table.call_args[0][0]
     assert "notification_subscriptions" in str(created_table.reference) or \
         "notification_subscriptions" in str(created_table)
+
+
+# ── notification delivery: sent-log + recipient select (PUL-81 slice b) ────────
+
+def test_select_pending_notifications_builds_join_and_maps_rows():
+    """The recipient query joins announcements×watchlist×subscriptions, filters on
+    enabled/approved/score/min_score, scopes to since-opt-in, anti-joins the
+    sent-log, and maps each row to a recipient dict."""
+    from db.bigquery import select_pending_notifications
+
+    cutoff = datetime(2026, 7, 19, 0, 0, tzinfo=timezone.utc)
+    client = _mock_bq_client_with_rows([
+        {"user_id": "u1", "email": "a@b.pl", "announcement_id": "ann1",
+         "ticker": "TOA", "company": "Toya SA", "title": "Wyniki Q2", "event_type": "wyniki_finansowe"},
+    ])
+    with patch("db.bigquery._get_client", return_value=client):
+        rows = select_pending_notifications(cutoff)
+
+    assert rows == [{
+        "user_id": "u1", "email": "a@b.pl", "announcement_id": "ann1",
+        "ticker": "TOA", "company": "Toya SA", "title": "Wyniki Q2", "event_type": "wyniki_finansowe",
+    }]
+    q = client.query.call_args[0][0]
+    assert "notification_subscriptions" in q and "watchlist" in q and "announcements" in q
+    assert "enabled = TRUE" in q
+    assert "analysis_approved = TRUE" in q
+    assert "analysis_score IS NOT NULL" in q
+    assert "COALESCE(ns.min_score, 0)" in q or "COALESCE(min_score, 0)" in q
+    # since-opt-in floor (F1) + candidate window + sent-log anti-join
+    assert "confirmed_at" in q
+    assert "NOT EXISTS" in q and "notification_sent_log" in q
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["candidate_cutoff"] == cutoff
+
+
+def test_select_pending_notifications_empty_returns_list():
+    """No qualifying rows → empty list, never raises."""
+    from db.bigquery import select_pending_notifications
+
+    client = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=client):
+        assert select_pending_notifications(datetime(2026, 7, 19, tzinfo=timezone.utc)) == []
+
+
+def test_record_notification_sent_inserts_when_not_exists():
+    """record_notification_sent issues an INSERT…WHERE NOT EXISTS keyed on
+    (user_id, announcement_id), with the email + params bound."""
+    from db.bigquery import record_notification_sent
+
+    client = _mock_bq_client()
+    with patch("db.bigquery._get_client", return_value=client):
+        record_notification_sent("u1", "ann1", "a@b.pl")
+
+    q = client.query.call_args[0][0]
+    assert "INSERT" in q and "notification_sent_log" in q
+    assert "NOT EXISTS" in q
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["user_id"] == "u1"
+    assert params["announcement_id"] == "ann1"
+    assert params["email"] == "a@b.pl"
+
+
+def test_record_notification_sent_raises_bigquery_error_on_failure():
+    """A client.query failure surfaces as BigQueryError."""
+    from db.bigquery import BigQueryError, record_notification_sent
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = RuntimeError("boom")
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="record_notification_sent failed"):
+            record_notification_sent("u1", "ann1", "a@b.pl")
+
+
+def test_create_notification_sent_log_table_creates_on_not_found():
+    """create_notification_sent_log_table_if_not_exists creates the table when
+    get_table raises NotFound."""
+    from google.cloud.exceptions import NotFound
+
+    from db.bigquery import create_notification_sent_log_table_if_not_exists
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.get_table.side_effect = NotFound("missing")
+    with patch("db.bigquery._get_client", return_value=client):
+        create_notification_sent_log_table_if_not_exists()
+
+    assert client.create_table.called
+    created_table = client.create_table.call_args[0][0]
+    assert "notification_sent_log" in str(created_table.reference) or \
+        "notification_sent_log" in str(created_table)

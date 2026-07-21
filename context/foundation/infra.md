@@ -85,6 +85,7 @@ runner SA `puls-gpw-runner@` musi mieć `secretmanager.secretAccessor`.
 | `puls-gpw-post-poludnie` | `0 13 * * 1-5` | `puls-gpw-post` | Pon–Pt 13:00 |
 | `puls-gpw-post-wieczor` | `30 17 * * 1-5` | `puls-gpw-post` | Pon–Pt 17:30 |
 | `puls-gpw-company-stats-trigger` | `1,31 9-17 * * 1-5` | `puls-gpw-company-stats` | Pon–Pt co 30 min 9:01–17:31 (18 razy/dzień) |
+| `puls-gpw-notifications-trigger` | `*/5 * * * *` | `puls-gpw-notifications` | Co 5 min, całą dobę (ESPI publikowane też wieczorami/w weekendy) |
 
 Wszystkie schedulery używają OAuth z service account `puls-gpw-runner` do wywołania Cloud Run Jobs API.
 
@@ -120,6 +121,43 @@ gcloud scheduler jobs create http puls-gpw-company-stats-trigger \
 # 3. Weryfikacja
 gcloud run jobs list --region=europe-central2 --project=puls-gpw
 gcloud scheduler jobs list --location=europe-central2 --project=puls-gpw
+```
+
+### One-time provisioning runbook — `puls-gpw-notifications` (PUL-81 slice b)
+
+> **HUMAN-ONLY** (per CLAUDE.md). Wykonaj raz przed pierwszym pushiem do `master` z krokiem `Update Cloud Run Job (notifications)` w `deploy.yml`.
+> Job wysyła maile → potrzebuje sekretów SMTP. Dodatkowo `APP_BASE_URL` (cron nie ma request-origin) do linku/logo w mailu.
+> Timeout: **300 s** (pass to jeden BQ join + kilka maili — z zapasem).
+
+```bash
+# 1. Utwórz job
+gcloud run jobs create puls-gpw-notifications \
+  --image=europe-central2-docker.pkg.dev/puls-gpw/puls-gpw/puls-gpw:latest \
+  --command=uv --args="run,--no-dev,python,notification_main.py" \
+  --region=europe-central2 \
+  --project=puls-gpw \
+  --service-account=puls-gpw-runner@puls-gpw.iam.gserviceaccount.com \
+  --set-secrets="SMTP_HOST=smtp-host:latest,SMTP_PORT=smtp-port:latest,SMTP_USER=smtp-user:latest,SMTP_PASSWORD=smtp-password:latest,OWNER_EMAIL=owner-email:latest" \
+  --set-env-vars="GOOGLE_CLOUD_PROJECT=puls-gpw,BIGQUERY_DATASET=espi_ebi,APP_BASE_URL=https://gpw.okiem.ai" \
+  --cpu=1 --memory=1Gi \
+  --task-timeout=300s
+
+# 2. Utwórz trigger Cloud Scheduler (co 5 min, całą dobę, czas warszawski)
+gcloud scheduler jobs create http puls-gpw-notifications-trigger \
+  --schedule="*/5 * * * *" \
+  --time-zone="Europe/Warsaw" \
+  --uri="https://europe-central2-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/puls-gpw/jobs/puls-gpw-notifications:run" \
+  --http-method=POST \
+  --oauth-service-account-email=puls-gpw-runner@puls-gpw.iam.gserviceaccount.com \
+  --location=europe-central2 \
+  --project=puls-gpw
+
+# 3. Weryfikacja
+gcloud run jobs list --region=europe-central2 --project=puls-gpw
+gcloud scheduler jobs list --location=europe-central2 --project=puls-gpw
+
+# 4. Test na sucho (bez wysyłki) — uruchom job ręcznie z --dry-run w argumentach
+gcloud run jobs execute puls-gpw-notifications --region=europe-central2 --project=puls-gpw
 ```
 
 ---
