@@ -309,13 +309,13 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 
 #### Automated
 
-- [x] 3.1 pytest passes incl. drill-down 403-for-user, 422-invalid-bucket, bounded list
-- [x] 3.2 Structural consistency assertion: both BQ fns embed the identical _SENTIMENT_BUCKET_SQL fragment
-- [x] 3.3 Lint passes
+- [x] 3.1 pytest passes incl. drill-down 403-for-user, 422-invalid-bucket, bounded list — 1cb163c
+- [x] 3.2 Structural consistency assertion: both BQ fns embed the identical _SENTIMENT_BUCKET_SQL fragment — 1cb163c
+- [x] 3.3 Lint passes — 1cb163c
 
 #### Manual
 
-- [ ] 3.4 Each bucket click opens modal listing exactly the counted announcements
+- [x] 3.4 Each bucket click opens modal listing exactly the counted announcements
 - [ ] 3.5 Modal closes via ✕/backdrop/Escape without breaking the table
 - [ ] 3.6 User gets 403 on direct call; no clickable bucket for users
 - [ ] 3.7 >200-match bucket shows truncation note (or confirmed unreachable)
@@ -324,10 +324,10 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 
 #### Automated
 
-- [ ] 4.1 pytest / existing logout coverage stays green
-- [ ] 4.2 Lint passes
+- [x] 4.1 pytest / existing logout coverage stays green
+- [x] 4.2 Lint passes
 
 #### Manual
 
-- [ ] 4.3 Relogin as different user shows no flash of prior wallet rows/tickers/sentiment/score; open popup gone
-- [ ] 4.4 Same-document admin→user relogin: user head has no Score column (head rebuilt for role; impl-review F1)
+- [x] 4.3 Relogin as different user shows no flash of prior wallet rows/tickers/sentiment/score; open popup gone
+- [x] 4.4 Same-document admin→user relogin: user head has no Score column (head rebuilt for role; impl-review F1)

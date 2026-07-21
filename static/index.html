@@ -846,7 +846,7 @@
   #wl-sentiment-summary .wss-label { font-weight:600; color:var(--brand-dark); text-transform:uppercase; font-size:.72rem; letter-spacing:.06em; }
   .wss-item { display:inline-flex; align-items:center; gap:.4rem; font-variant-numeric:tabular-nums; }
   .wss-item[data-bucket] { cursor:pointer; border-radius:var(--radius-sm); padding:.15rem .4rem; margin:-.15rem -.15rem; transition:background .12s; }
-  .wss-item[data-bucket]:hover { background:var(--brand-soft, rgba(0,0,0,.05)); }
+  .wss-item[data-bucket]:hover { background:rgba(127,127,127,.14); }
   .wss-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
   .wss-truncated { font-size:.8rem; color:var(--text-muted); margin-top:.4rem; }
   /* Dark mode */
@@ -1292,6 +1292,19 @@ function doLogout() {
   _watchlistFetched = false;
   const wlSentiment = $('wl-sentiment-summary');
   if (wlSentiment) { wlSentiment.style.display = 'none'; wlSentiment.innerHTML = ''; }
+  // PUL-87 F1: also clear the wallet body/tickers/data AND reset the once-built
+  // role-dependent head. The my-wallet head is built a single time (_myWalletViewBuilt)
+  // and never re-rendered per fetch — unlike the announcements head — so without this
+  // reset an admin→user same-document relogin leaves the stale admin head (Score column,
+  // _ADMIN_COLS) sitting over a user body.
+  _myWalletViewBuilt = false;
+  _wlData = [];
+  _watchlistTickers = [];
+  wlPage = 1;
+  const wlBody = $('my-wallet-table-body');
+  if (wlBody) wlBody.innerHTML = '';
+  const wlTickers = $('wl-tickers-list');
+  if (wlTickers) wlTickers.innerHTML = '';
   // Session state is gone — a stale `?view=treemap`/`?view=x-history` in the
   // address bar would otherwise sit there through the login screen and get
   // silently re-applied on the next login. replaceState (not pushState) so
