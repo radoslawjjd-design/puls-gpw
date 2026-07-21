@@ -354,7 +354,7 @@ def _fake_delete_user_portfolio_position(user_id, portfolio_id, ticker):
     ]
 
 
-def _fake_list_user_portfolio_positions(user_id, portfolio_id=None):
+def _fake_list_user_portfolio_positions(user_id, portfolio_id=None, include_history=False):
     if portfolio_id == _FAKE_PORTFOLIO_ID:
         # Lazy-init per-user store from static FAKE data on first access so
         # upsert/delete operations in E2E tests actually affect the returned list.

@@ -794,6 +794,55 @@ def test_list_top_announcements_public_query_orders_by_score_without_selecting_i
     assert "analysis_score" not in select_clause
 
 
+def _capture_positions_query(**kwargs) -> str:
+    """Run list_user_portfolio_positions against a mocked client, return the SQL string.
+
+    Regression harness (lessons.md): mocked BQ tests don't parse SQL, so we assert
+    the generated query text directly.
+    """
+    from unittest.mock import MagicMock
+
+    from db import bigquery as bq
+
+    captured = {}
+
+    def _capture(query, job_config=None):
+        captured["query"] = query
+        job = MagicMock()
+        job.result.return_value = []
+        return job
+
+    client = MagicMock()
+    client.query.side_effect = _capture
+    with patch.object(bq, "_get_client", return_value=client):
+        bq.list_user_portfolio_positions("user-1", "port-1", **kwargs)
+    return captured["query"]
+
+
+def test_positions_history_query_unions_both_sources_ascending_capped_deduped():
+    """include_history=True: 30-session close array, ETF-safe, oldest-first, deduped."""
+    q = _capture_positions_query(include_history=True)
+    # ARRAY_AGG of close price, oldest-first (colour/slope depend on ASC order)
+    assert "ARRAY_AGG(kurs_zamkniecia ORDER BY snapshot_date ASC)" in q
+    # unioned across company + ETF sources so ETF sparklines don't silently blank
+    assert "company_daily_stats" in q and "etf_quotes" in q
+    # 30-session window
+    assert "rn <= 30" in q
+    # dedup company-over-etf per (ticker, date) to keep current_price parity
+    assert "PARTITION BY ticker, snapshot_date" in q
+    # clean numeric array — NULL closes filtered before aggregating
+    assert "kurs_zamkniecia IS NOT NULL" in q
+    # LEFT JOIN so a ticker with no history flows through as NULL → None
+    assert "price_history" in q
+
+
+def test_positions_query_omits_history_by_default():
+    """Default (include_history=False) must NOT pay for the ARRAY_AGG — protects treemap path."""
+    q = _capture_positions_query()
+    assert "ARRAY_AGG" not in q
+    assert "price_history" not in q
+
+
 # ── portfolio positions endpoints (PUL-65) ────────────────────────────────────
 
 _POSITION_WITH_PRICE = {
@@ -863,6 +912,34 @@ def test_get_portfolio_positions_without_price_has_null_pnl(user_client):
     assert pos["current_price"] is None
     assert pos["pnl_pln"] is None
     assert pos["pnl_pct"] is None
+
+
+def test_get_portfolio_positions_surfaces_price_history():
+    """price_history from the BQ row must reach the response (model field, not extra-ignored)."""
+    from src.api import PortfolioPositionOut
+
+    row = {**_POSITION_WITH_PRICE, "price_history": [40.0, 45.0, 52.0]}
+    out = PortfolioPositionOut(**row, pnl_pln=None, pnl_pct=None).model_dump()
+    assert out["price_history"] == [40.0, 45.0, 52.0]
+
+
+def test_get_portfolio_positions_defaults_price_history_to_none():
+    """A row with no price_history yields None, not a missing key (frontend renders '—')."""
+    from src.api import PortfolioPositionOut
+
+    out = PortfolioPositionOut(**_POSITION_NO_PRICE, pnl_pln=None, pnl_pct=None).model_dump()
+    assert out["price_history"] is None
+
+
+def test_get_portfolio_positions_requests_history_from_bq(user_client):
+    """The positions endpoint opts into history; the treemap path does not."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_user_portfolio_positions", return_value=[]) as mock_list,
+    ):
+        r = user_client.get(f"/api/portfolio/positions?portfolio_id={_WALLET_ID}")
+    assert r.status_code == 200
+    mock_list.assert_called_once_with(_CLIENT_ID, _WALLET_ID, include_history=True)
 
 
 def test_get_portfolio_positions_api_key_only_returns_401(api_client):
@@ -1162,7 +1239,7 @@ def test_get_portfolio_positions_scoped_to_portfolio(user_client):
             f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
         )
     assert r.status_code == 200
-    mock_list.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
+    mock_list.assert_called_once_with(_CLIENT_ID, _WALLET_ID, include_history=True)
 
 
 def test_get_portfolio_positions_wrong_portfolio_returns_404(user_client):

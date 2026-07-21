@@ -278,6 +278,7 @@ class PortfolioPositionOut(BaseModel):
     pnl_pln: float | None = None
     pnl_pct: float | None = None
     price_as_of: str | None = None
+    price_history: list[float] | None = None
 
 
 def create_app() -> FastAPI:
@@ -652,7 +653,7 @@ def create_app() -> FastAPI:
         if not any(w["portfolio_id"] == portfolio_id for w in wallets):
             raise HTTPException(status_code=404, detail="Wallet not found")
         try:
-            rows = list_user_portfolio_positions(user_id, portfolio_id)
+            rows = list_user_portfolio_positions(user_id, portfolio_id, include_history=True)
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/positions: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
