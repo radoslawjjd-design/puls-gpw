@@ -283,12 +283,12 @@ Table self-provisions via the startup ensure/DDL hook (additive, cold-start-safe
 
 #### Automated
 
-- [x] 3.1 E2E test passes: `uv run pytest tests/e2e/test_notifications_settings.py -q`
-- [x] 3.2 Full suite green: `uv run pytest --tb=short`
+- [x] 3.1 E2E test passes: `uv run pytest tests/e2e/test_notifications_settings.py -q` — bb7249c
+- [x] 3.2 Full suite green: `uv run pytest --tb=short` — bb7249c
 
 #### Manual
 
-- [x] 3.3 "Ustawienia" shows in JWT session, hidden in API-key session
-- [x] 3.4 `?view=settings` opens/deep-links/back-forward/logout behave correctly
-- [x] 3.5 Toggle reflects stored state, saves optimistically, reverts + inline error on forced failure
-- [x] 3.6 Description copy + switch styling correct in light and dark themes
+- [x] 3.3 "Ustawienia" shows in JWT session, hidden in API-key session — bb7249c
+- [x] 3.4 `?view=settings` opens/deep-links/back-forward/logout behave correctly — bb7249c
+- [x] 3.5 Toggle reflects stored state, saves optimistically, reverts + inline error on forced failure — bb7249c
+- [x] 3.6 Description copy + switch styling correct in light and dark themes — bb7249c
