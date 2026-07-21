@@ -282,11 +282,14 @@ _FAKE_PORTFOLIO_POSITIONS = [
         "ticker": "PKO", "company_name": "PKO BP", "shares": 100.0,
         "avg_buy_price": 45.0, "current_price": 50.0,
         "daily_change_pct": 1.5, "price_as_of": "2026-06-27",
+        # >=2 ascending points → sparkline <svg> renders
+        "price_history": [45.0, 47.5, 50.0],
     },
     {
         "ticker": "CDR", "company_name": "CD Projekt", "shares": 10.0,
         "avg_buy_price": 130.0, "current_price": None,
         "daily_change_pct": None, "price_as_of": None,
+        # no price_history → '—' fallback
     },
 ]
 
@@ -354,7 +357,7 @@ def _fake_delete_user_portfolio_position(user_id, portfolio_id, ticker):
     ]
 
 
-def _fake_list_user_portfolio_positions(user_id, portfolio_id=None):
+def _fake_list_user_portfolio_positions(user_id, portfolio_id=None, include_history=False):
     if portfolio_id == _FAKE_PORTFOLIO_ID:
         # Lazy-init per-user store from static FAKE data on first access so
         # upsert/delete operations in E2E tests actually affect the returned list.
@@ -363,11 +366,17 @@ def _fake_list_user_portfolio_positions(user_id, portfolio_id=None):
                 {**p, "portfolio_id": _FAKE_PORTFOLIO_ID}
                 for p in _FAKE_PORTFOLIO_POSITIONS
             ]
-        return [
+        rows = [
             p for p in _portfolio_positions_store.get(user_id, [])
             if p.get("portfolio_id") == _FAKE_PORTFOLIO_ID
         ]
-    return list(_portfolio_positions_store.get(user_id, []))
+    else:
+        rows = list(_portfolio_positions_store.get(user_id, []))
+    # Mirror production: price_history only travels when the caller opts in
+    # (the treemap path calls with include_history=False and must stay lean).
+    if not include_history:
+        return [{k: v for k, v in r.items() if k != "price_history"} for r in rows]
+    return rows
 
 
 def _fake_create_user_portfolios_table_if_not_exists():

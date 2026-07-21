@@ -638,7 +638,13 @@ def delete_user_portfolio_position(user_id: str, portfolio_id: str, ticker: str)
     logger.debug("delete_user_portfolio_position: user_id=%s portfolio_id=%s ticker=%s", user_id, portfolio_id, ticker)
 
 
-def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None) -> list[dict]:
+_PRICE_HISTORY_SESSIONS = 30  # trading sessions carried in price_history[]
+_PRICE_HISTORY_SCAN_DAYS = 90  # scan floor — generous margin over 30 sessions given ~31% daily gaps
+
+
+def list_user_portfolio_positions(
+    user_id: str, portfolio_id: str | None = None, include_history: bool = False
+) -> list[dict]:
     """Return positions for user_id joined with the latest available close price.
 
     When portfolio_id is provided, results are scoped to that wallet. Without it,
@@ -646,11 +652,51 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
     single-call batch fetch, grouped by portfolio_id in Python).
     Uses ROW_NUMBER() OVER PARTITION BY ticker to pick the most recent company_daily_stats
     entry per ticker, then LEFT JOIN so positions without price data still appear.
-    Raises BigQueryError on query failure.
+
+    When include_history=True, each row also carries price_history: list[float] — the
+    last 30 trading-session close prices (PLN, ascending by date), unioned across
+    company_daily_stats and etf_quotes so ETFs are covered too; None when the ticker
+    has no rows. The treemap path leaves include_history=False so it never pays the
+    ARRAY_AGG cost. Raises BigQueryError on query failure.
     """
     client = _get_client()
     _t = time.time()
     portfolio_filter = "AND p.portfolio_id = @portfolio_id" if portfolio_id is not None else ""
+    if include_history:
+        history_cte = f""",
+        hist_raw AS (
+          SELECT ticker, snapshot_date, kurs_zamkniecia, 0 AS src
+          FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
+          WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL {_PRICE_HISTORY_SCAN_DAYS} DAY)
+            AND kurs_zamkniecia IS NOT NULL
+          UNION ALL
+          SELECT ticker, snapshot_date, kurs_zamkniecia, 1 AS src
+          FROM `{_table_ref(client, _ETF_QUOTES_TABLE_NAME)}`
+          WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL {_PRICE_HISTORY_SCAN_DAYS} DAY)
+            AND kurs_zamkniecia IS NOT NULL
+        ),
+        hist_dedup AS (
+          SELECT ticker, snapshot_date, kurs_zamkniecia
+          FROM hist_raw
+          QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date ORDER BY src) = 1
+        ),
+        hist_ranked AS (
+          SELECT ticker, snapshot_date, kurs_zamkniecia,
+                 ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
+          FROM hist_dedup
+        ),
+        price_hist AS (
+          SELECT ticker, ARRAY_AGG(kurs_zamkniecia ORDER BY snapshot_date ASC) AS price_history
+          FROM hist_ranked
+          WHERE rn <= {_PRICE_HISTORY_SESSIONS}
+          GROUP BY ticker
+        )"""
+        history_select = ",\n          ph.price_history AS price_history"
+        history_join = "LEFT JOIN price_hist ph ON p.ticker = ph.ticker"
+    else:
+        history_cte = ""
+        history_select = ""
+        history_join = ""
     query = f"""
         WITH latest_stats AS (
           SELECT
@@ -671,7 +717,7 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _ETF_QUOTES_TABLE_NAME)}`
           WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
-        )
+        ){history_cte}
         SELECT
           p.portfolio_id,
           p.ticker,
@@ -680,12 +726,13 @@ def list_user_portfolio_positions(user_id: str, portfolio_id: str | None = None)
           p.avg_buy_price,
           COALESCE(ls.kurs_zamkniecia,   etf.kurs_zamkniecia)   AS current_price,
           COALESCE(ls.zmiana_procentowa, etf.zmiana_procentowa) AS daily_change_pct,
-          COALESCE(ls.price_as_of,       etf.price_as_of)       AS price_as_of
+          COALESCE(ls.price_as_of,       etf.price_as_of)       AS price_as_of{history_select}
         FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` p
         LEFT JOIN latest_stats ls
           ON p.ticker = ls.ticker AND ls.rn = 1
         LEFT JOIN latest_etf etf
           ON p.ticker = etf.ticker AND etf.rn = 1
+        {history_join}
         WHERE p.user_id = @user_id {portfolio_filter}
         ORDER BY p.ticker
     """
