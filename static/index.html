@@ -2601,36 +2601,39 @@ async function fetchMyWalletAnnouncements(push = true) {
 }
 
 // ── My Wallet: agregacja sentymentu (ostatnie 7 dni) ──────────────────
+// Buduje etykietę okresu: zachowany prefiks „Ostatnie 7 dni" + realny zakres
+// dat i liczba dni, które faktycznie miały ogłoszenia (metadane z endpointu).
+function _wlSentimentPeriodLabel(s) {
+  let label = 'Ostatnie 7 dni';
+  try {
+    const fmt = d => new Date(d).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
+    if (s.window_from && s.window_to) label += ` (${fmt(s.window_from)}–${fmt(s.window_to)})`;
+  } catch (e) { /* zostaje sam prefiks */ }
+  if (s.days_with_data != null) label += ` · ${s.days_with_data} dni z danymi`;
+  return label;
+}
+
 async function fetchWlSentimentSummary() {
   const box = $('wl-sentiment-summary');
   if (!box) return;
-  // Sentiment/score are admin-only (same convention as the announcement modal) —
-  // skip the fetch entirely for other roles, the backend strips the fields anyway.
+  // Sentiment/score are admin-only — skip for other roles; the endpoint 403s anyway.
+  // Server owns the bucketing (PUL-87) so counts match the drill-down popup exactly.
   if (role !== 'admin') { box.style.display = 'none'; return; }
   try {
-    const r = await fetch('/announcements/my-wallet?page=1&page_size=100', {
+    const r = await fetch('/announcements/my-wallet/sentiment-summary', {
       headers: { 'X-API-Key': apiKey }
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    const rows = await r.json();
-    const cutoff = Date.now() - 7 * 86400000;
-    const recent = rows.filter(a => a.published_at && new Date(a.published_at).getTime() >= cutoff);
-    if (!recent.length) { box.style.display = 'none'; return; }
-    const cnt = { pozytywny: 0, neutralny: 0, negatywny: 0 };
-    let scoreSum = 0, scoreN = 0;
-    recent.forEach(a => {
-      const s = a.structured_analysis?.sentiment;
-      if (cnt[s] != null) cnt[s]++;
-      if (a.analysis_score != null) { scoreSum += a.analysis_score; scoreN++; }
-    });
-    const avg = scoreN ? Math.round(scoreSum / scoreN) : null;
+    const s = await r.json();
+    if (!s.total) { box.style.display = 'none'; return; }
+    const c = s.counts || {};
     box.innerHTML =
-      '<span class="wss-label">Ostatnie 7 dni</span>'
-      + '<span class="wss-item"><span class="wss-dot" style="background:var(--positive)"></span>Pozytywny: <strong>' + cnt.pozytywny + '</strong></span>'
-      + '<span class="wss-item"><span class="wss-dot" style="background:var(--gold-mid)"></span>Neutralny: <strong>' + cnt.neutralny + '</strong></span>'
-      + '<span class="wss-item"><span class="wss-dot" style="background:var(--negative)"></span>Negatywny: <strong>' + cnt.negatywny + '</strong></span>'
-      + (avg != null ? '<span class="wss-item">Śr. score: <strong>' + avg + '</strong></span>' : '')
-      + '<span class="wss-item" style="color:var(--text-muted)">(ogłoszenia: ' + recent.length + ')</span>';
+      '<span class="wss-label">' + _wlSentimentPeriodLabel(s) + '</span>'
+      + '<span class="wss-item" data-bucket="pozytywny"><span class="wss-dot" style="background:var(--positive)"></span>Pozytywny: <strong>' + (c.pozytywny || 0) + '</strong></span>'
+      + '<span class="wss-item" data-bucket="neutralny"><span class="wss-dot" style="background:var(--gold-mid)"></span>Neutralny: <strong>' + (c.neutralny || 0) + '</strong></span>'
+      + '<span class="wss-item" data-bucket="negatywny"><span class="wss-dot" style="background:var(--negative)"></span>Negatywny: <strong>' + (c.negatywny || 0) + '</strong></span>'
+      + (s.avg_score != null ? '<span class="wss-item">Śr. score: <strong>' + s.avg_score + '</strong></span>' : '')
+      + '<span class="wss-item" style="color:var(--text-muted)">(ogłoszenia: ' + s.total + ')</span>';
     box.style.display = 'flex';
   } catch (e) { box.style.display = 'none'; }
 }

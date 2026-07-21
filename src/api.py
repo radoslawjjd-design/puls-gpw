@@ -50,6 +50,7 @@ from db.bigquery import (
     list_watchlist_tickers,
     list_x_posts_admin,
     remove_watchlist_ticker,
+    summarize_watchlist_sentiment,
     upsert_user_portfolio_position,
 )
 from src.auth import refresh_session_if_stale, session_payload_from_request
@@ -92,6 +93,16 @@ def _perf_invalidate_portfolio(user_id: str, portfolio_id: str) -> None:
     _PERF_CACHE.pop(f"positions:{user_id}:{portfolio_id}", None)
     _PERF_CACHE.pop(f"treemap:{user_id}", None)
     prefix = f"calendar:{user_id}:{portfolio_id}:"
+    for k in [k for k in _PERF_CACHE if k.startswith(prefix)]:
+        _PERF_CACHE.pop(k, None)
+
+
+def _invalidate_wl_sentiment(user_id: str) -> None:
+    # PUL-87: the sentiment bar + drill-down are per-user caches; a watchlist
+    # add/remove changes what they aggregate, so drop them immediately (the bar
+    # is refetched right after a mutation and must reflect the new watchlist).
+    _PERF_CACHE.pop(f"wl-sentiment-sum:{user_id}", None)
+    prefix = f"wl-sentiment-list:{user_id}:"
     for k in [k for k in _PERF_CACHE if k.startswith(prefix)]:
         _PERF_CACHE.pop(k, None)
 
@@ -441,6 +452,7 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in POST /watchlist/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        _invalidate_wl_sentiment(user_id)
         return {"ticker": ticker, "added": True}
 
     @app.delete("/watchlist/{ticker}", status_code=204)
@@ -454,6 +466,7 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /watchlist/%s: %s", ticker, exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        _invalidate_wl_sentiment(user_id)
 
     @app.get("/announcements/my-wallet")
     async def announcements_my_wallet(
@@ -487,6 +500,26 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in /announcements/my-wallet: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/announcements/my-wallet/sentiment-summary")
+    async def announcements_my_wallet_sentiment_summary(
+        role: Role = Depends(_require_admin),
+        user_id: str = Depends(_get_user_id),
+    ):
+        # Admin-only + per-user (PUL-87): sentiment/score never reach the user role,
+        # so this is gated at the dependency, not via model stripping. Short-TTL
+        # per-user cache mirrors the /admin/portfolio/treemap pattern.
+        cache_key = f"wl-sentiment-sum:{user_id}"
+        cached = _perf_get(cache_key, ttl=60)
+        if cached is not None:
+            return cached
+        try:
+            summary = summarize_watchlist_sentiment(user_id)
+        except BigQueryError as exc:
+            logger.error("BQ error in /announcements/my-wallet/sentiment-summary: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        _perf_set(cache_key, summary)
+        return summary
 
     @app.get("/admin/x-posts")
     async def admin_x_posts(

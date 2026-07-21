@@ -400,6 +400,23 @@ def _fake_list_announcements_for_watchlist(client_id, page=1, page_size=20, from
     return []
 
 
+def _fake_summarize_watchlist_sentiment(user_id, days=7):
+    """PUL-87: server-side sentiment summary keyed off the same watchlist store —
+    empty before the admin adds PKO, one pozytywny row (score 85) after, mirroring
+    _FAKE_WATCHLIST_ANNOUNCEMENT. Keeps test_watchlist_sentiment.py green now that the
+    bar reads this endpoint instead of aggregating client-side."""
+    now = datetime.now(timezone.utc)
+    base = {
+        "window_from": (now - timedelta(days=days)).isoformat(),
+        "window_to": now.isoformat(),
+    }
+    if "PKO" not in _watchlist_store.get(user_id, []):
+        return {**base, "counts": {"pozytywny": 0, "neutralny": 0, "negatywny": 0},
+                "avg_score": None, "days_with_data": 0, "total": 0}
+    return {**base, "counts": {"pozytywny": 1, "neutralny": 0, "negatywny": 0},
+            "avg_score": 85, "days_with_data": 1, "total": 1}
+
+
 def _fake_list_x_posts_admin(
     page=1, page_size=20, window=None, x_publish_status=None,
     post_text=None, from_dt=None, to_dt=None,
@@ -460,6 +477,7 @@ def live_server_url():
         patch("src.api.remove_watchlist_ticker", side_effect=_fake_remove_watchlist_ticker),
         patch("src.api.list_watchlist_tickers", side_effect=_fake_list_watchlist_tickers),
         patch("src.api.list_announcements_for_watchlist", side_effect=_fake_list_announcements_for_watchlist),
+        patch("src.api.summarize_watchlist_sentiment", side_effect=_fake_summarize_watchlist_sentiment),
         patch("src.api.list_top_announcements_public", return_value=_FAKE_PUBLIC_TOP_ROWS),
         patch(
             "src.api.create_user_portfolio_positions_table_if_not_exists",

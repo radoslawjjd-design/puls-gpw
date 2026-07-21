@@ -38,7 +38,7 @@ Give the admin full analytical context in the "Obserwowane" (My Wallet) view: a 
 - No data backfill / re-analysis of the English/NULL sentiment rows (normalized at read time only; data-quality cleanup is a separate concern).
 - No change to the my-wallet table's own scope (still 90-day, paginated) — only the 7-day bar aggregates.
 - No removal of the vestigial `X-API-Key`/`X-Client-Id` headers (PUL-82 F4 — belongs to the DROP client_id chore).
-- No cache invalidation on watchlist add/remove (short TTL is the staleness bound, matching existing endpoints).
+- No *broad* cache invalidation. **Deviation (Phase 2):** the sentiment-summary/drill-down per-user caches ARE invalidated on watchlist add/remove (`_invalidate_wl_sentiment`) — the bar is refetched right after a mutation and must reflect the new watchlist, so a 60s stale empty summary is unacceptable (the original client-side bar had no cache). Other endpoints keep their short-TTL-only staleness bound.
 
 ## Implementation Approach
 
@@ -216,9 +216,9 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 
 **File**: `static/index.html`
 
-**Intent**: Extend `doLogout` to reset the remaining my-wallet state. It **already** calls `closeModal()` (`static/index.html:1279`) and already clears `_watchlistFetched` (`1289`) + the sentiment bar (`1290`) — so those are done. The gap is the table body, ticker list, and row data.
+**Intent**: Extend `doLogout` to reset the remaining my-wallet state. It **already** calls `closeModal()` (`static/index.html:1279`) and already clears `_watchlistFetched` (`1289`) + the sentiment bar (`1290`) — so those are done. The gap is the table body, ticker list, row data, and the **once-built role-dependent head** (impl-review F1).
 
-**Contract**: `doLogout` additionally empties `#my-wallet-table-body` and `#wl-tickers-list`, and resets `_wlData = []` (and `_watchlistTickers`/`wlPage` as appropriate). No new `closeModal()` call is needed (already present); no change to auth/session logic.
+**Contract**: `doLogout` additionally empties `#my-wallet-table-body` and `#wl-tickers-list`, resets `_wlData = []` (and `_watchlistTickers`/`wlPage` as appropriate), and **resets `_myWalletViewBuilt = false`** so the next login rebuilds the my-wallet head for its own role. Without this, an admin→user same-document relogin leaves the stale admin head (Score column, `_ADMIN_COLS`) over a user body — the head is built once (`static/index.html:2303-2305`) and never re-rendered, unlike the announcements head which `renderHeaders(role)` rebuilds per fetch. No new `closeModal()` call is needed (already present); no change to auth/session logic.
 
 ### Success Criteria
 
@@ -230,6 +230,7 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 #### Manual Verification:
 
 - Log in as admin A, open Obserwowane (rows + bar visible), log out, log in as user B (or admin B) → no flash of A's rows, tickers, sentiment, or score; any open popup is gone.
+- Same-document admin→user relogin (no page reload): user's Obserwowane shows the 5-column head with **no Score column** (the head rebuilds for the user role; impl-review F1).
 
 **Implementation Note**: Final phase — confirm the full flow end-to-end.
 
@@ -280,8 +281,8 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 
 #### Automated
 
-- [x] 1.1 Lint/format passes for static assets
-- [x] 1.2 Existing test suite passes (pytest, no backend change)
+- [x] 1.1 Lint/format passes for static assets — e6f86f6
+- [x] 1.2 Existing test suite passes (pytest, no backend change) — e6f86f6
 
 #### Manual
 
@@ -293,9 +294,9 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 
 #### Automated
 
-- [ ] 2.1 pytest passes incl. summary 403-for-user / 200-for-admin shape + normalization folding tests
-- [ ] 2.2 E2E test_watchlist_sentiment.py stays green (conftest patches summarize_watchlist_sentiment; render preserves substrings)
-- [ ] 2.3 Lint passes
+- [x] 2.1 pytest passes incl. summary 403-for-user / 200-for-admin shape + normalization folding tests
+- [x] 2.2 E2E test_watchlist_sentiment.py stays green (conftest patches summarize_watchlist_sentiment; render preserves substrings)
+- [x] 2.3 Lint passes
 
 #### Manual
 
@@ -329,3 +330,4 @@ Harden `doLogout` so a relogin as a different user can't flash the previous admi
 #### Manual
 
 - [ ] 4.3 Relogin as different user shows no flash of prior wallet rows/tickers/sentiment/score; open popup gone
+- [ ] 4.4 Same-document admin→user relogin: user head has no Score column (head rebuilt for role; impl-review F1)

@@ -26,7 +26,7 @@ import os
 import threading
 import time
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -1717,6 +1717,92 @@ def list_announcements_for_watchlist(
         }
         for row in rows
     ]
+
+
+# ── watchlist sentiment (PUL-87) ──────────────────────────────────────────────
+# Fixed 7-day window for the my-wallet sentiment bar + drill-down. Interpolated
+# into the SQL as a constant (never a bound param — BQ rejects a parameter in the
+# INTERVAL slot; matches the pattern at `_ANNOUNCEMENTS_DEFAULT_DAYS` usages).
+_WL_SENTIMENT_WINDOW_DAYS = 7
+
+# Shared sentiment normalization. Sentiment lives inside the structured_analysis
+# JSON string, with data drift: English labels (neutral/positive/negative) and NULLs
+# coexist with the Polish values. Fold everything to the three Polish buckets —
+# positive→pozytywny, negative→negatywny, else neutralny (the analyzer's own
+# default), so no approved announcement escapes a bucket. Reused verbatim by the
+# drill-down (list_watchlist_by_sentiment) so bar counts and popup contents can't
+# diverge. JSON_VALUE on the STRING column is lax (malformed JSON → NULL →
+# neutralny); no SAFE. prefix (unsupported for JSON_VALUE).
+_SENTIMENT_BUCKET_SQL = (
+    "CASE LOWER(IFNULL(JSON_VALUE(a.structured_analysis, '$.sentiment'), '')) "
+    "WHEN 'pozytywny' THEN 'pozytywny' "
+    "WHEN 'positive' THEN 'pozytywny' "
+    "WHEN 'negatywny' THEN 'negatywny' "
+    "WHEN 'negative' THEN 'negatywny' "
+    "ELSE 'neutralny' END"
+)
+
+
+def summarize_watchlist_sentiment(
+    user_id: str, days: int = _WL_SENTIMENT_WINDOW_DAYS
+) -> dict:
+    """Aggregate approved watchlist announcements over the last `days` into the three
+    normalized sentiment buckets, plus average score and the count of distinct days
+    that actually have data (PUL-87).
+
+    Sentiment/score are admin-only — the API layer gates this behind admin. Returns
+    a dict: counts (per bucket), avg_score (rounded int or None), days_with_data,
+    window_from/window_to (ISO, server UTC), total. Raises BigQueryError on failure.
+    """
+    client = _get_client()
+    _t = time.time()
+    query = f"""
+        WITH scoped AS (
+            SELECT
+                {_SENTIMENT_BUCKET_SQL} AS bucket,
+                a.analysis_score AS analysis_score,
+                a.published_at AS published_at
+            FROM `{_table_ref(client)}` AS a
+            INNER JOIN (
+                SELECT ticker FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
+                WHERE user_id = @user_id LIMIT 200
+            ) AS w ON a.ticker = w.ticker
+            WHERE a.analysis_approved = TRUE
+              AND a.published_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+        )
+        SELECT
+            COUNTIF(bucket = 'pozytywny') AS pozytywny,
+            COUNTIF(bucket = 'neutralny') AS neutralny,
+            COUNTIF(bucket = 'negatywny') AS negatywny,
+            COUNT(*) AS total,
+            AVG(analysis_score) AS avg_score,
+            COUNT(DISTINCT DATE(published_at)) AS days_with_data
+        FROM scoped
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("user_id", "STRING", user_id)]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"summarize_watchlist_sentiment failed: {exc}") from exc
+    logger.debug("BQ summarize_watchlist_sentiment: %.0fms", (time.time() - _t) * 1000)
+
+    now = datetime.now(timezone.utc)
+    row = rows[0] if rows else None
+    avg = row.avg_score if row else None
+    return {
+        "counts": {
+            "pozytywny": row.pozytywny if row else 0,
+            "neutralny": row.neutralny if row else 0,
+            "negatywny": row.negatywny if row else 0,
+        },
+        "avg_score": round(avg) if avg is not None else None,
+        "days_with_data": row.days_with_data if row else 0,
+        "window_from": (now - timedelta(days=days)).isoformat(),
+        "window_to": now.isoformat(),
+        "total": row.total if row else 0,
+    }
 
 
 def list_top_announcements_public(limit: int = 3) -> list[dict]:
