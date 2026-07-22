@@ -1526,46 +1526,6 @@ def test_create_notification_subscriptions_table_creates_on_not_found():
 
 # ── notification delivery: sent-log + recipient select (PUL-81 slice b) ────────
 
-def test_select_pending_notifications_builds_join_and_maps_rows():
-    """The recipient query joins announcements×watchlist×subscriptions, filters on
-    enabled/approved/score/min_score, scopes to since-opt-in, anti-joins the
-    sent-log, and maps each row to a recipient dict."""
-    from db.bigquery import select_pending_notifications
-
-    cutoff = datetime(2026, 7, 19, 0, 0, tzinfo=timezone.utc)
-    client = _mock_bq_client_with_rows([
-        {"user_id": "u1", "email": "a@b.pl", "announcement_id": "ann1",
-         "ticker": "TOA", "company": "Toya SA", "title": "Wyniki Q2", "event_type": "wyniki_finansowe"},
-    ])
-    with patch("db.bigquery._get_client", return_value=client):
-        rows = select_pending_notifications(cutoff)
-
-    assert rows == [{
-        "user_id": "u1", "email": "a@b.pl", "announcement_id": "ann1",
-        "ticker": "TOA", "company": "Toya SA", "title": "Wyniki Q2", "event_type": "wyniki_finansowe",
-    }]
-    q = client.query.call_args[0][0]
-    assert "notification_subscriptions" in q and "watchlist" in q and "announcements" in q
-    assert "enabled = TRUE" in q
-    assert "analysis_approved = TRUE" in q
-    assert "analysis_score IS NOT NULL" in q
-    assert "COALESCE(ns.min_score, 0)" in q or "COALESCE(min_score, 0)" in q
-    # since-opt-in floor (F1) + candidate window + sent-log anti-join
-    assert "confirmed_at" in q
-    assert "NOT EXISTS" in q and "notification_sent_log" in q
-    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
-    assert params["candidate_cutoff"] == cutoff
-
-
-def test_select_pending_notifications_empty_returns_list():
-    """No qualifying rows → empty list, never raises."""
-    from db.bigquery import select_pending_notifications
-
-    client = _mock_bq_client_with_rows([])
-    with patch("db.bigquery._get_client", return_value=client):
-        assert select_pending_notifications(datetime(2026, 7, 19, tzinfo=timezone.utc)) == []
-
-
 def test_record_notification_sent_inserts_when_not_exists():
     """record_notification_sent issues an INSERT…WHERE NOT EXISTS keyed on
     (user_id, announcement_id), with the email + params bound."""

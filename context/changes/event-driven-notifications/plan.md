@@ -245,8 +245,8 @@ The send is inline in the scraper loop: SMTP latency (~1-2 s/recipient, 10 s tim
 
 #### Automated
 
-- [ ] 3.1 No dangling references to `select_pending_notifications` / `notification_main` (grep clean)
-- [ ] 3.2 Full suite green: `uv run pytest --tb=short`
+- [x] 3.1 No dangling references to `select_pending_notifications` / `notification_main` (grep clean)
+- [x] 3.2 Full suite green: `uv run pytest --tb=short`
 
 #### Manual
 
