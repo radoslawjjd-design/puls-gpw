@@ -39,12 +39,15 @@ pattern is the safe choice. See `research.md` §5.
 
 ## Desired End State
 
-A 4th "Wartość" tab appears in Mój portfel. Clicking it renders a value-over-time line for
-the active wallet at the default 3M range. A range switcher (1T/1M/3M/1R) refetches and
-redraws. A Wartość↔Zysk/strata toggle redraws from the cached payload (no refetch). Empty
-range shows "Brak danych dla tego zakresu", not a broken chart. Non-200 shows an inline
-error. Switching wallet on this tab refetches. Deep-link `?tab=history&range=1m` restores
-the tab + range. Light and dark themes both correct; no console errors; no new deps.
+The Kalendarz view in Mój portfel renders a value-over-time line chart below the calendar
+grid (`#pp-history-section`) for the active wallet at the default 3M range, with a value
+header (current value + Δ over range), gradient area fill, gridlines, and Y/X labels. A
+range switcher (1T/1M/3M/1R) refetches and redraws. A Wartość↔Zysk/strata toggle redraws
+from the cached payload (no refetch). Empty range shows "Brak danych dla tego zakresu",
+not a broken chart. Non-200 shows an inline error. Switching wallet refetches both the
+calendar and the chart; month nav refetches only the calendar. Deep-link
+`?tab=calendar&range=1m` restores the view + range. Light and dark themes both correct;
+no console errors; no new deps. (See the Design revision note above — originally a 4th tab.)
 
 ### Key Discoveries:
 
@@ -279,21 +282,21 @@ debounce needed. The value/P&L toggle never refetches (redraws from cache). Seri
 - [x] 1.3 4th "Wartość" tab appears after Kalendarz, styled consistently (light + dark) — 20ee300
 - [x] 1.4 Clicking Wartość shows range switcher (3M active) + value/P&L toggle + empty state; wallet selector visible — 20ee300
 - [x] 1.5 Switching between the four tabs shows/hides the correct wraps with no leftover content — 20ee300
-- [x] 1.6 `?tab=calendar&range=1m` deep-link opens Kalendarz with chart at 1M active (design revised: chart moved under calendar)
+- [x] 1.6 `?tab=calendar&range=1m` deep-link opens Kalendarz with chart at 1M active (design revised: chart moved under calendar) — 4782b75
 - [x] 1.7 No console errors — 20ee300
 
 ### Phase 2: Chart rendering + interactions
 
 #### Automated
 
-- [x] 2.1 Page loads with no console errors (via browser in manual verification)
+- [x] 2.1 Page loads with no console errors (via browser in manual verification) — 4782b75
 
 #### Manual
 
-- [x] 2.2 Kalendarz view renders the chart below the calendar grid for the active wallet at 3M (with value header)
-- [x] 2.3 Range switcher refetches and redraws; line reshapes per range
-- [x] 2.4 Value↔Zysk/strata toggle redraws instantly with no network call; negative P&L OK
-- [x] 2.5 Empty range shows "Brak danych dla tego zakresu", not a broken chart
-- [x] 2.6 Switching wallet on Kalendarz refetches both calendar and chart; month nav refetches only calendar
-- [x] 2.7 Both wallets work; light + dark correct; no horizontal page scroll on mobile
-- [x] 2.8 `?tab=calendar&range=3m` restores view + range on reload; no console errors
+- [x] 2.2 Kalendarz view renders the chart below the calendar grid for the active wallet at 3M (with value header) — 4782b75
+- [x] 2.3 Range switcher refetches and redraws; line reshapes per range — 4782b75
+- [x] 2.4 Value↔Zysk/strata toggle redraws instantly with no network call; negative P&L OK — 4782b75
+- [x] 2.5 Empty range shows "Brak danych dla tego zakresu", not a broken chart — 4782b75
+- [x] 2.6 Switching wallet on Kalendarz refetches both calendar and chart; month nav refetches only calendar — 4782b75
+- [x] 2.7 Both wallets work; light + dark correct; no horizontal page scroll on mobile — 4782b75
+- [x] 2.8 `?tab=calendar&range=3m` restores view + range on reload; no console errors — 4782b75
