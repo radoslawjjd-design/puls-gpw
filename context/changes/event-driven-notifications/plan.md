@@ -223,12 +223,12 @@ The send is inline in the scraper loop: SMTP latency (~1-2 s/recipient, 10 s tim
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -q`
-- [x] 1.2 Full suite green: `uv run pytest --tb=short`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -q` — ebc3154
+- [x] 1.2 Full suite green: `uv run pytest --tb=short` — ebc3154
 
 #### Manual
 
-- [x] 1.3 `select_recipients_for_announcement` with empty mocked result returns `[]` without raising
+- [x] 1.3 `select_recipients_for_announcement` with empty mocked result returns `[]` without raising — ebc3154
 
 ### Phase 2: Event-driven send in main.py + email link
 
