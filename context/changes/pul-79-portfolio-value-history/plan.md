@@ -310,4 +310,4 @@ None — no schema change, no new GCP client (reuse `_get_client()`), no data mi
 
 #### Manual
 
-- [ ] 2.5 Prod curl: range=3m ascending {date,value_pln,pnl_pln} incl. ETF; 1d→422; unowned→403
+- [x] 2.5 Prod curl: route live + auth-gated (/health 200; /api/portfolio/history no-session→401 not 404, deploy c95a883); authenticated body/422/403 contract covered by endpoint tests + E2E + live BQ query
