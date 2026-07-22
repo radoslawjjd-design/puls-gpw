@@ -234,8 +234,8 @@ The send is inline in the scraper loop: SMTP latency (~1-2 s/recipient, 10 s tim
 
 #### Automated
 
-- [x] 2.1 Unit tests pass: `uv run pytest tests/test_main.py tests/test_notifier.py -q`
-- [x] 2.2 Full suite green: `uv run pytest --tb=short`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_main.py tests/test_notifier.py -q` — 3329557
+- [x] 2.2 Full suite green: `uv run pytest --tb=short` — 3329557
 
 #### Manual
 
