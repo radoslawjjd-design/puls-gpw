@@ -1613,3 +1613,53 @@ def test_create_notification_sent_log_table_creates_on_not_found():
     created_table = client.create_table.call_args[0][0]
     assert "notification_sent_log" in str(created_table.reference) or \
         "notification_sent_log" in str(created_table)
+
+
+# ── event-driven: per-announcement recipients (PUL-81 slice b-v2) ──────────────
+
+def test_select_recipients_for_announcement_builds_join_and_maps_rows():
+    """Scoped to one announcement_id: joins announcements×watchlist×subscriptions,
+    filters enabled/approved/score/min_score/since-opt-in, anti-joins the sent-log,
+    and maps each row to {user_id, email}."""
+    from db.bigquery import select_recipients_for_announcement
+
+    client = _mock_bq_client_with_rows([
+        {"user_id": "u1", "email": "a@b.pl"},
+    ])
+    with patch("db.bigquery._get_client", return_value=client):
+        rows = select_recipients_for_announcement("ann-1")
+
+    assert rows == [{"user_id": "u1", "email": "a@b.pl"}]
+    q = client.query.call_args[0][0]
+    assert "notification_subscriptions" in q and "watchlist" in q and "announcements" in q
+    assert "enabled = TRUE" in q
+    assert "analysis_approved = TRUE" in q
+    assert "analysis_score IS NOT NULL" in q
+    assert "COALESCE(ns.min_score, 0)" in q
+    assert "confirmed_at" in q
+    assert "NOT EXISTS" in q and "notification_sent_log" in q
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["announcement_id"] == "ann-1"
+    # scoped to one announcement, not a time window
+    assert "candidate_cutoff" not in params
+
+
+def test_select_recipients_for_announcement_empty_returns_list():
+    """No qualifying recipients → empty list, never raises."""
+    from db.bigquery import select_recipients_for_announcement
+
+    client = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=client):
+        assert select_recipients_for_announcement("ann-1") == []
+
+
+def test_select_recipients_for_announcement_raises_bigquery_error_on_failure():
+    """A client.query failure surfaces as BigQueryError."""
+    from db.bigquery import BigQueryError, select_recipients_for_announcement
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = RuntimeError("boom")
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="select_recipients_for_announcement failed"):
+            select_recipients_for_announcement("ann-1")
