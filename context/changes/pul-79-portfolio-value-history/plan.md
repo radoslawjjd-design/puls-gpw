@@ -303,10 +303,10 @@ None — no schema change, no new GCP client (reuse `_get_client()`), no data mi
 
 #### Automated
 
-- [x] 2.1 Endpoint + resolver tests pass: `uv run pytest tests/test_api.py -k history`
-- [x] 2.2 E2E green: `uv run pytest tests/e2e`
-- [x] 2.3 Full suite green: `uv run pytest`
-- [x] 2.4 Lint/type clean: `uv run ruff check src/api.py tests`
+- [x] 2.1 Endpoint + resolver tests pass: `uv run pytest tests/test_api.py -k history` — 7a95b30
+- [x] 2.2 E2E green: `uv run pytest tests/e2e` — 7a95b30
+- [x] 2.3 Full suite green: `uv run pytest` — 7a95b30
+- [x] 2.4 Lint/type clean: `uv run ruff check src/api.py tests` — 7a95b30
 
 #### Manual
 
