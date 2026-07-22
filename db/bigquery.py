@@ -2791,61 +2791,49 @@ def ensure_notification_sent_log_schema_current() -> None:
     ensure_schema_current(_NOTIFICATION_SENT_LOG_TABLE_NAME, _NOTIFICATION_SENT_LOG_SCHEMA)
 
 
-def select_pending_notifications(candidate_cutoff: datetime) -> list[dict]:
-    """Recipients × announcements that qualify for an email but haven't been sent.
+def select_recipients_for_announcement(announcement_id: str) -> list[dict]:
+    """Opted-in watchers who should be emailed about ONE announcement, not yet sent.
 
-    Joins announcements → watchlist (by ticker) → notification_subscriptions (by
-    user_id). A row qualifies when the subscription is enabled with an email, the
-    announcement is approved + scored at/above the user's min_score, published
-    within the candidate window AND after the user opted in (confirmed_at floor,
-    F1), and the (user, announcement) pair is not already in the sent-log.
-    Returns one dict per (user, announcement); empty list when nothing qualifies.
-    Raises BigQueryError on failure.
+    The event-driven recipient query, scoped to a single announcement_id (no time
+    window) — the ingestion hook in `main.py` calls it per announcement. A user
+    qualifies when they watch the
+    announcement's ticker, their subscription is enabled with an email, the
+    announcement is approved + scored at/above their min_score, it was published
+    after they opted in (confirmed_at floor), and the (user, announcement) pair is
+    not already in the sent-log. Returns one {user_id, email} per recipient; empty
+    when none qualify. Raises BigQueryError on failure.
     """
     client = _get_client()
     query = f"""
-        SELECT ns.user_id AS user_id, ns.email AS email,
-               a.announcement_id AS announcement_id, a.ticker AS ticker,
-               a.company AS company, a.title AS title, a.event_type AS event_type
+        SELECT ns.user_id AS user_id, ns.email AS email
         FROM `{_table_ref(client, _TABLE_NAME)}` AS a
         JOIN `{_table_ref(client, _WATCHLIST_TABLE_NAME)}` AS w
           ON w.ticker = a.ticker
         JOIN `{_table_ref(client, _NOTIFICATION_SUBSCRIPTIONS_TABLE_NAME)}` AS ns
           ON ns.user_id = w.user_id
-        WHERE a.analysis_approved = TRUE
+        WHERE a.announcement_id = @announcement_id
+          AND a.analysis_approved = TRUE
           AND a.analysis_score IS NOT NULL
           AND ns.enabled = TRUE
           AND ns.email IS NOT NULL
           AND a.analysis_score >= COALESCE(ns.min_score, 0)
-          AND a.published_at >= @candidate_cutoff
           AND a.published_at >= COALESCE(ns.confirmed_at, ns.updated_at)
           AND NOT EXISTS (
               SELECT 1 FROM `{_table_ref(client, _NOTIFICATION_SENT_LOG_TABLE_NAME)}` AS l
               WHERE l.user_id = ns.user_id AND l.announcement_id = a.announcement_id
           )
-        ORDER BY ns.user_id, a.published_at
+        ORDER BY ns.user_id
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            bigquery.ScalarQueryParameter("candidate_cutoff", "TIMESTAMP", candidate_cutoff),
+            bigquery.ScalarQueryParameter("announcement_id", "STRING", announcement_id),
         ]
     )
     try:
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
-        raise BigQueryError(f"select_pending_notifications failed: {exc}") from exc
-    return [
-        {
-            "user_id": row.user_id,
-            "email": row.email,
-            "announcement_id": row.announcement_id,
-            "ticker": row.ticker,
-            "company": row.company,
-            "title": row.title,
-            "event_type": row.event_type,
-        }
-        for row in rows
-    ]
+        raise BigQueryError(f"select_recipients_for_announcement failed: {exc}") from exc
+    return [{"user_id": row.user_id, "email": row.email} for row in rows]
 
 
 def record_notification_sent(user_id: str, announcement_id: str, email: str | None) -> None:
