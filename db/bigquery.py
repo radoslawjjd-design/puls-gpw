@@ -457,6 +457,119 @@ def get_portfolio_calendar_data(
     ]
 
 
+def get_portfolio_history(
+    portfolio_id: str,
+    user_id: str,
+    start_date: date,
+) -> list[dict]:
+    """Return the daily portfolio value + cumulative unrealized P&L series over a range.
+
+    One row per trading day in [start_date, CURRENT_DATE()], ascending by date, with keys:
+    snapshot_date (date), value_pln (float), pnl_pln (float).  value_pln is the current share
+    counts valued at each day's close; pnl_pln = value_pln − Σ(shares × avg_buy_price).
+
+    F1 (PUL-79 plan-review): prices are **forward-filled (LOCF)**, not 0-filled — each held
+    ticker carries its last known close forward across trading days, so a missing daily close
+    no longer collapses a position's value to 0 and dents the curve.  The price scan reaches
+    ~400 days before start_date so early in-range days can be filled.  A day is emitted only
+    when **every** held position has a (carried) price that day (full-coverage gate), which
+    clamps the series start past leading days where a holding has no prior price yet.  This
+    also means a wide range (e.g. 1y) may return fewer points if a holding's price history is
+    short (e.g. an ETF whose etf_quotes history starts mid-range) — correct, not a bug.
+
+    Tranche approximation (accepted, documented): positions store no purchase dates, so
+    "value on day X" uses *today's* share counts against day-X close.
+
+    Returns [] when the portfolio has no positions or no fully-covered trading day exists in
+    range.  Raises BigQueryError on failure.
+    """
+    client = _get_client()
+    _t = time.time()
+
+    cds_ref = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    etf_ref = _table_ref(client, _ETF_QUOTES_TABLE_NAME)
+    pos_ref = _table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)
+
+    query = f"""
+        WITH
+          positions AS (
+            SELECT ticker, shares, avg_buy_price
+            FROM `{pos_ref}`
+            WHERE user_id = @user_id AND portfolio_id = @portfolio_id
+          ),
+          spine AS (
+            SELECT DISTINCT snapshot_date
+            FROM `{cds_ref}`
+            WHERE snapshot_date BETWEEN DATE_SUB(@start_date, INTERVAL 400 DAY) AND CURRENT_DATE()
+          ),
+          px_raw AS (
+            SELECT ticker, snapshot_date, kurs_zamkniecia AS px, 0 AS src
+            FROM `{cds_ref}`
+            WHERE snapshot_date BETWEEN DATE_SUB(@start_date, INTERVAL 400 DAY) AND CURRENT_DATE()
+              AND kurs_zamkniecia IS NOT NULL
+            UNION ALL
+            SELECT ticker, snapshot_date, kurs_zamkniecia AS px, 1 AS src
+            FROM `{etf_ref}`
+            WHERE snapshot_date BETWEEN DATE_SUB(@start_date, INTERVAL 400 DAY) AND CURRENT_DATE()
+              AND kurs_zamkniecia IS NOT NULL
+          ),
+          px_dedup AS (
+            SELECT ticker, snapshot_date, px
+            FROM px_raw
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date ORDER BY src) = 1
+          ),
+          grid AS (
+            SELECT s.snapshot_date, p.ticker, p.shares, p.avg_buy_price, d.px
+            FROM spine s
+            CROSS JOIN positions p
+            LEFT JOIN px_dedup d ON d.ticker = p.ticker AND d.snapshot_date = s.snapshot_date
+          ),
+          filled AS (
+            SELECT
+              snapshot_date, ticker, shares, avg_buy_price,
+              LAST_VALUE(px IGNORE NULLS) OVER (
+                PARTITION BY ticker ORDER BY snapshot_date
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+              ) AS px_ff
+            FROM grid
+          ),
+          daily AS (
+            SELECT
+              snapshot_date,
+              SUM(shares * px_ff) AS value_pln,
+              SUM(shares * px_ff) - SUM(shares * avg_buy_price) AS pnl_pln,
+              COUNTIF(px_ff IS NULL) AS missing
+            FROM filled
+            WHERE snapshot_date BETWEEN @start_date AND CURRENT_DATE()
+            GROUP BY snapshot_date
+          )
+        SELECT snapshot_date, value_pln, pnl_pln
+        FROM daily
+        WHERE missing = 0
+        ORDER BY snapshot_date
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id),
+            bigquery.ScalarQueryParameter("user_id",      "STRING", user_id),
+            bigquery.ScalarQueryParameter("start_date",   "DATE",   start_date),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_portfolio_history failed: {exc}") from exc
+    logger.debug("BQ get_portfolio_history: %.0fms", (time.time() - _t) * 1000)
+    return [
+        {
+            "snapshot_date": row.snapshot_date,
+            "value_pln": float(row.value_pln),
+            "pnl_pln": float(row.pnl_pln),
+        }
+        for row in rows
+    ]
+
+
 _WATCHLIST_TABLE_NAME = "watchlist"
 
 _WATCHLIST_SCHEMA = [

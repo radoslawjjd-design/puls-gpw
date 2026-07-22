@@ -1233,7 +1233,6 @@ def test_batch_insert_company_daily_stats_raises_on_row_errors():
 
 def test_merge_company_daily_stats_happy_path():
     """merge_company_daily_stats must call load_table_from_json, query (MERGE), and delete_table."""
-    from src.exceptions import BigQueryError
 
     client = MagicMock()
     client.project = "test-project"
@@ -1367,7 +1366,6 @@ def test_list_companies_with_hop_info_raises_bigquery_error_on_failure():
 
 def test_get_portfolio_calendar_data_returns_correct_shape():
     """Returns list[dict] with expected keys for a month with trading-day rows."""
-    from datetime import timedelta
     from db.bigquery import get_portfolio_calendar_data
 
     bq_rows = [
@@ -1390,7 +1388,6 @@ def test_get_portfolio_calendar_data_returns_correct_shape():
 def test_get_portfolio_calendar_data_uses_correct_date_params():
     """lookback_start must be month_start (first day of month); end_date must be last day of month."""
     from db.bigquery import get_portfolio_calendar_data
-    from google.cloud import bigquery as bq_module
 
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
         get_portfolio_calendar_data("port-abc", "user-xyz", 2026, 6)
@@ -1428,6 +1425,87 @@ def test_get_portfolio_calendar_data_raises_bigquery_error_on_failure():
     with patch("db.bigquery._get_client", return_value=client):
         with pytest.raises(BigQueryError, match="get_portfolio_calendar_data failed"):
             get_portfolio_calendar_data("port-123", "user-abc", 2026, 6)
+
+
+# ── get_portfolio_history (PUL-79 / FARO-5) ──────────────────────────────────
+
+def test_get_portfolio_history_returns_correct_shape():
+    """Returns list[dict] with date/value_pln/pnl_pln keys, floats coerced, ascending."""
+    from db.bigquery import get_portfolio_history
+
+    bq_rows = [
+        {"snapshot_date": date(2026, 6, 2), "value_pln": 10500, "pnl_pln": 500},
+        {"snapshot_date": date(2026, 6, 3), "value_pln": 10650.5, "pnl_pln": 650.5},
+    ]
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(bq_rows)):
+        result = get_portfolio_history("port-123", "user-abc", date(2026, 6, 1))
+
+    assert isinstance(result, list)
+    assert len(result) == 2
+    row = result[0]
+    assert row["snapshot_date"] == date(2026, 6, 2)
+    assert row["value_pln"] == 10500.0
+    assert isinstance(row["value_pln"], float)
+    assert row["pnl_pln"] == 500.0
+    assert isinstance(row["pnl_pln"], float)
+
+
+def test_get_portfolio_history_returns_empty_list_when_no_rows():
+    """Returns [] when the portfolio has no positions or no fully-covered day in range."""
+    from db.bigquery import get_portfolio_history
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
+        result = get_portfolio_history("empty-port", "user-1", date(2026, 6, 1))
+
+    assert result == []
+
+
+def test_get_portfolio_history_raises_bigquery_error_on_failure():
+    """Raises BigQueryError when the BQ query throws."""
+    from src.exceptions import BigQueryError
+    from db.bigquery import get_portfolio_history
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = Exception("network timeout")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="get_portfolio_history failed"):
+            get_portfolio_history("port-123", "user-abc", date(2026, 6, 1))
+
+
+def test_get_portfolio_history_query_forward_fills_and_gates_coverage():
+    """F1: query must LOCF-fill (no 0-fill), scan before start_date, gate on full coverage, cover ETFs."""
+    from db.bigquery import get_portfolio_history
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_history("port-1", "user-1", date(2026, 6, 1))
+
+    q = " ".join(mock_get.return_value.query.call_args[0][0].split())
+    # Forward-fill (LOCF), not 0-fill
+    assert "LAST_VALUE" in q and "IGNORE NULLS" in q, "history must forward-fill (LOCF)"
+    assert "ELSE 0" not in q, "history must NOT 0-fill missing prices (F1)"
+    # Price scan reaches before @start_date so early in-range days can be filled
+    assert "DATE_SUB(@start_date" in q, "price scan must reach before start_date for LOCF"
+    # Emit a day only when every held position is priced that day
+    assert "COUNTIF" in q and "= 0" in q, "history must gate emitted days on full coverage"
+    # ETF-safe: history values must include etf_quotes
+    assert "etf_quotes" in q, "history must include etf_quotes for ETF positions"
+
+
+def test_get_portfolio_history_uses_correct_params():
+    """start_date is bound as a DATE param alongside user_id/portfolio_id."""
+    from db.bigquery import get_portfolio_history
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_history("port-abc", "user-xyz", date(2026, 6, 1))
+
+    job_config = mock_get.return_value.query.call_args[1]["job_config"]
+    params_by_name = {p.name: p for p in job_config.query_parameters}
+    assert params_by_name["portfolio_id"].value == "port-abc"
+    assert params_by_name["user_id"].value == "user-xyz"
+    assert params_by_name["start_date"].value == date(2026, 6, 1)
+    assert params_by_name["start_date"].type_ == "DATE"
 
 
 # ── notification subscriptions (PUL-81 slice a) ───────────────────────────────
