@@ -1,7 +1,7 @@
 ---
 change_id: pul-89-portfolio-value-history-frontend
 title: FARO-5 frontend — portfolio value-history line chart + range switcher
-status: planned
+status: implementing
 created: 2026-07-22
 updated: 2026-07-22
 archived_at: null

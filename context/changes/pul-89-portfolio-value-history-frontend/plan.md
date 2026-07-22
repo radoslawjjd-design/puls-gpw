@@ -263,16 +263,16 @@ debounce needed. The value/P&L toggle never refetches (redraws from cache). Seri
 
 #### Automated
 
-- [ ] 1.1 App serves without error (health route 200)
-- [ ] 1.2 static/index.html loads with no console errors
+- [x] 1.1 App serves without error (health route 200)
+- [x] 1.2 static/index.html loads with no console errors
 
 #### Manual
 
-- [ ] 1.3 4th "Wartość" tab appears after Kalendarz, styled consistently (light + dark)
-- [ ] 1.4 Clicking Wartość shows range switcher (3M active) + value/P&L toggle + empty state; wallet selector visible
-- [ ] 1.5 Switching between the four tabs shows/hides the correct wraps with no leftover content
+- [x] 1.3 4th "Wartość" tab appears after Kalendarz, styled consistently (light + dark)
+- [x] 1.4 Clicking Wartość shows range switcher (3M active) + value/P&L toggle + empty state; wallet selector visible
+- [x] 1.5 Switching between the four tabs shows/hides the correct wraps with no leftover content
 - [ ] 1.6 `?tab=history&range=1m` deep-link opens Wartość with 1M active
-- [ ] 1.7 No console errors
+- [x] 1.7 No console errors
 
 ### Phase 2: Chart rendering + interactions
 

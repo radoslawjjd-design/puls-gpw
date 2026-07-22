@@ -846,6 +846,16 @@
   }
   .pp-view-tab.active { background: #fff; color: var(--brand); font-weight: 600; box-shadow: var(--shadow-1); }
   .pp-view-tab:hover:not(.active) { color: var(--brand); }
+  /* Portfolio: value-history controls */
+  #pp-history-controls { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: .75rem; }
+  .pp-view-tabs-inline {
+    display: inline-flex; gap: 2px;
+    background: var(--fill); border-radius: var(--radius-sm); padding: 3px;
+    border: 1px solid var(--border);
+  }
+  #pp-history-chart { width: 100%; max-width: 100%; }
+  #pp-history-chart svg { display: block; width: 100%; max-width: 100%; height: auto; }
+  .pp-hist-axis { fill: var(--text-muted); font-size: 11px; }
 
   .pp-notice { font-size: .875rem; color: var(--text-muted); padding: .4rem 0; }
 
@@ -952,7 +962,7 @@ html[data-theme="dark"] .login-box button.auth-alt-link { background:none; color
 html[data-theme="dark"] .auth-error { background:rgba(179,38,30,.15); border-color:rgba(179,38,30,.4); }
 html[data-theme="dark"] .auth-ok { background:rgba(46,125,50,.15); border-color:rgba(46,125,50,.4); }
 html[data-theme="dark"] #pp-export-csv-btn { background:#141f2b; border-color:#2b3a4d; color:#9fc1e0; }
-html[data-theme="dark"] #pp-view-tabs { background:#0d1520; border-color:#243141; }
+html[data-theme="dark"] #pp-view-tabs, html[data-theme="dark"] .pp-view-tabs-inline { background:#0d1520; border-color:#243141; }
 html[data-theme="dark"] .pp-view-tab:hover:not(.active) { color:#c9dcee; }
 html[data-theme="dark"] .pp-view-tab.active { color:#f3d9a4; }
 html[data-theme="dark"] .pp-portfolio-tab.active { background:var(--brand); border-color:var(--brand); color:#fff; }
@@ -2635,14 +2645,16 @@ function _writeUrl(view, params, push) {
 }
 
 function _ppPortfolioParams() {
-  const ppView = $('portfolio-positions-view');
-  const activeTab = ppView?.querySelector('.pp-view-tab.active')?.dataset.mode || 'table';
+  const activeTab = $('pp-view-tabs')?.querySelector('.pp-view-tab.active')?.dataset.mode || 'table';
   const out = new URLSearchParams();
   out.set('tab', activeTab);
   if (_activePortfolioId) out.set('portfolio', _activePortfolioId);
   if (activeTab === 'calendar' && _ppCalYear) {
     out.set('year', _ppCalYear);
     out.set('month', _ppCalMonth);
+  }
+  if (activeTab === 'history') {
+    out.set('range', _ppHistRange);
   }
   return out;
 }
@@ -3084,6 +3096,9 @@ let _ppEditingTicker = null;
 let _ppPositions = [];
 const _ppSort = { key: null, dir: 1 };
 let _activePortfolioId = null;
+let _ppHistData = null;
+let _ppHistRange = '3m';
+let _ppHistMetric = 'value';
 let _portfoliosFetched = false;
 let _ppTreemapData = null;
 let _ppCalData = null;
@@ -3312,8 +3327,10 @@ function _renderPortfolioTabs(portfolios) {
       btn.classList.add('active');
       _activePortfolioId = p.portfolio_id;
       _ppCalData = null;
-      const curMode = $('portfolio-positions-view').querySelector('.pp-view-tab.active')?.dataset.mode;
+      _ppHistData = null;
+      const curMode = $('pp-view-tabs')?.querySelector('.pp-view-tab.active')?.dataset.mode;
       if (curMode === 'calendar') fetchPortfolioCalendar();
+      if (curMode === 'history') fetchPortfolioHistory();
       fetchPortfolioPositions();
       _ppWriteUrl(true);
     });
@@ -3346,6 +3363,15 @@ async function fetchUserPortfolios() {
     }
     if (_activePortfolioId) fetchPortfolioPositions();
     if (urlTab && urlTab !== 'table') {
+      if (urlTab === 'history') {
+        const urlRange = urlParams.get('range');
+        if (['1w', '1m', '3m', '1y'].includes(urlRange)) {
+          _ppHistRange = urlRange;
+          $('pp-history-ranges')?.querySelectorAll('.pp-view-tab').forEach(b => {
+            b.classList.toggle('active', b.dataset.range === urlRange);
+          });
+        }
+      }
       const tabBtn = $('portfolio-positions-view')?.querySelector(`.pp-view-tab[data-mode="${urlTab}"]`);
       if (tabBtn) tabBtn.click();
     } else {
@@ -3435,6 +3461,7 @@ function _buildPortfolioPositionsViewContent(view) {
       <button type="button" class="pp-view-tab active" data-mode="table">Tabela</button>
       <button type="button" class="pp-view-tab" data-mode="treemap">Treemapa</button>
       <button type="button" class="pp-view-tab" data-mode="calendar">Kalendarz</button>
+      <button type="button" class="pp-view-tab" data-mode="history">Wartość</button>
     </div>
     <div id="pp-table-wrap">
       <button type="button" id="pp-add-toggle-btn">Dodaj pozycję</button>
@@ -3540,6 +3567,21 @@ function _buildPortfolioPositionsViewContent(view) {
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-white"></span>brak danych</span>
       </div>
     </div>
+    <div id="pp-history-wrap" style="display:none">
+      <div id="pp-history-controls">
+        <div id="pp-history-ranges" class="pp-view-tabs-inline">
+          <button type="button" class="pp-view-tab" data-range="1w">1T</button>
+          <button type="button" class="pp-view-tab" data-range="1m">1M</button>
+          <button type="button" class="pp-view-tab active" data-range="3m">3M</button>
+          <button type="button" class="pp-view-tab" data-range="1y">1R</button>
+        </div>
+        <div id="pp-history-metrics" class="pp-view-tabs-inline">
+          <button type="button" class="pp-view-tab active" data-metric="value">Wartość</button>
+          <button type="button" class="pp-view-tab" data-metric="pnl">Zysk/strata</button>
+        </div>
+      </div>
+      <div id="pp-history-chart"></div>
+    </div>
     <div id="pp-add-portfolio-overlay" style="display:none">
       <div id="pp-add-portfolio-modal">
         <h3>Dodaj portfel</h3>
@@ -3579,16 +3621,19 @@ function _buildPortfolioPositionsViewContent(view) {
     });
   });
 
-  // view tabs toggle (Tabela | Treemapa)
-  view.querySelectorAll('.pp-view-tab').forEach(btn => {
+  // view tabs toggle (Tabela | Treemapa | Kalendarz | Wartość) — scope to
+  // #pp-view-tabs so the history range/metric buttons (which reuse .pp-view-tab
+  // styling) don't accidentally trigger a view-mode switch.
+  $('pp-view-tabs').querySelectorAll('.pp-view-tab').forEach(btn => {
     btn.addEventListener('click', () => {
-      view.querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
+      $('pp-view-tabs').querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const mode = btn.dataset.mode;
-      $('pp-portfolio-tabs-wrap').style.display = (mode === 'table' || mode === 'calendar') ? '' : 'none';
+      $('pp-portfolio-tabs-wrap').style.display = (mode === 'table' || mode === 'calendar' || mode === 'history') ? '' : 'none';
       $('pp-table-wrap').style.display = mode === 'table' ? '' : 'none';
       $('pp-treemap-wrap').style.display = mode === 'treemap' ? '' : 'none';
       $('pp-calendar-wrap').style.display = mode === 'calendar' ? '' : 'none';
+      $('pp-history-wrap').style.display = mode === 'history' ? '' : 'none';
       if (mode === 'table') {
         stopPortfolioTreemapResize();
       } else if (mode === 'treemap') {
@@ -3597,6 +3642,9 @@ function _buildPortfolioPositionsViewContent(view) {
       } else if (mode === 'calendar') {
         stopPortfolioTreemapResize();
         if (!_ppCalData) fetchPortfolioCalendar();
+      } else if (mode === 'history') {
+        stopPortfolioTreemapResize();
+        if (!_ppHistData) fetchPortfolioHistory();
       }
       _ppWriteUrl(true);
     });
@@ -3897,6 +3945,16 @@ function _renderPortfolioCalendar(data) {
   $('pp-cal-label').innerHTML = esc(label) + mtdHtml;
   const mtdEl = $('pp-cal-mtd-summary');
   if (mtdEl) mtdEl.style.display = 'none';
+}
+
+// Phase 1: plumbing stub — renders the empty state. Phase 2 replaces the body
+// with the real fetch + inline-SVG line chart.
+async function fetchPortfolioHistory() {
+  if (_activePortfolioId === null) {
+    $('pp-history-chart').innerHTML = '<div class="empty">Wybierz portfel powyżej.</div>';
+    return;
+  }
+  $('pp-history-chart').innerHTML = '<div class="empty">Brak danych dla tego zakresu</div>';
 }
 
 function _renderPortfolioTreemap(data) {
