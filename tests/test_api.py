@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -1422,6 +1423,91 @@ def test_get_portfolio_calendar_returns_500_on_bq_error(user_client):
     ):
         r = user_client.get(
             f"/api/portfolio/calendar?year=2026&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 500
+
+
+# ── GET /api/portfolio/history (PUL-79 / FARO-5) ─────────────────────────────
+
+_HIST_PORTFOLIO_ID = _WALLET_ID  # reuse existing wallet fixture
+_HIST_ROWS = [
+    {"snapshot_date": date(2026, 6, 2), "value_pln": 10000.0, "pnl_pln": 500.0},
+    {"snapshot_date": date(2026, 6, 3), "value_pln": 10150.0, "pnl_pln": 650.0},
+]
+
+
+@pytest.mark.parametrize("rng,days", [("1w", 7), ("1m", 30), ("3m", 90), ("1y", 365)])
+def test_history_start_date_maps_supported_ranges(rng, days):
+    """Resolver maps each supported range to a day-based floor from today."""
+    from src.api import _history_start_date
+    assert _history_start_date(rng) == date.today() - timedelta(days=days)
+
+
+def test_history_start_date_rejects_invalid_ranges():
+    """1d (intraday, unsupported) and garbage resolve to None → endpoint 422."""
+    from src.api import _history_start_date
+    assert _history_start_date("1d") is None
+    assert _history_start_date("nope") is None
+
+
+def test_get_portfolio_history_returns_200_with_series(user_client):
+    """Valid range → 200 with a list of {date, value_pln, pnl_pln}."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_history", return_value=_HIST_ROWS),
+    ):
+        r = user_client.get(
+            f"/api/portfolio/history?range=1m&portfolio_id={_HIST_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body, list)
+    assert body[0] == {"date": "2026-06-02", "value_pln": 10000.0, "pnl_pln": 500.0}
+
+
+def test_get_portfolio_history_returns_401_without_session(api_client):
+    r = api_client.get(
+        f"/api/portfolio/history?range=1m&portfolio_id={_HIST_PORTFOLIO_ID}",
+    )
+    assert r.status_code == 401
+
+
+def test_get_portfolio_history_returns_403_for_wrong_portfolio(user_client):
+    """portfolio_id belonging to a different user → 403 (matches calendar sibling)."""
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = user_client.get(
+            "/api/portfolio/history?range=1m&portfolio_id=other-user-portfolio",
+        )
+    assert r.status_code == 403
+
+
+def test_get_portfolio_history_returns_422_for_intraday_range(user_client):
+    """range=1d is intentionally unsupported (no intraday data) → 422."""
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = user_client.get(
+            f"/api/portfolio/history?range=1d&portfolio_id={_HIST_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 422
+
+
+def test_get_portfolio_history_returns_422_for_unknown_range(user_client):
+    """An unrecognized range value → 422 at the endpoint (not just the resolver)."""
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = user_client.get(
+            f"/api/portfolio/history?range=nope&portfolio_id={_HIST_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 422
+
+
+def test_get_portfolio_history_returns_500_on_bq_error(user_client):
+    from src.exceptions import BigQueryError
+
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_history", side_effect=BigQueryError("boom")),
+    ):
+        r = user_client.get(
+            f"/api/portfolio/history?range=1m&portfolio_id={_HIST_PORTFOLIO_ID}",
         )
     assert r.status_code == 500
 

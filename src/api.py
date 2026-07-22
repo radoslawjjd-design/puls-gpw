@@ -3,7 +3,7 @@ import logging
 import os
 import pathlib
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,7 @@ from db.bigquery import (
     list_top_announcements_public,
     list_user_portfolio_positions,
     get_portfolio_calendar_data,
+    get_portfolio_history,
     list_user_portfolios,
     list_watchlist_by_sentiment,
     list_watchlist_tickers,
@@ -242,6 +243,25 @@ class PortfolioCalendarResponse(BaseModel):
     year: int
     month: int
     days: list[PortfolioCalendarDay]
+
+
+class PortfolioHistoryPoint(BaseModel):
+    # FARO-5 (PUL-79): one point on the portfolio value-over-time line.
+    model_config = ConfigDict(extra="ignore")
+    date: str  # ISO YYYY-MM-DD (trading day)
+    value_pln: float
+    pnl_pln: float
+
+
+# Supported history ranges → day-based floor from today. `1d` is intentionally
+# absent (no intraday data stored); the endpoint 422s on anything not here.
+_HISTORY_RANGE_DAYS = {"1w": 7, "1m": 30, "3m": 90, "1y": 365}
+
+
+def _history_start_date(range_: str) -> date | None:
+    """Resolve a history range string to a start date, or None if unsupported."""
+    days = _HISTORY_RANGE_DAYS.get(range_)
+    return date.today() - timedelta(days=days) if days is not None else None
 
 
 class AnnouncementUser(BaseModel):
@@ -908,6 +928,43 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=str(exc))
         cal = compute_calendar_pnl(rows, year, month)
         result = PortfolioCalendarResponse(**cal).model_dump()
+        _perf_set(cache_key, result)
+        return result
+
+    @app.get("/api/portfolio/history")
+    async def get_portfolio_value_history(
+        portfolio_id: str = Query(...),
+        range: str = Query(...),
+        role: Role = Depends(_get_role),
+        user_id: str = Depends(_get_user_id),
+    ):
+        start_date = _history_start_date(range)
+        if start_date is None:
+            raise HTTPException(status_code=422, detail="range must be one of 1w|1m|3m|1y")
+        cache_key = f"history:{user_id}:{portfolio_id}:{range}"
+        cached = _perf_get(cache_key, ttl=300)
+        if cached is not None:
+            return cached
+        try:
+            wallets = list_user_portfolios(user_id)
+        except BigQueryError as exc:
+            logger.error("BQ error listing wallets in GET /api/portfolio/history: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        if not any(w["portfolio_id"] == portfolio_id for w in wallets):
+            raise HTTPException(status_code=403, detail="Portfolio not found or access denied")
+        try:
+            rows = get_portfolio_history(portfolio_id, user_id, start_date)
+        except BigQueryError as exc:
+            logger.error("BQ error in GET /api/portfolio/history: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        result = [
+            PortfolioHistoryPoint(
+                date=row["snapshot_date"].isoformat(),
+                value_pln=row["value_pln"],
+                pnl_pln=row["pnl_pln"],
+            ).model_dump()
+            for row in rows
+        ]
         _perf_set(cache_key, result)
         return result
 
