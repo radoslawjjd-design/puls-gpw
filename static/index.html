@@ -847,15 +847,24 @@
   .pp-view-tab.active { background: #fff; color: var(--brand); font-weight: 600; box-shadow: var(--shadow-1); }
   .pp-view-tab:hover:not(.active) { color: var(--brand); }
   /* Portfolio: value-history controls */
-  #pp-history-controls { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: .75rem; }
+  #pp-history-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+  #pp-history-header-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; margin-bottom: .75rem; }
+  .pp-hist-title { font-size: 1rem; font-weight: 600; color: var(--text); margin: 0; }
+  #pp-history-controls { display: flex; flex-wrap: wrap; gap: .5rem; }
   .pp-view-tabs-inline {
     display: inline-flex; gap: 2px;
     background: var(--fill); border-radius: var(--radius-sm); padding: 3px;
     border: 1px solid var(--border);
   }
-  #pp-history-chart { width: 100%; max-width: 100%; }
-  #pp-history-chart svg { display: block; width: 100%; max-width: 100%; height: auto; }
+  #pp-history-chart { width: 100%; max-width: 640px; }
+  .pp-hist-head { display: flex; align-items: baseline; gap: .6rem; margin: .1rem 0 .55rem; flex-wrap: wrap; }
+  .pp-hist-val { font-size: 1.5rem; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
+  .pp-hist-delta { font-size: .9rem; font-weight: 600; }
+  .pp-hist-delta.positive, .pp-hist-svg.up { color: var(--positive); }
+  .pp-hist-delta.negative, .pp-hist-svg.down { color: var(--negative); }
+  .pp-hist-svg { display: block; width: 100%; height: auto; overflow: visible; }
   .pp-hist-axis { fill: var(--text-muted); font-size: 11px; }
+  .pp-hist-grid { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
 
   .pp-notice { font-size: .875rem; color: var(--text-muted); padding: .4rem 0; }
 
@@ -943,6 +952,8 @@ html[data-theme="dark"] .score.neutral { background:#243141; color:#94a5b8; }
 html[data-theme="dark"] .type-badge { background:#1d2b3c; color:#9fc1e0; border-color:#2b3a4d; }
 html[data-theme="dark"] td.positive, html[data-theme="dark"] .pp-cal-gain { color:#5ec98f; }
 html[data-theme="dark"] td.negative, html[data-theme="dark"] .pp-cal-loss { color:#f08a82; }
+html[data-theme="dark"] .pp-hist-delta.positive, html[data-theme="dark"] .pp-hist-svg.up { color:#5ec98f; }
+html[data-theme="dark"] .pp-hist-delta.negative, html[data-theme="dark"] .pp-hist-svg.down { color:#f08a82; }
 html[data-theme="dark"] .pp-cal-mtd.mtd-gain { color:#5ec98f; } html[data-theme="dark"] .pp-cal-mtd.mtd-loss { color:#f08a82; }
 html[data-theme="dark"] .analysis-summary { color:#b8c6d4; }
 html[data-theme="dark"] .pagination-bar button:disabled { background:#141f2b; color:#54647a; border-color:#243141; }
@@ -2652,8 +2663,6 @@ function _ppPortfolioParams() {
   if (activeTab === 'calendar' && _ppCalYear) {
     out.set('year', _ppCalYear);
     out.set('month', _ppCalMonth);
-  }
-  if (activeTab === 'history') {
     out.set('range', _ppHistRange);
   }
   return out;
@@ -3329,8 +3338,7 @@ function _renderPortfolioTabs(portfolios) {
       _ppCalData = null;
       _ppHistData = null;
       const curMode = $('pp-view-tabs')?.querySelector('.pp-view-tab.active')?.dataset.mode;
-      if (curMode === 'calendar') fetchPortfolioCalendar();
-      if (curMode === 'history') fetchPortfolioHistory();
+      if (curMode === 'calendar') { fetchPortfolioCalendar(); fetchPortfolioHistory(); }
       fetchPortfolioPositions();
       _ppWriteUrl(true);
     });
@@ -3362,16 +3370,14 @@ async function fetchUserPortfolios() {
       });
     }
     if (_activePortfolioId) fetchPortfolioPositions();
+    const urlRange = urlParams.get('range');
+    if (['1w', '1m', '3m', '1y'].includes(urlRange)) {
+      _ppHistRange = urlRange;
+      $('pp-history-ranges')?.querySelectorAll('.pp-view-tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.range === urlRange);
+      });
+    }
     if (urlTab && urlTab !== 'table') {
-      if (urlTab === 'history') {
-        const urlRange = urlParams.get('range');
-        if (['1w', '1m', '3m', '1y'].includes(urlRange)) {
-          _ppHistRange = urlRange;
-          $('pp-history-ranges')?.querySelectorAll('.pp-view-tab').forEach(b => {
-            b.classList.toggle('active', b.dataset.range === urlRange);
-          });
-        }
-      }
       const tabBtn = $('portfolio-positions-view')?.querySelector(`.pp-view-tab[data-mode="${urlTab}"]`);
       if (tabBtn) tabBtn.click();
     } else {
@@ -3461,7 +3467,6 @@ function _buildPortfolioPositionsViewContent(view) {
       <button type="button" class="pp-view-tab active" data-mode="table">Tabela</button>
       <button type="button" class="pp-view-tab" data-mode="treemap">Treemapa</button>
       <button type="button" class="pp-view-tab" data-mode="calendar">Kalendarz</button>
-      <button type="button" class="pp-view-tab" data-mode="history">Wartość</button>
     </div>
     <div id="pp-table-wrap">
       <button type="button" id="pp-add-toggle-btn">Dodaj pozycję</button>
@@ -3566,21 +3571,24 @@ function _buildPortfolioPositionsViewContent(view) {
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-neutral"></span>weekend / święto GPW</span>
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-white"></span>brak danych</span>
       </div>
-    </div>
-    <div id="pp-history-wrap" style="display:none">
-      <div id="pp-history-controls">
-        <div id="pp-history-ranges" class="pp-view-tabs-inline">
-          <button type="button" class="pp-view-tab" data-range="1w">1T</button>
-          <button type="button" class="pp-view-tab" data-range="1m">1M</button>
-          <button type="button" class="pp-view-tab active" data-range="3m">3M</button>
-          <button type="button" class="pp-view-tab" data-range="1y">1R</button>
+      <div id="pp-history-section">
+        <div id="pp-history-header-row">
+          <h3 class="pp-hist-title">Wartość portfela w czasie</h3>
+          <div id="pp-history-controls">
+            <div id="pp-history-ranges" class="pp-view-tabs-inline">
+              <button type="button" class="pp-view-tab" data-range="1w">1T</button>
+              <button type="button" class="pp-view-tab" data-range="1m">1M</button>
+              <button type="button" class="pp-view-tab active" data-range="3m">3M</button>
+              <button type="button" class="pp-view-tab" data-range="1y">1R</button>
+            </div>
+            <div id="pp-history-metrics" class="pp-view-tabs-inline">
+              <button type="button" class="pp-view-tab active" data-metric="value">Wartość</button>
+              <button type="button" class="pp-view-tab" data-metric="pnl">Zysk/strata</button>
+            </div>
+          </div>
         </div>
-        <div id="pp-history-metrics" class="pp-view-tabs-inline">
-          <button type="button" class="pp-view-tab active" data-metric="value">Wartość</button>
-          <button type="button" class="pp-view-tab" data-metric="pnl">Zysk/strata</button>
-        </div>
+        <div id="pp-history-chart"></div>
       </div>
-      <div id="pp-history-chart"></div>
     </div>
     <div id="pp-add-portfolio-overlay" style="display:none">
       <div id="pp-add-portfolio-modal">
@@ -3629,11 +3637,10 @@ function _buildPortfolioPositionsViewContent(view) {
       $('pp-view-tabs').querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const mode = btn.dataset.mode;
-      $('pp-portfolio-tabs-wrap').style.display = (mode === 'table' || mode === 'calendar' || mode === 'history') ? '' : 'none';
+      $('pp-portfolio-tabs-wrap').style.display = (mode === 'table' || mode === 'calendar') ? '' : 'none';
       $('pp-table-wrap').style.display = mode === 'table' ? '' : 'none';
       $('pp-treemap-wrap').style.display = mode === 'treemap' ? '' : 'none';
       $('pp-calendar-wrap').style.display = mode === 'calendar' ? '' : 'none';
-      $('pp-history-wrap').style.display = mode === 'history' ? '' : 'none';
       if (mode === 'table') {
         stopPortfolioTreemapResize();
       } else if (mode === 'treemap') {
@@ -3642,11 +3649,33 @@ function _buildPortfolioPositionsViewContent(view) {
       } else if (mode === 'calendar') {
         stopPortfolioTreemapResize();
         if (!_ppCalData) fetchPortfolioCalendar();
-      } else if (mode === 'history') {
-        stopPortfolioTreemapResize();
         if (!_ppHistData) fetchPortfolioHistory();
       }
       _ppWriteUrl(true);
+    });
+  });
+
+  // value-history range switcher (1T/1M/3M/1R) — refetch on change
+  $('pp-history-ranges').querySelectorAll('.pp-view-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.range === _ppHistRange) return;
+      $('pp-history-ranges').querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _ppHistRange = btn.dataset.range;
+      _ppHistData = null;
+      fetchPortfolioHistory();
+      _ppWriteUrl(true);
+    });
+  });
+
+  // value-history metric toggle (Wartość / Zysk-strata) — redraw from cache
+  $('pp-history-metrics').querySelectorAll('.pp-view-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.metric === _ppHistMetric) return;
+      $('pp-history-metrics').querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _ppHistMetric = btn.dataset.metric;
+      if (_ppHistData) _renderPortfolioHistory(_ppHistData);
     });
   });
 
@@ -3947,14 +3976,89 @@ function _renderPortfolioCalendar(data) {
   if (mtdEl) mtdEl.style.display = 'none';
 }
 
-// Phase 1: plumbing stub — renders the empty state. Phase 2 replaces the body
-// with the real fetch + inline-SVG line chart.
 async function fetchPortfolioHistory() {
   if (_activePortfolioId === null) {
     $('pp-history-chart').innerHTML = '<div class="empty">Wybierz portfel powyżej.</div>';
     return;
   }
-  $('pp-history-chart').innerHTML = '<div class="empty">Brak danych dla tego zakresu</div>';
+  $('pp-history-chart').innerHTML = '<div class="empty">Ładowanie…</div>';
+  try {
+    const url = `/api/portfolio/history?range=${_ppHistRange}&portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
+    const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    _ppHistData = data;
+    _renderPortfolioHistory(data);
+  } catch (e) {
+    $('pp-history-chart').innerHTML = '<div class="empty">Błąd ładowania danych.</div>';
+  }
+}
+
+function _renderPortfolioHistory(data) {
+  const chart = $('pp-history-chart');
+  if (!Array.isArray(data) || data.length === 0) {
+    chart.innerHTML = '<div class="empty">Brak danych dla tego zakresu</div>';
+    return;
+  }
+  const pnl = _ppHistMetric === 'pnl';
+  const series = data.map(d => pnl ? d.pnl_pln : d.value_pln);
+  const n = series.length;
+  const min = Math.min(...series), max = Math.max(...series);
+  const span = (max - min) || 1;
+
+  const W = 640, H = 180, padL = 52, padR = 14, padT = 12, padB = 22;
+  const plotW = W - padL - padR, plotH = H - padT - padB, baseY = padT + plotH;
+  const xFor = i => padL + (n === 1 ? plotW / 2 : i * plotW / (n - 1));
+  const yFor = v => (max === min) ? (padT + plotH / 2) : (padT + (max - v) / span * plotH);
+
+  const pts = (n === 1)
+    ? [[padL, yFor(series[0])], [W - padR, yFor(series[0])]]
+    : series.map((v, i) => [xFor(i), yFor(v)]);
+  const poly = pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const up = series[n - 1] >= series[0];
+  const gid = 'pp-hist-grad-' + (pnl ? 'p' : 'v');
+  const first = pts[0], last = pts[pts.length - 1];
+  const area = 'M ' + first[0].toFixed(1) + ' ' + first[1].toFixed(1) + ' ' +
+    pts.slice(1).map(p => 'L ' + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ') +
+    ' L ' + last[0].toFixed(1) + ' ' + baseY + ' L ' + first[0].toFixed(1) + ' ' + baseY + ' Z';
+
+  const fmt = v => Math.round(v).toLocaleString('pl-PL');
+  const fmtDate = ds => { const p = ds.split('-'); return p[2] + '.' + p[1]; };
+
+  const grids = [max, (max + min) / 2, min].map(v => {
+    const y = yFor(v).toFixed(1);
+    return '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" class="pp-hist-grid"/>';
+  }).join('');
+
+  const svg =
+    '<svg class="pp-hist-svg ' + (up ? 'up' : 'down') + '" viewBox="0 0 ' + W + ' ' + H + '" ' +
+    'preserveAspectRatio="xMidYMid meet" role="img" aria-label="Wykres ' +
+    (pnl ? 'zysku/straty' : 'wartości') + ' portfela w czasie">' +
+      '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="currentColor" stop-opacity="0.20"/>' +
+        '<stop offset="100%" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>' +
+      grids +
+      '<path d="' + area + '" fill="url(#' + gid + ')"/>' +
+      '<polyline points="' + poly + '" fill="none" stroke="currentColor" stroke-width="2" ' +
+        'vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="3.5" fill="currentColor"/>' +
+      '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(max) + 4).toFixed(1) + '" text-anchor="end">' + esc(fmt(max)) + '</text>' +
+      '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(min) + 4).toFixed(1) + '" text-anchor="end">' + esc(fmt(min)) + '</text>' +
+      '<text class="pp-hist-axis" x="' + padL + '" y="' + (H - 6) + '">' + esc(fmtDate(data[0].date)) + '</text>' +
+      '<text class="pp-hist-axis" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + esc(fmtDate(data[n - 1].date)) + '</text>' +
+    '</svg>';
+
+  const cur = series[n - 1], delta = series[n - 1] - series[0];
+  const pct = series[0] !== 0 ? (delta / Math.abs(series[0]) * 100) : 0;
+  const dsign = delta >= 0 ? '+' : '−';
+  const dcls = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
+  const head =
+    '<div class="pp-hist-head"><span class="pp-hist-val">' + esc(fmt(cur)) + ' PLN</span>' +
+    '<span class="pp-hist-delta ' + dcls + '">' + dsign + esc(fmt(Math.abs(delta))) +
+    ' PLN (' + dsign + Math.abs(pct).toFixed(1).replace('.', ',') + '%)</span></div>';
+
+  chart.innerHTML = head + svg;
 }
 
 function _renderPortfolioTreemap(data) {

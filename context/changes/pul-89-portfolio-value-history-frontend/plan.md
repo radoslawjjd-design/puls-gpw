@@ -2,12 +2,19 @@
 
 ## Overview
 
-Add a 4th view tab **Wartość** to the "Mój portfel" view in `static/index.html` that
-renders an inline-SVG line chart of the portfolio's total value over time, consuming the
-already-live `GET /api/portfolio/history` endpoint (PUL-79 / PR #176). Includes a range
-switcher (1T/1M/3M/1R → 1w/1m/3m/1y, default 3M), Y-axis min/max labels, and a
-Wartość↔Zysk/strata toggle (plots `value_pln` or `pnl_pln`). Frontend-only, single file,
-no new dependencies.
+Add an inline-SVG line chart of the portfolio's total value over time to the "Mój portfel"
+view in `static/index.html`, consuming the already-live `GET /api/portfolio/history`
+endpoint (PUL-79 / PR #176). Includes a range switcher (1T/1M/3M/1R → 1w/1m/3m/1y,
+default 3M), a value header (current value + Δ over range), gradient area fill, gridlines,
+Y-axis min/max labels, and a Wartość↔Zysk/strata toggle (plots `value_pln` or `pnl_pln`).
+Frontend-only, single file, no new dependencies.
+
+> **Design revision (post-implementation, user feedback):** the chart was originally built
+> as a 4th "Wartość" view tab (Phase 1, commit 20ee300). Per user request it was **moved
+> under the Kalendarz view** — the value-over-time chart now sits below the calendar grid
+> (daily results) inside `pp-calendar-wrap` as a `#pp-history-section`, and the separate
+> tab was removed. The calendar view now fetches both the month grid and the value chart;
+> `?range=` persists alongside `?tab=calendar`. The chart component itself is unchanged.
 
 ## Current State Analysis
 
@@ -212,13 +219,14 @@ line chart + Y min/max labels), wire the range switcher (refetch) and value/P&L 
 
 #### Manual Verification:
 
-- Wartość tab renders a value-over-time line for the active wallet at 3M.
+- Kalendarz view renders the value-over-time chart below the calendar grid for the active wallet at 3M, with the value header (current + Δ).
 - Range switcher (1T/1M/3M/1R) refetches and redraws; line reshapes per range.
 - Value↔Zysk/strata toggle redraws instantly (no network call — verify in Network tab) and P&L can go negative without breaking the chart.
 - Empty range (wallet with no covered day) shows "Brak danych dla tego zakresu", not a broken chart.
-- Switching wallet on the Wartość tab refetches for the new wallet.
+- Switching wallet on the Kalendarz view refetches both calendar and chart for the new wallet.
+- Month nav (prev/next) refetches only the calendar, not the chart.
 - Both wallets work; light + dark themes both correct; no horizontal page scroll on mobile width.
-- `?tab=history&range=3m` restores tab + range on reload; no console errors.
+- `?tab=calendar&range=3m` restores view + range on reload; no console errors.
 
 **Implementation Note**: After automated checks pass, pause for manual confirmation. This is the last phase → hand off to /10x-e2e for browser coverage of the key risks.
 
@@ -228,13 +236,13 @@ line chart + Y min/max labels), wire the range switcher (refetch) and value/P&L 
 
 ### Manual Testing Steps:
 
-1. Log in, open Mój portfel, click Wartość → line renders at 3M for the active wallet.
+1. Log in, open Mój portfel, click Kalendarz → line renders below the calendar at 3M for the active wallet.
 2. Click each range (1T/1M/3M/1R) → chart refetches and reshapes; watch Network for one request per click.
 3. Toggle Zysk/strata → chart redraws with no new network request; toggle back to Wartość.
-4. Switch wallet tab → chart refetches for the new wallet.
-5. Pick a wallet/range with no data → empty state string shows.
+4. Switch wallet tab → both calendar and chart refetch for the new wallet.
+5. Pick a wallet/range with no data → empty state string shows under the calendar.
 6. Toggle dark theme → colours and labels remain correct.
-7. Reload with `?tab=history&range=1m` → Wartość + 1M restored.
+7. Reload with `?tab=calendar&range=1m` → Kalendarz + 1M restored.
 8. Narrow viewport to mobile width → no horizontal page scroll.
 
 ### E2E (hand off to /10x-e2e):
@@ -263,29 +271,29 @@ debounce needed. The value/P&L toggle never refetches (redraws from cache). Seri
 
 #### Automated
 
-- [x] 1.1 App serves without error (health route 200)
-- [x] 1.2 static/index.html loads with no console errors
+- [x] 1.1 App serves without error (health route 200) — 20ee300
+- [x] 1.2 static/index.html loads with no console errors — 20ee300
 
 #### Manual
 
-- [x] 1.3 4th "Wartość" tab appears after Kalendarz, styled consistently (light + dark)
-- [x] 1.4 Clicking Wartość shows range switcher (3M active) + value/P&L toggle + empty state; wallet selector visible
-- [x] 1.5 Switching between the four tabs shows/hides the correct wraps with no leftover content
-- [ ] 1.6 `?tab=history&range=1m` deep-link opens Wartość with 1M active
-- [x] 1.7 No console errors
+- [x] 1.3 4th "Wartość" tab appears after Kalendarz, styled consistently (light + dark) — 20ee300
+- [x] 1.4 Clicking Wartość shows range switcher (3M active) + value/P&L toggle + empty state; wallet selector visible — 20ee300
+- [x] 1.5 Switching between the four tabs shows/hides the correct wraps with no leftover content — 20ee300
+- [x] 1.6 `?tab=calendar&range=1m` deep-link opens Kalendarz with chart at 1M active (design revised: chart moved under calendar)
+- [x] 1.7 No console errors — 20ee300
 
 ### Phase 2: Chart rendering + interactions
 
 #### Automated
 
-- [ ] 2.1 Page loads with no console errors (via browser in manual verification)
+- [x] 2.1 Page loads with no console errors (via browser in manual verification)
 
 #### Manual
 
-- [ ] 2.2 Wartość tab renders a value-over-time line for the active wallet at 3M
-- [ ] 2.3 Range switcher refetches and redraws; line reshapes per range
-- [ ] 2.4 Value↔Zysk/strata toggle redraws instantly with no network call; negative P&L OK
-- [ ] 2.5 Empty range shows "Brak danych dla tego zakresu", not a broken chart
-- [ ] 2.6 Switching wallet on Wartość tab refetches for the new wallet
-- [ ] 2.7 Both wallets work; light + dark correct; no horizontal page scroll on mobile
-- [ ] 2.8 `?tab=history&range=3m` restores tab + range on reload; no console errors
+- [x] 2.2 Kalendarz view renders the chart below the calendar grid for the active wallet at 3M (with value header)
+- [x] 2.3 Range switcher refetches and redraws; line reshapes per range
+- [x] 2.4 Value↔Zysk/strata toggle redraws instantly with no network call; negative P&L OK
+- [x] 2.5 Empty range shows "Brak danych dla tego zakresu", not a broken chart
+- [x] 2.6 Switching wallet on Kalendarz refetches both calendar and chart; month nav refetches only calendar
+- [x] 2.7 Both wallets work; light + dark correct; no horizontal page scroll on mobile
+- [x] 2.8 `?tab=calendar&range=3m` restores view + range on reload; no console errors
