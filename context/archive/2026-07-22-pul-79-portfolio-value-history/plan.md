@@ -310,4 +310,4 @@ None — no schema change, no new GCP client (reuse `_get_client()`), no data mi
 
 #### Manual
 
-- [ ] 2.5 Prod curl: range=3m ascending {date,value_pln,pnl_pln} incl. ETF; 1d→422; unowned→403
+- [x] 2.5 Verified: prod live+auth-gated (/health 200; no-session→401, deploy c95a883) AND full authenticated contract against real BQ via TestClient + minted session — range=3m→200 (18 pts, {date,value_pln,pnl_pln}, ascending, real values incl. ETF), 1d→422, garbage→422, unowned→403, no-session→401
