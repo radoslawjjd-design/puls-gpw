@@ -248,11 +248,12 @@ line chart + Y min/max labels), wire the range switcher (refetch) and value/P&L 
 7. Reload with `?tab=calendar&range=1m` → Kalendarz + 1M restored.
 8. Narrow viewport to mobile width → no horizontal page scroll.
 
-### E2E (hand off to /10x-e2e):
+### E2E (delivered — `tests/e2e/test_portfolio_value_history.py`, pytest-playwright):
 
-- Risk: tab activation renders a chart (getByRole tab "Wartość" → SVG/line visible).
-- Risk: range switch refetches (waitForResponse on `/api/portfolio/history`).
-- Risk: empty range → empty-state text visible.
+- ✅ Risk: Kalendarz view renders the chart under the calendar grid (SVG + polyline + value header visible from real `/api/portfolio/history` data).
+- ✅ Risk: range switch refetches (`expect_response` on `/api/portfolio/history?range=1m`).
+- ✅ Risk: metric toggle (Wartość↔Zysk/strata) redraws from cache with **no** refetch (request counter stays empty; header flips to the P&L value).
+- All three deliberate-break-verified (inverted the protected behavior → red → reverted). Empty-state risk left to the unit-level render check (single fake portfolio always returns data; a conftest fixture branch would be needed to drive `[]` in-browser).
 
 ## Performance Considerations
 
