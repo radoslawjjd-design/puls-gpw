@@ -304,18 +304,17 @@ def _announcement_digest_html(items: list[dict], base_url: str) -> str:
     """Faro-branded digest listing a user's new watched-company announcements.
 
     Every embedded field is HTML-escaped (defense-in-depth, PR #159); each entry
-    links to the Faro announcements view filtered by the ticker.
+    links to the user's watchlist hub (?view=my-wallet) — the announcement's
+    company + title are already in the body, so the link just pulls the user in.
     """
     logo_url = _html_escape(f"{base_url}/static/img/faro-mark.png", quote=True)
+    link = _html_escape(f"{base_url}/?view=my-wallet", quote=True)
     rows = []
     for it in items:
         company = _html_escape(str(it.get("company") or it.get("ticker") or ""), quote=True)
         ticker = _html_escape(str(it.get("ticker") or ""), quote=True)
         title = _html_escape(str(it.get("title") or ""), quote=True)
         event_type = _html_escape(_event_type_label(it.get("event_type")), quote=True)
-        link = _html_escape(
-            f"{base_url}/?view=announcements&ticker={it.get('ticker') or ''}", quote=True
-        )
         rows.append(f"""
   <div style="border:1px solid #e5e7eb;border-radius:6px;padding:14px 16px;margin:0 0 10px;">
     <div style="font-size:15px;font-weight:700;color:#14304A;margin:0 0 4px;">{company} <span style="color:#6b7280;font-weight:400;">({ticker})</span></div>

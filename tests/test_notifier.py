@@ -24,9 +24,9 @@ def test_send_announcement_digest_email_uses_send_with_faro_from_and_recipient()
     assert "2" in subject  # two announcements bundled
 
 
-def test_announcement_digest_html_escapes_fields_and_links_to_faro():
+def test_announcement_digest_html_escapes_fields_and_links_to_watchlist():
     """Every embedded field is HTML-escaped (PR #159) and each entry links to the
-    Faro announcements view filtered by ticker."""
+    user's watchlist hub (?view=my-wallet), not a ticker-filtered announcements list."""
     from src.notifier import _announcement_digest_html
 
     hostile = [{"company": "Evil <b>Co</b>", "ticker": "TOA", "title": "A & B <script>",
@@ -36,7 +36,8 @@ def test_announcement_digest_html_escapes_fields_and_links_to_faro():
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
     assert "&amp;" in html  # "A & B" escaped
-    assert "?view=announcements&amp;ticker=TOA" in html or "?view=announcements&ticker=TOA" in html
+    assert "?view=my-wallet" in html
+    assert "?view=announcements" not in html  # old ticker-filtered link is gone
 
 
 def test_announcement_digest_humanizes_event_type():
