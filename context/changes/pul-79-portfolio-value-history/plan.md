@@ -291,22 +291,22 @@ None — no schema change, no new GCP client (reuse `_get_client()`), no data mi
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -k history`
-- [x] 1.2 Full suite green: `uv run pytest`
-- [x] 1.3 Lint/type clean: `uv run ruff check db/bigquery.py tests/test_bigquery.py`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -k history` — 4c4a96c
+- [x] 1.2 Full suite green: `uv run pytest` — 4c4a96c
+- [x] 1.3 Lint/type clean: `uv run ruff check db/bigquery.py tests/test_bigquery.py` — 4c4a96c
 
 #### Manual
 
-- [ ] 1.4 Ad-hoc bq query returns a plausible value series incl. the ETF position, with no spurious step at the 9/12→12/12 coverage boundary
+- [x] 1.4 Ad-hoc bq query returns a plausible value series incl. the ETF position, with no spurious step at the 9/12→12/12 coverage boundary — 4c4a96c
 
 ### Phase 2: API layer — endpoint, model, resolver, mock
 
 #### Automated
 
-- [ ] 2.1 Endpoint + resolver tests pass: `uv run pytest tests/test_api.py -k history`
-- [ ] 2.2 E2E green: `uv run pytest tests/e2e`
-- [ ] 2.3 Full suite green: `uv run pytest`
-- [ ] 2.4 Lint/type clean: `uv run ruff check src/api.py tests`
+- [x] 2.1 Endpoint + resolver tests pass: `uv run pytest tests/test_api.py -k history`
+- [x] 2.2 E2E green: `uv run pytest tests/e2e`
+- [x] 2.3 Full suite green: `uv run pytest`
+- [x] 2.4 Lint/type clean: `uv run ruff check src/api.py tests`
 
 #### Manual
 

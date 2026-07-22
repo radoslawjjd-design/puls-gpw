@@ -349,6 +349,19 @@ def _fake_get_portfolio_calendar_data(portfolio_id, user_id, year, month):
     return []
 
 
+_FAKE_HISTORY_ROWS = [
+    {"snapshot_date": _cal_weekdays[0], "value_pln": 10000.0, "pnl_pln": 300.0},
+    {"snapshot_date": _cal_weekdays[1], "value_pln": 10150.0, "pnl_pln": 450.0},
+    {"snapshot_date": _cal_weekdays[2], "value_pln": 10120.0, "pnl_pln": 420.0},
+]
+
+
+def _fake_get_portfolio_history(portfolio_id, user_id, start_date):
+    if portfolio_id == _FAKE_PORTFOLIO_ID:
+        return _FAKE_HISTORY_ROWS
+    return []
+
+
 def _fake_create_user_portfolio_positions_table_if_not_exists():
     pass
 
@@ -552,6 +565,10 @@ def live_server_url():
         patch(
             "src.api.get_portfolio_calendar_data",
             side_effect=_fake_get_portfolio_calendar_data,
+        ),
+        patch(
+            "src.api.get_portfolio_history",
+            side_effect=_fake_get_portfolio_history,
         ),
         patch("src.api.create_users_table_if_not_exists"),
         patch("src.api.ensure_users_schema_current"),
