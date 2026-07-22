@@ -3108,6 +3108,7 @@ let _activePortfolioId = null;
 let _ppHistData = null;
 let _ppHistRange = '3m';
 let _ppHistMetric = 'value';
+let _ppHistReqSeq = 0;
 let _portfoliosFetched = false;
 let _ppTreemapData = null;
 let _ppCalData = null;
@@ -3982,15 +3983,22 @@ async function fetchPortfolioHistory() {
     return;
   }
   $('pp-history-chart').innerHTML = '<div class="empty">Ładowanie…</div>';
+  // Request-sequence guard: fast range switches fire overlapping fetches; only
+  // the latest may render, else an out-of-order resolve desyncs the chart from
+  // the active range/URL (lessons.md — SPA out-of-order fetch).
+  const seq = ++_ppHistReqSeq;
   try {
     const url = `/api/portfolio/history?range=${_ppHistRange}&portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
     const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    if (seq !== _ppHistReqSeq) return;
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
+    if (seq !== _ppHistReqSeq) return;
     _ppHistData = data;
     _renderPortfolioHistory(data);
   } catch (e) {
+    if (seq !== _ppHistReqSeq) return;
     $('pp-history-chart').innerHTML = '<div class="empty">Błąd ładowania danych.</div>';
   }
 }
