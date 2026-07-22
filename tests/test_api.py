@@ -1490,6 +1490,28 @@ def test_get_portfolio_history_returns_422_for_intraday_range(user_client):
     assert r.status_code == 422
 
 
+def test_get_portfolio_history_returns_422_for_unknown_range(user_client):
+    """An unrecognized range value → 422 at the endpoint (not just the resolver)."""
+    with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
+        r = user_client.get(
+            f"/api/portfolio/history?range=nope&portfolio_id={_HIST_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 422
+
+
+def test_get_portfolio_history_returns_500_on_bq_error(user_client):
+    from src.exceptions import BigQueryError
+
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_history", side_effect=BigQueryError("boom")),
+    ):
+        r = user_client.get(
+            f"/api/portfolio/history?range=1m&portfolio_id={_HIST_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 500
+
+
 # ── Phase 6: autocomplete/etf-instruments (PUL-67) ───────────────────────────
 
 def test_autocomplete_etf_instruments_returns_200_with_instruments(api_client):

@@ -1,7 +1,7 @@
 ---
 change_id: pul-79-portfolio-value-history
 title: Pul 79 portfolio value history
-status: implementing
+status: impl_reviewed
 created: 2026-07-22
 updated: 2026-07-22
 archived_at: null
