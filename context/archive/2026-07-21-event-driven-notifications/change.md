@@ -1,10 +1,10 @@
 ---
 change_id: event-driven-notifications
 title: Event-driven watchlist notifications — send on announcement insert (PUL-81 slice b-v2)
-status: implemented
+status: archived
 created: 2026-07-21
 updated: 2026-07-22
-archived_at: null
+archived_at: 2026-07-22T18:28:21Z
 tracking:
   linear: PUL-81
   github: 140
