@@ -234,8 +234,8 @@ Existing `faro_seen_announcements`/`faro_seen_my_wallet` keys keep their meaning
 
 #### Automated
 
-- [ ] 2.1 New spec passes: `uv run pytest tests/e2e/test_new_badges.py`
-- [ ] 2.2 Full suite passes with fixture changes: `uv run pytest`
+- [x] 2.1 New spec passes: `uv run pytest tests/e2e/test_new_badges.py`
+- [x] 2.2 Full suite passes with fixture changes: `uv run pytest`
 
 #### Manual
 

@@ -97,6 +97,16 @@ _FAKE_ADMIN_ROWS = [
     for i in range(20)
 ]
 
+# PUL-94: dwa świeże wiersze (badge'owalne przy pre-seedowanym starym progu
+# faro_seen_*) — bump istniejących zamiast append, bo liczba 20 wierszy jest
+# load-bearing (test_refresh liczy tr == 20; mock return_value ignoruje paging,
+# więc „Strona 2" żyje z tych samych 20 wierszy). Odrębne godziny = odrębne
+# klucze per-item (ticker|published_at) dla testu persystencji po kliknięciu.
+# Bez pre-seedu progu badge'y i tak się nie renderują (pierwsza wizyta = próg
+# null), więc pozostałe testy tych dat nie widzą.
+_FAKE_ADMIN_ROWS[0]["published_at"] = datetime.now(timezone.utc) - timedelta(hours=1)
+_FAKE_ADMIN_ROWS[1]["published_at"] = datetime.now(timezone.utc) - timedelta(hours=2)
+
 _FAKE_X_POSTS_ROWS = [
     {
         "x_post_id": "post-pub-1", "window": "ranek",
