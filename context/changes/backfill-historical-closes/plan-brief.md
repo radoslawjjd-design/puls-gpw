@@ -52,7 +52,7 @@ Script (`scripts/backfill_historical_closes.py`) → per ticker: stooq page GET 
 
 - Stooq's PoW challenge/anti-bot may evolve or the daily limit may be lower than expected — script aborts cleanly and resumes, but full-universe completion date is not guaranteed.
 - Unknown-symbol rate for ETFs/NewConnect is unmeasured — misses are logged + skipped; bossa follow-up only if material.
-- Unconfirmed memory of a 7-day ETF-quote expiry must be checked (`bq show`) before the full run.
+- ~~Unconfirmed memory of a 7-day ETF-quote expiry~~ — resolved in plan-review: it's a freshness *filter* in `list_user_portfolio_positions` (`db/bigquery.py:832,842`), not a table expiry; the cheap `bq show` check before the full run stays as a formality.
 
 ## Success Criteria (Summary)
 

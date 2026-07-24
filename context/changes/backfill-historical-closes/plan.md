@@ -47,6 +47,8 @@ Phase 1 adds the safe write primitive (insert-only MERGE) with unit + real-BQ ro
 - **Resume marker**: a ticker is "done" iff it has any row with `snapshot_date < 2026-06-01` (scrapers started ~2026-06-25/29, so pre-June rows can only come from this backfill). Tickers listed after June 2026 (IPOs) will re-fetch on every run and no-op on merge — harmless, noted.
 - **Derived fields need ascending order**: sort parsed rows by date; `zmiana_kwotowa = close_d − close_{d-1}`, `zmiana_procentowa = (close_d/close_{d-1} − 1) × 100`, ETF `kurs_odn = close_{d-1}`; first row of each ticker's history gets NULLs (no prior close — matches scraper semantics for no-reference days).
 - **BQ DML volume**: flush accumulated rows per chunk of tickers (default 25) per table, not per ticker — ~25 MERGE jobs per run instead of ~570.
+- **Ex-dividend `zmiana_*` semantics (accepted)**: derived changes come from raw consecutive closes, so ex-dividend days show the mechanical price drop; scraper rows compute change against GPW's dividend-adjusted reference price, so semantics differ on those days. Accepted and documented (consistent with the raw-prices decision), like the PUL-79 share-count approximation.
+- **`get_latest_company_stats_fetched_at` cosmetic edge (accepted)**: `LIMIT 1` without `ORDER BY` (`db/bigquery.py:2747`) means that when the backfill fills a recent scraper-outage gap, the treemap "as of" timestamp for that date may show the backfill's `fetched_at`. Known, accepted, no query change.
 
 ## Phase 1: Insert-only MERGE write paths
 
@@ -118,7 +120,7 @@ WHEN NOT MATCHED THEN
 **Intent**: Single-file script following repo conventions (`sys.path.insert` → `load_dotenv()` → `configure_logging()` → `db.bigquery` imports; docstring with run examples; `if __name__ == "__main__"`). Pure logic (CSV parsing, row building, symbol mapping, response classification, PoW solving) lives in module-level functions so tests import them without network.
 
 **Contract**:
-- CLI: `--dry-run` (fetch+parse+report, zero BQ writes), `--tickers KRU,ETFBW20TR` (subset, comma-separated app tickers), `--limit N` (cap tickers this run, to ration the stooq daily quota), `--chunk-size` (default 25), `--sleep` (default 1.5 s between tickers).
+- CLI: `--dry-run` (fetch+parse+report, zero BQ writes), `--tickers KRU,ETFBW20TR` (subset, comma-separated app tickers), `--limit N` (cap tickers this run, to ration the stooq daily quota — **counts only tickers actually fetched, never resume-skipped ones**), `--chunk-size` (default 25), `--sleep` (default 1.5 s between tickers), `--cookie "<Cookie header>"` (escape hatch: skip the PoW bootstrap and use a browser-sourced cookie instead — for when stooq changes the challenge script and the solver fails; solver remains the default path).
 - Universe query (script-local, via `_get_client()`): `companies.ticker` → kind `stock`, `etf_instruments.ticker` → kind `etf`; on both lists, `stock` wins (mirrors consumer COALESCE precedence).
 - Resume query (script-local): set of tickers per table having any row with `snapshot_date < '2026-06-01'` → skipped as done.
 - Stooq session on `httpx` (dedicated `httpx.Client` with cookie jar — NOT the shared `src/http_client.py` singleton, which lacks cookies/referer control; reuse its UA string and timeout envs). Bootstrap solves the PoW challenge when served (`hashlib.sha256`, expected ~65k iterations at difficulty 4; POST `/__verify`). Per ticker: page GET → CSV GET (`d1=19900101`, `d2=today`, `i=d`, `o=1111111`) with per-symbol referer.
@@ -176,10 +178,6 @@ Prove the pipeline on a small sample against prod BQ, then hand the full run to 
 **Intent**: On prod (after the 5-min API cache rolls): `GET /api/portfolio/history?range=1y` returns a dense series back ~365 days for the owner portfolio; calendar heatmap shows P&L for January-June 2026; charts render 1R correctly in the UI (Kalendarz view, both active-portfolio and "Wszystkie" charts).
 
 ### Success Criteria:
-
-#### Automated Verification:
-
-- (none — this phase is operational by design; prod writes are human-only per project rules)
 
 #### Manual Verification:
 
