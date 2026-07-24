@@ -119,12 +119,12 @@ WHEN NOT MATCHED THEN
 
 **Intent**: Single-file script following repo conventions (`sys.path.insert` → `load_dotenv()` → `configure_logging()` → `db.bigquery` imports; docstring with run examples; `if __name__ == "__main__"`). Pure logic (CSV parsing, row building, symbol mapping, response classification, PoW solving) lives in module-level functions so tests import them without network.
 
-**Contract**:
-- CLI: `--dry-run` (fetch+parse+report, zero BQ writes), `--tickers KRU,ETFBW20TR` (subset, comma-separated app tickers), `--limit N` (cap tickers this run, to ration the stooq daily quota — **counts only tickers actually fetched, never resume-skipped ones**), `--chunk-size` (default 25), `--sleep` (default 1.5 s between tickers), `--cookie "<Cookie header>"` (escape hatch: skip the PoW bootstrap and use a browser-sourced cookie instead — for when stooq changes the challenge script and the solver fails; solver remains the default path).
-- Universe query (script-local, via `_get_client()`): `companies.ticker` → kind `stock`, `etf_instruments.ticker` → kind `etf`; on both lists, `stock` wins (mirrors consumer COALESCE precedence).
-- Resume query (script-local): set of tickers per table having any row with `snapshot_date < '2026-06-01'` → skipped as done.
-- Stooq session on `httpx` (dedicated `httpx.Client` with cookie jar — NOT the shared `src/http_client.py` singleton, which lacks cookies/referer control; reuse its UA string and timeout envs). Bootstrap solves the PoW challenge when served (`hashlib.sha256`, expected ~65k iterations at difficulty 4; POST `/__verify`). Per ticker: page GET → CSV GET (`d1=19900101`, `d2=today`, `i=d`, `o=1111111`) with per-symbol referer.
-- Response classifier returns one of: `ok` (starts with `Data,`), `unknown_symbol`, `limit` (captcha/challenge/denial-after-valid-page) — `limit` aborts the run with a summary (done/skipped/failed/remaining) and nonzero exit; `unknown_symbol` logs and continues.
+**Contract** (REVISED 2026-07-24 during implementation — see Addendum below; live-fetch path proved impossible):
+- CLI: `--from-dir <folder>` (REQUIRED: directory of manually browser-downloaded stooq CSV files), `--dry-run` (parse+report, zero BQ writes), `--tickers KRU,ETFBW20TR` (optional subset filter), `--chunk-size` (default 25, tickers per BQ flush).
+- Universe query (script-local, via `_get_client()`): `companies.ticker` → kind `stock`, `etf_instruments.ticker` → kind `etf`; on both lists, `stock` wins (mirrors consumer COALESCE precedence). Used to route each file's rows to the right table.
+- File→ticker matching: filename stem normalized (strip `_d`/`.csv`/`.pl`, casefold) and matched against `map_symbol()` output per universe ticker; unmatched files and universe tickers without a file are listed in the summary (log, not error).
+- File-content validation: `classify_response()` guards against accidentally saved error/limit pages — only `ok` (starts with `Data,`) content is ingested; anything else is reported and skipped.
+- Row building unchanged: derived `zmiana_kwotowa`/`zmiana_procentowa`/ETF `kurs_odn` per Critical Implementation Details; chunked flush via `merge_*_insert_only`.
 - Row building: closes/OHLC rounded to 4 decimals; stocks → `company_daily_stats` dict (volume dropped, `wartosc_obrotu`/`liczba_transakcji` absent), ETFs → `etf_quotes` dict (`wolumen_skum` = Volumen, `kurs_odn` = prior close); `fetched_at` = run start UTC ISO; derived `zmiana_kwotowa`/`zmiana_procentowa` per Critical Implementation Details.
 - Flush: accumulate per-table row lists, dedup, call `merge_*_insert_only` every `--chunk-size` tickers and at end; log inserted counts.
 - Startup ritual: `create_*_table_if_not_exists()` + `ensure_*_schema_current()` for both tables (skipped in `--dry-run`).
@@ -212,6 +212,10 @@ Prove the pipeline on a small sample against prod BQ, then hand the full run to 
 
 Purely additive rows; no schema changes. Rollback if ever needed: `DELETE FROM <table> WHERE snapshot_date < '2026-06-01'` — destructive, human-only per project rules.
 
+## Addendum (2026-07-24): live-fetch → manual-download pivot
+
+Verified during Phase 2: stooq denies the CSV endpoint to non-browser clients at the **TLS-fingerprint level** — the PoW challenge is solvable (verified: `/__verify` 200 + auth cookie), but the server then serves a chaff page and `Odmowa dostępu` regardless of header mimicry or HTTP/2. bossa.pl bulk EOD archives moved behind a login. Decision (user): **the user downloads the CSV files manually in their browser** ("Pobierz dane w pliku csv..." per symbol) **and provides a directory; the script ingests via `--from-dir`**. The StooqSession/PoW/`--cookie`/`--limit`/`--sleep` machinery was removed as dead code (PoW solver + challenge parsing preserved in git history at `e27cb5d`..`fbc0e1b` if ever needed). Resume semantics simplify: ingest whatever files are present; insert-only MERGE makes re-ingestion a no-op. Phase 3 "full-universe run" becomes: user downloads in batches (respecting stooq's daily limit), then runs the ingest per batch.
+
 ## References
 
 - Ticket: Linear PUL-92 / GitHub #182 (tracking in `change.md`)
@@ -239,13 +243,13 @@ Purely additive rows; no schema changes. Rollback if ever needed: `DELETE FROM <
 
 #### Automated
 
-- [ ] 2.1 Unit tests pass: `uv run pytest tests/test_backfill_historical_closes.py -q`
-- [ ] 2.2 Full suite green: `uv run pytest --ignore=tests/e2e -q`
-- [ ] 2.3 Lint passes: `uv run ruff check .`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_backfill_historical_closes.py -q`
+- [x] 2.2 Full suite green: `uv run pytest --ignore=tests/e2e -q`
+- [x] 2.3 Lint passes: `uv run ruff check .`
 
 #### Manual
 
-- [ ] 2.4 Dry-run on KRU+ETFBW20TR fetches, parses, writes nothing
+- [ ] 2.4 Dry-run `--from-dir` on user-downloaded sample files (1 stock + 1 ETF) parses, reports, writes nothing
 
 ### Phase 3: Verification & rollout (human-gated)
 
