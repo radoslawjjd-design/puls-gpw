@@ -227,13 +227,13 @@ Purely additive rows; no schema changes. Rollback if ever needed: `DELETE FROM <
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery_insert_only_merge.py -q`
-- [ ] 1.2 Full suite green: `uv run pytest --ignore=tests/e2e -q`
-- [ ] 1.3 Lint passes: `uv run ruff check .`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery_insert_only_merge.py -q`
+- [x] 1.2 Full suite green: `uv run pytest --ignore=tests/e2e -q`
+- [x] 1.3 Lint passes: `uv run ruff check .`
 
 #### Manual
 
-- [ ] 1.4 Round-trip on real BQ passes: `uv run python scripts/test_bq_insert_only_merge.py`
+- [x] 1.4 Round-trip on real BQ passes: `uv run python scripts/test_bq_insert_only_merge.py`
 
 ### Phase 2: Backfill script
 
