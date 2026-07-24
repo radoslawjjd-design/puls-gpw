@@ -22,6 +22,8 @@ def _login(page: Page, base_url: str) -> None:
 
 def _open_portfolio(page: Page) -> None:
     page.get_by_role("button", name="Mój portfel").click()
+    # PUL-90: default tab is read-only "Wszystkie" — select Główny for the editable view.
+    page.locator("#pp-portfolio-tabs .pp-portfolio-tab", has_text="Główny").click()
 
 
 def _open_add_form(page: Page) -> None:

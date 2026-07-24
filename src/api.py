@@ -319,6 +319,58 @@ class PortfolioPositionOut(BaseModel):
     price_history: list[float] | None = None
 
 
+# PUL-90: sentinel portfolio_id selecting the "Wszystkie" (all-portfolios) aggregate
+# view. Cannot collide with real (UUID-like) portfolio ids.
+_ALL_PORTFOLIOS = "all"
+
+_POSITION_MARKET_FIELDS = (
+    "current_price",
+    "daily_change_pct",
+    "price_as_of",
+    "price_history",
+)
+
+
+def _merge_positions_by_ticker(rows: list[dict]) -> list[dict]:
+    """Merge positions across portfolios into one row per ticker (the "Wszystkie" view).
+
+    Sums shares and computes a weighted-average avg_buy_price. The market-data bundle
+    (current_price, daily_change_pct, price_as_of, price_history) is carried from the
+    row with the freshest price_as_of — rows share a per-ticker price scan so this is a
+    tie today, but preferring the newest avoids stale data if a source ever diverges.
+    company_name takes the first non-null. P&L is left to the caller, recomputed from
+    the merged shares / prices.
+    """
+    merged: dict[str, dict] = {}
+    for row in rows:
+        ticker = row.get("ticker")
+        shares = row.get("shares") or 0.0
+        avg_buy_price = row.get("avg_buy_price") or 0.0
+        acc = merged.get(ticker)
+        if acc is None:
+            acc = {"ticker": ticker, "company_name": None, "shares": 0.0, "_cost": 0.0}
+            acc.update({k: None for k in _POSITION_MARKET_FIELDS})
+            merged[ticker] = acc
+        acc["shares"] += shares
+        acc["_cost"] += shares * avg_buy_price
+        if acc["company_name"] is None and row.get("company_name") is not None:
+            acc["company_name"] = row.get("company_name")
+        # Carry the market-data bundle from the row with the freshest price_as_of.
+        row_as_of = row.get("price_as_of")
+        if row.get("current_price") is not None and (
+            acc["price_as_of"] is None
+            or (row_as_of is not None and row_as_of > acc["price_as_of"])
+        ):
+            for k in _POSITION_MARKET_FIELDS:
+                acc[k] = row.get(k)
+    out: list[dict] = []
+    for acc in merged.values():
+        shares = acc["shares"]
+        acc["avg_buy_price"] = acc.pop("_cost") / shares if shares else 0.0
+        out.append(acc)
+    return out
+
+
 def create_app() -> FastAPI:
     ui_html = pathlib.Path("static/index.html").read_text(encoding="utf-8")
 
@@ -707,18 +759,24 @@ def create_app() -> FastAPI:
         cached = _perf_get(cache_key, ttl=30)
         if cached is not None:
             return cached
+        all_mode = portfolio_id == _ALL_PORTFOLIOS
+        if not all_mode:
+            try:
+                wallets = list_user_portfolios(user_id)
+            except BigQueryError as exc:
+                logger.error("BQ error listing wallets in GET /api/portfolio/positions: %s", exc)
+                raise HTTPException(status_code=500, detail=str(exc))
+            if not any(w["portfolio_id"] == portfolio_id for w in wallets):
+                raise HTTPException(status_code=404, detail="Wallet not found")
         try:
-            wallets = list_user_portfolios(user_id)
-        except BigQueryError as exc:
-            logger.error("BQ error listing wallets in GET /api/portfolio/positions: %s", exc)
-            raise HTTPException(status_code=500, detail=str(exc))
-        if not any(w["portfolio_id"] == portfolio_id for w in wallets):
-            raise HTTPException(status_code=404, detail="Wallet not found")
-        try:
-            rows = list_user_portfolio_positions(user_id, portfolio_id, include_history=True)
+            rows = list_user_portfolio_positions(
+                user_id, None if all_mode else portfolio_id, include_history=True
+            )
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/positions: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        if all_mode:
+            rows = _merge_positions_by_ticker(rows)
         result = []
         for row in rows:
             current_price = row.get("current_price")
@@ -914,15 +972,17 @@ def create_app() -> FastAPI:
         cached = _perf_get(cache_key, ttl=300)
         if cached is not None:
             return cached
+        all_mode = portfolio_id == _ALL_PORTFOLIOS
+        if not all_mode:
+            try:
+                wallets = list_user_portfolios(user_id)
+            except BigQueryError as exc:
+                logger.error("BQ error listing wallets in GET /api/portfolio/calendar: %s", exc)
+                raise HTTPException(status_code=500, detail=str(exc))
+            if not any(w["portfolio_id"] == portfolio_id for w in wallets):
+                raise HTTPException(status_code=403, detail="Portfolio not found or access denied")
         try:
-            wallets = list_user_portfolios(user_id)
-        except BigQueryError as exc:
-            logger.error("BQ error listing wallets in GET /api/portfolio/calendar: %s", exc)
-            raise HTTPException(status_code=500, detail=str(exc))
-        if not any(w["portfolio_id"] == portfolio_id for w in wallets):
-            raise HTTPException(status_code=403, detail="Portfolio not found or access denied")
-        try:
-            rows = get_portfolio_calendar_data(portfolio_id, user_id, year, month)
+            rows = get_portfolio_calendar_data(None if all_mode else portfolio_id, user_id, year, month)
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/calendar: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -945,15 +1005,17 @@ def create_app() -> FastAPI:
         cached = _perf_get(cache_key, ttl=300)
         if cached is not None:
             return cached
+        all_mode = portfolio_id == _ALL_PORTFOLIOS
+        if not all_mode:
+            try:
+                wallets = list_user_portfolios(user_id)
+            except BigQueryError as exc:
+                logger.error("BQ error listing wallets in GET /api/portfolio/history: %s", exc)
+                raise HTTPException(status_code=500, detail=str(exc))
+            if not any(w["portfolio_id"] == portfolio_id for w in wallets):
+                raise HTTPException(status_code=403, detail="Portfolio not found or access denied")
         try:
-            wallets = list_user_portfolios(user_id)
-        except BigQueryError as exc:
-            logger.error("BQ error listing wallets in GET /api/portfolio/history: %s", exc)
-            raise HTTPException(status_code=500, detail=str(exc))
-        if not any(w["portfolio_id"] == portfolio_id for w in wallets):
-            raise HTTPException(status_code=403, detail="Portfolio not found or access denied")
-        try:
-            rows = get_portfolio_history(portfolio_id, user_id, start_date)
+            rows = get_portfolio_history(None if all_mode else portfolio_id, user_id, start_date)
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/history: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))

@@ -393,20 +393,22 @@ def _fake_delete_user_portfolio_position(user_id, portfolio_id, ticker):
 
 
 def _fake_list_user_portfolio_positions(user_id, portfolio_id=None, include_history=False):
-    if portfolio_id == _FAKE_PORTFOLIO_ID:
-        # Lazy-init per-user store from static FAKE data on first access so
-        # upsert/delete operations in E2E tests actually affect the returned list.
-        if user_id not in _portfolio_positions_store:
-            _portfolio_positions_store[user_id] = [
-                {**p, "portfolio_id": _FAKE_PORTFOLIO_ID}
-                for p in _FAKE_PORTFOLIO_POSITIONS
-            ]
-        rows = [
-            p for p in _portfolio_positions_store.get(user_id, [])
-            if p.get("portfolio_id") == _FAKE_PORTFOLIO_ID
+    # Lazy-init per-user store from static FAKE data on first access (regardless of
+    # branch) so upsert/delete affect the list AND the all-mode (portfolio_id=None)
+    # path returns positions on a fresh entry — PUL-90 "Wszystkie" defaults to it.
+    if user_id not in _portfolio_positions_store:
+        _portfolio_positions_store[user_id] = [
+            {**p, "portfolio_id": _FAKE_PORTFOLIO_ID}
+            for p in _FAKE_PORTFOLIO_POSITIONS
         ]
+    store = _portfolio_positions_store.get(user_id, [])
+    if portfolio_id is None:
+        # PUL-90 all-mode: every wallet's positions (the handler merges by ticker).
+        rows = list(store)
     else:
-        rows = list(_portfolio_positions_store.get(user_id, []))
+        # Scoped to one wallet — matches real DB (unknown id → empty), which is what
+        # the "Wszystkie" sentinel already resolved to None before reaching here.
+        rows = [p for p in store if p.get("portfolio_id") == portfolio_id]
     # Mirror production: price_history only travels when the caller opts in
     # (the treemap path calls with include_history=False and must stay lean).
     if not include_history:

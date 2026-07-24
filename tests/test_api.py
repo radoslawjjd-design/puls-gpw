@@ -948,6 +948,176 @@ def test_get_portfolio_positions_api_key_only_returns_401(api_client):
     assert r.status_code == 401
 
 
+# ── PUL-90: "Wszystkie" all-portfolios aggregate view ─────────────────────────
+
+_ALL_ROWS_SAME_TICKER = [
+    {"ticker": "PKO", "company_name": "PKO", "shares": 10.0, "avg_buy_price": 40.0,
+     "current_price": 50.0, "daily_change_pct": 1.5, "price_as_of": "2026-06-27",
+     "price_history": [40.0, 50.0], "portfolio_id": "p1"},
+    {"ticker": "PKO", "company_name": "PKO", "shares": 30.0, "avg_buy_price": 60.0,
+     "current_price": 50.0, "daily_change_pct": 1.5, "price_as_of": "2026-06-27",
+     "price_history": [40.0, 50.0], "portfolio_id": "p2"},
+    {"ticker": "CDR", "company_name": "CD Projekt", "shares": 5.0, "avg_buy_price": 100.0,
+     "current_price": None, "daily_change_pct": None, "price_as_of": None,
+     "price_history": None, "portfolio_id": "p1"},
+]
+
+
+def test_merge_positions_by_ticker_sums_shares_weighted_avg():
+    from src.api import _merge_positions_by_ticker
+
+    merged = _merge_positions_by_ticker(_ALL_ROWS_SAME_TICKER)
+    by_ticker = {m["ticker"]: m for m in merged}
+    assert len(merged) == 2
+    pko = by_ticker["PKO"]
+    assert pko["shares"] == 40.0
+    # weighted avg = (10*40 + 30*60) / 40 = 55.0
+    assert pko["avg_buy_price"] == pytest.approx(55.0)
+    assert pko["current_price"] == 50.0
+    assert "_cost" not in pko  # scratch cost accumulator dropped
+    assert by_ticker["CDR"]["shares"] == 5.0  # distinct ticker stays separate
+
+
+def test_merge_positions_carries_company_name_and_skips_priceless_rows():
+    from src.api import _merge_positions_by_ticker
+
+    rows = [
+        {"ticker": "PKO", "company_name": None, "shares": 10.0, "avg_buy_price": 40.0,
+         "current_price": None, "daily_change_pct": None, "price_as_of": None, "price_history": None},
+        {"ticker": "PKO", "company_name": "PKO BP", "shares": 10.0, "avg_buy_price": 40.0,
+         "current_price": 50.0, "daily_change_pct": 1.5, "price_as_of": "2026-06-27", "price_history": [50.0]},
+    ]
+    merged = _merge_positions_by_ticker(rows)
+    assert len(merged) == 1
+    m = merged[0]
+    assert m["company_name"] == "PKO BP"  # first non-null wins for company_name
+    assert m["current_price"] == 50.0     # market data from the priced row
+    assert m["price_history"] == [50.0]
+
+
+def test_merge_positions_carries_freshest_price_not_first_or_last():
+    """Defensive: if two wallets' rows for a ticker ever diverge, the freshest
+    price_as_of wins — not merely the first- or last-listed row."""
+    from src.api import _merge_positions_by_ticker
+
+    rows = [
+        # newer price listed FIRST
+        {"ticker": "PKO", "company_name": "PKO BP", "shares": 10.0, "avg_buy_price": 40.0,
+         "current_price": 50.0, "daily_change_pct": 1.5, "price_as_of": "2026-06-27", "price_history": [50.0]},
+        # older price listed SECOND — must NOT overwrite the fresher bundle
+        {"ticker": "PKO", "company_name": "PKO BP", "shares": 10.0, "avg_buy_price": 44.0,
+         "current_price": 48.0, "daily_change_pct": 0.5, "price_as_of": "2026-06-20", "price_history": [48.0]},
+    ]
+    merged = _merge_positions_by_ticker(rows)
+    assert len(merged) == 1
+    m = merged[0]
+    assert m["current_price"] == 50.0            # freshest (2026-06-27) wins
+    assert m["price_as_of"] == "2026-06-27"
+    assert m["shares"] == 20.0
+    assert m["avg_buy_price"] == pytest.approx((10 * 40 + 10 * 44) / 20)  # 42.0
+
+
+def test_get_portfolio_positions_all_mode_merges_and_skips_ownership(user_client):
+    """portfolio_id=all merges same-ticker rows, recomputes P&L, and does not 404."""
+    with (
+        patch("src.api.list_user_portfolios") as mock_wallets,
+        patch("src.api.list_user_portfolio_positions", return_value=_ALL_ROWS_SAME_TICKER) as mock_list,
+    ):
+        r = user_client.get("/api/portfolio/positions?portfolio_id=all")
+    assert r.status_code == 200
+    data = r.json()
+    by_ticker = {p["ticker"]: p for p in data}
+    assert len(data) == 2
+    pko = by_ticker["PKO"]
+    assert pko["shares"] == 40.0
+    assert pko["avg_buy_price"] == pytest.approx(55.0)
+    # P&L recomputed from merged shares/prices: (50 - 55) * 40 = -200
+    assert pko["pnl_pln"] == pytest.approx((50.0 - 55.0) * 40.0)
+    mock_wallets.assert_not_called()  # ownership check skipped in all-mode
+    mock_list.assert_called_once_with(_CLIENT_ID, None, include_history=True)
+
+
+def test_get_portfolio_calendar_all_mode_skips_ownership_and_passes_none(user_client):
+    with (
+        patch("src.api.list_user_portfolios") as mock_wallets,
+        patch("src.api.get_portfolio_calendar_data", return_value=[]) as mock_cal,
+        patch("src.api.compute_calendar_pnl", return_value=_CAL_RESPONSE),
+    ):
+        r = user_client.get("/api/portfolio/calendar?year=2026&month=6&portfolio_id=all")
+    assert r.status_code == 200
+    mock_wallets.assert_not_called()
+    mock_cal.assert_called_once_with(None, _CLIENT_ID, 2026, 6)
+
+
+def test_get_portfolio_history_all_mode_skips_ownership_and_passes_none(user_client):
+    with (
+        patch("src.api.list_user_portfolios") as mock_wallets,
+        patch("src.api.get_portfolio_history", return_value=_HIST_ROWS) as mock_hist,
+    ):
+        r = user_client.get("/api/portfolio/history?range=1m&portfolio_id=all")
+    assert r.status_code == 200
+    mock_wallets.assert_not_called()
+    assert mock_hist.call_args.args[0] is None  # portfolio_id → None (all wallets)
+    assert mock_hist.call_args.args[1] == _CLIENT_ID
+
+
+def _capture_calendar_query(portfolio_id) -> str:
+    """Regression harness (lessons.md): mocked BQ tests don't parse SQL — assert text."""
+    from unittest.mock import MagicMock
+
+    from db import bigquery as bq
+
+    captured = {}
+
+    def _capture(query, job_config=None):
+        captured["query"] = query
+        job = MagicMock()
+        job.result.return_value = []
+        return job
+
+    client = MagicMock()
+    client.query.side_effect = _capture
+    with patch.object(bq, "_get_client", return_value=client):
+        bq.get_portfolio_calendar_data(portfolio_id, "user-1", 2026, 6)
+    return captured["query"]
+
+
+def _capture_history_query(portfolio_id) -> str:
+    from unittest.mock import MagicMock
+
+    from db import bigquery as bq
+
+    captured = {}
+
+    def _capture(query, job_config=None):
+        captured["query"] = query
+        job = MagicMock()
+        job.result.return_value = []
+        return job
+
+    client = MagicMock()
+    client.query.side_effect = _capture
+    with patch.object(bq, "_get_client", return_value=client):
+        bq.get_portfolio_history(portfolio_id, "user-1", date(2026, 6, 1))
+    return captured["query"]
+
+
+def test_calendar_query_filters_by_portfolio_when_scoped():
+    assert "AND portfolio_id = @portfolio_id" in _capture_calendar_query("port-1")
+
+
+def test_calendar_query_spans_all_portfolios_when_none():
+    assert "portfolio_id = @portfolio_id" not in _capture_calendar_query(None)
+
+
+def test_history_query_filters_by_portfolio_when_scoped():
+    assert "AND portfolio_id = @portfolio_id" in _capture_history_query("port-1")
+
+
+def test_history_query_spans_all_portfolios_when_none():
+    assert "portfolio_id = @portfolio_id" not in _capture_history_query(None)
+
+
 def test_get_portfolio_positions_no_key_returns_401(api_client):
     r = api_client.get("/api/portfolio/positions")
     assert r.status_code == 401

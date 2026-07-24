@@ -15,7 +15,8 @@ def _login(page: Page, base_url: str) -> None:
 
 def _open_portfolio_positions(page: Page) -> None:
     page.get_by_role("button", name="Mój portfel").click()
-    expect(page.locator("#pp-portfolio-tabs .pp-portfolio-tab")).to_be_visible()
+    # PUL-90: default tab is read-only "Wszystkie" — select Główny for the editable view.
+    page.locator("#pp-portfolio-tabs .pp-portfolio-tab", has_text="Główny").click()
 
 
 def test_portfolio_tabs_show_after_login(page: Page, live_server_url: str):
