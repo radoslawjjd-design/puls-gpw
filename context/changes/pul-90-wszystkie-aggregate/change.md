@@ -1,7 +1,7 @@
 ---
 change_id: pul-90-wszystkie-aggregate
 title: Add "Wszystkie" aggregate view in Mój portfel (all-portfolios positions + combined summary)
-status: implementing
+status: implemented
 created: 2026-07-24
 updated: 2026-07-24
 archived_at: null

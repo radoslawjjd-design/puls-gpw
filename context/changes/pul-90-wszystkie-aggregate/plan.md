@@ -246,7 +246,7 @@ None — no schema or data changes.
 
 #### Automated
 
-- [x] 2.1 Existing e2e positions/calendar suites still pass locally (satisfied in Phase 3: 6 `_open_portfolio*` helpers now select Główny; full e2e 112 passed) — 3.2 commit
+- [x] 2.1 Existing e2e positions/calendar suites still pass locally (satisfied in Phase 3: 6 `_open_portfolio*` helpers now select Główny; full e2e 112 passed) — 0d5774f
 
 #### Manual
 
@@ -259,9 +259,9 @@ None — no schema or data changes.
 
 #### Automated
 
-- [x] 3.1 New/updated e2e "Wszystkie" test passes (test_wszystkie_aggregate_view_is_default_and_read_only)
-- [x] 3.2 Full suite green: `uv run pytest` (705 passed = 593 unit + 112 e2e)
+- [x] 3.1 New/updated e2e "Wszystkie" test passes (test_wszystkie_aggregate_view_is_default_and_read_only) — 0d5774f
+- [x] 3.2 Full suite green: `uv run pytest` (705 passed = 593 unit + 112 e2e) — 0d5774f
 
 #### Manual
 
-- [x] 3.3 E2E run shows read-only aggregate view (leaner scope — DEVIATION: no 2nd portfolio in the shared fixture; cross-wallet merge already verified 3× via unit tests + real-BQ curl + headed-browser on real 2 wallets. E2e covers Wszystkie default/read-only/scope-back)
+- [x] 3.3 E2E run shows read-only aggregate view (leaner scope — DEVIATION: no 2nd portfolio in the shared fixture; cross-wallet merge already verified 3× via unit tests + real-BQ curl + headed-browser on real 2 wallets. E2e covers Wszystkie default/read-only/scope-back) — 0d5774f
