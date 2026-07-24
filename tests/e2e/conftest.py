@@ -354,11 +354,22 @@ _FAKE_HISTORY_ROWS = [
     {"snapshot_date": _cal_weekdays[1], "value_pln": 10150.0, "pnl_pln": 450.0},
     {"snapshot_date": _cal_weekdays[2], "value_pln": 10120.0, "pnl_pln": 420.0},
 ]
+# PUL-91: aggregate ("Wszystkie") series — distinct values so e2e can prove the
+# two charts render independent data. Endpoint passes portfolio_id=None for
+# all-mode (portfolio_id=all → None), so the fake must key on None.
+#   → aggregate current value = 20240 ("... PLN"); aggregate current P&L = 840.
+_FAKE_HISTORY_ROWS_ALL = [
+    {"snapshot_date": _cal_weekdays[0], "value_pln": 20000.0, "pnl_pln": 600.0},
+    {"snapshot_date": _cal_weekdays[1], "value_pln": 20300.0, "pnl_pln": 900.0},
+    {"snapshot_date": _cal_weekdays[2], "value_pln": 20240.0, "pnl_pln": 840.0},
+]
 
 
 def _fake_get_portfolio_history(portfolio_id, user_id, start_date):
     if portfolio_id == _FAKE_PORTFOLIO_ID:
         return _FAKE_HISTORY_ROWS
+    if portfolio_id is None:  # all-mode aggregate (portfolio_id=all → None)
+        return _FAKE_HISTORY_ROWS_ALL
     return []
 
 
