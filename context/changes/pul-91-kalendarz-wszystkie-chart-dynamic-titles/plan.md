@@ -323,9 +323,9 @@ None — front-end only, no data or schema changes.
 
 #### Automated
 
-- [x] 2.1 History e2e pass: `uv run pytest tests/e2e/test_portfolio_value_history.py` — 4 passed
-- [x] 2.2 Full suite still green: `uv run pytest` — 707 passed
+- [x] 2.1 History e2e pass: `uv run pytest tests/e2e/test_portfolio_value_history.py` — 4 passed — 911918b
+- [x] 2.2 Full suite still green: `uv run pytest` — 707 passed — 911918b
 
 #### Manual
 
-- [x] 2.3 e2e run shows both charts + all-mode single chart as intended
+- [x] 2.3 e2e run shows both charts + all-mode single chart as intended — 911918b

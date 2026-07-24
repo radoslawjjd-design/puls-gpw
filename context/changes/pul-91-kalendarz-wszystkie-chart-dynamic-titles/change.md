@@ -1,7 +1,7 @@
 ---
 change_id: pul-91-kalendarz-wszystkie-chart-dynamic-titles
 title: Kalendarz — second "Wszystkie" value chart, dynamic per-portfolio titles, shared range switcher
-status: implementing
+status: implemented
 created: 2026-07-24
 updated: 2026-07-24
 tracking:
