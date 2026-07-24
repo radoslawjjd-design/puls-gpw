@@ -231,29 +231,29 @@ None — no schema or data changes.
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_api.py`
-- [x] 1.2 `_merge_positions_by_ticker` merge unit test (summed shares + weighted-avg)
-- [x] 1.3 Positions all-mode branch test: merged rows, no 404
-- [x] 1.4 Calendar + history all-mode branch tests: no 403, db called with None
-- [x] 1.5 Full suite green: `uv run pytest` (593 passed; e2e excluded — browser-dependent, Phase 3)
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_api.py` — 91022de
+- [x] 1.2 `_merge_positions_by_ticker` merge unit test (summed shares + weighted-avg) — 91022de
+- [x] 1.3 Positions all-mode branch test: merged rows, no 404 — 91022de
+- [x] 1.4 Calendar + history all-mode branch tests: no 403, db called with None — 91022de
+- [x] 1.5 Full suite green: `uv run pytest` (593 passed; e2e excluded — browser-dependent, Phase 3) — 91022de
 
 #### Manual
 
-- [x] 1.6 `curl` positions?portfolio_id=all returns merged rows (verified on real BQ: 11+7 wallets → 12 merged rows, shares sums exact)
-- [x] 1.7 `curl` calendar/history ?portfolio_id=all return combined series without 403 (verified: calendar 200/18 days, history 200/20 pts)
+- [x] 1.6 `curl` positions?portfolio_id=all returns merged rows (verified on real BQ: 11+7 wallets → 12 merged rows, shares sums exact) — 91022de
+- [x] 1.7 `curl` calendar/history ?portfolio_id=all return combined series without 403 (verified: calendar 200/18 days, history 200/20 pts) — 91022de
 
 ### Phase 2: Frontend — "Wszystkie" tab, default, aggregate views, read-only
 
 #### Automated
 
-- [ ] 2.1 Existing e2e positions/calendar suites still pass locally
+- [ ] 2.1 Existing e2e positions/calendar suites still pass locally (deferred to Phase 3: the default-tab change breaks add/edit/delete tests until their helpers select a wallet first)
 
 #### Manual
 
-- [ ] 2.2 "Wszystkie" first + default; merged table + summed summary
-- [ ] 2.3 No edit/add controls in all-mode; wallet tab restores them + scopes
-- [ ] 2.4 Kalendarz all-mode: combined grid + combined chart; range switch works
-- [ ] 2.5 `?portfolio=all` round-trips on reload; light+dark ok; no console errors
+- [x] 2.2 "Wszystkie" first + default; merged table + summed summary (browser-verified on real BQ: Wszystkie active first, value 68 669,89 PLN, 14 merged rows)
+- [x] 2.3 No edit/add controls in all-mode; wallet tab restores them + scopes (0 Edytuj + add-toggle hidden in all-mode; wallet → 13 Edytuj + add-toggle shown)
+- [x] 2.4 Kalendarz all-mode: combined grid + combined chart; range switch works (browser-verified: combined daily grid + value chart render in all-mode)
+- [x] 2.5 `?portfolio=all` round-trips on reload; light+dark ok; no console errors (URL portfolio=all confirmed; dark applied; console errors: NONE)
 
 ### Phase 3: E2E coverage + fixtures
 

@@ -3064,6 +3064,7 @@ async function fetchPortfolioPositions() {
 }
 
 async function _upsertPortfolioPosition(ticker, companyName, shares, avgBuyPrice) {
+  if (_ppIsAllMode()) return;  // PUL-90: "Wszystkie" is read-only
   try {
     const r = await fetch('/api/portfolio/positions', {
       method: 'POST',
@@ -3085,6 +3086,7 @@ async function _upsertPortfolioPosition(ticker, companyName, shares, avgBuyPrice
 }
 
 async function _deletePortfolioPosition(ticker) {
+  if (_ppIsAllMode()) return;  // PUL-90: "Wszystkie" is read-only
   if (!confirm('Czy na pewno usunąć pozycję ' + ticker + ' z portfela?')) return;
   try {
     const r = await fetch('/api/portfolio/positions/' + encodeURIComponent(ticker) + '?portfolio_id=' + encodeURIComponent(_activePortfolioId || ''), {
@@ -3117,6 +3119,10 @@ let _ppCalMonth = null;
 const _PORTFOLIO_TYPE_LABELS = {
   glowny: 'Główny', ikze: 'IKZE', ike: 'IKE', ppk: 'PPK', ppe: 'PPE', inny: 'Inny'
 };
+// PUL-90: sentinel wallet id for the "Wszystkie" (all-portfolios) aggregate view —
+// first + default tab, read-only. Truthy, so it passes the `=== null` fetch guards.
+const _ALL_PORTFOLIOS = 'all';
+function _ppIsAllMode() { return _activePortfolioId === _ALL_PORTFOLIOS; }
 
 function _updatePortfolioSummary(positions) {
   const summary = $('pp-summary');
@@ -3183,6 +3189,7 @@ function _renderPortfolioTable(positions) {
     tbody.innerHTML = '<tr><td colspan="9" class="empty">Brak pozycji w portfelu</td></tr>';
     return;
   }
+  const readOnly = _ppIsAllMode();
   tbody.innerHTML = positions.map(pos => {
     const ticker = esc(pos.ticker);
     const company = esc(pos.company_name || '');
@@ -3196,6 +3203,12 @@ function _renderPortfolioTable(positions) {
       pnlText = pos.pnl_pln.toFixed(2) + ' PLN (' + pos.pnl_pct.toFixed(2) + '%)';
       pnlClass = pos.pnl_pln > 0 ? 'positive' : pos.pnl_pln < 0 ? 'negative' : '';
     }
+    // PUL-90: "Wszystkie" is read-only — positions belong to a specific wallet, so
+    // the edit/delete cell is empty (kept as a <td> to preserve column alignment).
+    const actionsCell = readOnly ? '<td></td>' : `<td>
+        <button type="button" class="pp-edit-btn" data-ticker="${ticker}" data-company="${company}" data-shares="${shares}" data-price="${pos.avg_buy_price}">Edytuj</button>
+        <button type="button" class="pp-del-btn" data-ticker="${ticker}">Usuń</button>
+      </td>`;
     return `<tr>
       <td><span class="pp-ticker-link" data-ticker="${ticker}" title="Pokaż ogłoszenia spółki">${ticker}</span></td>
       <td>${company}</td>
@@ -3205,10 +3218,7 @@ function _renderPortfolioTable(positions) {
       <td data-label="Zmiana dzienna">${daily}</td>
       <td class="${pnlClass}" data-label="Zysk/strata">${pnlText}</td>
       <td data-label="30 dni">${_sparklineSvg(pos.price_history)}</td>
-      <td>
-        <button type="button" class="pp-edit-btn" data-ticker="${ticker}" data-company="${company}" data-shares="${shares}" data-price="${pos.avg_buy_price}">Edytuj</button>
-        <button type="button" class="pp-del-btn" data-ticker="${ticker}">Usuń</button>
-      </td>
+      ${actionsCell}
     </tr>`;
   }).join('');
 
@@ -3308,15 +3318,24 @@ function _renderPortfolioTabs(portfolios) {
     if (addBtn) addBtn.style.display = 'none';
     return;
   }
-  const addBtn = $('pp-add-toggle-btn');
-  if (addBtn && _ppEditingTicker === null) addBtn.style.display = '';
-  portfolios.forEach((p, i) => {
+  _ppSyncAddBtnVisibility();
+
+  // PUL-90: "Wszystkie" aggregate tab — first + default, no delete icon (read-only).
+  const allBtn = document.createElement('button');
+  allBtn.type = 'button';
+  allBtn.className = 'pp-portfolio-tab' + (_ppIsAllMode() ? ' active' : '');
+  allBtn.dataset.portfolioId = _ALL_PORTFOLIOS;
+  allBtn.textContent = 'Wszystkie';
+  allBtn.addEventListener('click', () => _selectPortfolioTab(_ALL_PORTFOLIOS, allBtn));
+  tabs.appendChild(allBtn);
+
+  portfolios.forEach((p) => {
     const label = p.portfolio_type === 'inny'
       ? (p.portfolio_name || 'Inny')
       : (_PORTFOLIO_TYPE_LABELS[p.portfolio_type] || p.portfolio_type);
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'pp-portfolio-tab' + (i === 0 ? ' active' : '');
+    btn.className = 'pp-portfolio-tab' + (p.portfolio_id === _activePortfolioId ? ' active' : '');
     btn.dataset.portfolioId = p.portfolio_id;
 
     const labelSpan = document.createElement('span');
@@ -3332,19 +3351,32 @@ function _renderPortfolioTabs(portfolios) {
     btn.appendChild(labelSpan);
     btn.appendChild(delSpan);
 
-    btn.addEventListener('click', () => {
-      tabs.querySelectorAll('.pp-portfolio-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      _activePortfolioId = p.portfolio_id;
-      _ppCalData = null;
-      _ppHistData = null;
-      const curMode = $('pp-view-tabs')?.querySelector('.pp-view-tab.active')?.dataset.mode;
-      if (curMode === 'calendar') { fetchPortfolioCalendar(); fetchPortfolioHistory(); }
-      fetchPortfolioPositions();
-      _ppWriteUrl(true);
-    });
+    btn.addEventListener('click', () => _selectPortfolioTab(p.portfolio_id, btn));
     tabs.appendChild(btn);
   });
+}
+
+// Hide the "Dodaj pozycję" toggle in read-only "Wszystkie" mode; show it otherwise
+// (positions belong to a specific wallet). Also respects an in-progress edit.
+function _ppSyncAddBtnVisibility() {
+  const addBtn = $('pp-add-toggle-btn');
+  if (addBtn && _ppEditingTicker === null) addBtn.style.display = _ppIsAllMode() ? 'none' : '';
+}
+
+// Shared wallet-tab click handler (per-wallet + "Wszystkie"): activate the tab,
+// drop cached calendar/history, refetch the active view, and write the URL.
+function _selectPortfolioTab(portfolioId, btn) {
+  const tabs = $('pp-portfolio-tabs');
+  if (tabs) tabs.querySelectorAll('.pp-portfolio-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  _activePortfolioId = portfolioId;
+  _ppCalData = null;
+  _ppHistData = null;
+  _ppSyncAddBtnVisibility();
+  const curMode = $('pp-view-tabs')?.querySelector('.pp-view-tab.active')?.dataset.mode;
+  if (curMode === 'calendar') { fetchPortfolioCalendar(); fetchPortfolioHistory(); }
+  fetchPortfolioPositions();
+  _ppWriteUrl(true);
 }
 
 async function fetchUserPortfolios() {
@@ -3360,9 +3392,13 @@ async function fetchUserPortfolios() {
     const urlParams = new URLSearchParams(location.search);
     const urlPortfolio = urlParams.get('portfolio');
     const urlTab = urlParams.get('tab');
-    const matchedPortfolio = urlPortfolio ? data.find(p => p.portfolio_id === urlPortfolio) : null;
+    // PUL-90: default to "Wszystkie" (aggregate) on entry; an explicit ?portfolio=<uuid>
+    // that matches a wallet scopes back to it. ?portfolio=all (or no/invalid param)
+    // selects the aggregate tab when the user has any portfolios.
+    const matchedPortfolio = urlPortfolio && urlPortfolio !== _ALL_PORTFOLIOS
+      ? data.find(p => p.portfolio_id === urlPortfolio) : null;
     _activePortfolioId = matchedPortfolio ? matchedPortfolio.portfolio_id
-                       : (data.length ? data[0].portfolio_id : null);
+                       : (data.length ? _ALL_PORTFOLIOS : null);
     _renderPortfolioTabs(data);
     if (matchedPortfolio) {
       const tabs = $('pp-portfolio-tabs');
