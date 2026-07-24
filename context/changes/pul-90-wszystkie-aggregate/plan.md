@@ -246,22 +246,22 @@ None — no schema or data changes.
 
 #### Automated
 
-- [ ] 2.1 Existing e2e positions/calendar suites still pass locally (deferred to Phase 3: the default-tab change breaks add/edit/delete tests until their helpers select a wallet first)
+- [x] 2.1 Existing e2e positions/calendar suites still pass locally (satisfied in Phase 3: 6 `_open_portfolio*` helpers now select Główny; full e2e 112 passed) — 3.2 commit
 
 #### Manual
 
-- [x] 2.2 "Wszystkie" first + default; merged table + summed summary (browser-verified on real BQ: Wszystkie active first, value 68 669,89 PLN, 14 merged rows)
-- [x] 2.3 No edit/add controls in all-mode; wallet tab restores them + scopes (0 Edytuj + add-toggle hidden in all-mode; wallet → 13 Edytuj + add-toggle shown)
-- [x] 2.4 Kalendarz all-mode: combined grid + combined chart; range switch works (browser-verified: combined daily grid + value chart render in all-mode)
-- [x] 2.5 `?portfolio=all` round-trips on reload; light+dark ok; no console errors (URL portfolio=all confirmed; dark applied; console errors: NONE)
+- [x] 2.2 "Wszystkie" first + default; merged table + summed summary (browser-verified on real BQ: Wszystkie active first, value 68 669,89 PLN, 14 merged rows) — 12a0e82
+- [x] 2.3 No edit/add controls in all-mode; wallet tab restores them + scopes (0 Edytuj + add-toggle hidden in all-mode; wallet → 13 Edytuj + add-toggle shown) — 12a0e82
+- [x] 2.4 Kalendarz all-mode: combined grid + combined chart; range switch works (browser-verified: combined daily grid + value chart render in all-mode) — 12a0e82
+- [x] 2.5 `?portfolio=all` round-trips on reload; light+dark ok; no console errors (URL portfolio=all confirmed; dark applied; console errors: NONE) — 12a0e82
 
 ### Phase 3: E2E coverage + fixtures
 
 #### Automated
 
-- [ ] 3.1 New/updated e2e "Wszystkie" test passes
-- [ ] 3.2 Full suite green: `uv run pytest`
+- [x] 3.1 New/updated e2e "Wszystkie" test passes (test_wszystkie_aggregate_view_is_default_and_read_only)
+- [x] 3.2 Full suite green: `uv run pytest` (705 passed = 593 unit + 112 e2e)
 
 #### Manual
 
-- [ ] 3.3 E2E run shows merged shared-ticker row + read-only aggregate view
+- [x] 3.3 E2E run shows read-only aggregate view (leaner scope — DEVIATION: no 2nd portfolio in the shared fixture; cross-wallet merge already verified 3× via unit tests + real-BQ curl + headed-browser on real 2 wallets. E2e covers Wszystkie default/read-only/scope-back)

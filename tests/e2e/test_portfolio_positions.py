@@ -11,6 +11,8 @@ def _login(page: Page, base_url: str) -> None:
 
 def _open_portfolio(page: Page) -> None:
     page.get_by_role("button", name="Mój portfel").click()
+    # PUL-90: default tab is read-only "Wszystkie" — select Główny for the editable view.
+    page.locator("#pp-portfolio-tabs .pp-portfolio-tab", has_text="Główny").click()
 
 
 def _add_position(page: Page, ticker: str, company: str, shares: str, price: str) -> None:
@@ -72,3 +74,31 @@ def test_positions_show_dashes_when_no_price_data(page: Page, live_server_url: s
     # CDR from _FAKE_PORTFOLIO_POSITIONS has current_price=None — all price columns show "—"
     expect(page.locator("#pp-tbody")).to_contain_text("CDR")
     expect(page.locator("#pp-tbody")).to_contain_text("—")
+
+
+def test_wszystkie_aggregate_view_is_default_and_read_only(page: Page, live_server_url: str):
+    """PUL-90: 'Wszystkie' is the first + default tab and shows positions in a read-only
+    aggregate (no per-row edit/delete, no 'Dodaj pozycję'); selecting a wallet restores
+    editing and scopes back to that wallet."""
+    _login(page, live_server_url)
+    page.get_by_role("button", name="Mój portfel").click()
+
+    tabs = page.locator("#pp-portfolio-tabs")
+    first_tab = tabs.locator(".pp-portfolio-tab").first
+    expect(first_tab).to_have_text("Wszystkie")
+    # default on entry: the aggregate tab is the active one
+    expect(page.locator(".pp-portfolio-tab.active")).to_have_text("Wszystkie")
+
+    # aggregate positions render + summary visible
+    expect(page.locator("#pp-tbody")).to_contain_text("PKO")
+    expect(page.locator("#pp-summary")).to_be_visible()
+
+    # read-only: no per-row edit/delete controls, no "Dodaj pozycję"
+    expect(page.locator("#pp-tbody button", has_text="Edytuj")).to_have_count(0)
+    expect(page.locator("#pp-tbody button", has_text="Usuń")).to_have_count(0)
+    expect(page.locator("#pp-add-toggle-btn")).to_be_hidden()
+
+    # selecting the Główny wallet restores editing and the add-position toggle
+    tabs.locator(".pp-portfolio-tab", has_text="Główny").click()
+    expect(page.locator("#pp-tbody button", has_text="Edytuj").first).to_be_visible()
+    expect(page.locator("#pp-add-toggle-btn")).to_be_visible()
