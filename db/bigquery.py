@@ -2775,7 +2775,7 @@ def _merge_insert_only(
             MERGE `{target}` T
             USING (
               SELECT * FROM `{tmp_table_id}`
-              QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date) = 1
+              QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date ORDER BY fetched_at DESC) = 1
             ) S
             ON T.ticker = S.ticker AND T.snapshot_date = S.snapshot_date
             WHEN NOT MATCHED THEN

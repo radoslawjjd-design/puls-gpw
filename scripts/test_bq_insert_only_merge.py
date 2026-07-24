@@ -14,6 +14,7 @@ Requires ADC: gcloud auth application-default login
 """
 import sys
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -32,7 +33,9 @@ def _run_case(label: str, const_name: str, schema, merge_fn, base_row: dict) -> 
     real_name = getattr(bq, const_name)
     rt_name = f"{real_name}_rt_{uuid.uuid4().hex[:8]}"
     rt_ref = _table_ref(client, rt_name)
-    client.create_table(gbq.Table(rt_ref, schema=schema))
+    rt_table = gbq.Table(rt_ref, schema=schema)
+    rt_table.expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    client.create_table(rt_table)
     setattr(bq, const_name, rt_name)
     try:
         # 1. new key -> inserted

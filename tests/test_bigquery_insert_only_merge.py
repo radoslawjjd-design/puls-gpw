@@ -99,6 +99,15 @@ def test_insert_only_empty_rows_is_noop(func):
     client.delete_table.assert_not_called()
 
 
+def test_insert_only_none_affected_rows_returns_zero():
+    """A MERGE job reporting num_dml_affected_rows=None must map to 0, not crash."""
+    client = _mock_client_for_merge()
+    client.query.return_value.num_dml_affected_rows = None
+
+    with patch("db.bigquery._get_client", return_value=client):
+        assert merge_company_daily_stats_insert_only([_COMPANY_ROW]) == 0
+
+
 def test_insert_only_load_failure_raises_and_cleans_up():
     """A failed load job must raise BigQueryError and still delete the temp table."""
     client = _mock_client_for_merge()
