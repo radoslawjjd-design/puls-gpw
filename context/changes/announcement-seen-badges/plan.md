@@ -37,7 +37,7 @@ Verification: e2e suite covers badge render, popup-clear + reload persistence, n
 - No backend/API changes (no `announcement_id` exposure for user/my-wallet rows).
 - No per-user scoping of seen-state — keys stay browser-global like `faro_theme` (two users sharing a browser share seen-state; accepted).
 - No "only actually rendered rows" precision on navigate-away — leaving a view advances the whole view's threshold, including unvisited pagination pages (accepted).
-- No forced re-render when returning to a still-open tab after `visibilitychange:hidden` — badges already in the DOM stay until the next natural re-render.
+- No forced re-render when returning to a still-open **browser tab** after `visibilitychange:hidden` — badges already in the DOM stay until the next natural re-render. (Re-entering a *view* inside the SPA does re-render from cache — Phase 1 change #7.)
 - No nav-tab counters or other new badge surfaces; no changes to the X-posts table or its modal branch.
 - No dedicated e2e for pagehide/visibilitychange (hard to drive reliably in Playwright) — manual verification.
 
@@ -52,7 +52,9 @@ Hybrid model (decision): keep the coarse per-view threshold but move its advance
 
 ## Critical Implementation Details
 
+- **False-leave guard (rendered flag)**: `currentView` initializes to `'announcements'` (`1293`) and has 9 writers (incl. `.pp-ticker-link` at `3259-3268` bypassing the router, and the `doLogout` reset at `1362`). A naive "leaving currentView → mark seen" hook would spuriously mark a view that never rendered (fresh deep-link `?view=my-wallet`, every popstate, logout ordering). Therefore: `renderTable` sets `_viewRendered[viewKey] = true`; `_markViewSeen` is a no-op unless the flag is set, and clears it. Hooks may then fire liberally — marking is gated by "badges were actually on screen".
 - **Shared modal guard**: `openModal` also serves the admin X-posts table (`d.kind === 'xpost'`); mark-seen must run only in the announcement branch (or be keyed off the presence of `data-seen-key`, which only announcement rows will carry).
+- **No refetch on view re-entry**: `showAnnouncementsView` is display-toggling only (explicit comment at `2540-2542`: "x-history always fetches on show, announcements doesn't") and Obserwowane is gated by `_watchlistFetched` to one fetch per session — so navigate-away clearing is only visible if re-entry re-renders from cache (Phase 1 change #7). Re-render must NOT fetch — `tests/e2e/test_watchlist_guard.py` asserts 3× navigation = 1 fetch.
 - **In-memory cache coherence**: `_markViewSeen` must update `_seenThresholds[key]` as well as localStorage — `renderTable` reads the cache, and the navigate-away e2e scenario (leave → return → refetch → re-render) only passes if the cache reflects the advance.
 - **Dual entry paths**: the "leaving current view" hook must fire both in `_navigateToView` (before `currentView` is reassigned) and on the `_applyUrlState` path (popstate/deep-link switches views without the router). Extract one helper and call it from both.
 - **visibilitychange fires on browser tab switch too** — accepted decision: switching tabs counts as "plausibly seen". Guard the listener so it only acts when a session is active and `currentView` maps to a seen-key (never on the landing/login screens).
@@ -72,7 +74,7 @@ All mechanism changes: read-only threshold, leave-event advancement, per-item se
 
 **Intent**: `_seenThreshold(key)` stops writing `Date.now()` on first read — it only loads the stored value into `_seenThresholds`. New `_markViewSeen(viewKey)` performs the advance at leave time.
 
-**Contract**: `_markViewSeen(viewKey)` for `viewKey ∈ {'announcements','my_wallet'}`: sets `Date.now()` into `localStorage['faro_seen_'+viewKey]` **and** `_seenThresholds[viewKey]`, then calls the seen-set prune. First-ever visit still yields `null` threshold (no badges) until the first leave event seeds the key. Update the explanatory comment at `2134-2135` to describe the new lifecycle.
+**Contract**: `_markViewSeen(viewKey)` for `viewKey ∈ {'announcements','my_wallet'}`: **no-op unless `_viewRendered[viewKey]` is set** (F2 — false-leave guard); otherwise sets `Date.now()` into `localStorage['faro_seen_'+viewKey]` **and** `_seenThresholds[viewKey]`, clears `_viewRendered[viewKey]`, then calls the seen-set prune. First-ever visit still yields `null` threshold (no badges) until the first leave event after a render seeds the key. Update the explanatory comment at `2134-2135` to describe the new lifecycle.
 
 #### 2. Per-item seen-set
 
@@ -88,7 +90,7 @@ All mechanism changes: read-only threshold, leave-event advancement, per-item se
 
 **Intent**: Badge renders only for items that are both newer than the view threshold and not individually seen; each announcement row carries its synthetic key for the click path.
 
-**Contract**: add `data-seen-key="${esc(row.ticker + '|' + row.published_at)}"` to `modalAttrs`; badge condition extends to `... && !_seenItemsHas(key)`. Both admin and user branches inherit it (shared date-cell `newBadge` variable — one change point).
+**Contract**: add `data-seen-key="${esc(row.ticker + '|' + row.published_at)}"` to `modalAttrs` — **only when both `row.ticker` and `row.published_at` are present** (both fields are `| None` in the API models; a row without `published_at` never badges anyway, F5); badge condition extends to `... && !_seenItemsHas(key)`. Both admin and user branches inherit it (shared date-cell `newBadge` variable — one change point). `renderTable` also sets `_viewRendered[viewKey] = true` for the view it just rendered (F2).
 
 #### 4. Popup-open hook
 
@@ -104,7 +106,7 @@ All mechanism changes: read-only threshold, leave-event advancement, per-item se
 
 **Intent**: Leaving Ogłoszenia/Obserwowane for any other view advances that view's threshold.
 
-**Contract**: helper `_leaveCurrentView(nextView)` — if `currentView` maps to a seen-key (`announcements` → `announcements`, my-wallet view → `my_wallet`) and `nextView !== currentView`, call `_markViewSeen(mappedKey)`. Called at the top of `_navigateToView` (before `currentView` reassignment) and on the `_applyUrlState` view-switch path. Implementer verifies the exact `currentView` string values used by the router before mapping.
+**Contract**: helper `_leaveCurrentView(nextView)` — if `currentView` maps to a seen-key (`announcements` → `announcements`, my-wallet view → `my_wallet`) and `nextView !== currentView`, call `_markViewSeen(mappedKey)`. Called at the top of `_navigateToView` (before `currentView` reassignment) and on the `_applyUrlState` view-switch path. Spurious calls (deep-link boot, repeated popstate, `.pp-ticker-link` at `3259-3268` writing `currentView` directly) are harmless — `_markViewSeen` no-ops without the rendered flag (F2). Implementer verifies the exact `currentView` string values used by the router before mapping.
 
 #### 6. Session-end + page-close hooks
 
@@ -112,7 +114,15 @@ All mechanism changes: read-only threshold, leave-event advancement, per-item se
 
 **Intent**: Logout, tab close, and page hide mark the currently active announcements view as seen — covering the "viewed but never clicked, then left" case.
 
-**Contract**: in `doLogout` (before state resets): mark the active view if it maps to a seen-key. Net-new `window 'pagehide'` + `document 'visibilitychange'` (act on `document.visibilityState === 'hidden'`) listeners doing the same, guarded to run only with an active session and a mapped `currentView`. Synchronous localStorage writes only — no network.
+**Contract**: in `doLogout` (before the `currentView` reset at `1362`): mark the active view if it maps to a seen-key. Net-new `window 'pagehide'` + `document 'visibilitychange'` (act on `document.visibilityState === 'hidden'`) listeners doing the same, guarded with `if (!role) return` — the global `role` is the codebase's session-active idiom (popstate precedent at `1764-1781`; `hasSession` is NOT equivalent — it's true on the landing screen during the boot probe) (F3); the rendered flag (F2) is the second line of defense. Synchronous localStorage writes only — no network.
+
+#### 7. Re-render from cache on view re-entry
+
+**File**: `static/index.html` (`showAnnouncementsView` `2304-2313` / router announcements branch; `showMyWalletView` `2416-2423`)
+
+**Intent**: Navigate-away clearing must be visible when the user returns in the same session — but neither view re-fetches nor re-renders on re-entry today (F1), so the stale badges would linger in the DOM until the next fetch.
+
+**Contract**: on re-entry, when cached data exists, re-render without fetching: announcements — `renderTable(_annData, role)` if `_annData` non-empty; Obserwowane — `renderTable(_wlData, role, 'my-wallet-table-body')` if `_watchlistFetched && _wlData` non-empty. **No new fetches** — `tests/e2e/test_watchlist_guard.py` asserts 3× navigation = 1 `/watchlist` fetch. Guard against rendering before the first fetch (empty cache → leave DOM untouched).
 
 ### Success Criteria:
 
@@ -145,7 +155,7 @@ New Playwright spec + fixture groundwork so badges are renderable and determinis
 
 **Intent**: Make a badge renderable in e2e: at least one announcements row with fresh `published_at`, and a pre-seeded old `faro_seen_*` threshold.
 
-**Contract**: (a) one fresh-`published_at` admin announcements row — either bump one `_FAKE_ADMIN_ROWS` entry or append one; **audit existing assertions first** (pagination/autocomplete/url-routing tests) per the PUL-90 lesson about mutating shared conftest state; the my-wallet fake row is already fresh (`now-1d`). (b) helper that seeds `faro_seen_announcements`/`faro_seen_my_wallet` via `context.add_init_script` with the if-absent guard (see Critical Implementation Details). Ogłoszenia badge scenarios run as admin (`list_announcements_user → []` — user's announcements table is empty in e2e); Obserwowane scenario may use either role.
+**Contract**: (a) **bump one existing `_FAKE_ADMIN_ROWS` entry's `published_at` to fresh — do NOT append a row** (F4: `test_refresh` asserts `#table-body tr` count == 20, and the mock is `return_value=` ignoring paging, so exactly 20 rows is load-bearing for the "Strona 2" tests). Verified safe: nothing in the pipeline sorts, and no existing test asserts dates, row order, or first-row content. The my-wallet fake row is already fresh (`now-1d`). (b) helper that seeds `faro_seen_announcements`/`faro_seen_my_wallet` via `context.add_init_script` with the if-absent guard (see Critical Implementation Details). Ogłoszenia badge scenarios run as admin (`list_announcements_user → []` — user's announcements table is empty in e2e); Obserwowane scenario may use either role.
 
 #### 2. Badge spec
 
@@ -156,7 +166,7 @@ New Playwright spec + fixture groundwork so badges are renderable and determinis
 **Contract**: four independent tests (each with its own setup, per e2e rules — `getByRole`/`getByText` locators, no `waitForTimeout`):
 1. Pre-seeded old threshold → fresh row shows `NOWE` (Ogłoszenia as admin; assert badge count/row).
 2. Open that row's popup → badge disappears from the row without reload; reload (init-script re-seeds old threshold, if-absent guard keeps it) → badge still gone (per-item set persisted).
-3. Badge visible → navigate to Obserwowane → back to Ogłoszenia (refetch + re-render) → badge gone.
+3. Badge visible → navigate to Obserwowane → back to Ogłoszenia (re-render from cache on re-entry, Phase 1 change #7) → badge gone.
 4. Badge visible → logout → login again (same document, no reload) → badge gone.
 
 ### Success Criteria:

@@ -34,7 +34,7 @@ Opening an announcement's popup clears its badge instantly and permanently (surv
 
 ## Architecture / Approach
 
-Badge = `published_at > viewThreshold && key ∉ seenItems`. Threshold advancement moves from first-render to leave events via one helper (`_leaveCurrentView`) called from both entry paths (`_navigateToView` and `_applyUrlState` — the popstate/deep-link bypass), plus `doLogout` and net-new `pagehide`/`visibilitychange` listeners. Per-item set lives in `faro_seen_items` (JSON, lazy Set, write-through), pruned against the older threshold + capped at 500.
+Badge = `published_at > viewThreshold && key ∉ seenItems`. Threshold advancement moves from first-render to leave events via one helper (`_leaveCurrentView`) called from both entry paths (`_navigateToView` and `_applyUrlState` — the popstate/deep-link bypass), plus `doLogout` and net-new `pagehide`/`visibilitychange` listeners (guarded by the `role` session idiom). A per-view **rendered flag** (set by `renderTable`, consumed+cleared by `_markViewSeen`) makes spurious "leave" events no-ops — deep-links, repeated popstate and logout ordering can't clear badges that were never on screen. Since neither view re-fetches on re-entry, returning to a view re-renders from cached `_annData`/`_wlData` (no network) so cleared badges actually disappear in-session. Per-item set lives in `faro_seen_items` (JSON, lazy Set, write-through), pruned against the older threshold + capped at 500.
 
 ## Phases at a Glance
 
@@ -51,6 +51,9 @@ Badge = `published_at > viewThreshold && key ∉ seenItems`. Threshold advanceme
 - `visibilitychange:hidden` fires on browser-tab switches — badges clear more aggressively than a literal reading of the ticket; accepted as "plausibly seen".
 - E2E scenario 2 (reload persistence) depends on the if-absent guard in the init-script seeding — clobbering the threshold on re-navigation would invalidate the test.
 - Assumes `currentView` string values map cleanly to the two seen-keys; implementer verifies exact router strings before wiring.
+- Re-render-on-re-entry (plan-review F1) must stay fetch-free — `test_watchlist_guard` asserts 3× navigation = 1 fetch.
+
+> Plan-reviewed 2026-07-24: verdict REVISE → all 5 findings fixed in plan (see `reviews/plan-review.md`).
 
 ## Success Criteria (Summary)
 
