@@ -848,15 +848,19 @@
   .pp-view-tab:hover:not(.active) { color: var(--brand); }
   /* Portfolio: value-history controls */
   #pp-history-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
-  #pp-history-header-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; margin-bottom: .75rem; }
-  .pp-hist-title { font-size: 1rem; font-weight: 600; color: var(--text); margin: 0; }
+  #pp-history-header-row { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; margin-bottom: .75rem; }
+  .pp-hist-title { font-size: 1rem; font-weight: 600; color: var(--text); margin: 0 0 .5rem; }
   #pp-history-controls { display: flex; flex-wrap: wrap; gap: .5rem; }
   .pp-view-tabs-inline {
     display: inline-flex; gap: 2px;
     background: var(--fill); border-radius: var(--radius-sm); padding: 3px;
     border: 1px solid var(--border);
   }
-  #pp-history-chart { width: 100%; max-width: 640px; }
+  /* Two charts (active portfolio + "Wszystkie" aggregate): side-by-side on
+     desktop, stacked on mobile via auto-fit; min-width:0 lets a column shrink. */
+  #pp-history-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.25rem 1.5rem; }
+  .pp-hist-block { min-width: 0; max-width: 640px; }
+  .pp-hist-chart-body { width: 100%; }
   .pp-hist-head { display: flex; align-items: baseline; gap: .6rem; margin: .1rem 0 .55rem; flex-wrap: wrap; }
   .pp-hist-val { font-size: 1.5rem; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
   .pp-hist-delta { font-size: .9rem; font-weight: 600; }
@@ -3107,10 +3111,15 @@ let _ppEditingTicker = null;
 let _ppPositions = [];
 const _ppSort = { key: null, dir: 1 };
 let _activePortfolioId = null;
-let _ppHistData = null;
+let _ppHistDataActive = null;
+let _ppHistDataAll = null;
 let _ppHistRange = '3m';
 let _ppHistMetric = 'value';
-let _ppHistReqSeq = 0;
+// PUL-91: per-slot out-of-order guards — one range switch fires two concurrent
+// fetches (active + aggregate); a stale resolve of either must not render.
+let _ppHistReqSeqActive = 0;
+let _ppHistReqSeqAll = 0;
+let _ppPortfolios = [];
 let _portfoliosFetched = false;
 let _ppTreemapData = null;
 let _ppCalData = null;
@@ -3123,6 +3132,20 @@ const _PORTFOLIO_TYPE_LABELS = {
 // first + default tab, read-only. Truthy, so it passes the `=== null` fetch guards.
 const _ALL_PORTFOLIOS = 'all';
 function _ppIsAllMode() { return _activePortfolioId === _ALL_PORTFOLIOS; }
+
+// PUL-91: genitive forms for value-history chart titles ("Wartość portfela … w
+// czasie"). Distinct from nominative _PORTFOLIO_TYPE_LABELS — only "głowny"
+// inflects; the rest are acronyms. `inny` uses the user-given name (quoted).
+const _PORTFOLIO_TYPE_GENITIVE = {
+  glowny: 'głównego', ikze: 'IKZE', ike: 'IKE', ppk: 'PPK', ppe: 'PPE'
+};
+function _ppHistTitleFor(portfolioId) {
+  if (portfolioId === _ALL_PORTFOLIOS) return 'Wartość wszystkich portfeli w czasie';
+  const p = _ppPortfolios.find(w => w.portfolio_id === portfolioId);
+  if (!p) return 'Wartość portfela w czasie';
+  if (p.portfolio_type === 'inny') return 'Wartość portfela „' + (p.portfolio_name || 'Inny') + '” w czasie';
+  return 'Wartość portfela ' + (_PORTFOLIO_TYPE_GENITIVE[p.portfolio_type] || p.portfolio_type) + ' w czasie';
+}
 
 function _updatePortfolioSummary(positions) {
   const summary = $('pp-summary');
@@ -3371,7 +3394,8 @@ function _selectPortfolioTab(portfolioId, btn) {
   if (btn) btn.classList.add('active');
   _activePortfolioId = portfolioId;
   _ppCalData = null;
-  _ppHistData = null;
+  _ppHistDataActive = null;
+  _ppHistDataAll = null;
   _ppSyncAddBtnVisibility();
   const curMode = $('pp-view-tabs')?.querySelector('.pp-view-tab.active')?.dataset.mode;
   if (curMode === 'calendar') { fetchPortfolioCalendar(); fetchPortfolioHistory(); }
@@ -3399,6 +3423,7 @@ async function fetchUserPortfolios() {
       ? data.find(p => p.portfolio_id === urlPortfolio) : null;
     _activePortfolioId = matchedPortfolio ? matchedPortfolio.portfolio_id
                        : (data.length ? _ALL_PORTFOLIOS : null);
+    _ppPortfolios = data;  // PUL-91: source for dynamic chart titles
     _renderPortfolioTabs(data);
     if (matchedPortfolio) {
       const tabs = $('pp-portfolio-tabs');
@@ -3610,7 +3635,6 @@ function _buildPortfolioPositionsViewContent(view) {
       </div>
       <div id="pp-history-section">
         <div id="pp-history-header-row">
-          <h3 class="pp-hist-title">Wartość portfela w czasie</h3>
           <div id="pp-history-controls">
             <div id="pp-history-ranges" class="pp-view-tabs-inline">
               <button type="button" class="pp-view-tab" data-range="1w">1T</button>
@@ -3624,7 +3648,16 @@ function _buildPortfolioPositionsViewContent(view) {
             </div>
           </div>
         </div>
-        <div id="pp-history-chart"></div>
+        <div id="pp-history-charts">
+          <div id="pp-history-block-active" class="pp-hist-block">
+            <h3 id="pp-history-title-active" class="pp-hist-title">Wartość portfela w czasie</h3>
+            <div id="pp-history-chart-active" class="pp-hist-chart-body"></div>
+          </div>
+          <div id="pp-history-block-all" class="pp-hist-block">
+            <h3 id="pp-history-title-all" class="pp-hist-title">Wartość wszystkich portfeli w czasie</h3>
+            <div id="pp-history-chart-all" class="pp-hist-chart-body"></div>
+          </div>
+        </div>
       </div>
     </div>
     <div id="pp-add-portfolio-overlay" style="display:none">
@@ -3686,7 +3719,7 @@ function _buildPortfolioPositionsViewContent(view) {
       } else if (mode === 'calendar') {
         stopPortfolioTreemapResize();
         if (!_ppCalData) fetchPortfolioCalendar();
-        if (!_ppHistData) fetchPortfolioHistory();
+        if (_ppHistDataAll === null) fetchPortfolioHistory();
       }
       _ppWriteUrl(true);
     });
@@ -3699,7 +3732,8 @@ function _buildPortfolioPositionsViewContent(view) {
       $('pp-history-ranges').querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       _ppHistRange = btn.dataset.range;
-      _ppHistData = null;
+      _ppHistDataActive = null;
+      _ppHistDataAll = null;
       fetchPortfolioHistory();
       _ppWriteUrl(true);
     });
@@ -3712,7 +3746,9 @@ function _buildPortfolioPositionsViewContent(view) {
       $('pp-history-metrics').querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       _ppHistMetric = btn.dataset.metric;
-      if (_ppHistData) _renderPortfolioHistory(_ppHistData);
+      // Shared metric drives both charts — redraw each from its cache.
+      if (!_ppIsAllMode() && _ppHistDataActive) _renderPortfolioHistory(_ppHistDataActive, $('pp-history-chart-active'));
+      if (_ppHistDataAll) _renderPortfolioHistory(_ppHistDataAll, $('pp-history-chart-all'));
     });
   });
 
@@ -4013,34 +4049,56 @@ function _renderPortfolioCalendar(data) {
   if (mtdEl) mtdEl.style.display = 'none';
 }
 
+// PUL-91: orchestrates two value-history charts — the "Wszystkie" aggregate
+// (always) plus the active portfolio (unless the active tab IS "Wszystkie", in
+// which case the single aggregate chart is shown and the active block hidden).
 async function fetchPortfolioHistory() {
+  const activeBlock = $('pp-history-block-active');
+  const allBlock = $('pp-history-block-all');
   if (_activePortfolioId === null) {
-    $('pp-history-chart').innerHTML = '<div class="empty">Wybierz portfel powyżej.</div>';
+    // No portfolios — nothing to chart; hide both blocks.
+    if (activeBlock) activeBlock.style.display = 'none';
+    if (allBlock) allBlock.style.display = 'none';
     return;
   }
-  $('pp-history-chart').innerHTML = '<div class="empty">Ładowanie…</div>';
-  // Request-sequence guard: fast range switches fire overlapping fetches; only
-  // the latest may render, else an out-of-order resolve desyncs the chart from
-  // the active range/URL (lessons.md — SPA out-of-order fetch).
-  const seq = ++_ppHistReqSeq;
-  try {
-    const url = `/api/portfolio/history?range=${_ppHistRange}&portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
-    const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
-    if (seq !== _ppHistReqSeq) return;
-    if (r.status === 401) { doLogout(); return; }
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    if (seq !== _ppHistReqSeq) return;
-    _ppHistData = data;
-    _renderPortfolioHistory(data);
-  } catch (e) {
-    if (seq !== _ppHistReqSeq) return;
-    $('pp-history-chart').innerHTML = '<div class="empty">Błąd ładowania danych.</div>';
+  const allMode = _ppIsAllMode();
+  if (allBlock) allBlock.style.display = '';
+  if (activeBlock) activeBlock.style.display = allMode ? 'none' : '';
+  $('pp-history-title-all').textContent = _ppHistTitleFor(_ALL_PORTFOLIOS);
+  _fetchPortfolioHistorySlot(_ALL_PORTFOLIOS, 'pp-history-chart-all');
+  if (!allMode) {
+    $('pp-history-title-active').textContent = _ppHistTitleFor(_activePortfolioId);
+    _fetchPortfolioHistorySlot(_activePortfolioId, 'pp-history-chart-active');
   }
 }
 
-function _renderPortfolioHistory(data) {
-  const chart = $('pp-history-chart');
+// Fetch + render one chart slot. Each slot owns its request-sequence guard so a
+// stale resolve of either the active or the aggregate series cannot render
+// (lessons.md — SPA out-of-order fetch; PUL-89 F1, now doubled by two fetches).
+async function _fetchPortfolioHistorySlot(portfolioId, chartElId) {
+  const chartEl = $(chartElId);
+  const isAll = portfolioId === _ALL_PORTFOLIOS;
+  chartEl.innerHTML = '<div class="empty">Ładowanie…</div>';
+  const seq = isAll ? (++_ppHistReqSeqAll) : (++_ppHistReqSeqActive);
+  const stale = () => seq !== (isAll ? _ppHistReqSeqAll : _ppHistReqSeqActive);
+  try {
+    const url = `/api/portfolio/history?range=${_ppHistRange}&portfolio_id=${encodeURIComponent(portfolioId)}`;
+    const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    if (stale()) return;
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (stale()) return;
+    if (isAll) _ppHistDataAll = data; else _ppHistDataActive = data;
+    _renderPortfolioHistory(data, chartEl);
+  } catch (e) {
+    if (stale()) return;
+    chartEl.innerHTML = '<div class="empty">Błąd ładowania danych.</div>';
+  }
+}
+
+function _renderPortfolioHistory(data, chartEl) {
+  const chart = chartEl;
   if (!Array.isArray(data) || data.length === 0) {
     chart.innerHTML = '<div class="empty">Brak danych dla tego zakresu</div>';
     return;
@@ -4061,7 +4119,10 @@ function _renderPortfolioHistory(data) {
     : series.map((v, i) => [xFor(i), yFor(v)]);
   const poly = pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
   const up = series[n - 1] >= series[0];
-  const gid = 'pp-hist-grad-' + (pnl ? 'p' : 'v');
+  // Namespace the gradient id per chart element — two charts sharing the same
+  // metric would otherwise emit duplicate DOM ids (invalid; url(#…) resolves to
+  // the first match).
+  const gid = 'pp-hist-grad-' + (pnl ? 'p' : 'v') + '-' + chartEl.id;
   const first = pts[0], last = pts[pts.length - 1];
   const area = 'M ' + first[0].toFixed(1) + ' ' + first[1].toFixed(1) + ' ' +
     pts.slice(1).map(p => 'L ' + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ') +
@@ -4075,10 +4136,11 @@ function _renderPortfolioHistory(data) {
     return '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" class="pp-hist-grid"/>';
   }).join('');
 
+  const scopeLabel = chartEl.id === 'pp-history-chart-all' ? 'wszystkich portfeli' : 'portfela';
   const svg =
     '<svg class="pp-hist-svg ' + (up ? 'up' : 'down') + '" viewBox="0 0 ' + W + ' ' + H + '" ' +
     'preserveAspectRatio="xMidYMid meet" role="img" aria-label="Wykres ' +
-    (pnl ? 'zysku/straty' : 'wartości') + ' portfela w czasie">' +
+    (pnl ? 'zysku/straty' : 'wartości') + ' ' + scopeLabel + ' w czasie">' +
       '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
         '<stop offset="0%" stop-color="currentColor" stop-opacity="0.20"/>' +
         '<stop offset="100%" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>' +
