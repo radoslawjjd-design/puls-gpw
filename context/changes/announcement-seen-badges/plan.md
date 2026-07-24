@@ -221,14 +221,14 @@ Existing `faro_seen_announcements`/`faro_seen_my_wallet` keys keep their meaning
 
 #### Automated
 
-- [x] 1.1 Full test suite passes: `uv run pytest`
-- [x] 1.2 Wiring sanity: `_markViewSeen` hooked in router/url-state/doLogout/pagehide/visibilitychange; `_seenThreshold` read-only (grep)
+- [x] 1.1 Full test suite passes: `uv run pytest` — 3b97ebc
+- [x] 1.2 Wiring sanity: `_markViewSeen` hooked in router/url-state/doLogout/pagehide/visibilitychange; `_seenThreshold` read-only (grep) — 3b97ebc
 
 #### Manual
 
-- [x] 1.3 Headed browser: badge render → popup-clear (instant + after reload)
-- [x] 1.4 Navigate-away / logout / tab-hide advance thresholds correctly
-- [x] 1.5 Both views, light + dark, no console errors
+- [x] 1.3 Headed browser: badge render → popup-clear (instant + after reload) — 3b97ebc
+- [x] 1.4 Navigate-away / logout / tab-hide advance thresholds correctly — 3b97ebc
+- [x] 1.5 Both views, light + dark, no console errors — 3b97ebc
 
 ### Phase 2: E2E coverage (4 core scenarios)
 

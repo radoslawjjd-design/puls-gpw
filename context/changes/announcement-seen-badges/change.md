@@ -1,7 +1,7 @@
 ---
 change_id: announcement-seen-badges
 title: Per-item "new" badge clearing on open, navigate-away and logout/close
-status: implementing
+status: impl_reviewed
 created: 2026-07-24
 updated: 2026-07-24
 archived_at: null

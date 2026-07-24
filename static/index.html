@@ -2150,9 +2150,11 @@ function _seenThreshold(key) {
 }
 
 // Strażnik fałszywego „wyjścia": próg wolno przesunąć tylko widokowi, którego
-// tabela wyrenderowała się od ostatniego marka — deep-link boot, powtórny
-// popstate i reset currentView w doLogout są wtedy no-opem i nie gaszą
-// badge'y, których użytkownik nigdy nie widział.
+// tabela WYŚWIETLIŁA SIĘ od ostatniego marka — deep-link boot, powtórny
+// popstate i reset currentView w doLogout są wtedy no-opem. Ziarnistość jest
+// per-widok (świadoma decyzja planu): render pusty lub przefiltrowany też
+// liczy się jako wyświetlenie, więc wyjście gasi cały widok, nie tylko
+// wiersze fizycznie pokazane.
 const _viewRendered = { announcements: false, my_wallet: false };
 
 function _markViewSeen(viewKey) {
@@ -2160,7 +2162,9 @@ function _markViewSeen(viewKey) {
   _viewRendered[viewKey] = false;
   const now = Date.now();
   _seenThresholds[viewKey] = now;
-  localStorage.setItem('faro_seen_' + viewKey, String(now));
+  // Zapis best-effort (QuotaExceeded/private mode): wyjątek nie może ubić
+  // nawigacji ani logout'u — stan in-memory obsłuży bieżącą sesję.
+  try { localStorage.setItem('faro_seen_' + viewKey, String(now)); } catch {}
   _pruneSeenItems();
 }
 
@@ -2184,7 +2188,9 @@ function _seenItemsSet() {
 function _saveSeenItems() {
   const obj = {};
   for (const k of _seenItemsSet()) obj[k] = 1;
-  localStorage.setItem(SEEN_ITEMS_KEY, JSON.stringify(obj));
+  // Best-effort jak w _markViewSeen — wyjątek z zapisu nie może zablokować
+  // otwarcia popupu z handlera kliku.
+  try { localStorage.setItem(SEEN_ITEMS_KEY, JSON.stringify(obj)); } catch {}
 }
 
 function _markItemSeen(key) {
@@ -2218,6 +2224,10 @@ function _pruneSeenItems() {
 
 // Mapowanie currentView → klucz progu; tylko widoki ogłoszeń mają badge'y.
 const _VIEW_SEEN_KEYS = { 'announcements': 'announcements', 'my-wallet': 'my_wallet' };
+// Lustrzana mapa dla renderTable (containerId → klucz progu). Jawna, żeby
+// przyszły trzeci konsument renderTable nie uzbroił po cichu cudzej flagi —
+// nieznany containerId zostaje POZA mechaniką seen (bez progu, bez badge'y).
+const _CONTAINER_SEEN_KEYS = { 'table-body': 'announcements', 'my-wallet-table-body': 'my_wallet' };
 
 function _leaveCurrentView(nextView) {
   const key = _VIEW_SEEN_KEYS[currentView];
@@ -4460,10 +4470,10 @@ function _exportPortfolioCsv() {
 // ── render ─────────────────────────────────────────────────────────────
 function renderTable(data, r, containerId = 'table-body') {
   const tbody = $(containerId);
-  const viewKey = containerId === 'my-wallet-table-body' ? 'my_wallet' : 'announcements';
-  const seenTs = _seenThreshold(viewKey);
+  const viewKey = _CONTAINER_SEEN_KEYS[containerId] || null;
+  const seenTs = viewKey ? _seenThreshold(viewKey) : null;
   // PUL-94: dopiero realny render uprawnia _markViewSeen do przesunięcia progu.
-  _viewRendered[viewKey] = true;
+  if (viewKey) _viewRendered[viewKey] = true;
   if (!data.length) {
     const colspan = (r === 'admin' ? _ADMIN_COLS : _USER_COLS).length;
     tbody.innerHTML = `<tr><td colspan="${colspan}" class="empty">Brak wyników</td></tr>`;
@@ -4493,9 +4503,10 @@ function renderTable(data, r, containerId = 'table-body') {
     const summaryPreviewEsc = esc(summaryPreview || '—');
     const eventLabel = row.event_type ? (EVENT_TYPE_LABELS[row.event_type] || _toLabel(row.event_type)) : '—';
 
-    // Klucz per-item tylko przy kompletnych polach (oba są nullable w API);
-    // wiersz bez published_at i tak nigdy nie badge'uje.
-    const seenKey = (row.ticker && row.published_at) ? row.ticker + '|' + row.published_at : '';
+    // Klucz per-item wymaga published_at (wiersz bez niego i tak nigdy nie
+    // badge'uje); ticker bywa null — pusty prefiks nadal daje użyteczny klucz,
+    // żeby klik gasił badge trwale, nie tylko do następnego renderu.
+    const seenKey = row.published_at ? (row.ticker || '') + '|' + row.published_at : '';
     const newBadge = (seenTs && row.published_at && new Date(row.published_at).getTime() > seenTs
       && !_seenItemsSet().has(seenKey)) ? ' <span class="new-badge">NOWE</span>' : '';
     const modalAttrs = `data-company="${esc(row.company||'')}" data-ticker="${esc(row.ticker||'')}" `
