@@ -323,8 +323,7 @@ class PortfolioPositionOut(BaseModel):
 # view. Cannot collide with real (UUID-like) portfolio ids.
 _ALL_PORTFOLIOS = "all"
 
-_POSITION_CARRY_FIELDS = (
-    "company_name",
+_POSITION_MARKET_FIELDS = (
     "current_price",
     "daily_change_pct",
     "price_as_of",
@@ -335,10 +334,12 @@ _POSITION_CARRY_FIELDS = (
 def _merge_positions_by_ticker(rows: list[dict]) -> list[dict]:
     """Merge positions across portfolios into one row per ticker (the "Wszystkie" view).
 
-    Sums shares and computes a weighted-average avg_buy_price. Market-data fields
-    (current_price, daily_change_pct, price_as_of, price_history) and company_name are
-    identical across wallets for a given ticker, so the first non-null is carried. P&L
-    is left to the caller, recomputed from the merged shares / prices.
+    Sums shares and computes a weighted-average avg_buy_price. The market-data bundle
+    (current_price, daily_change_pct, price_as_of, price_history) is carried from the
+    row with the freshest price_as_of — rows share a per-ticker price scan so this is a
+    tie today, but preferring the newest avoids stale data if a source ever diverges.
+    company_name takes the first non-null. P&L is left to the caller, recomputed from
+    the merged shares / prices.
     """
     merged: dict[str, dict] = {}
     for row in rows:
@@ -347,13 +348,20 @@ def _merge_positions_by_ticker(rows: list[dict]) -> list[dict]:
         avg_buy_price = row.get("avg_buy_price") or 0.0
         acc = merged.get(ticker)
         if acc is None:
-            acc = {"ticker": ticker, "shares": 0.0, "_cost": 0.0}
-            acc.update({k: row.get(k) for k in _POSITION_CARRY_FIELDS})
+            acc = {"ticker": ticker, "company_name": None, "shares": 0.0, "_cost": 0.0}
+            acc.update({k: None for k in _POSITION_MARKET_FIELDS})
             merged[ticker] = acc
         acc["shares"] += shares
         acc["_cost"] += shares * avg_buy_price
-        for k in _POSITION_CARRY_FIELDS:
-            if acc.get(k) is None and row.get(k) is not None:
+        if acc["company_name"] is None and row.get("company_name") is not None:
+            acc["company_name"] = row.get("company_name")
+        # Carry the market-data bundle from the row with the freshest price_as_of.
+        row_as_of = row.get("price_as_of")
+        if row.get("current_price") is not None and (
+            acc["price_as_of"] is None
+            or (row_as_of is not None and row_as_of > acc["price_as_of"])
+        ):
+            for k in _POSITION_MARKET_FIELDS:
                 acc[k] = row.get(k)
     out: list[dict] = []
     for acc in merged.values():

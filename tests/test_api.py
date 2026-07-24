@@ -978,7 +978,7 @@ def test_merge_positions_by_ticker_sums_shares_weighted_avg():
     assert by_ticker["CDR"]["shares"] == 5.0  # distinct ticker stays separate
 
 
-def test_merge_positions_carries_first_non_null_market_data():
+def test_merge_positions_carries_company_name_and_skips_priceless_rows():
     from src.api import _merge_positions_by_ticker
 
     rows = [
@@ -990,9 +990,31 @@ def test_merge_positions_carries_first_non_null_market_data():
     merged = _merge_positions_by_ticker(rows)
     assert len(merged) == 1
     m = merged[0]
-    assert m["company_name"] == "PKO BP"
-    assert m["current_price"] == 50.0
+    assert m["company_name"] == "PKO BP"  # first non-null wins for company_name
+    assert m["current_price"] == 50.0     # market data from the priced row
     assert m["price_history"] == [50.0]
+
+
+def test_merge_positions_carries_freshest_price_not_first_or_last():
+    """Defensive: if two wallets' rows for a ticker ever diverge, the freshest
+    price_as_of wins — not merely the first- or last-listed row."""
+    from src.api import _merge_positions_by_ticker
+
+    rows = [
+        # newer price listed FIRST
+        {"ticker": "PKO", "company_name": "PKO BP", "shares": 10.0, "avg_buy_price": 40.0,
+         "current_price": 50.0, "daily_change_pct": 1.5, "price_as_of": "2026-06-27", "price_history": [50.0]},
+        # older price listed SECOND — must NOT overwrite the fresher bundle
+        {"ticker": "PKO", "company_name": "PKO BP", "shares": 10.0, "avg_buy_price": 44.0,
+         "current_price": 48.0, "daily_change_pct": 0.5, "price_as_of": "2026-06-20", "price_history": [48.0]},
+    ]
+    merged = _merge_positions_by_ticker(rows)
+    assert len(merged) == 1
+    m = merged[0]
+    assert m["current_price"] == 50.0            # freshest (2026-06-27) wins
+    assert m["price_as_of"] == "2026-06-27"
+    assert m["shares"] == 20.0
+    assert m["avg_buy_price"] == pytest.approx((10 * 40 + 10 * 44) / 20)  # 42.0
 
 
 def test_get_portfolio_positions_all_mode_merges_and_skips_ownership(user_client):
