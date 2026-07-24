@@ -239,4 +239,4 @@ Existing `faro_seen_announcements`/`faro_seen_my_wallet` keys keep their meaning
 
 #### Manual
 
-- [ ] 2.3 Prod verification after deploy (badge lifecycle on gpw.okiem.ai)
+- [x] 2.3 Prod verification after deploy (badge lifecycle on gpw.okiem.ai)
