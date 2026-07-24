@@ -307,25 +307,25 @@ None — front-end only, no data or schema changes.
 
 #### Automated
 
-- [x] 1.1 Full suite green (no backend change): `uv run pytest` — non-e2e suite 594 passed; the 3 history e2e tests intentionally red until Phase 2 rewrites them (they target the removed `#pp-history-chart`)
-- [x] 1.2 No stray reference to removed single-chart id / single-slot state in `static/index.html`
+- [x] 1.1 Full suite green (no backend change): `uv run pytest` — non-e2e suite 594 passed; the 3 history e2e tests intentionally red until Phase 2 rewrites them (they target the removed `#pp-history-chart`) — 96fab6c
+- [x] 1.2 No stray reference to removed single-chart id / single-slot state in `static/index.html` — 96fab6c
 
 #### Manual
 
-- [x] 1.3 Two charts render side-by-side (desktop) with correct active + aggregate titles
-- [x] 1.4 Titles correct per type (główny/IKZE/named)
-- [x] 1.5 "Wszystkie" tab → exactly one chart, active block hidden
-- [x] 1.6 One range switch refetches+redraws both charts
-- [x] 1.7 One metric toggle redraws both charts from cache
-- [x] 1.8 Mobile stacks; light+dark correct; no console errors
+- [x] 1.3 Two charts render side-by-side (desktop) with correct active + aggregate titles — 96fab6c
+- [x] 1.4 Titles correct per type (główny/IKZE/named) — 96fab6c
+- [x] 1.5 "Wszystkie" tab → exactly one chart, active block hidden — 96fab6c
+- [x] 1.6 One range switch refetches+redraws both charts — 96fab6c
+- [x] 1.7 One metric toggle redraws both charts from cache — 96fab6c
+- [x] 1.8 Mobile stacks; light+dark correct; no console errors — 96fab6c
 
 ### Phase 2: e2e coverage
 
 #### Automated
 
-- [ ] 2.1 History e2e pass: `uv run pytest tests/e2e/test_portfolio_value_history.py`
-- [ ] 2.2 Full suite still green: `uv run pytest`
+- [x] 2.1 History e2e pass: `uv run pytest tests/e2e/test_portfolio_value_history.py` — 4 passed
+- [x] 2.2 Full suite still green: `uv run pytest` — 707 passed
 
 #### Manual
 
-- [ ] 2.3 e2e run shows both charts + all-mode single chart as intended
+- [x] 2.3 e2e run shows both charts + all-mode single chart as intended
