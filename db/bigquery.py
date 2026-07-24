@@ -360,12 +360,16 @@ def get_latest_snapshot_for_wallet(wallet: str) -> dict | None:
 
 
 def get_portfolio_calendar_data(
-    portfolio_id: str,
+    portfolio_id: str | None,
     user_id: str,
     year: int,
     month: int,
 ) -> list[dict]:
     """Return daily portfolio values for a given month + 35-day lookback.
+
+    When portfolio_id is provided, results are scoped to that wallet.  When it is
+    None, the positions CTE spans *all* of the user's wallets, so the daily SUM(...)
+    becomes the combined-across-all-portfolios value/change (the "Wszystkie" view).
 
     Crosses all trading days in the extended range (month_start − 35 days through
     month_end) against the user's current positions, left-joins closing prices, and
@@ -389,6 +393,7 @@ def get_portfolio_calendar_data(
     cds_ref = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
     etf_ref = _table_ref(client, _ETF_QUOTES_TABLE_NAME)
     pos_ref = _table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)
+    portfolio_filter = "AND portfolio_id = @portfolio_id" if portfolio_id is not None else ""
 
     query = f"""
         WITH
@@ -400,7 +405,7 @@ def get_portfolio_calendar_data(
           positions AS (
             SELECT ticker, shares
             FROM `{pos_ref}`
-            WHERE user_id = @user_id AND portfolio_id = @portfolio_id
+            WHERE user_id = @user_id {portfolio_filter}
           ),
           daily_prices AS (
             SELECT
@@ -432,14 +437,14 @@ def get_portfolio_calendar_data(
         FROM daily_portfolio
         ORDER BY snapshot_date
     """
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("portfolio_id",   "STRING", portfolio_id),
-            bigquery.ScalarQueryParameter("user_id",        "STRING", user_id),
-            bigquery.ScalarQueryParameter("lookback_start", "DATE",   lookback_start),
-            bigquery.ScalarQueryParameter("end_date",       "DATE",   end_date),
-        ]
-    )
+    params: list[bigquery.ScalarQueryParameter] = [
+        bigquery.ScalarQueryParameter("user_id",        "STRING", user_id),
+        bigquery.ScalarQueryParameter("lookback_start", "DATE",   lookback_start),
+        bigquery.ScalarQueryParameter("end_date",       "DATE",   end_date),
+    ]
+    if portfolio_id is not None:
+        params.append(bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id))
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
     try:
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
@@ -458,11 +463,15 @@ def get_portfolio_calendar_data(
 
 
 def get_portfolio_history(
-    portfolio_id: str,
+    portfolio_id: str | None,
     user_id: str,
     start_date: date,
 ) -> list[dict]:
     """Return the daily portfolio value + cumulative unrealized P&L series over a range.
+
+    When portfolio_id is provided, results are scoped to that wallet.  When it is None,
+    the positions CTE spans *all* of the user's wallets, so the series is the combined
+    value/P&L across every portfolio (the "Wszystkie" view).
 
     One row per trading day in [start_date, CURRENT_DATE()], ascending by date, with keys:
     snapshot_date (date), value_pln (float), pnl_pln (float).  value_pln is the current share
@@ -489,13 +498,14 @@ def get_portfolio_history(
     cds_ref = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
     etf_ref = _table_ref(client, _ETF_QUOTES_TABLE_NAME)
     pos_ref = _table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)
+    portfolio_filter = "AND portfolio_id = @portfolio_id" if portfolio_id is not None else ""
 
     query = f"""
         WITH
           positions AS (
             SELECT ticker, shares, avg_buy_price
             FROM `{pos_ref}`
-            WHERE user_id = @user_id AND portfolio_id = @portfolio_id
+            WHERE user_id = @user_id {portfolio_filter}
           ),
           spine AS (
             SELECT DISTINCT snapshot_date
@@ -548,13 +558,13 @@ def get_portfolio_history(
         WHERE missing = 0
         ORDER BY snapshot_date
     """
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id),
-            bigquery.ScalarQueryParameter("user_id",      "STRING", user_id),
-            bigquery.ScalarQueryParameter("start_date",   "DATE",   start_date),
-        ]
-    )
+    params: list[bigquery.ScalarQueryParameter] = [
+        bigquery.ScalarQueryParameter("user_id",    "STRING", user_id),
+        bigquery.ScalarQueryParameter("start_date", "DATE",   start_date),
+    ]
+    if portfolio_id is not None:
+        params.append(bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id))
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
     try:
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
