@@ -270,6 +270,6 @@ Plus an opportunity: the archive carries per-ticker P/E, P/BV and market-cap his
 
 #### Manual
 
-- [ ] 3.1 Sample-run audit (pre-2026 rows, no clobber, no dupes, spot-check) passes
-- [ ] 3.2 Full-universe run(s) complete; 0 remaining; unknown symbols reviewed; etf_quotes expiry confirmed absent
+- [x] 3.1 Sample-run audit (pre-2026 rows, no clobber, no dupes, spot-check) passes — KRU + ETFBW20TR: 5657/5685 inserted (28 already present), KRU 2026-07-24 still 410.8 from the scraper vs stooq's 411.4, 0 duplicate keys
+- [x] 3.2 Full-universe run(s) complete; 0 remaining; unknown symbols reviewed; etf_quotes expiry confirmed absent — 1899603 rows inserted, 0 errors; `company_daily_stats` 1897457 rows / 3917 partitions / 744 tickers / 2011-01-03..2026-07-24, `etf_quotes` 23913 rows / 3761 partitions / 39 tickers; 0 duplicates in both; 89 unmatched files reviewed (foreign listings in `wse stocks intl`, outside the universe); 12 universe tickers without a file (2 of them junk rows → PUL-97); no table or partition expiry set on either table
 - [ ] 3.3 `?range=1y` dense on prod; calendar P&L for backfilled months; 1R chart renders in UI
