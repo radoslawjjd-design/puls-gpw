@@ -1,7 +1,8 @@
 """Unit tests for scripts/backfill_historical_closes.py pure logic (PUL-92).
 
-No network, no BQ — covers CSV parsing, derived fields, symbol mapping,
-file->ticker matching (--from-dir mode), content validation, and dedup.
+No network, no BQ — covers CSV parsing, bulk-archive ASCII parsing, derived
+fields, symbol mapping, file->ticker matching (--from-dir and --from-db-dir
+modes), content validation, and dedup.
 """
 import importlib.util
 import sys
@@ -30,6 +31,15 @@ _CHALLENGE_HTML = (
 )
 
 _UNIVERSE = [("KRU", "stock"), ("PKO", "stock"), ("ETFBW20TR", "etf")]
+
+_ASCII = (
+    "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>\n"
+    "KGH,D,19970710,000000,7.57536,7.57536,7.57536,7.57536,7638261,0\n"
+    "KGH,D,19970711,000000,7.73673,7.80000,7.70000,7.73673,4831366,0\n"
+    "KGH,D,BADDATE,000000,1,1,1,1,1,0\n"
+    "KGH,D,19970714,000000,7.8,7.9,7.7,,4000,0\n"
+    "KGH,D,20260724,000000,303,306.3,301.5,303.5,467601,0\n"
+)
 
 
 def test_map_symbol_stock_and_etf():
@@ -104,6 +114,67 @@ def test_match_files_to_tickers():
     assert ("kru_d.csv", "KRU", "stock") in matches
     assert ("etfbw20tr_d.csv", "ETFBW20TR", "etf") in matches
     assert unmatched == ["obcy_d.csv"]
+    assert missing == ["PKO"]
+
+
+def test_parse_stooq_ascii_converts_dates_and_skips_malformed():
+    rows = bf.parse_stooq_ascii(_ASCII)
+    # YYYYMMDD -> ISO; header, bad date and empty close are all skipped
+    assert [r["date"] for r in rows] == ["1997-07-10", "1997-07-11", "2026-07-24"]
+    assert rows[0]["close"] == 7.57536
+    assert rows[1]["high"] == 7.8
+    assert rows[2]["volume"] == 467601.0
+
+
+def test_parse_stooq_ascii_feeds_build_rows():
+    rows = bf.build_rows("KGH", bf.parse_stooq_ascii(_ASCII), "stock", _FETCHED_AT)
+    assert rows[0]["snapshot_date"] == "1997-07-10"
+    assert rows[0]["zmiana_kwotowa"] is None
+    assert rows[1]["zmiana_kwotowa"] == round(7.73673 - 7.57536, 4)
+
+
+def test_classify_response_accepts_bulk_ascii_header():
+    assert bf.classify_response(_ASCII) == "ok"
+
+
+def test_normalize_stem_handles_txt_and_pl_suffix():
+    assert bf.normalize_stem("kgh.txt") == "kgh"
+    assert bf.normalize_stem("etfbw20tr.pl.txt") == "etfbw20tr"
+    assert bf.normalize_stem("AAPL.PL.TXT") == "aapl"
+    # idempotent on a bare stem, so matching can be reused for db-dir mode
+    assert bf.normalize_stem("kgh") == "kgh"
+
+
+def test_collect_db_dir_files_precedence_and_dedup(tmp_path):
+    for sub, names in [
+        ("wse stocks", ["kgh.txt", "pko.txt"]),
+        ("nc stocks", ["kgh.txt", "abk.txt"]),  # kgh also on NC -> wse wins
+        ("wse etfs", ["etfbw20tr.pl.txt"]),
+        ("wse bonds", ["abe0227.pl.txt"]),  # not scanned
+    ]:
+        d = tmp_path / sub
+        d.mkdir()
+        for n in names:
+            (d / n).write_text("x", encoding="utf-8")
+
+    found = bf.collect_db_dir_files(tmp_path)
+
+    assert set(found) == {"kgh", "pko", "abk", "etfbw20tr"}
+    assert found["kgh"].parent.name == "wse stocks"
+    assert found["abk"].parent.name == "nc stocks"
+
+
+def test_collect_db_dir_files_matches_via_existing_matcher(tmp_path):
+    (tmp_path / "wse stocks").mkdir()
+    (tmp_path / "wse stocks" / "kru.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "wse etfs").mkdir()
+    (tmp_path / "wse etfs" / "etfbw20tr.pl.txt").write_text("x", encoding="utf-8")
+
+    found = bf.collect_db_dir_files(tmp_path)
+    matches, unmatched, missing = bf.match_files_to_tickers(sorted(found), _UNIVERSE)
+
+    assert sorted((t, k) for _, t, k in matches) == [("ETFBW20TR", "etf"), ("KRU", "stock")]
+    assert unmatched == []
     assert missing == ["PKO"]
 
 

@@ -10,10 +10,16 @@ are never touched, and re-ingesting the same files is a no-op.
 Live scripted fetching from stooq is impossible: the site blocks non-browser
 TLS fingerprints (see plan Addendum, 2026-07-24).
 
+Two input modes:
+  --from-dir     per-symbol CSV downloads (Data,Otwarcie,... / YYYY-MM-DD), raw prices
+  --from-db-dir  bulk archive tree d_pl_txt/data/daily/pl (<TICKER>,<PER>,<DATE>,... /
+                 YYYYMMDD). NOTE: bulk-archive history is dividend-ADJUSTED, not the
+                 prices actually quoted on the day — see plan Addendum 2026-07-25.
+
 Run with:
     uv run python scripts/backfill_historical_closes.py --from-dir "C:/pobrane/stooq" --dry-run
-    uv run python scripts/backfill_historical_closes.py --from-dir "C:/pobrane/stooq"
-    uv run python scripts/backfill_historical_closes.py --from-dir "C:/pobrane/stooq" --tickers KRU,ETFBW20TR
+    uv run python scripts/backfill_historical_closes.py --from-db-dir "C:/puls-gpw/d_pl_txt/data/daily/pl" --dry-run
+    uv run python scripts/backfill_historical_closes.py --from-db-dir "C:/puls-gpw/d_pl_txt/data/daily/pl" --tickers KRU,ETFBW20TR
 
 Requires ADC: gcloud auth application-default login
 """
@@ -50,6 +56,9 @@ logger = logging.getLogger(__name__)
 _ROUND_PRICE = 4
 _ROUND_PCT = 2
 
+# Bulk-archive subdirectories that can hold universe tickers, in precedence order.
+_DB_SUBDIRS = ("wse stocks", "nc stocks", "wse etfs", "wse stocks intl")
+
 
 # ── Pure logic (unit-tested in tests/test_backfill_historical_closes.py) ──────
 
@@ -63,11 +72,12 @@ def map_symbol(ticker: str, kind: str) -> str:
 def normalize_stem(filename: str) -> str:
     """Downloaded filename -> bare stooq symbol stem.
 
-    Tolerates stooq's `<symbol>_d.csv` naming, the `.pl` ETF suffix, and
-    browser duplicate-download suffixes like ` (1)`.
+    Tolerates stooq's `<symbol>_d.csv` naming, bulk-archive `<symbol>.txt`,
+    the `.pl` ETF suffix, and browser duplicate-download suffixes like ` (1)`.
+    Idempotent on a bare stem, so db-dir mode reuses match_files_to_tickers().
     """
     stem = filename.lower()
-    stem = re.sub(r"\.csv$", "", stem)
+    stem = re.sub(r"\.(csv|txt)$", "", stem)
     stem = re.sub(r"\s*\(\d+\)$", "", stem)
     stem = re.sub(r"_d$", "", stem)
     stem = re.sub(r"\.pl$", "", stem)
@@ -134,6 +144,53 @@ def parse_stooq_csv(text: str) -> list[dict]:
     return rows
 
 
+def parse_stooq_ascii(text: str) -> list[dict]:
+    """Parse stooq bulk-archive ASCII rows.
+
+    Layout: <TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>
+    with <DATE> as YYYYMMDD. Header, malformed dates and rows without a
+    parseable close are skipped. Returns the same dict shape as
+    parse_stooq_csv() so build_rows() consumes either source unchanged.
+    """
+    rows: list[dict] = []
+    for line in text.strip().splitlines():
+        parts = line.strip().split(",")
+        if len(parts) < 9:
+            continue
+        raw_date = parts[2]
+        close = _to_float(parts[7])
+        if not re.fullmatch(r"\d{8}", raw_date) or close is None:
+            continue
+        rows.append(
+            {
+                "date": f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}",
+                "open": _to_float(parts[4]),
+                "high": _to_float(parts[5]),
+                "low": _to_float(parts[6]),
+                "close": close,
+                "volume": _to_float(parts[8]),
+            }
+        )
+    return rows
+
+
+def collect_db_dir_files(root: Path) -> dict[str, Path]:
+    """Bulk-archive root (…/data/daily/pl) -> {normalized stem: file path}.
+
+    Only instrument directories that can carry universe tickers are scanned;
+    bonds/futures/options/funds/indicators are ignored. On a stem collision
+    the earlier directory wins (a ticker on both markets is a WSE stock).
+    """
+    found: dict[str, Path] = {}
+    for sub in _DB_SUBDIRS:
+        directory = root / sub
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob("*.txt")):
+            found.setdefault(normalize_stem(path.name), path)
+    return found
+
+
 def _round_or_none(value: float | None, digits: int) -> float | None:
     return None if value is None else round(value, digits)
 
@@ -176,7 +233,7 @@ def classify_response(text: str) -> str:
 
     Guards --from-dir against accidentally saved stooq error/limit pages.
     """
-    if text.startswith("Data,"):
+    if text.startswith("Data,") or text.startswith("<TICKER>,"):
         return "ok"
     if "__verify" in text or "crypto.subtle" in text:
         return "challenge"
@@ -241,20 +298,39 @@ def _flush(stock_rows: list[dict], etf_rows: list[dict], dry_run: bool) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--from-dir", required=True, help="directory with downloaded stooq CSV files")
+    parser.add_argument("--from-dir", help="directory with per-symbol stooq CSV downloads")
+    parser.add_argument(
+        "--from-db-dir",
+        help="stooq bulk archive root, e.g. d_pl_txt/data/daily/pl (ASCII .txt tree)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="parse+report only, no BQ writes")
     parser.add_argument("--tickers", help="comma-separated app tickers subset, e.g. KRU,ETFBW20TR")
     parser.add_argument("--chunk-size", type=int, default=25, help="tickers per BQ flush (default 25)")
     args = parser.parse_args()
 
-    src_dir = Path(args.from_dir)
+    if bool(args.from_dir) == bool(args.from_db_dir):
+        print("error: pass exactly one of --from-dir / --from-db-dir", file=sys.stderr)
+        return 1
+
+    src_dir = Path(args.from_db_dir or args.from_dir)
     if not src_dir.is_dir():
         print(f"error: {src_dir} is not a directory", file=sys.stderr)
         return 1
-    filenames = sorted(p.name for p in src_dir.glob("*.csv"))
-    if not filenames:
-        print(f"error: no *.csv files in {src_dir}", file=sys.stderr)
-        return 1
+
+    if args.from_db_dir:
+        parse_file = parse_stooq_ascii
+        paths_by_key = collect_db_dir_files(src_dir)
+        if not paths_by_key:
+            print(f"error: no *.txt files under {src_dir}/{{{', '.join(_DB_SUBDIRS)}}}",
+                  file=sys.stderr)
+            return 1
+    else:
+        parse_file = parse_stooq_csv
+        paths_by_key = {p.name: p for p in sorted(src_dir.glob("*.csv"))}
+        if not paths_by_key:
+            print(f"error: no *.csv files in {src_dir}", file=sys.stderr)
+            return 1
+    filenames = sorted(paths_by_key)
 
     client = _get_client()
     universe = load_universe(client)
@@ -273,19 +349,19 @@ def main() -> int:
     fetched_at = datetime.now(timezone.utc).isoformat()
     stock_rows: list[dict] = []
     etf_rows: list[dict] = []
-    stats = {"ingested": 0, "bad_content": 0, "inserted": 0}
+    stats = {"ingested": 0, "bad_content": 0, "inserted": 0, "rows": 0}
     bad_files: list[str] = []
 
     try:
         for i, (name, ticker, kind) in enumerate(matches, start=1):
-            text = (src_dir / name).read_text(encoding="utf-8", errors="replace")
+            text = paths_by_key[name].read_text(encoding="utf-8", errors="replace")
             verdict = classify_response(text)
             if verdict != "ok":
                 stats["bad_content"] += 1
                 bad_files.append(f"{name} ({verdict})")
-                logger.warning("%s: content is not stooq CSV (%s) — skipped", name, verdict)
+                logger.warning("%s: content is not stooq data (%s) — skipped", name, verdict)
                 continue
-            rows = build_rows(ticker, parse_stooq_csv(text), kind, fetched_at)
+            rows = build_rows(ticker, parse_file(text), kind, fetched_at)
             logger.info("%s -> %s (%s): %d rows %s..%s", name, ticker, kind, len(rows),
                         rows[0]["snapshot_date"] if rows else "-",
                         rows[-1]["snapshot_date"] if rows else "-")
@@ -293,6 +369,7 @@ def main() -> int:
                 logger.info("[dry-run] sample row: %s", rows[-1])
             (etf_rows if kind == "etf" else stock_rows).extend(rows)
             stats["ingested"] += 1
+            stats["rows"] += len(rows)
             if i % args.chunk_size == 0:
                 stats["inserted"] += _flush(stock_rows, etf_rows, args.dry_run)
     finally:
@@ -300,10 +377,12 @@ def main() -> int:
 
     print("-- backfill summary --------------------------")
     print(f"  files:      {len(filenames)} in {src_dir}")
-    print(f"  ingested:   {stats['ingested']}")
+    print(f"  ingested:   {stats['ingested']} tickers, {stats['rows']} rows parsed")
     print(f"  bad content:{stats['bad_content']} {bad_files if bad_files else ''}")
-    print(f"  unmatched:  {len(unmatched)} {unmatched[:10] if unmatched else ''}")
-    print(f"  no file yet:{len(missing)} tickers of {len(universe)} in universe")
+    print(f"  unmatched:  {len(unmatched)} files with no universe ticker {unmatched[:10]}")
+    print(f"  no file:    {len(missing)} tickers of {len(universe)} in universe")
+    if missing and args.dry_run:
+        print(f"              {', '.join(missing)}")
     print(f"  inserted:   {stats['inserted']} rows{' (dry-run: 0 written)' if args.dry_run else ''}")
     print("----------------------------------------------")
     return 0
