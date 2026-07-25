@@ -228,6 +228,8 @@ Three findings from the audit, each with a ticket:
 
 Plus an opportunity: the archive carries per-ticker P/E, P/BV and market-cap history (`* indicators` dirs) → PUL-99 / GH #194.
 
+**Out-of-plan change, accepted** (`e82fa77`): while verifying the backfill in the UI the user reported that the value-history chart's x-axis read `16.04` / `24.07` with no year, which is ambiguous the moment a range crosses a year boundary — `1r` always does. `fmtDate` in `static/index.html` now renders `DD.MM.YYYY`, guarded by an e2e assertion on both charts and break-verified. The plan describes only the backfill pipeline, so this is scope beyond "Changes Required"; recorded here rather than reverted (impl-review F2).
+
 **Partition ceilings** (`a3fb72f`): both target tables are DAY-partitioned on `snapshot_date`. The archive spans 10053 trading days (from 1987-01-02 via `UCG`'s Milan history), which breaches BigQuery's 10k-partitions-per-table limit and, per flush, the 4000-partitions-per-job limit. Mitigations: `_flush()` merges year by year, and `--since` (default `2011-01-01`) trims history to 3916 partitions, leaving ~24 years of headroom for the scraper.
 
 ## References
