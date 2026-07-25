@@ -15,6 +15,8 @@ Fixture data: conftest._FAKE_HISTORY_ROWS (active) / _FAKE_HISTORY_ROWS_ALL (agg
 Locators are scoped to #pp-history-block-active / #pp-history-block-all because the
 aggregate title text appears in both all-mode (single chart) and non-all-mode (chart #2).
 """
+import re
+
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import _FAKE_PORTFOLIO_ID, e2e_login_email
@@ -70,6 +72,15 @@ def test_both_charts_render_with_dynamic_titles(page: Page, live_server_url: str
     # Each chart shows its own value header (independent data).
     expect(active.locator(".pp-hist-val")).to_contain_text("PLN")
     expect(aggregate.locator(".pp-hist-val")).to_contain_text("PLN")
+
+    # X-axis endpoints carry the year — DD.MM alone is ambiguous once a range
+    # crosses a year boundary (1r always does).
+    # SVG <text> has no innerText, so read textContent.
+    for chart in (active, aggregate):
+        texts = [t.strip() for t in chart.locator(".pp-hist-axis").all_text_contents()]
+        assert any(re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", t) for t in texts), (
+            f"no DD.MM.YYYY axis label found, got {texts}"
+        )
 
 
 def test_wszystkie_tab_shows_single_aggregate_chart(page: Page, live_server_url: str):

@@ -37,3 +37,6 @@ puls-gpw-api-*.json
 
 # Personal broker portfolio screenshots (PUL-39) — financial data, never commit
 broker_data/
+
+# stooq bulk historical archive (PUL-92) — ~13k source files, ingest input only
+d_pl_txt/

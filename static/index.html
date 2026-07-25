@@ -4256,7 +4256,9 @@ function _renderPortfolioHistory(data, chartEl) {
     ' L ' + last[0].toFixed(1) + ' ' + baseY + ' L ' + first[0].toFixed(1) + ' ' + baseY + ' Z';
 
   const fmt = v => Math.round(v).toLocaleString('pl-PL');
-  const fmtDate = ds => { const p = ds.split('-'); return p[2] + '.' + p[1]; };
+  // Rok jest konieczny: zakresy 1r/3m potrafią przekroczyć granicę roku,
+  // a same DD.MM nie mówią, czy „24.07" to ten rok czy poprzedni.
+  const fmtDate = ds => { const p = ds.split('-'); return p[2] + '.' + p[1] + '.' + p[0]; };
 
   const grids = [max, (max + min) / 2, min].map(v => {
     const y = yFor(v).toFixed(1);

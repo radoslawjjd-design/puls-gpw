@@ -2733,6 +2733,103 @@ def merge_etf_quotes(rows: list[dict]) -> None:
             logger.warning("merge_etf_quotes: failed to clean up temp table %s", tmp_table_id, exc_info=True)
 
 
+# ── Insert-only MERGE for historical backfill (PUL-92) ────────────────────────
+
+
+def _merge_insert_only(
+    fn_name: str, table_name: str, schema: list, columns: list[str], rows: list[dict]
+) -> int:
+    """Insert rows via MERGE with no WHEN MATCHED branch — existing
+    (ticker, snapshot_date) rows are never touched, so backfilled data can never
+    overwrite scraper-written rows. The source is deduped inside the MERGE
+    (QUALIFY): WHEN NOT MATCHED fires per source row, so a duplicated batch key
+    would otherwise insert twice. Returns the number of inserted rows.
+    """
+    if not rows:
+        logger.info("%s: no rows to merge", fn_name)
+        return 0
+
+    client = _get_client()
+    target = _table_ref(client, table_name)
+    tmp_table_id = _table_ref(client, f"{table_name}_tmp_{uuid.uuid4().hex[:8]}")
+
+    try:
+        job_config = bigquery.LoadJobConfig(
+            schema=schema,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
+        )
+        tmp_table = bigquery.Table(tmp_table_id, schema=schema)
+        from datetime import timezone as _tz
+        tmp_table.expires = datetime.now(_tz.utc) + timedelta(hours=24)
+        client.create_table(tmp_table, exists_ok=True)
+
+        load_job = client.load_table_from_json(rows, tmp_table_id, job_config=job_config)
+        load_job.result()
+        if load_job.errors:
+            raise BigQueryError(f"{fn_name} load failed: {load_job.errors}")
+
+        cols = ", ".join(columns)
+        vals = ", ".join(f"S.{c}" for c in columns)
+        merge_sql = f"""
+            MERGE `{target}` T
+            USING (
+              SELECT * FROM `{tmp_table_id}`
+              QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date ORDER BY fetched_at DESC) = 1
+            ) S
+            ON T.ticker = S.ticker AND T.snapshot_date = S.snapshot_date
+            WHEN NOT MATCHED THEN
+              INSERT ({cols})
+              VALUES ({vals})
+        """
+        try:
+            merge_job = client.query(merge_sql)
+            merge_job.result()
+        except Exception as exc:
+            raise BigQueryError(f"{fn_name} MERGE failed: {exc}") from exc
+        if merge_job.errors:
+            raise BigQueryError(f"{fn_name} MERGE failed: {merge_job.errors}")
+
+        inserted = int(merge_job.num_dml_affected_rows or 0)
+        logger.info("%s: inserted %d of %d rows", fn_name, inserted, len(rows))
+        return inserted
+    finally:
+        try:
+            client.delete_table(tmp_table_id, not_found_ok=True)
+        except Exception:
+            logger.warning("%s: failed to clean up temp table %s", fn_name, tmp_table_id, exc_info=True)
+
+
+def merge_company_daily_stats_insert_only(rows: list[dict]) -> int:
+    """Insert-only MERGE into company_daily_stats; never updates existing rows."""
+    return _merge_insert_only(
+        "merge_company_daily_stats_insert_only",
+        _COMPANY_DAILY_STATS_TABLE_NAME,
+        _COMPANY_DAILY_STATS_SCHEMA,
+        [
+            "ticker", "snapshot_date", "kurs_zamkniecia", "zmiana_procentowa",
+            "zmiana_kwotowa", "kurs_otwarcia", "kurs_min", "kurs_max",
+            "wartosc_obrotu", "liczba_transakcji", "fetched_at",
+        ],
+        rows,
+    )
+
+
+def merge_etf_quotes_insert_only(rows: list[dict]) -> int:
+    """Insert-only MERGE into etf_quotes; never updates existing rows."""
+    return _merge_insert_only(
+        "merge_etf_quotes_insert_only",
+        _ETF_QUOTES_TABLE_NAME,
+        _ETF_QUOTES_SCHEMA,
+        [
+            "ticker", "snapshot_date", "kurs_zamkniecia", "zmiana_procentowa",
+            "zmiana_kwotowa", "kurs_odn", "kurs_otwarcia", "kurs_min", "kurs_max",
+            "wolumen_skum", "fetched_at",
+        ],
+        rows,
+    )
+
+
 def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
     """Return fetched_at ISO string for any row in company_daily_stats for snapshot_date.
 
