@@ -216,9 +216,24 @@ Purely additive rows; no schema changes. Rollback if ever needed: `DELETE FROM <
 
 Verified during Phase 2: stooq denies the CSV endpoint to non-browser clients at the **TLS-fingerprint level** — the PoW challenge is solvable (verified: `/__verify` 200 + auth cookie), but the server then serves a chaff page and `Odmowa dostępu` regardless of header mimicry or HTTP/2. bossa.pl bulk EOD archives moved behind a login. Decision (user): **the user downloads the CSV files manually in their browser** ("Pobierz dane w pliku csv..." per symbol) **and provides a directory; the script ingests via `--from-dir`**. The StooqSession/PoW/`--cookie`/`--limit`/`--sleep` machinery was removed as dead code (PoW solver + challenge parsing preserved in git history at `e27cb5d`..`fbc0e1b` if ever needed). Resume semantics simplify: ingest whatever files are present; insert-only MERGE makes re-ingestion a no-op. Phase 3 "full-universe run" becomes: user downloads in batches (respecting stooq's daily limit), then runs the ingest per batch.
 
+## Addendum (2026-07-25): manual per-symbol download → bulk archive
+
+The per-symbol manual download from the 2026-07-24 addendum was superseded before it ran at scale: stooq publishes a **bulk archive** (`stooq.pl/db/h/` → `d_pl_txt.zip`) holding the whole market in one download, which removes the per-symbol rate limit as a constraint entirely rather than working around it. The user placed it at `d_pl_txt/` (gitignored). Layout: `data/daily/pl/{wse stocks, nc stocks, wse etfs, wse stocks intl, …}/<symbol>.txt`, ASCII `<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>` with `YYYYMMDD` dates. Ingested via a new `--from-db-dir` mode (`ecd330a`); `--from-dir` stays for the per-symbol CSV path.
+
+Three findings from the audit, each with a ticket:
+
+1. **Prices are dividend-adjusted** — contradicts Contract decision #3 (raw closes). Adjusted values are not tick-compliant (`KGH` 2025-12-30 = `279.596`), and the factor reaches 1.0 only after each ticker's latest ex-dividend date (clustering May–Jul 2026). At least 140/771 tickers (18%, lower bound) are affected inside the trailing 12 months that `?range=1y` renders; past portfolio values come out understated. **Accepted knowingly** (user decision) to unblock Phase 3. → PUL-96 / GH #191
+2. **Two junk rows in `companies`** (`przejęty`, `Żabka`) that are not tickers. → PUL-97 / GH #192
+3. **Scraper `kurs_zamkniecia` is a pre-close intraday snapshot**, off by a randomly-signed 0.1–0.4% versus the official close (scheduler's last tick ~17:01 precedes the ~17:05 fixing). Only 1 of 24 sampled pairs matched. → PUL-98 / GH #193
+
+Plus an opportunity: the archive carries per-ticker P/E, P/BV and market-cap history (`* indicators` dirs) → PUL-99 / GH #194.
+
+**Partition ceilings** (`a3fb72f`): both target tables are DAY-partitioned on `snapshot_date`. The archive spans 10053 trading days (from 1987-01-02 via `UCG`'s Milan history), which breaches BigQuery's 10k-partitions-per-table limit and, per flush, the 4000-partitions-per-job limit. Mitigations: `_flush()` merges year by year, and `--since` (default `2011-01-01`) trims history to 3916 partitions, leaving ~24 years of headroom for the scraper.
+
 ## References
 
 - Ticket: Linear PUL-92 / GitHub #182 (tracking in `change.md`)
+- Follow-ups: PUL-96/#191, PUL-97/#192, PUL-98/#193, PUL-99/#194
 - Research: `context/changes/backfill-historical-closes/research.md`
 - MERGE pattern: `db/bigquery.py:2450-2522`; consumers: `db/bigquery.py:465-580`, `:362-462`
 - Script conventions: `scripts/backfill_companies.py`, `scripts/reanalyze_failed.py`
@@ -249,7 +264,7 @@ Verified during Phase 2: stooq denies the CSV endpoint to non-browser clients at
 
 #### Manual
 
-- [ ] 2.4 Dry-run `--from-dir` on user-downloaded sample files (1 stock + 1 ETF) parses, reports, writes nothing
+- [x] 2.4 Dry-run `--from-dir` on user-downloaded sample files (1 stock + 1 ETF) parses, reports, writes nothing — superseded by the bulk-archive pivot; dry-run over the full archive reported 771/783 tickers, 1917971 rows, 0 bad files, 0 written — `a3fb72f`
 
 ### Phase 3: Verification & rollout (human-gated)
 
