@@ -1,10 +1,10 @@
 ---
 change_id: backfill-historical-closes
 title: Backfill historical daily closes (stooq) into company_daily_stats + etf_quotes
-status: impl_reviewed
+status: archived
 created: 2026-07-24
 updated: 2026-07-25
-archived_at: null
+archived_at: 2026-07-25T17:14:35Z
 tracking:
   linear: PUL-92
   github: 182
