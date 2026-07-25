@@ -178,6 +178,32 @@ def test_collect_db_dir_files_matches_via_existing_matcher(tmp_path):
     assert missing == ["PKO"]
 
 
+def test_filter_rows_since_derives_across_the_boundary():
+    rows = bf.build_rows("KGH", bf.parse_stooq_ascii(_ASCII), "stock", _FETCHED_AT)
+    kept = bf.filter_rows_since(rows, "1997-07-11")
+
+    assert [r["snapshot_date"] for r in kept] == ["1997-07-11", "2026-07-24"]
+    # derived against the dropped prior day rather than reset to None
+    assert kept[0]["zmiana_kwotowa"] == round(7.73673 - 7.57536, 4)
+
+
+def test_filter_rows_since_none_keeps_everything():
+    rows = bf.build_rows("KGH", bf.parse_stooq_ascii(_ASCII), "stock", _FETCHED_AT)
+    assert len(bf.filter_rows_since(rows, None)) == len(rows)
+
+
+def test_group_rows_by_year_bounds_partitions_per_merge():
+    rows = [
+        {"snapshot_date": "2012-01-02"},
+        {"snapshot_date": "2011-01-03"},
+        {"snapshot_date": "2011-06-01"},
+    ]
+    groups = bf.group_rows_by_year(rows)
+
+    assert [year for year, _ in groups] == ["2011", "2012"]
+    assert len(groups[0][1]) == 2 and len(groups[1][1]) == 1
+
+
 def test_dedup_rows_keeps_single_row_per_key():
     rows = [
         {"ticker": "KRU", "snapshot_date": "2026-01-02", "kurs_zamkniecia": 1.0},

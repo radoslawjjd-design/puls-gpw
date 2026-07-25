@@ -59,6 +59,12 @@ _ROUND_PCT = 2
 # Bulk-archive subdirectories that can hold universe tickers, in precedence order.
 _DB_SUBDIRS = ("wse stocks", "nc stocks", "wse etfs", "wse stocks intl")
 
+# company_daily_stats is DAY-partitioned and BigQuery caps a table at 10k partitions.
+# The archive spans 10053 trading days (from 1987 via UCG's Milan history), which
+# would leave under 3 years of headroom for the scraper. 2011 keeps 3916 partitions
+# and ~24 years of room; override with --since.
+_DEFAULT_SINCE = "2011-01-01"
+
 
 # ── Pure logic (unit-tested in tests/test_backfill_historical_closes.py) ──────
 
@@ -244,6 +250,30 @@ def classify_response(text: str) -> str:
     return "unknown"
 
 
+def filter_rows_since(rows: list[dict], since: str | None) -> list[dict]:
+    """Drop rows older than `since` (ISO date), keeping derived fields intact.
+
+    Applied after build_rows() on purpose: the oldest kept row then still
+    derives zmiana_* against the day before it, which the cut removes.
+    """
+    if not since:
+        return rows
+    return [r for r in rows if r["snapshot_date"] >= since]
+
+
+def group_rows_by_year(rows: list[dict]) -> list[tuple[str, list[dict]]]:
+    """Group rows by snapshot year, ascending.
+
+    company_daily_stats/etf_quotes are DAY-partitioned on snapshot_date and
+    BigQuery caps a single job at 4000 modified partitions; one year is ~250,
+    so merging year by year keeps every job far below the ceiling.
+    """
+    buckets: dict[str, list[dict]] = {}
+    for row in rows:
+        buckets.setdefault(row["snapshot_date"][:4], []).append(row)
+    return sorted(buckets.items())
+
+
 def dedup_rows(rows: list[dict]) -> list[dict]:
     """Keep one row per (ticker, snapshot_date) — first occurrence wins."""
     seen: set[tuple[str, str]] = set()
@@ -280,19 +310,21 @@ def load_universe(client) -> list[tuple[str, str]]:
 
 
 def _flush(stock_rows: list[dict], etf_rows: list[dict], dry_run: bool) -> int:
+    """Merge buffered rows, one job per year — see group_rows_by_year()."""
     inserted = 0
-    if stock_rows:
+    for rows, merge_fn, label in (
+        (stock_rows, merge_company_daily_stats_insert_only, "stock"),
+        (etf_rows, merge_etf_quotes_insert_only, "ETF"),
+    ):
+        if not rows:
+            continue
         if dry_run:
-            logger.info("[dry-run] would merge %d stock rows", len(stock_rows))
+            logger.info("[dry-run] would merge %d %s rows", len(rows), label)
         else:
-            inserted += merge_company_daily_stats_insert_only(dedup_rows(stock_rows))
-        stock_rows.clear()
-    if etf_rows:
-        if dry_run:
-            logger.info("[dry-run] would merge %d ETF rows", len(etf_rows))
-        else:
-            inserted += merge_etf_quotes_insert_only(dedup_rows(etf_rows))
-        etf_rows.clear()
+            for year, group in group_rows_by_year(dedup_rows(rows)):
+                logger.info("merging %s rows for %s: %d", label, year, len(group))
+                inserted += merge_fn(group)
+        rows.clear()
     return inserted
 
 
@@ -306,6 +338,12 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="parse+report only, no BQ writes")
     parser.add_argument("--tickers", help="comma-separated app tickers subset, e.g. KRU,ETFBW20TR")
     parser.add_argument("--chunk-size", type=int, default=25, help="tickers per BQ flush (default 25)")
+    parser.add_argument(
+        "--since",
+        default=_DEFAULT_SINCE,
+        help=f"drop rows before this ISO date (default {_DEFAULT_SINCE}); "
+             "'' ingests everything. Guards the 10k-partitions-per-table ceiling",
+    )
     args = parser.parse_args()
 
     if bool(args.from_dir) == bool(args.from_db_dir):
@@ -361,7 +399,9 @@ def main() -> int:
                 bad_files.append(f"{name} ({verdict})")
                 logger.warning("%s: content is not stooq data (%s) — skipped", name, verdict)
                 continue
-            rows = build_rows(ticker, parse_file(text), kind, fetched_at)
+            rows = filter_rows_since(
+                build_rows(ticker, parse_file(text), kind, fetched_at), args.since
+            )
             logger.info("%s -> %s (%s): %d rows %s..%s", name, ticker, kind, len(rows),
                         rows[0]["snapshot_date"] if rows else "-",
                         rows[-1]["snapshot_date"] if rows else "-")
