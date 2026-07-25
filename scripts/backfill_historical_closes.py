@@ -27,7 +27,7 @@ import argparse
 import logging
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -250,6 +250,23 @@ def classify_response(text: str) -> str:
     return "unknown"
 
 
+def parse_since(value: str | None) -> str | None:
+    """Validate the --since cut-off; empty/None means "no cut".
+
+    filter_rows_since() compares ISO date strings lexicographically, so a
+    non-canonical value fails silently rather than loudly: 'garbage' sorts
+    above every date and drops the whole ingest, while '10.05.2011' sorts
+    below and disables the cut — and with it the guard that keeps the table
+    under BigQuery's 10k-partition ceiling. Round-tripping through
+    date.fromisoformat pins the value to exactly YYYY-MM-DD.
+    """
+    if not value:
+        return None
+    if date.fromisoformat(value).isoformat() != value:
+        raise ValueError(f"--since must be YYYY-MM-DD, got {value!r}")
+    return value
+
+
 def filter_rows_since(rows: list[dict], since: str | None) -> list[dict]:
     """Drop rows older than `since` (ISO date), keeping derived fields intact.
 
@@ -350,6 +367,12 @@ def main() -> int:
         print("error: pass exactly one of --from-dir / --from-db-dir", file=sys.stderr)
         return 1
 
+    try:
+        since = parse_since(args.since)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
     src_dir = Path(args.from_db_dir or args.from_dir)
     if not src_dir.is_dir():
         print(f"error: {src_dir} is not a directory", file=sys.stderr)
@@ -400,7 +423,7 @@ def main() -> int:
                 logger.warning("%s: content is not stooq data (%s) — skipped", name, verdict)
                 continue
             rows = filter_rows_since(
-                build_rows(ticker, parse_file(text), kind, fetched_at), args.since
+                build_rows(ticker, parse_file(text), kind, fetched_at), since
             )
             logger.info("%s -> %s (%s): %d rows %s..%s", name, ticker, kind, len(rows),
                         rows[0]["snapshot_date"] if rows else "-",

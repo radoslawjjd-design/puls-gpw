@@ -228,6 +228,8 @@ Three findings from the audit, each with a ticket:
 
 Plus an opportunity: the archive carries per-ticker P/E, P/BV and market-cap history (`* indicators` dirs) → PUL-99 / GH #194.
 
+**Out-of-plan change, accepted** (`e82fa77`): while verifying the backfill in the UI the user reported that the value-history chart's x-axis read `16.04` / `24.07` with no year, which is ambiguous the moment a range crosses a year boundary — `1r` always does. `fmtDate` in `static/index.html` now renders `DD.MM.YYYY`, guarded by an e2e assertion on both charts and break-verified. The plan describes only the backfill pipeline, so this is scope beyond "Changes Required"; recorded here rather than reverted (impl-review F2).
+
 **Partition ceilings** (`a3fb72f`): both target tables are DAY-partitioned on `snapshot_date`. The archive spans 10053 trading days (from 1987-01-02 via `UCG`'s Milan history), which breaches BigQuery's 10k-partitions-per-table limit and, per flush, the 4000-partitions-per-job limit. Mitigations: `_flush()` merges year by year, and `--since` (default `2011-01-01`) trims history to 3916 partitions, leaving ~24 years of headroom for the scraper.
 
 ## References
@@ -272,4 +274,4 @@ Plus an opportunity: the archive carries per-ticker P/E, P/BV and market-cap his
 
 - [x] 3.1 Sample-run audit (pre-2026 rows, no clobber, no dupes, spot-check) passes — KRU + ETFBW20TR: 5657/5685 inserted (28 already present), KRU 2026-07-24 still 410.8 from the scraper vs stooq's 411.4, 0 duplicate keys
 - [x] 3.2 Full-universe run(s) complete; 0 remaining; unknown symbols reviewed; etf_quotes expiry confirmed absent — 1899603 rows inserted, 0 errors; `company_daily_stats` 1897457 rows / 3917 partitions / 744 tickers / 2011-01-03..2026-07-24, `etf_quotes` 23913 rows / 3761 partitions / 39 tickers; 0 duplicates in both; 89 unmatched files reviewed (foreign listings in `wse stocks intl`, outside the universe); 12 universe tickers without a file (2 of them junk rows → PUL-97); no table or partition expiry set on either table
-- [ ] 3.3 `?range=1y` dense on prod; calendar P&L for backfilled months; 1R chart renders in UI
+- [x] 3.3 `?range=1y` dense on prod; calendar P&L for backfilled months; 1R chart renders in UI — deploy verified (`/health` ok, `2712064`); `get_portfolio_history` against prod BQ returns **250 points covering the full year** (2025-07-25..2026-07-24) for 2 of 3 portfolios, versus ~21 before the backfill. The third portfolio and the aggregate stop at 71 points (2026-04-16) because 4 shares of `S2B` — 0.66% of that portfolio, listed 2026-04-16 — trip the full-coverage gate; that is a gate design issue, not a data gap, and is tracked in PUL-100/#195 with a recommended fix. Chart rendering covered by 4 e2e tests.

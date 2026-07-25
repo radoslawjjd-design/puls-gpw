@@ -8,6 +8,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "backfill_historical_closes.py"
 _spec = importlib.util.spec_from_file_location("backfill_historical_closes", _SCRIPT)
 bf = importlib.util.module_from_spec(_spec)
@@ -190,6 +192,20 @@ def test_filter_rows_since_derives_across_the_boundary():
 def test_filter_rows_since_none_keeps_everything():
     rows = bf.build_rows("KGH", bf.parse_stooq_ascii(_ASCII), "stock", _FETCHED_AT)
     assert len(bf.filter_rows_since(rows, None)) == len(rows)
+
+
+def test_parse_since_accepts_canonical_iso_and_empty():
+    assert bf.parse_since("2011-01-01") == "2011-01-01"
+    assert bf.parse_since("") is None
+    assert bf.parse_since(None) is None
+
+
+@pytest.mark.parametrize("bad", ["garbage", "10.05.2011", "2011", "20110510", "2011-13-01"])
+def test_parse_since_rejects_anything_lexicographic_compare_would_misread(bad):
+    # filter_rows_since compares ISO strings, so a non-canonical value would
+    # silently drop everything or disable the partition guard instead of erroring.
+    with pytest.raises(ValueError):
+        bf.parse_since(bad)
 
 
 def test_group_rows_by_year_bounds_partitions_per_merge():
