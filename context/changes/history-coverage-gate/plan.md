@@ -88,6 +88,23 @@ frontend reads `.series` and renders the `(i)` affordance from `.notes` / `.excl
 requested window. At `range=1w` `S2B` has genuine prices throughout, so no note appears.
 Emitting unconditionally would footnote every chart forever.
 
+**F2 (plan-review) — the note must not claim a listing date.** `first_px_date` is the
+first price *in our data*, which is not the same thing as the debut. The 12 universe
+tickers with no archive file (`AAS`, `QUANTUM`, `REXA`, …) have data only from
+2026-06-26 because that is when the scraper started, not because they listed then.
+Wording must therefore be a statement about data coverage, true regardless of cause:
+*"brak notowań przed <date> — wcześniejsze dni wycenione kursem <price> zł"*. Never
+*"notowany od"*.
+
+**F3 (plan-review) — BOCF moves P&L too, not just value.** The chart toggles between
+Wartość and Zysk/strata. Backward-filling contributes a constant
+`shares × (first_px − avg_buy_price)` to every pre-debut day, so a holder who bought
+above the debut price sees a flat phantom loss stretching back across the range. This is
+the same class of approximation PUL-79 already accepted (today's share counts valued at
+historical closes) and the alternative — dropping the position pre-debut — reintroduces
+the step this change exists to remove. Accepted, but the note text must cover both modes:
+say the holding was *valued* at that price, which is what drives both curves.
+
 **Accessibility of the `(i)` affordance.** Hover alone is unreachable on touch and hides
 the assumption from anyone who doesn't hover — the exact failure mode this change exists
 to fix. The affordance must therefore respond to click and keyboard focus as well, and
@@ -143,8 +160,15 @@ which were dropped, without paying for a second query.
 (`MIN(snapshot_date)` over `px_dedup`) and `first_px` (the close on that date, via
 `ARRAY_AGG(px IGNORE NULLS ORDER BY snapshot_date LIMIT 1)[SAFE_OFFSET(0)]`). A `meta`
 CTE aggregates two arrays — backfilled (`first_px_date > @start_date`) and excluded
-(`first_px_date IS NULL`) — and is cross-joined onto `daily`. `meta` always yields
-exactly one row, so the cross join cannot drop days.
+(`first_px_date IS NULL`).
+
+**F1 (plan-review)**: join **meta-first**, `FROM meta m LEFT JOIN daily d ON TRUE` — not
+`daily CROSS JOIN meta`. When every holding lacks prices, `covered > 0` empties `daily`;
+a cross join would then return zero rows and the `excluded` list would never reach the
+user, blanking the chart with no explanation in exactly the case that needs one. The
+meta-first left join always yields at least one row. Verified on real BigQuery: the
+degenerate case returns a single row carrying `excluded` with `NULL` in the date column.
+Python drops rows whose `snapshot_date` is `NULL` before building the series.
 
 #### 3. Return shape
 
@@ -191,6 +215,11 @@ comes back `NULL` from `ARRAY_AGG` over zero rows.
 ### Overview
 
 Mirror the new dict through the endpoint.
+
+**Expect a red e2e suite at the end of this phase.** Changing the response from an array
+to an object breaks the chart until Phase 3 lands, and the shared e2e fake still returns
+the old shape. That is why this phase verifies with `--ignore=tests/e2e`. Known gotcha
+from PUL-91: do not treat the red e2e run as a blocker here — Phase 3 owns it.
 
 ### Changes Required:
 
@@ -253,6 +282,14 @@ cache without refetching.
 the SVG and the metadata for the affordance. The existing out-of-order guards
 (`_ppHistReqSeqActive` / `_ppHistReqSeqAll`) stay as they are.
 
+**F5 (plan-review) — every cache call site must survive the shape change.** The cached
+value is read in four more places than the fetch helper:
+`:3849` uses `_ppHistDataAll === null` as a "not yet loaded" sentinel (an object still
+satisfies it, but the check must not become truthy-on-empty-series); `:3862-3863` and
+`:3524-3525` null both caches on invalidation; `:3877-3878` redraw both charts from
+cache on the Wartość↔Zysk/strata toggle and now pass an object where they passed an
+array. Verify all five before calling the phase done.
+
 #### 2. Affordance markup and behaviour
 
 **File**: `static/index.html`
@@ -267,6 +304,11 @@ the full text in `aria-label`. All interpolated values go through the existing `
 helper — ticker strings originate in user-entered positions. Text follows the ticket's
 wording: *"S2B notowany od 16.04.2026, wcześniej wyceniony kursem debiutu 35,70 zł"*;
 excluded holdings read *"<TICKER> — brak notowań, pominięty w wycenie"*.
+
+Per F2 the backfilled wording is a data statement, not a listing claim:
+*"S2B — brak notowań przed 16.04.2026; wcześniejsze dni wycenione kursem 35,70 zł"*.
+Per F3 the same sentence covers both chart modes, since the fill drives value and P&L
+alike.
 
 #### 3. e2e coverage
 
@@ -387,7 +429,7 @@ together, so there is no window where one is ahead of the other.
 #### Manual
 
 - [ ] 1.4 Against real BigQuery, `1y` on "Główny" returns ~249 points instead of 71
-- [ ] 1.5 No phantom step from `S2B` on 2026-04-16
+- [ ] 1.5 The value on the trading day before 2026-04-16 differs from the debut-day value by less than the daily move of the other holdings (no phantom step from `S2B`)
 - [ ] 1.6 `notes` names `S2B` with `listed_from = 2026-04-16` and its debut close
 
 ### Phase 2: API layer — object response
@@ -400,7 +442,7 @@ together, so there is no window where one is ahead of the other.
 
 #### Manual
 
-- [ ] 2.4 Endpoint against real BQ returns an envelope spanning a full year with `S2B` in `notes`
+- [ ] 2.4 `GET /api/portfolio/history?range=1y&portfolio_id=<główny>` against real BQ returns an envelope whose `series` spans a full year and whose `notes` names `S2B`
 
 ### Phase 3: Frontend — `(i)` affordance on the chart
 
@@ -412,9 +454,9 @@ together, so there is no window where one is ahead of the other.
 
 #### Manual
 
-- [ ] 3.4 Kalendarz shows a full year at `1r` and the `(i)` reveals the `S2B` note
-- [ ] 3.5 Affordance opens with keyboard alone and on a touch tap
-- [ ] 3.6 Charts without backfilled holdings show no `(i)`
+- [ ] 3.4 With the app running locally against real BQ, the Kalendarz view shows a full year at `1r` and the `(i)` next to "Główny" reveals the `S2B` note
+- [ ] 3.5 The affordance opens with keyboard alone (Tab to it, Enter/Space) and on a touch tap
+- [ ] 3.6 Charts without backfilled holdings show no `(i)` at all
 
 ### Phase 4: Verification on real data
 
@@ -425,7 +467,7 @@ together, so there is no window where one is ahead of the other.
 
 #### Manual
 
-- [ ] 4.3 "Wszystkie" and "Główny" both return ~249 points at `1y`
+- [ ] 4.3 "Wszystkie" and "Główny" both return ~249 points at `1y` (up from 71)
 - [ ] 4.4 Latency stays within ~2× the 1.6 s baseline
-- [ ] 4.5 Tickers with no archive file no longer clamp any portfolio
+- [ ] 4.5 The 12 universe tickers with no archive file (`AAS`, `QUANTUM`, `REXA`, …) no longer clamp any portfolio
 - [ ] 4.6 Deployed revision serves the new envelope and `/health` is ok

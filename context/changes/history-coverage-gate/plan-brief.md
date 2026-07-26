@@ -82,16 +82,30 @@ live data); branch `pul-100-history-coverage-gate` already created.
 
 ## Open Risks & Assumptions
 
-- BigQuery's `FIRST_VALUE(... IGNORE NULLS)` over `CURRENT ROW AND UNBOUNDED FOLLOWING`
-  is assumed to return the *next* non-null value; verified against real data in Phase 1,
-  not on mocks.
-- `ARRAY_AGG` over zero qualifying rows returns `NULL`, not `[]` — the Python side must
-  coerce, or an empty portfolio yields `None` instead of a list.
+Three assumptions were verified against real BigQuery during plan review rather than
+carried as risks:
+
+- `COALESCE(LAST_VALUE …, FIRST_VALUE … CURRENT ROW AND UNBOUNDED FOLLOWING)` fills
+  pre-debut days with the debut close and leaves post-debut days untouched — **confirmed**.
+- `ARRAY_AGG` over zero qualifying rows reaches Python as `[]`, not `None` — **the
+  earlier claim in this brief was wrong**; no coercion needed (a defensive `or []` is
+  still harmless).
+- `FROM meta LEFT JOIN daily ON TRUE` returns one row when `daily` is empty —
+  **confirmed**, and it is why the join is written meta-first (plan-review F1).
+
+Remaining risks:
+
 - Changing the response shape breaks the chart between Phase 2 and Phase 3. Known
   project gotcha: verify the intermediate state with `--ignore=tests/e2e`.
 - The tooltip choice trades discoverability for a cleaner chart. Mitigated by click +
   keyboard focus + `aria-label`, but a user who never activates it still doesn't see the
   assumption.
+- Backward-filling shifts the P&L curve as well as the value curve: a holder who bought
+  above the debut price sees a flat phantom loss across pre-debut days (plan-review F3).
+  Accepted — the alternative reintroduces the step this change removes.
+- `first_px_date` is the first price in *our data*, not a listing date. Note wording must
+  stay a statement about coverage, or it will assert a false debut for the 12 tickers
+  whose history starts when the scraper did (plan-review F2).
 
 ## Success Criteria (Summary)
 
