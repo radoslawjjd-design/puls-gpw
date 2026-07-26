@@ -288,3 +288,38 @@ keeps growing. Plans that add a view should list this sibling-update explicitly.
 
 **Applies to**: Every change that adds a new view/tab to the single-file SPA
 (`static/index.html`)
+
+---
+
+## Usuwanie kolumny REQUIRED — kolejność jest odwrotna niż intuicyjna
+
+**Context**: Każda migracja, która przestaje zapisywać kolumnę BigQuery zadeklarowaną
+jako `REQUIRED` (np. wycofanie legacy kolumny po zmianie tożsamości).
+
+**Problem** (PUL-88, 2026-07-26): ticket zalecał „najpierw deploy kodu, potem ręczny
+`DROP COLUMN`" z uzasadnieniem, że DROP przed usunięciem podwójnego zapisu rozwaliłby
+INSERT-y. Rozumowanie było odwrócone. `watchlist.client_id` był `REQUIRED`, więc to
+**deploy** otworzył okno awarii: pierwszy `INSERT` bez tej kolumny padł na
+`400 Required field client_id cannot be null`. Dodawanie do watchlisty było zepsute na
+produkcji do czasu wykonania DROP-a. Pominięcie kolumny w liście `INSERT` nie jest
+neutralne — BigQuery traktuje to jak wstawienie `NULL`.
+
+Wzmacniające: `QueryJobConfig(dry_run=True)` **przeszedł** dla tego samego zapytania.
+Dry run waliduje składnię i referencje do kolumn, ale nie ograniczenie `REQUIRED` —
+ono jest egzekwowane dopiero przy wykonaniu. To ta sama klasa fałszywego zielonego co
+przy reserved keywords: testy mockowane i suchy przebieg przepuszczają DML, który realny
+BigQuery odrzuca.
+
+**Rule**:
+1. Wycofując kolumnę `REQUIRED`, **najpierw zmień schemat, potem wypuść kod**:
+   `ALTER TABLE … ALTER COLUMN x DROP NOT NULL` (albo od razu `DROP COLUMN`), i dopiero
+   wtedy deploy kodu, który przestaje ją wypełniać. Odwrotna kolejność gwarantuje okno awarii.
+   Dla kolumny `NULLABLE` problem nie występuje — kolejność jest wtedy dowolna.
+2. Zanim uznasz migrację schematu za bezpieczną, sprawdź **tryb kolumny w żywej tabeli**
+   (`client.get_table(ref).schema`), a nie tylko definicję w kodzie. Definicja w repo
+   opisuje stan docelowy, nie ten, przeciwko któremu poleci produkcja.
+3. `dry_run=True` nie jest dowodem wykonalności DML. Jedyny wiarygodny test zmiany
+   schematu to prawdziwy round-trip na realnej tabeli (INSERT → odczyt → sprzątnięcie),
+   na syntetycznym kluczu.
+
+**Applies to**: Każdy change usuwający lub przestający zapisywać kolumnę w BigQuery
