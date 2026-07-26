@@ -743,9 +743,9 @@ def test_create_watchlist_table_creates_on_not_found():
 
 
 def test_watchlist_schema_has_required_columns():
-    """_WATCHLIST_SCHEMA: legacy trio REQUIRED + PUL-74 user_id NULLABLE (additive migration)."""
+    """_WATCHLIST_SCHEMA after PUL-88: legacy client_id gone, user_id is the only identity."""
     names = {f.name: f for f in _WATCHLIST_SCHEMA}
-    assert set(names) == {"client_id", "ticker", "added_at", "user_id"}
+    assert set(names) == {"ticker", "added_at", "user_id"}
     assert names["user_id"].mode == "NULLABLE"
     assert all(
         f.mode == "REQUIRED" for n, f in names.items() if n != "user_id"
@@ -764,10 +764,10 @@ def test_add_watchlist_ticker_inserts_with_not_exists_guard():
     assert "INSERT INTO" in query_str and "watchlist" in query_str
     assert "WHERE NOT EXISTS" in query_str
     assert "CURRENT_TIMESTAMP()" in query_str
-    # PUL-74: dual-write both identity columns with the same value until the
-    # legacy client_id column is dropped.
-    assert "(user_id, client_id, ticker, added_at)" in query_str
-    assert "SELECT @user_id, @user_id, @ticker" in query_str
+    # PUL-88: the legacy client_id dual-write is gone — user_id is written alone.
+    assert "(user_id, ticker, added_at)" in query_str
+    assert "SELECT @user_id, @ticker" in query_str
+    assert "client_id" not in query_str
     assert "user_id = @user_id AND ticker = @ticker" in query_str
     assert params["user_id"] == "uid-1"
     assert params["ticker"] == "PKO"
@@ -833,8 +833,12 @@ def test_list_announcements_for_watchlist_offset_math():
 
 # ── PUL-74 per-user data isolation ────────────────────────────────────────────
 
-def test_ensure_watchlist_schema_backfills_user_id():
-    """ensure_watchlist_schema_current must run the idempotent user_id backfill after the column add."""
+def test_ensure_watchlist_schema_runs_no_backfill():
+    """PUL-88: the user_id backfill is retired — startup must issue no query at all.
+
+    It had converged (0 rows matched) yet still ran a DML statement on every
+    Cloud Run cold start.
+    """
     with (
         patch("db.bigquery.ensure_schema_current") as mock_ensure,
         patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get,
@@ -843,22 +847,14 @@ def test_ensure_watchlist_schema_backfills_user_id():
         ensure_watchlist_schema_current()
 
     mock_ensure.assert_called_once()
-    query_str = client.query.call_args[0][0]
-    assert "UPDATE" in query_str and "watchlist" in query_str
-    assert "SET user_id = client_id" in query_str
-    assert "WHERE user_id IS NULL" in query_str
+    client.query.assert_not_called()
 
 
-def test_watchlist_backfill_is_non_fatal_on_bq_error():
-    """Startup must survive a failing backfill — log-and-continue, never raise (impl-review F1)."""
-    client = MagicMock()
-    client.project = "test-project"
-    client.query.side_effect = RuntimeError("bq down")
-    with (
-        patch("db.bigquery.ensure_schema_current"),
-        patch("db.bigquery._get_client", return_value=client),
-    ):
-        ensure_watchlist_schema_current()  # must not raise
+def test_backfill_watchlist_user_id_helper_is_gone():
+    """The retired helper must not linger as dead code."""
+    import db.bigquery as bq
+
+    assert not hasattr(bq, "_backfill_watchlist_user_id")
 
 
 def test_upsert_user_portfolio_position_merge_scoped_to_user():
