@@ -481,12 +481,12 @@ together, so there is no window where one is ahead of the other.
 
 #### Automated
 
-- [x] 4.1 Full suite green on the branch: `uv run pytest -q`
+- [x] 4.1 Full suite green on the branch: `uv run pytest -q` — 5260f20
 - [ ] 4.2 Lint clean: `uv run ruff check .`
 
 #### Manual
 
-- [x] 4.3 "Wszystkie" and "Główny" both return ~249 points at `1y` (up from 71)
-- [x] 4.4 Latency stays within ~2× the 1.6 s baseline
-- [x] 4.5 The 12 universe tickers with no archive file (`AAS`, `QUANTUM`, `REXA`, …) no longer clamp any portfolio
+- [x] 4.3 "Wszystkie" and "Główny" both return ~249 points at `1y` (up from 71) — 5260f20
+- [x] 4.4 Latency stays within ~2× the 1.6 s baseline — 5260f20
+- [x] 4.5 The 12 universe tickers with no archive file (`AAS`, `QUANTUM`, `REXA`, …) no longer clamp any portfolio — 5260f20
 - [ ] 4.6 Deployed revision serves the new envelope and `/health` is ok
