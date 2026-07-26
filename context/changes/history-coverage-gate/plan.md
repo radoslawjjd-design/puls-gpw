@@ -316,6 +316,14 @@ helper — ticker strings originate in user-entered positions. Text follows the 
 wording: *"S2B notowany od 16.04.2026, wcześniej wyceniony kursem debiutu 35,70 zł"*;
 excluded holdings read *"<TICKER> — brak notowań, pominięty w wycenie"*.
 
+**Addendum (implementation) — the affordance lives in `.pp-hist-head`, not beside the
+`<h3>`.** The contract above said "next to `#pp-history-title-active`". Two existing
+behaviours make that placement fragile: the titles are rewritten with `.textContent` on
+every refresh (`:4194`, `:4197`), which wipes any appended child, and the Wartość↔Zysk/strata
+toggle re-runs `_renderPortfolioHistory` *without* resetting the title, which would append
+a second button each time. The head row is fully owned by the render function, so both
+failure modes disappear. Visually it sits directly under the title, beside the value.
+
 Per F2 the backfilled wording is a data statement, not a listing claim:
 *"S2B — brak notowań przed 16.04.2026; wcześniejsze dni wycenione kursem 35,70 zł"*.
 Per F3 the same sentence covers both chart modes, since the fill drives value and P&L
@@ -447,27 +455,27 @@ together, so there is no window where one is ahead of the other.
 
 #### Automated
 
-- [x] 2.1 API tests pass: `uv run pytest tests/test_api.py -q`
-- [x] 2.2 Full suite minus e2e green: `uv run pytest --ignore=tests/e2e -q`
-- [x] 2.3 Lint passes: `uv run ruff check src/ tests/`
+- [x] 2.1 API tests pass: `uv run pytest tests/test_api.py -q` — 76ee722
+- [x] 2.2 Full suite minus e2e green: `uv run pytest --ignore=tests/e2e -q` — 76ee722
+- [x] 2.3 Lint passes: `uv run ruff check src/ tests/` — 76ee722
 
 #### Manual
 
-- [x] 2.4 `GET /api/portfolio/history?range=1y&portfolio_id=<główny>` against real BQ returns an envelope whose `series` spans a full year and whose `notes` names `S2B`
+- [x] 2.4 `GET /api/portfolio/history?range=1y&portfolio_id=<główny>` against real BQ returns an envelope whose `series` spans a full year and whose `notes` names `S2B` — 76ee722
 
 ### Phase 3: Frontend — `(i)` affordance on the chart
 
 #### Automated
 
-- [ ] 3.1 e2e chart suite passes: `uv run pytest tests/e2e/test_portfolio_value_history.py -q`
-- [ ] 3.2 Full e2e suite green: `uv run pytest tests/e2e -q`
-- [ ] 3.3 Full suite green: `uv run pytest -q`
+- [x] 3.1 e2e chart suite passes: `uv run pytest tests/e2e/test_portfolio_value_history.py -q`
+- [x] 3.2 Full e2e suite green: `uv run pytest tests/e2e -q`
+- [x] 3.3 Full suite green: `uv run pytest -q`
 
 #### Manual
 
-- [ ] 3.4 With the app running locally against real BQ, the Kalendarz view shows a full year at `1r` and the `(i)` next to "Główny" reveals the `S2B` note
-- [ ] 3.5 The affordance opens with keyboard alone (Tab to it, Enter/Space) and on a touch tap
-- [ ] 3.6 Charts without backfilled holdings show no `(i)` at all
+- [x] 3.4 With the app running locally against real BQ, the Kalendarz view shows a full year at `1r` and the `(i)` next to "Główny" reveals the `S2B` note
+- [x] 3.5 The affordance opens with keyboard alone (Tab to it, Enter/Space) and on a touch tap
+- [x] 3.6 Charts without backfilled holdings show no `(i)` at all
 
 ### Phase 4: Verification on real data
 
