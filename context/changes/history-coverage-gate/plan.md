@@ -467,26 +467,26 @@ together, so there is no window where one is ahead of the other.
 
 #### Automated
 
-- [x] 3.1 e2e chart suite passes: `uv run pytest tests/e2e/test_portfolio_value_history.py -q`
-- [x] 3.2 Full e2e suite green: `uv run pytest tests/e2e -q`
-- [x] 3.3 Full suite green: `uv run pytest -q`
+- [x] 3.1 e2e chart suite passes: `uv run pytest tests/e2e/test_portfolio_value_history.py -q` — ef7b8ef
+- [x] 3.2 Full e2e suite green: `uv run pytest tests/e2e -q` — ef7b8ef
+- [x] 3.3 Full suite green: `uv run pytest -q` — ef7b8ef
 
 #### Manual
 
-- [x] 3.4 With the app running locally against real BQ, the Kalendarz view shows a full year at `1r` and the `(i)` next to "Główny" reveals the `S2B` note
-- [x] 3.5 The affordance opens with keyboard alone (Tab to it, Enter/Space) and on a touch tap
-- [x] 3.6 Charts without backfilled holdings show no `(i)` at all
+- [x] 3.4 With the app running locally against real BQ, the Kalendarz view shows a full year at `1r` and the `(i)` next to "Główny" reveals the `S2B` note — ef7b8ef
+- [x] 3.5 The affordance opens with keyboard alone (Tab to it, Enter/Space) and on a touch tap — ef7b8ef
+- [x] 3.6 Charts without backfilled holdings show no `(i)` at all — ef7b8ef
 
 ### Phase 4: Verification on real data
 
 #### Automated
 
-- [ ] 4.1 Full suite green on the branch: `uv run pytest -q`
+- [x] 4.1 Full suite green on the branch: `uv run pytest -q`
 - [ ] 4.2 Lint clean: `uv run ruff check .`
 
 #### Manual
 
-- [ ] 4.3 "Wszystkie" and "Główny" both return ~249 points at `1y` (up from 71)
-- [ ] 4.4 Latency stays within ~2× the 1.6 s baseline
-- [ ] 4.5 The 12 universe tickers with no archive file (`AAS`, `QUANTUM`, `REXA`, …) no longer clamp any portfolio
+- [x] 4.3 "Wszystkie" and "Główny" both return ~249 points at `1y` (up from 71)
+- [x] 4.4 Latency stays within ~2× the 1.6 s baseline
+- [x] 4.5 The 12 universe tickers with no archive file (`AAS`, `QUANTUM`, `REXA`, …) no longer clamp any portfolio
 - [ ] 4.6 Deployed revision serves the new envelope and `/health` is ok
