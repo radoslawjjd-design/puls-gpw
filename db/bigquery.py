@@ -477,20 +477,41 @@ def get_portfolio_history(
     snapshot_date (date), value_pln (float), pnl_pln (float).  value_pln is the current share
     counts valued at each day's close; pnl_pln = value_pln − Σ(shares × avg_buy_price).
 
-    F1 (PUL-79 plan-review): prices are **forward-filled (LOCF)**, not 0-filled — each held
-    ticker carries its last known close forward across trading days, so a missing daily close
-    no longer collapses a position's value to 0 and dents the curve.  The price scan reaches
-    ~400 days before start_date so early in-range days can be filled.  A day is emitted only
-    when **every** held position has a (carried) price that day (full-coverage gate), which
-    clamps the series start past leading days where a holding has no prior price yet.  This
-    also means a wide range (e.g. 1y) may return fewer points if a holding's price history is
-    short (e.g. an ETF whose etf_quotes history starts mid-range) — correct, not a bug.
+    Prices are filled in **both** directions.  Forward (LOCF, PUL-79 F1): each held ticker
+    carries its last known close across trading days, so a missing daily close no longer
+    collapses a position's value to 0.  Backward (BOCF, PUL-100): days *before* a ticker's
+    first quote carry its earliest known close.  Without BOCF the old full-coverage gate
+    started the series at the latest first-price date across all holdings, so a sub-1%
+    position in a freshly listed company (S2B, listed 2026-04-16) truncated a whole year of
+    history to ~3 months.  The price scan reaches ~400 days before start_date.
 
-    Tranche approximation (accepted, documented): positions store no purchase dates, so
-    "value on day X" uses *today's* share counts against day-X close.
+    After both fills, ``px_ff IS NULL`` is **all-or-nothing per ticker** — it can only mean
+    the ticker has no price anywhere in the scan window.  That is what makes the per-day
+    conditional aggregation safe: such a ticker is dropped on *every* day, so dropping it
+    cannot introduce a step in the curve.  Its cost basis is dropped alongside its value, or
+    P&L would carry a permanent phantom loss equal to its purchase cost.  The surviving gate
+    (``covered > 0``) fires only when *nothing* in the portfolio is priced.
 
-    Returns [] when the portfolio has no positions or no fully-covered trading day exists in
-    range.  Raises BigQueryError on failure.
+    Accepted approximations, both of the same class:  positions store no purchase dates, so
+    "value on day X" uses *today's* share counts against day-X close (PUL-79); and
+    backward-filling contributes a constant ``shares × (first_px − avg_buy_price)`` to every
+    pre-debut day, so a holder who bought above the debut price sees a flat phantom loss
+    across that leg (PUL-100).  The alternative — dropping the position before its debut —
+    reintroduces the step this fill exists to remove.
+
+    Returns ``{"series": [...], "notes": [...], "excluded": [...]}``:
+
+    * ``series`` — one entry per trading day in [start_date, CURRENT_DATE()], ascending, with
+      keys snapshot_date (date), value_pln (float), pnl_pln (float).
+    * ``notes``  — holdings whose first available price falls *after* start_date, i.e. those
+      the backward-fill actually affected in this window: ticker, listed_from (date), price.
+      ``listed_from`` is the first date **we have data for**, which is not necessarily a
+      listing date — a ticker whose history starts when the scraper did looks identical here.
+    * ``excluded`` — tickers with no price anywhere in the window, left out of the valuation.
+
+    Metadata is carried by the same query (a second round trip would double a ~1.6 s
+    user-facing latency) and the join is written meta-first, so the lists still reach the
+    caller when *no* day survives the gate.  Raises BigQueryError on failure.
     """
     client = _get_client()
     _t = time.time()
@@ -528,6 +549,24 @@ def get_portfolio_history(
             FROM px_raw
             QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date ORDER BY src) = 1
           ),
+          coverage AS (
+            SELECT
+              p.ticker,
+              MIN(d.snapshot_date) AS first_px_date,
+              ARRAY_AGG(d.px IGNORE NULLS ORDER BY d.snapshot_date LIMIT 1)[SAFE_OFFSET(0)]
+                AS first_px
+            FROM positions p
+            LEFT JOIN px_dedup d ON d.ticker = p.ticker
+            GROUP BY p.ticker
+          ),
+          meta AS (
+            SELECT
+              ARRAY(
+                SELECT AS STRUCT ticker, first_px_date, first_px
+                FROM coverage WHERE first_px_date > @start_date
+              ) AS notes,
+              ARRAY(SELECT ticker FROM coverage WHERE first_px_date IS NULL) AS excluded
+          ),
           grid AS (
             SELECT s.snapshot_date, p.ticker, p.shares, p.avg_buy_price, d.px
             FROM spine s
@@ -537,26 +576,32 @@ def get_portfolio_history(
           filled AS (
             SELECT
               snapshot_date, ticker, shares, avg_buy_price,
-              LAST_VALUE(px IGNORE NULLS) OVER (
-                PARTITION BY ticker ORDER BY snapshot_date
-                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+              COALESCE(
+                LAST_VALUE(px IGNORE NULLS) OVER (
+                  PARTITION BY ticker ORDER BY snapshot_date
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ),
+                FIRST_VALUE(px IGNORE NULLS) OVER (
+                  PARTITION BY ticker ORDER BY snapshot_date
+                  ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+                )
               ) AS px_ff
             FROM grid
           ),
           daily AS (
             SELECT
               snapshot_date,
-              SUM(shares * px_ff) AS value_pln,
-              SUM(shares * px_ff) - SUM(shares * avg_buy_price) AS pnl_pln,
-              COUNTIF(px_ff IS NULL) AS missing
+              SUM(IF(px_ff IS NOT NULL, shares * px_ff, 0)) AS value_pln,
+              SUM(IF(px_ff IS NOT NULL, shares * (px_ff - avg_buy_price), 0)) AS pnl_pln,
+              COUNTIF(px_ff IS NOT NULL) AS covered
             FROM filled
             WHERE snapshot_date BETWEEN @start_date AND CURRENT_DATE()
             GROUP BY snapshot_date
           )
-        SELECT snapshot_date, value_pln, pnl_pln
-        FROM daily
-        WHERE missing = 0
-        ORDER BY snapshot_date
+        SELECT d.snapshot_date, d.value_pln, d.pnl_pln, m.notes, m.excluded
+        FROM meta m
+        LEFT JOIN daily d ON d.covered > 0
+        ORDER BY d.snapshot_date
     """
     params: list[bigquery.ScalarQueryParameter] = [
         bigquery.ScalarQueryParameter("user_id",    "STRING", user_id),
@@ -570,14 +615,28 @@ def get_portfolio_history(
     except Exception as exc:
         raise BigQueryError(f"get_portfolio_history failed: {exc}") from exc
     logger.debug("BQ get_portfolio_history: %.0fms", (time.time() - _t) * 1000)
-    return [
+    # The meta-first join emits one metadata-only row (NULL date) when no day survives the
+    # gate — carry its lists, but never let it become a data point.
+    series = [
         {
             "snapshot_date": row.snapshot_date,
             "value_pln": float(row.value_pln),
             "pnl_pln": float(row.pnl_pln),
         }
         for row in rows
+        if row.snapshot_date is not None
     ]
+    first = rows[0] if rows else None
+    notes = [
+        {
+            "ticker": note["ticker"],
+            "listed_from": note["first_px_date"],
+            "price": float(note["first_px"]),
+        }
+        for note in (first.notes or [])
+    ] if first else []
+    excluded = list(first.excluded or []) if first else []
+    return {"series": series, "notes": notes, "excluded": excluded}
 
 
 _WATCHLIST_TABLE_NAME = "watchlist"

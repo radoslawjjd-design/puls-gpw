@@ -422,15 +422,15 @@ together, so there is no window where one is ahead of the other.
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -q`
-- [ ] 1.2 Full suite minus e2e stays green: `uv run pytest --ignore=tests/e2e -q`
-- [ ] 1.3 Lint passes: `uv run ruff check db/ tests/`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -q`
+- [x] 1.2 Full suite minus e2e stays green: `uv run pytest --ignore=tests/e2e -q`
+- [x] 1.3 Lint passes: `uv run ruff check db/ tests/`
 
 #### Manual
 
-- [ ] 1.4 Against real BigQuery, `1y` on "Główny" returns ~249 points instead of 71
-- [ ] 1.5 The value on the trading day before 2026-04-16 differs from the debut-day value by less than the daily move of the other holdings (no phantom step from `S2B`)
-- [ ] 1.6 `notes` names `S2B` with `listed_from = 2026-04-16` and its debut close
+- [x] 1.4 Against real BigQuery, `1y` on "Główny" returns ~249 points instead of 71
+- [x] 1.5 The value on the trading day before 2026-04-16 differs from the debut-day value by less than the daily move of the other holdings (no phantom step from `S2B`)
+- [x] 1.6 `notes` names `S2B` with `listed_from = 2026-04-16` and its debut close
 
 ### Phase 2: API layer — object response
 
