@@ -105,6 +105,17 @@ historical closes) and the alternative — dropping the position pre-debut — r
 the step this change exists to remove. Accepted, but the note text must cover both modes:
 say the holding was *valued* at that price, which is what drives both curves.
 
+**Full exclusion was raised during implementation and rejected — deliberately.** Distinct
+from the day-by-day skip the ticket rejected: dropping the holding from the *entire* range
+introduces no step, since the basket is then identical on every day. It was weighed on its
+merits and would have been simpler to build (no BOCF at all — just filter the position out
+of `grid`). Rejected because the right edge of the chart would no longer equal the value
+shown in "Mój portfel" — 267 PLN / 0.66% apart for `S2B` — and two different numbers for
+"my portfolio value" in one app cost more trust than a disclosed constant offset in the
+past. Both distortions scale badly at large weights (a 30% position either flat-lines a
+third of the curve or understates today by a third); at sub-1% both are noise. Do not
+re-litigate without new evidence.
+
 **Accessibility of the `(i)` affordance.** Hover alone is unreachable on touch and hides
 the assumption from anyone who doesn't hover — the exact failure mode this change exists
 to fix. The affordance must therefore respond to click and keyboard focus as well, and
@@ -422,27 +433,27 @@ together, so there is no window where one is ahead of the other.
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -q`
-- [x] 1.2 Full suite minus e2e stays green: `uv run pytest --ignore=tests/e2e -q`
-- [x] 1.3 Lint passes: `uv run ruff check db/ tests/`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery.py -q` — 1fbef7b
+- [x] 1.2 Full suite minus e2e stays green: `uv run pytest --ignore=tests/e2e -q` — 1fbef7b
+- [x] 1.3 Lint passes: `uv run ruff check db/ tests/` — 1fbef7b
 
 #### Manual
 
-- [x] 1.4 Against real BigQuery, `1y` on "Główny" returns ~249 points instead of 71
-- [x] 1.5 The value on the trading day before 2026-04-16 differs from the debut-day value by less than the daily move of the other holdings (no phantom step from `S2B`)
-- [x] 1.6 `notes` names `S2B` with `listed_from = 2026-04-16` and its debut close
+- [x] 1.4 Against real BigQuery, `1y` on "Główny" returns ~249 points instead of 71 — 1fbef7b
+- [x] 1.5 The value on the trading day before 2026-04-16 differs from the debut-day value by less than the daily move of the other holdings (no phantom step from `S2B`) — 1fbef7b
+- [x] 1.6 `notes` names `S2B` with `listed_from = 2026-04-16` and its debut close — 1fbef7b
 
 ### Phase 2: API layer — object response
 
 #### Automated
 
-- [ ] 2.1 API tests pass: `uv run pytest tests/test_api.py -q`
-- [ ] 2.2 Full suite minus e2e green: `uv run pytest --ignore=tests/e2e -q`
-- [ ] 2.3 Lint passes: `uv run ruff check src/ tests/`
+- [x] 2.1 API tests pass: `uv run pytest tests/test_api.py -q`
+- [x] 2.2 Full suite minus e2e green: `uv run pytest --ignore=tests/e2e -q`
+- [x] 2.3 Lint passes: `uv run ruff check src/ tests/`
 
 #### Manual
 
-- [ ] 2.4 `GET /api/portfolio/history?range=1y&portfolio_id=<główny>` against real BQ returns an envelope whose `series` spans a full year and whose `notes` names `S2B`
+- [x] 2.4 `GET /api/portfolio/history?range=1y&portfolio_id=<główny>` against real BQ returns an envelope whose `series` spans a full year and whose `notes` names `S2B`
 
 ### Phase 3: Frontend — `(i)` affordance on the chart
 

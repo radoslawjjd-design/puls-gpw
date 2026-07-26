@@ -253,6 +253,27 @@ class PortfolioHistoryPoint(BaseModel):
     pnl_pln: float
 
 
+class PortfolioHistoryNote(BaseModel):
+    # PUL-100: a holding whose pre-debut days were valued at its first known close.
+    model_config = ConfigDict(extra="ignore")
+    ticker: str
+    # First date we hold data for — NOT necessarily a listing date. A ticker whose
+    # history simply starts when the scraper did looks identical here, so anything
+    # rendered from this must say "no quotes before X", never "listed on X".
+    listed_from: str  # ISO YYYY-MM-DD
+    price: float
+
+
+class PortfolioHistoryResponse(BaseModel):
+    # PUL-100: the series alone can't say which holdings were valued at a debut price
+    # or dropped for having no price at all — in a finance app that assumption has to
+    # travel with the data, so the endpoint returns an envelope rather than a bare list.
+    model_config = ConfigDict(extra="ignore")
+    series: list[PortfolioHistoryPoint]
+    notes: list[PortfolioHistoryNote] = []
+    excluded: list[str] = []
+
+
 # Supported history ranges → day-based floor from today. `1d` is intentionally
 # absent (no intraday data stored); the endpoint 422s on anything not here.
 _HISTORY_RANGE_DAYS = {"1w": 7, "1m": 30, "3m": 90, "1y": 365}
@@ -1015,18 +1036,29 @@ def create_app() -> FastAPI:
             if not any(w["portfolio_id"] == portfolio_id for w in wallets):
                 raise HTTPException(status_code=403, detail="Portfolio not found or access denied")
         try:
-            rows = get_portfolio_history(None if all_mode else portfolio_id, user_id, start_date)
+            data = get_portfolio_history(None if all_mode else portfolio_id, user_id, start_date)
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/history: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
-        result = [
-            PortfolioHistoryPoint(
-                date=row["snapshot_date"].isoformat(),
-                value_pln=row["value_pln"],
-                pnl_pln=row["pnl_pln"],
-            ).model_dump()
-            for row in rows
-        ]
+        result = PortfolioHistoryResponse(
+            series=[
+                PortfolioHistoryPoint(
+                    date=row["snapshot_date"].isoformat(),
+                    value_pln=row["value_pln"],
+                    pnl_pln=row["pnl_pln"],
+                )
+                for row in data["series"]
+            ],
+            notes=[
+                PortfolioHistoryNote(
+                    ticker=note["ticker"],
+                    listed_from=note["listed_from"].isoformat(),
+                    price=note["price"],
+                )
+                for note in data["notes"]
+            ],
+            excluded=list(data["excluded"]),
+        ).model_dump()
         _perf_set(cache_key, result)
         return result
 

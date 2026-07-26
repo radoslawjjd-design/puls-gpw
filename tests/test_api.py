@@ -1052,7 +1052,7 @@ def test_get_portfolio_calendar_all_mode_skips_ownership_and_passes_none(user_cl
 def test_get_portfolio_history_all_mode_skips_ownership_and_passes_none(user_client):
     with (
         patch("src.api.list_user_portfolios") as mock_wallets,
-        patch("src.api.get_portfolio_history", return_value=_HIST_ROWS) as mock_hist,
+        patch("src.api.get_portfolio_history", return_value=_HIST_RESULT) as mock_hist,
     ):
         r = user_client.get("/api/portfolio/history?range=1m&portfolio_id=all")
     assert r.status_code == 200
@@ -1604,6 +1604,9 @@ _HIST_ROWS = [
     {"snapshot_date": date(2026, 6, 2), "value_pln": 10000.0, "pnl_pln": 500.0},
     {"snapshot_date": date(2026, 6, 3), "value_pln": 10150.0, "pnl_pln": 650.0},
 ]
+_HIST_NOTES = [{"ticker": "S2B", "listed_from": date(2026, 4, 16), "price": 35.7}]
+# PUL-100: get_portfolio_history returns an envelope, not a bare list
+_HIST_RESULT = {"series": _HIST_ROWS, "notes": _HIST_NOTES, "excluded": ["AAS"]}
 
 
 @pytest.mark.parametrize("rng,days", [("1w", 7), ("1m", 30), ("3m", 90), ("1y", 365)])
@@ -1621,18 +1624,54 @@ def test_history_start_date_rejects_invalid_ranges():
 
 
 def test_get_portfolio_history_returns_200_with_series(user_client):
-    """Valid range → 200 with a list of {date, value_pln, pnl_pln}."""
+    """PUL-100: valid range → 200 with {series, notes, excluded}, not a bare list.
+
+    Each history test uses its own range so the endpoint's 300 s response cache
+    (keyed user:portfolio:range) can't serve one test's mock to another."""
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
-        patch("src.api.get_portfolio_history", return_value=_HIST_ROWS),
+        patch("src.api.get_portfolio_history", return_value=_HIST_RESULT),
     ):
         r = user_client.get(
             f"/api/portfolio/history?range=1m&portfolio_id={_HIST_PORTFOLIO_ID}",
         )
     assert r.status_code == 200
     body = r.json()
-    assert isinstance(body, list)
-    assert body[0] == {"date": "2026-06-02", "value_pln": 10000.0, "pnl_pln": 500.0}
+    assert set(body) == {"series", "notes", "excluded"}
+    assert body["series"][0] == {"date": "2026-06-02", "value_pln": 10000.0, "pnl_pln": 500.0}
+
+
+def test_get_portfolio_history_surfaces_notes_and_excluded(user_client):
+    """PUL-100: the backfill metadata must reach the client — dates serialised as ISO
+    strings so the chart can render the note without parsing a Python date."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_history", return_value=_HIST_RESULT),
+    ):
+        r = user_client.get(
+            f"/api/portfolio/history?range=3m&portfolio_id={_HIST_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["notes"] == [{"ticker": "S2B", "listed_from": "2026-04-16", "price": 35.7}]
+    assert body["excluded"] == ["AAS"]
+
+
+def test_get_portfolio_history_empty_returns_well_formed_envelope(user_client):
+    """A portfolio with nothing to show must still return all three keys — the chart
+    reads .series unconditionally and would break on null."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch(
+            "src.api.get_portfolio_history",
+            return_value={"series": [], "notes": [], "excluded": []},
+        ),
+    ):
+        r = user_client.get(
+            f"/api/portfolio/history?range=1y&portfolio_id={_HIST_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 200
+    assert r.json() == {"series": [], "notes": [], "excluded": []}
 
 
 def test_get_portfolio_history_returns_401_without_session(api_client):
