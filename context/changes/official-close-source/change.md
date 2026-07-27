@@ -48,6 +48,11 @@ parser to mirror: `src/gpw_etf_metrics.py:fetch_etf_page`.
    `range=1y`, so ~90% of the 1.9 M backfilled rows are invisible, while the `Nazwa → Skrót`
    mapping degrades with age (90% today → 69% at 5 years). The correction therefore closes GH #193
    entirely and GH #191 (dividend-adjusted closes) across the whole visible surface.
+   **The corrective pass is GPW main market only** — `archiwum-notowan?type=10` covers 372
+   main-market names and no per-date NewConnect archive endpoint was found. Verified this is
+   harmless: all 11 stock holdings across all portfolios sit on the main market, zero on NewConnect
+   (the other 3 held instruments are ETFs in `etf_quotes`). NewConnect still gets the forward fix
+   from the live feed; only its *history* stays as PUL-92 left it.
 3. **Correction mapping is hard-gated.** Only exact, unambiguous `Nazwa → Skrót` hits are written;
    anything else is logged and skipped. No fuzzy matching — a mis-mapped name writes a
    plausible-looking price against the wrong ticker, which is the failure class this change exists
