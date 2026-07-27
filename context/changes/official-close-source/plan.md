@@ -30,7 +30,12 @@ off). The turnover and trade-count gaps are consistent with bankier excluding th
 **Timing is real but already satisfied.** The live GPW table is a ~15-minute-delayed feed whose
 column is literally *"Kurs ost. trans. / zamk."* — the last transaction during the session. Polling
 on 2026-07-27 showed the closing-auction price landing at **~17:15 Warsaw** and never moving after
-(identical at 17:15, 17:25, 17:35, 17:45, 17:56). The existing scheduler `1,31 9-17 * * 1-5` fires
+(identical at 17:15, 17:25, 17:35, 17:45, 17:56, 21:55 and 22:45 — later ticks changed only the
+transaction *timestamp*, as dogrywka trades execute at the fixed price). The same poll pinned the
+archive's publication window: `archiwum-notowan` for 2026-07-27 still returned no sheet at **17:56**
+and the full 403-row sheet by **21:55**. The archive is therefore a next-morning oracle, never a
+same-evening one — which is why the self-heal targets the *previous* session.
+The existing scheduler `1,31 9-17 * * 1-5` fires
 last at **17:31**, giving ~16 minutes of margin. No cron change — and therefore no human-only infra
 step — is required. But every run from 9:01 to 17:01 writes an intraday price, and the MERGE
 upserts, so a failed 17:31 run silently leaves an intraday value as the day's close.
@@ -448,13 +453,20 @@ by the sheet's `Nazwa`.
 are module constants: `10` akcje, `241` ETF, `560` ETC, `561` ETN. Returns `kurs_otwarcia`,
 `kurs_max`, `kurs_min`, `kurs_zamkniecia`, `zmiana_procentowa`, `wartosc_obrotu` (×1000).
 
-Two contracts that are not obvious:
+Three contracts that are not obvious:
 - A non-session date (weekend, holiday, or a session not yet published) yields no quotation table.
   Return `{}`, which callers treat as "no session", never as an error.
-- The archive rejects rapid sequential requests — a measured 0.4 s cadence produced
-  `ConnectionReset`. The module reuses one HTTP session, paces requests at **≥1.5 s**, and retries
-  with increasing backoff. `src/http_client.py` provides no inter-request throttle despite its
-  docstring, so pacing is this module's responsibility.
+- **A failed fetch must not be reported as `{}`.** Once retries are exhausted the reader raises
+  `ScraperError`. Conflating the two would make a transient network fault look like a market
+  holiday: the corrective script's phantom-date report (Phase 7) would name a perfectly normal
+  session, and the self-heal would skip a date it should have repaired — both silently.
+- The archive resets connections both under load and at rest. A measured 0.4 s cadence produced
+  `ConnectionReset`; a single isolated fetch **ten minutes** after the previous one also failed
+  (`ConnectionError`, 2026-07-27 22:35, succeeding again on the next tick). Pacing alone therefore
+  does not prevent it: the module reuses one HTTP session, paces requests at **≥1.5 s**, *and*
+  retries with increasing backoff — the retry is load-bearing, not a nicety. `src/http_client.py`
+  provides no inter-request throttle despite its docstring, so pacing is this module's
+  responsibility.
 
 #### 2. Unit tests
 
@@ -463,7 +475,8 @@ Two contracts that are not obvious:
 **Intent**: Cover parsing and the no-session path.
 
 **Contract**: Inline HTML fixture with the archive's 8-column layout, Polish decimals and NBSP
-thousands. Cases: happy path, non-session date → `{}`, HTTP failure → `{}`, `×1000` turnover
+thousands. Cases: happy path, non-session date → `{}`, **exhausted retries → `ScraperError` (not
+`{}`)**, a transient failure followed by a success → the retry returns the sheet, `×1000` turnover
 conversion. Patch `get` at `src.gpw_archive.get`.
 
 ### Success Criteria:
@@ -478,7 +491,8 @@ conversion. Patch `get` at `src.gpw_archive.get`.
 
 - Live fetch for a known session returns ~400 rows; `ALE` on 2026-07-24 is `44.735`
 - A Saturday date returns `{}` rather than raising
-- A ~20-session sequential fetch completes without a connection reset
+- A ~20-session sequential fetch retrieves every session — resets may occur, the retry must absorb
+  them; zero sessions may be silently reported as empty
 
 **Implementation Note**: Pause for manual confirmation before proceeding.
 
@@ -844,7 +858,7 @@ inside the corrected window means the row was never matched — a useful audit s
 
 - [ ] 5.4 Live fetch returns ~400 rows and ALE 2026-07-24 is 44.735
 - [ ] 5.5 A Saturday date returns empty rather than raising
-- [ ] 5.6 A ~20-session sequential fetch completes without a connection reset
+- [ ] 5.6 A ~20-session sequential fetch retrieves every session, retries absorbing any reset
 
 ### Phase 6: Self-heal the previous session
 
