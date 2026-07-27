@@ -179,8 +179,23 @@ years.**
 **The catch: the archive table carries no ISIN and no ticker — only `Nazwa`.** Rows are
 `<td class="left">06MAGNA</td>` with no links or attributes. Joining requires a `Nazwa → Skrót`
 map, which the *live* table supplies exactly (its `Nazwa` values are byte-identical: `ALLEGRO`,
-`PKOBP`, …). For a correction window of the last ~5 weeks that is safe; for a multi-year
-re-backfill, company names drift and delisted names are absent from today's live table.
+`PKOBP`, …). **Measured decay of that map against today's live feed:**
+
+| archive session | rows | matched by name | unmatched |
+|---|---|---|---|
+| 2026-07-24 (today−1) | 403 | 364 (90.3%) | 39 |
+| 2025-07-25 (−1 y) | 404 | 349 (86.4%) | 55 |
+| 2024-07-24 (−2 y) | 414 | 342 (82.6%) | 72 |
+| 2021-07-23 (−5 y) | 441 | 304 (68.9%) | 137 |
+
+The unmatched tail is renames, delistings and instruments the live "all" tab excludes. A fuzzy
+name match would write a plausible-looking price against the wrong ticker — the exact failure class
+this change exists to eliminate — so any correction pass must be **hard-gated on an exact,
+unambiguous `Nazwa → Skrót` hit** and log the rest rather than guess.
+
+Cost per session: **283 KB, ~1.3 s**. A 13-month correction (~250 sessions) is ~10 minutes of
+polite fetching; the full 2011–2026 span (~3 900 sessions) is ~1.1 GB and ~2 hours — feasible, but
+see the value analysis below.
 
 Two things the archive does **not** give: `liczba_transakcji`, and same-day availability. As of
 17:05 on 2026-07-27, `date=27-07-2026` still returned the bare page with no quotation table — so
@@ -404,19 +419,47 @@ the plan — this research does not assume it.
 
 ## Open Questions
 
-1. **When exactly does the live table publish the closing-auction price?** A poller sampling every
-   10 minutes from 17:05 is running; the answer sets the earliest safe fetch time and therefore the
-   cron. *(Measured empirically — do not plan around a guess.)*
-2. **When does the archive publish a completed session?** At 17:05 today, `date=27-07-2026` was
-   still empty. If it lands the same evening, the daily job can use the archive and sidestep the
-   timing problem entirely — the single highest-leverage unknown for the design.
+1. ~~When exactly does the live table publish the closing-auction price?~~ **ANSWERED — measured
+   2026-07-27 by a 10-minute poller.** The closing-auction price appears at **~17:15 Warsaw** and
+   never moves afterwards (identical values at 17:15, 17:25, 17:35, 17:45, 17:56):
+
+   ```
+   17:05  ALE 44,9200@16:49:56  KGH 304,3000@16:49:57  PKN 150,2600@16:49:59   ← intraday, delayed
+   17:15  ALE 45,0000@17:00:00  KGH 302,5000@17:00:41  PKN 151,0000@17:00:17   ← close landed
+   17:25  ALE 45,0000@17:03:50  KGH 302,5000@17:00:41  PKN 151,0000@17:04:40   ← stable (dogrywka)
+   17:56  ALE 45,0000@17:03:50  KGH 302,5000@17:00:41  PKN 151,0000@17:04:40   ← unchanged
+   ```
+
+   So the existing `1,31 9-17` cron's last tick at **17:31 is late enough, with ~16 minutes of
+   margin** — no scheduler change (i.e. no human-only step) is required. Every earlier tick of the
+   day still writes an intraday price, but the MERGE upserts, so the 17:31 run overwrites them. The
+   plan should nonetheless treat "was this row written before the close settled?" as a real state,
+   because any failed 17:31 run silently leaves an intraday price as the day's final value.
+
+2. **When does the archive publish a completed session?** Still empty at 17:56 for
+   `date=27-07-2026`, ~1 hour after the close — so the archive is **not** a same-evening source and
+   the daily job must use the live table. (The poller keeps sampling until ~19:05; if it lands
+   tonight that is worth knowing, but the design should not depend on it.) The archive's role is
+   therefore verification and correction, not daily ingest.
 3. **NewConnect archive.** `newconnect.pl/archiwum-notowan` redirects to `/statystyki-okresowe` and
    returns no quotation table; the per-date NC archive endpoint is unfound. If the design uses the
    archive for NC too, this needs a spike.
 4. **The ~47 uncovered companies** — drop them, or keep bankier as a fallback for tickers absent
    from the GPW/NC feeds? At least 18 are actively priced today.
-5. **Retro-correction scope** — 16 857 scraper-era rows (2026-06-26…2026-07-27, 743 tickers). In
-   PUL-98, or deferred to PUL-96 where the archive would also fix the dividend adjustment?
+5. **Retro-correction scope.** Sizing, since PUL-92 loaded ~1.9 M rows:
+
+   | slice | rows (approx) | what it fixes | rendered anywhere today? |
+   |---|---|---|---|
+   | scraper era 2026-06-26→now | 16 857 (743 tickers) | seam B only (≤0.4%) | yes |
+   | trailing 13 months | ~186 000 | seam A **and** B | yes — this is the whole visible surface |
+   | full 2011–2026 | ~1 897 000 | same, on invisible rows | **no** |
+
+   Nothing in the product renders more than one year: `/api/portfolio/history` accepts
+   `range=1w|1m|3m|1y`, `price_history` is 30 sessions (`db/bigquery.py:816-843`), the calendar is a
+   month. So **~90% of the backfilled rows are invisible to every current surface**, and the
+   marginal value of correcting beyond ~13 months is zero until a longer range is added — while the
+   name-mapping risk grows with age (69% match at 5 years). Recommended scope: trailing ~13 months,
+   hard-gated mapping, everything else logged.
 6. **`liczba_transakcji` / `wartosc_obrotu` under a source switch.** The live feed has both
    (indices 22 and 24); the archive has turnover only. Whichever source is chosen, the MERGE's
    MATCHED branch overwrites all nine columns, so a partial row is a silent data loss.
