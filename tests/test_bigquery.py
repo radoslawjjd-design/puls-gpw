@@ -1425,35 +1425,66 @@ def test_get_portfolio_calendar_data_raises_bigquery_error_on_failure():
 
 # ── get_portfolio_history (PUL-79 / FARO-5) ──────────────────────────────────
 
-def test_get_portfolio_history_returns_correct_shape():
-    """Returns list[dict] with date/value_pln/pnl_pln keys, floats coerced, ascending."""
+def _hist_row(snapshot_date, value_pln, pnl_pln, notes=None, excluded=None) -> dict:
+    """One row as BigQuery returns it: series columns plus the cross-joined metadata."""
+    return {
+        "snapshot_date": snapshot_date,
+        "value_pln": value_pln,
+        "pnl_pln": pnl_pln,
+        "notes": notes if notes is not None else [],
+        "excluded": excluded if excluded is not None else [],
+    }
+
+
+def test_get_portfolio_history_returns_series_and_metadata():
+    """PUL-100: returns {series, notes, excluded}; floats coerced, metadata read once."""
     from db.bigquery import get_portfolio_history
 
+    notes = [{"ticker": "S2B", "first_px_date": date(2026, 4, 16), "first_px": 35.7}]
     bq_rows = [
-        {"snapshot_date": date(2026, 6, 2), "value_pln": 10500, "pnl_pln": 500},
-        {"snapshot_date": date(2026, 6, 3), "value_pln": 10650.5, "pnl_pln": 650.5},
+        _hist_row(date(2026, 6, 2), 10500, 500, notes=notes),
+        _hist_row(date(2026, 6, 3), 10650.5, 650.5, notes=notes),
     ]
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(bq_rows)):
         result = get_portfolio_history("port-123", "user-abc", date(2026, 6, 1))
 
-    assert isinstance(result, list)
-    assert len(result) == 2
-    row = result[0]
-    assert row["snapshot_date"] == date(2026, 6, 2)
-    assert row["value_pln"] == 10500.0
-    assert isinstance(row["value_pln"], float)
-    assert row["pnl_pln"] == 500.0
-    assert isinstance(row["pnl_pln"], float)
+    assert set(result) == {"series", "notes", "excluded"}
+    series = result["series"]
+    assert len(series) == 2
+    assert series[0]["snapshot_date"] == date(2026, 6, 2)
+    assert series[0]["value_pln"] == 10500.0
+    assert isinstance(series[0]["value_pln"], float)
+    assert series[0]["pnl_pln"] == 500.0
+    assert isinstance(series[0]["pnl_pln"], float)
+    # metadata is repeated on every row by the join — surface it once, not twice
+    assert result["notes"] == [
+        {"ticker": "S2B", "listed_from": date(2026, 4, 16), "price": 35.7}
+    ]
+    assert result["excluded"] == []
 
 
-def test_get_portfolio_history_returns_empty_list_when_no_rows():
-    """Returns [] when the portfolio has no positions or no fully-covered day in range."""
+def test_get_portfolio_history_reports_excluded_when_nothing_is_priced():
+    """F1 (plan-review): the degenerate row (NULL date, metadata only) must not become a
+    data point — but its excluded list must still reach the caller, or the chart goes
+    blank with no explanation."""
+    from db.bigquery import get_portfolio_history
+
+    bq_rows = [_hist_row(None, None, None, excluded=["AAS", "QUANTUM"])]
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(bq_rows)):
+        result = get_portfolio_history("port-123", "user-abc", date(2026, 6, 1))
+
+    assert result["series"] == []
+    assert result["excluded"] == ["AAS", "QUANTUM"]
+
+
+def test_get_portfolio_history_returns_empty_envelope_when_no_rows():
+    """No positions at all → a well-formed envelope, never None or a bare list."""
     from db.bigquery import get_portfolio_history
 
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
         result = get_portfolio_history("empty-port", "user-1", date(2026, 6, 1))
 
-    assert result == []
+    assert result == {"series": [], "notes": [], "excluded": []}
 
 
 def test_get_portfolio_history_raises_bigquery_error_on_failure():
@@ -1470,21 +1501,29 @@ def test_get_portfolio_history_raises_bigquery_error_on_failure():
             get_portfolio_history("port-123", "user-abc", date(2026, 6, 1))
 
 
-def test_get_portfolio_history_query_forward_fills_and_gates_coverage():
-    """F1: query must LOCF-fill (no 0-fill), scan before start_date, gate on full coverage, cover ETFs."""
+def test_get_portfolio_history_query_fills_both_directions_and_demotes_the_gate():
+    """PUL-100: LOCF stays, BOCF is added so a recent IPO stops clamping the series, and
+    the full-coverage gate is demoted to a safety net that fires only when a ticker has
+    no price anywhere."""
     from db.bigquery import get_portfolio_history
 
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
         get_portfolio_history("port-1", "user-1", date(2026, 6, 1))
 
     q = " ".join(mock_get.return_value.query.call_args[0][0].split())
-    # Forward-fill (LOCF), not 0-fill
+    # Forward-fill (LOCF) survives from PUL-79
     assert "LAST_VALUE" in q and "IGNORE NULLS" in q, "history must forward-fill (LOCF)"
-    assert "ELSE 0" not in q, "history must NOT 0-fill missing prices (F1)"
+    # Backward-fill (BOCF): days before a debut carry the earliest known close
+    assert "FIRST_VALUE" in q, "history must backward-fill pre-debut days (BOCF)"
+    assert "UNBOUNDED FOLLOWING" in q, "BOCF needs a forward-looking window frame"
     # Price scan reaches before @start_date so early in-range days can be filled
-    assert "DATE_SUB(@start_date" in q, "price scan must reach before start_date for LOCF"
-    # Emit a day only when every held position is priced that day
-    assert "COUNTIF" in q and "= 0" in q, "history must gate emitted days on full coverage"
+    assert "DATE_SUB(@start_date" in q, "price scan must reach before start_date"
+    # The clamping gate is gone; only genuinely priceless tickers are dropped
+    assert "missing = 0" not in q, "the full-coverage gate must no longer clamp the series"
+    assert "covered > 0" in q, "keep a safety net for a portfolio with no priced holding"
+    assert "IF(px_ff IS NOT NULL" in q, "value and cost basis must be dropped together"
+    # F1 (plan-review): metadata must survive an empty daily set → join meta-first
+    assert "LEFT JOIN daily" in q, "meta must be the left side so metadata survives"
     # ETF-safe: history values must include etf_quotes
     assert "etf_quotes" in q, "history must include etf_quotes for ETF positions"
 

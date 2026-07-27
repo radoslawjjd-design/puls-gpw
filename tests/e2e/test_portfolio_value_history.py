@@ -83,6 +83,38 @@ def test_both_charts_render_with_dynamic_titles(page: Page, live_server_url: str
         )
 
 
+def test_backfill_note_is_reachable_without_a_mouse(page: Page, live_server_url: str):
+    """Risk (PUL-100): the chart values a holding at its first known close on days
+    before that close existed. In a finance app a silent assumption is the bug, so the
+    disclosure must be genuinely reachable — a hover-only tooltip is unreachable by
+    keyboard and on touch. Driving it with Enter proves the affordance is a real button
+    and not a hover surface, and the aggregate chart (no backfilled holding in the fake)
+    must carry no affordance at all."""
+    _login(page, live_server_url)
+    _open_portfolio_glowny(page)
+    _open_calendar_tab(page)
+
+    active = page.locator(_ACTIVE)
+    info = active.get_by_role("button", name=re.compile("Szczegóły wyceny"))
+    expect(info).to_be_visible()
+    expect(info).to_have_attribute("aria-expanded", "false")
+
+    # Keyboard alone: focus the affordance and activate it with Enter.
+    info.focus()
+    page.keyboard.press("Enter")
+
+    expect(info).to_have_attribute("aria-expanded", "true")
+    expect(active.get_by_text(re.compile(r"S2B.*brak notowań przed"))).to_be_visible()
+    # The excluded branch is the worst case — a holding we couldn't price at all — so
+    # it is exactly the message that must not rot untested.
+    expect(active.get_by_text(re.compile(r"AAS.*pominięty w wycenie"))).to_be_visible()
+
+    # A chart with nothing to disclose must not grow a dangling affordance.
+    expect(
+        page.locator(_ALL).get_by_role("button", name=re.compile("Szczegóły wyceny"))
+    ).to_have_count(0)
+
+
 def test_wszystkie_tab_shows_single_aggregate_chart(page: Page, live_server_url: str):
     """Risk: when the active tab IS "Wszystkie", only ONE chart (the aggregate) must
     render — the active-portfolio block is redundant and must be hidden."""

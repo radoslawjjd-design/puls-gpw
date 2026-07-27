@@ -868,6 +868,15 @@
   .pp-hist-delta.negative, .pp-hist-svg.down { color: var(--negative); }
   .pp-hist-svg { display: block; width: 100%; height: auto; overflow: visible; }
   .pp-hist-axis { fill: var(--text-muted); font-size: 11px; }
+  /* PUL-100: discloses holdings valued at their first known close. A plain button, so
+     Enter/Space and a touch tap reach it — a hover-only tooltip would hide the
+     assumption from exactly the users least able to go looking for it. */
+  .pp-hist-info { margin-left: .45rem; width: 1.15rem; height: 1.15rem; padding: 0;
+    border: 1px solid var(--border); border-radius: 50%; background: transparent;
+    color: var(--text-muted); font: 700 .7rem/1 inherit; cursor: pointer; }
+  .pp-hist-info:hover, .pp-hist-info:focus-visible { color: var(--text); border-color: var(--text-muted); }
+  .pp-hist-note { margin: .1rem 0 .55rem; font-size: .78rem; line-height: 1.45; color: var(--text-muted); }
+  .pp-hist-note ul { margin: 0; padding-left: 1.1rem; }
   .pp-hist-grid { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
 
   .pp-notice { font-size: .875rem; color: var(--text-muted); padding: .4rem 0; }
@@ -4224,14 +4233,36 @@ async function _fetchPortfolioHistorySlot(portfolioId, chartElId) {
   }
 }
 
+// Rok jest konieczny: zakresy 1r/3m potrafią przekroczyć granicę roku,
+// a same DD.MM nie mówią, czy „24.07" to ten rok czy poprzedni.
+function _ppFmtDatePl(ds) { const p = String(ds).split('-'); return p[2] + '.' + p[1] + '.' + p[0]; }
+
+// PUL-100: what the chart is quietly assuming, in plain sentences.
+// Wording is deliberately about DATA, never about a listing — `listed_from` is the
+// first date we hold a quote for, which for a ticker whose history starts when the
+// scraper did is not a debut at all.
+function _ppHistNoteLines(data) {
+  const lines = [];
+  for (const n of (data && data.notes) || []) {
+    lines.push(n.ticker + ' — brak notowań przed ' + _ppFmtDatePl(n.listed_from) +
+      '; wcześniejsze dni wycenione kursem ' +
+      Number(n.price).toFixed(2).replace('.', ',') + ' zł');
+  }
+  for (const t of (data && data.excluded) || []) {
+    lines.push(t + ' — brak notowań, pominięty w wycenie');
+  }
+  return lines;
+}
+
 function _renderPortfolioHistory(data, chartEl) {
   const chart = chartEl;
-  if (!Array.isArray(data) || data.length === 0) {
+  const points = (data && Array.isArray(data.series)) ? data.series : [];
+  if (points.length === 0) {
     chart.innerHTML = '<div class="empty">Brak danych dla tego zakresu</div>';
     return;
   }
   const pnl = _ppHistMetric === 'pnl';
-  const series = data.map(d => pnl ? d.pnl_pln : d.value_pln);
+  const series = points.map(d => pnl ? d.pnl_pln : d.value_pln);
   const n = series.length;
   const min = Math.min(...series), max = Math.max(...series);
   const span = (max - min) || 1;
@@ -4256,9 +4287,7 @@ function _renderPortfolioHistory(data, chartEl) {
     ' L ' + last[0].toFixed(1) + ' ' + baseY + ' L ' + first[0].toFixed(1) + ' ' + baseY + ' Z';
 
   const fmt = v => Math.round(v).toLocaleString('pl-PL');
-  // Rok jest konieczny: zakresy 1r/3m potrafią przekroczyć granicę roku,
-  // a same DD.MM nie mówią, czy „24.07" to ten rok czy poprzedni.
-  const fmtDate = ds => { const p = ds.split('-'); return p[2] + '.' + p[1] + '.' + p[0]; };
+  const fmtDate = _ppFmtDatePl;
 
   const grids = [max, (max + min) / 2, min].map(v => {
     const y = yFor(v).toFixed(1);
@@ -4280,20 +4309,40 @@ function _renderPortfolioHistory(data, chartEl) {
       '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="3.5" fill="currentColor"/>' +
       '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(max) + 4).toFixed(1) + '" text-anchor="end">' + esc(fmt(max)) + '</text>' +
       '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(min) + 4).toFixed(1) + '" text-anchor="end">' + esc(fmt(min)) + '</text>' +
-      '<text class="pp-hist-axis" x="' + padL + '" y="' + (H - 6) + '">' + esc(fmtDate(data[0].date)) + '</text>' +
-      '<text class="pp-hist-axis" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + esc(fmtDate(data[n - 1].date)) + '</text>' +
+      '<text class="pp-hist-axis" x="' + padL + '" y="' + (H - 6) + '">' + esc(fmtDate(points[0].date)) + '</text>' +
+      '<text class="pp-hist-axis" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + esc(fmtDate(points[n - 1].date)) + '</text>' +
     '</svg>';
 
   const cur = series[n - 1], delta = series[n - 1] - series[0];
   const pct = series[0] !== 0 ? (delta / Math.abs(series[0]) * 100) : 0;
   const dsign = delta >= 0 ? '+' : '−';
   const dcls = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
+  const noteLines = _ppHistNoteLines(data);
+  // The full text also rides in aria-label, so assistive tech gets it without
+  // anyone having to discover and open the affordance first.
+  const info = noteLines.length
+    ? '<button type="button" class="pp-hist-info" aria-expanded="false" aria-label="' +
+        esc('Szczegóły wyceny: ' + noteLines.join('; ')) + '">i</button>'
+    : '';
+  const noteBlock = noteLines.length
+    ? '<div class="pp-hist-note" hidden><ul>' +
+        noteLines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul></div>'
+    : '';
   const head =
     '<div class="pp-hist-head"><span class="pp-hist-val">' + esc(fmt(cur)) + ' PLN</span>' +
     '<span class="pp-hist-delta ' + dcls + '">' + dsign + esc(fmt(Math.abs(delta))) +
-    ' PLN (' + dsign + Math.abs(pct).toFixed(1).replace('.', ',') + '%)</span></div>';
+    ' PLN (' + dsign + Math.abs(pct).toFixed(1).replace('.', ',') + '%)</span>' + info + '</div>';
 
-  chart.innerHTML = head + svg;
+  chart.innerHTML = head + noteBlock + svg;
+
+  const infoBtn = chart.querySelector('.pp-hist-info');
+  if (infoBtn) {
+    infoBtn.addEventListener('click', () => {
+      const open = infoBtn.getAttribute('aria-expanded') === 'true';
+      infoBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      chart.querySelector('.pp-hist-note').hidden = open;
+    });
+  }
 }
 
 function _renderPortfolioTreemap(data) {

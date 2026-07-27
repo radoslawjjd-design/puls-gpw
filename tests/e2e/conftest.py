@@ -375,12 +375,25 @@ _FAKE_HISTORY_ROWS_ALL = [
 ]
 
 
+# PUL-100: the active portfolio carries BOTH a backfilled holding and an excluded one,
+# so e2e renders both disclosure branches; the aggregate carries neither, which keeps
+# the negative branch (a chart with nothing to disclose grows no affordance) covered.
+_FAKE_HISTORY_NOTES = [
+    {"ticker": "S2B", "listed_from": _cal_weekdays[1], "price": 35.7},
+]
+_FAKE_HISTORY_EXCLUDED = ["AAS"]
+
+
 def _fake_get_portfolio_history(portfolio_id, user_id, start_date):
     if portfolio_id == _FAKE_PORTFOLIO_ID:
-        return _FAKE_HISTORY_ROWS
+        return {
+            "series": _FAKE_HISTORY_ROWS,
+            "notes": _FAKE_HISTORY_NOTES,
+            "excluded": _FAKE_HISTORY_EXCLUDED,
+        }
     if portfolio_id is None:  # all-mode aggregate (portfolio_id=all → None)
-        return _FAKE_HISTORY_ROWS_ALL
-    return []
+        return {"series": _FAKE_HISTORY_ROWS_ALL, "notes": [], "excluded": []}
+    return {"series": [], "notes": [], "excluded": []}
 
 
 def _fake_create_user_portfolio_positions_table_if_not_exists():
