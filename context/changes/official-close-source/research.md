@@ -436,11 +436,17 @@ the plan — this research does not assume it.
    plan should nonetheless treat "was this row written before the close settled?" as a real state,
    because any failed 17:31 run silently leaves an intraday price as the day's final value.
 
-2. **When does the archive publish a completed session?** Still empty at 17:56 for
-   `date=27-07-2026`, ~1 hour after the close — so the archive is **not** a same-evening source and
-   the daily job must use the live table. (The poller keeps sampling until ~19:05; if it lands
-   tonight that is worth knowing, but the design should not depend on it.) The archive's role is
-   therefore verification and correction, not daily ingest.
+2. ~~When does the archive publish a completed session?~~ **ANSWERED — it does publish same-day.**
+   `date=27-07-2026` was still empty at 17:56 but returned the full 403-row sheet by 21:55, with
+   `ALLEGRO=45,0000` and `PKOBP=108,0000` — **identical to the live table's settled close**, an
+   independent cross-source confirmation. The exact publication moment is only bracketed
+   (17:56 < t ≤ 21:55) because the sampling machine slept through the interval.
+
+   Design consequence: the daily job still uses the **live table at 17:31**, because moving to a
+   late-evening archive fetch would need a scheduler change (human-only) and would depend on a
+   publication time we have only bracketed. The archive's role is (a) the corrective pass and
+   (b) an optional next-morning verification of the previous session — both of which are strictly
+   better than a same-day dependency.
 3. **NewConnect archive.** `newconnect.pl/archiwum-notowan` redirects to `/statystyki-okresowe` and
    returns no quotation table; the per-date NC archive endpoint is unfound. If the design uses the
    archive for NC too, this needs a spike.
