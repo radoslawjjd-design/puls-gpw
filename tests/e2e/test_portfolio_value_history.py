@@ -105,6 +105,9 @@ def test_backfill_note_is_reachable_without_a_mouse(page: Page, live_server_url:
 
     expect(info).to_have_attribute("aria-expanded", "true")
     expect(active.get_by_text(re.compile(r"S2B.*brak notowań przed"))).to_be_visible()
+    # The excluded branch is the worst case — a holding we couldn't price at all — so
+    # it is exactly the message that must not rot untested.
+    expect(active.get_by_text(re.compile(r"AAS.*pominięty w wycenie"))).to_be_visible()
 
     # A chart with nothing to disclose must not grow a dangling affordance.
     expect(

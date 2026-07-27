@@ -1,9 +1,9 @@
 ---
 change_id: history-coverage-gate
 title: Full-coverage gate collapses the value-history range when a holding is a recent IPO
-status: implemented
+status: impl_reviewed
 created: 2026-07-26
-updated: 2026-07-26
+updated: 2026-07-27
 archived_at: null
 tracking:
   linear: PUL-100

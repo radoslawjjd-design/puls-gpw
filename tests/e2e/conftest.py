@@ -375,12 +375,13 @@ _FAKE_HISTORY_ROWS_ALL = [
 ]
 
 
-# PUL-100: only the active portfolio carries a backfilled holding, so e2e can prove
-# BOTH branches of the affordance — it renders where there is something to disclose
-# and is absent entirely where there isn't.
+# PUL-100: the active portfolio carries BOTH a backfilled holding and an excluded one,
+# so e2e renders both disclosure branches; the aggregate carries neither, which keeps
+# the negative branch (a chart with nothing to disclose grows no affordance) covered.
 _FAKE_HISTORY_NOTES = [
     {"ticker": "S2B", "listed_from": _cal_weekdays[1], "price": 35.7},
 ]
+_FAKE_HISTORY_EXCLUDED = ["AAS"]
 
 
 def _fake_get_portfolio_history(portfolio_id, user_id, start_date):
@@ -388,7 +389,7 @@ def _fake_get_portfolio_history(portfolio_id, user_id, start_date):
         return {
             "series": _FAKE_HISTORY_ROWS,
             "notes": _FAKE_HISTORY_NOTES,
-            "excluded": [],
+            "excluded": _FAKE_HISTORY_EXCLUDED,
         }
     if portfolio_id is None:  # all-mode aggregate (portfolio_id=all → None)
         return {"series": _FAKE_HISTORY_ROWS_ALL, "notes": [], "excluded": []}
