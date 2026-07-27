@@ -35,3 +35,23 @@ Ticket context (Linear PUL-98, verified 2026-07-25):
 
 References: `company_stats_main.py`, `src/bankier_metrics.py:fetch_listing_page`,
 parser to mirror: `src/gpw_etf_metrics.py:fetch_etf_page`.
+
+## Decisions (user, 2026-07-27, after research)
+
+1. **Source priority — GPW/NC always wins.** The daily job reads the GPW main-market table and the
+   NewConnect table. Bankier stays **only as a gap-filler** for tickers present in `companies` but
+   absent from both feeds (~47 today, ≥18 actively priced). A bankier value must **never** overwrite
+   a GPW/NC value for the same ticker — the merge happens in the job before the write, with the
+   official feeds taking precedence.
+2. **Scope — forward fix + a 13-month corrective pass** (~186 000 rows, trailing ~270 sessions)
+   sourced from `gpw.pl/archiwum-notowan`. Not the full 2011–2026 span: nothing renders beyond
+   `range=1y`, so ~90% of the 1.9 M backfilled rows are invisible, while the `Nazwa → Skrót`
+   mapping degrades with age (90% today → 69% at 5 years). The correction therefore closes GH #193
+   entirely and GH #191 (dividend-adjusted closes) across the whole visible surface.
+3. **Correction mapping is hard-gated.** Only exact, unambiguous `Nazwa → Skrót` hits are written;
+   anything else is logged and skipped. No fuzzy matching — a mis-mapped name writes a
+   plausible-looking price against the wrong ticker, which is the failure class this change exists
+   to remove.
+4. **No scheduler change.** The close settles in the live feed at ~17:15 Warsaw and never moves; the
+   existing `1,31 9-17 * * 1-5` cron's 17:31 tick has ~16 minutes of margin. No human-only infra
+   step is required.
