@@ -38,7 +38,9 @@ next session from the feed's own previous-close column.
 | Correction window | Since 2025-01-01 (~390 sessions) | Covers `range=1y` with wide margin; the 1y window moves forward into corrected data, so one pass suffices permanently | User |
 | Correction columns | Close + the two derived change columns only | Open/min/max verified identical; turnover and trade count are unrendered — blast radius equals the defect | User |
 | MERGE shape | New update-only primitive | The existing upsert overwrites all nine columns (would NULL turnover on 16.9k rows); insert-only cannot correct at all | Research |
-| Final-value guarantee | Self-heal from `Kurs odn.` | A definitionally final number, already free in every fetch; repairs a failed 17:31 run automatically | User |
+| Final-value guarantee | `Kurs odn.` detects, the archive decides | The reference price is adjusted for corporate actions, so it is a valid detector but never a valid value — writing it would reintroduce dividend adjustment | Plan review |
+| Derived change columns | Taken from the archive's own `Zmiana kursu %` | Naive close-to-close differencing is wrong across every ex-dividend and split — measured up to 11 pp | Plan review |
+| Rollback | CTAS snapshot of the window before the run | The corrective MERGE overwrites in place; PUL-92's insert-only safety is deliberately given up here | Plan review |
 | Failure policy | Per-source row-count floors → abort + alert | `if not rows` cannot distinguish a healthy partial feed from a dead market now that 704 of 744 is normal | User |
 | Audit columns | Add `source` + `kurs_odn` (NULLABLE) | Without `source` the bankier fallback becomes indistinguishable within a week | User |
 | ETF history | Out of scope — **measured**, not assumed | `etf_quotes` matched the ETF archive 9/9 across a year including a backfilled date; total-return ETFs carry no dividend adjustment | Plan |
@@ -67,20 +69,25 @@ under a hard exact-match gate, and caches raw HTML to disk so repeat passes cost
 
 | Phase | What it delivers | Key risk |
 |---|---|---|
-| 1. Schema | `source` + `kurs_odn`, additive NULLABLE | Live table modes must be checked, not assumed |
+| 1. Schema | `source` + `kurs_odn`, additive NULLABLE | Three of the four column-list sites fail silently if missed |
 | 2. Parser | `src/gpw_quotations.py` for both feeds | Header mapping must fail loud, never guess positionally |
 | 3. Job rewiring | Official priority, bankier gap-fill, coverage floors | New alert surface in a job with no alert dedup (GH #172) |
 | 4. MERGE primitive | Update-only close correction | An accidental `WHEN NOT MATCHED` would insert dates and reshape the chart |
-| 5. Self-heal | Previous session repaired from `Kurs odn.` | Must not fight the corrective pass, must not abort ingest |
-| 6. Archive + script | Reader, cache, dry-run, hard-gated mapping | Fuzzy name matching would write a right-looking price to the wrong ticker |
-| 7. Production run | ~390 sessions corrected and verified | Touches production financial data; duplicate keys would double-count |
+| 5. Archive reader | `src/gpw_archive.py`, paced and retrying | gpw.pl resets the connection under a fast cadence |
+| 6. Self-heal | Previous session repaired from the archive | `Kurs odn.` must stay a detector — writing it corrupts ex-dividend days |
+| 7. Corrective script | Cache, dry-run, hard-gated mapping | Fuzzy name matching would write a right-looking price to the wrong ticker |
+| 8. Production run | ~390 sessions corrected and verified | Overwrites in place; snapshot first, duplicate keys would double-count |
 
 **Prerequisites:** ADC for BigQuery; the corrective run needs ~110 MB of local cache and ~15 minutes
-of network.
-**Estimated effort:** ~3–4 sessions across 7 phases; Phase 7 is operational, not code.
+of network at a ≥1.5 s cadence.
+**Estimated effort:** ~3–4 sessions across 8 phases; Phase 8 is operational, not code.
 
 ## Open Risks & Assumptions
 
+- **A phantom trading day already exists in production**: 2026-06-27 is a Saturday carrying 739
+  rows, which inflates the trading-day spine and double-counts a session in the calendar. This plan
+  reports such dates but does not delete them, and no trading-day guard exists anywhere in the
+  project — more will appear (11 Nov 2026 falls on a Wednesday).
 - The row-count floors add an alert surface to a job that runs 18×/day with no dedup or throttle
   (GH #172). Thresholds must be loose enough that a normal session never trips them.
 - Name mapping is exact-match only; instruments renamed or delisted inside the window will be

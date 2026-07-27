@@ -97,6 +97,10 @@ is 0; the 1-year value chart and the calendar render without gaps or new exclusi
 - **Not retiring bankier.** It remains the gap-filler for ~47 companies absent from both feeds.
 - **Not fixing GH #172** (alert dedup / browser headers) or GH #192 (junk ticker rows).
 - **Not adding a new Cloud Run job or scheduler** — those are human-only.
+- **Not deleting phantom non-session rows.** The corrective script reports them (one exists today:
+  2026-06-27, a Saturday, 739 rows), but removing them — and adding a trading-day guard so no more
+  appear — is a separate change. No holiday calendar or market-open check exists anywhere in the
+  project today.
 
 ## Implementation Approach
 
@@ -110,6 +114,15 @@ Ordering matters: the schema migration lands before any writer references the ne
 `context/foundation/lessons.md:294-326`.
 
 ## Critical Implementation Details
+
+**`Kurs odn.` is a reference price, not a previous close — never write it as a price.** GPW adjusts
+the reference price for corporate actions, so on ex-dividend and split dates it legitimately differs
+from the previous session's close. Measured over 14 sessions, 41 of 5 230 comparisons diverged by
+more than 0.3 pp and up to 11 pp; `ECHO` on 2026-06-24 closed **+0.10% officially against −7.40%
+computed naively**. Two places in this plan are exposed to that confusion — the self-heal (Phase 6)
+and the corrective script's derived columns (Phase 7) — and both resolve it the same way: **the
+archive is the oracle, arithmetic on closes is not.** Any future step that needs a previous close or
+a daily change must take it from the archive's own columns.
 
 **Column mapping must be structural, not positional.** Expanding `colspan` over the first `<thead>`
 row is the load-bearing contract of Phase 2 — the two feeds differ in their identity block
@@ -145,19 +158,56 @@ and the self-heal's input is persisted. Ship the schema before any writer fills 
 
 **File**: `db/bigquery.py`
 
-**Intent**: Extend `_COMPANY_DAILY_STATS_SCHEMA` with the two new columns, and add them to the
-column lists of `merge_company_daily_stats` (both the temp-table explicit schema and the MATCHED /
-NOT MATCHED branches) and `merge_company_daily_stats_insert_only`, so writers can populate them.
+**Intent**: Extend `_COMPANY_DAILY_STATS_SCHEMA` with the two new columns and propagate them through
+every hard-coded column list, so writers can populate them.
 
-**Contract**: `source` STRING NULLABLE — one of `gpw`, `nc`, `bankier`, `archive`, `kurs_odn` —
-and `kurs_odn` FLOAT64 NULLABLE (the feed's reference price, matching the existing
-`etf_quotes.kurs_odn`). Both must be NULLABLE: `ensure_schema_current()`'s additive
-`ALTER TABLE ADD COLUMN` path only succeeds for NULLABLE columns (`db/bigquery.py:2364-2365`).
-Note that `merge_company_daily_stats`'s MATCHED branch will now also overwrite these two columns, so
-any writer that omits them writes `NULL` — `scripts/seed_companies.py:143-157` is such a writer and
-must be updated or explicitly accepted.
+**Contract**: `source` STRING NULLABLE — one of `gpw`, `nc`, `bankier`, `archive` — and `kurs_odn`
+FLOAT64 NULLABLE (the feed's reference price, matching the existing `etf_quotes.kurs_odn`). Both
+must be NULLABLE: `ensure_schema_current()`'s additive `ALTER TABLE ADD COLUMN` path only succeeds
+for NULLABLE columns (`db/bigquery.py:2364-2365`).
 
-#### 2. Real-BigQuery round-trip
+**There are exactly four edit sites, and three of them fail silently if missed:**
+
+| site | location | failure if missed |
+|---|---|---|
+| schema literal | `db/bigquery.py:2367-2379` | loud — the load job rejects an unknown field |
+| MERGE `UPDATE SET` | `db/bigquery.py:2512-2521` | **silent — worst case** |
+| MERGE `INSERT` + `VALUES` (both lists) | `db/bigquery.py:2523-2528` | silent NULLs on first write of a day |
+| `_merge_insert_only` `columns` arg | `db/bigquery.py:2834-2838` | silent — temp table holds the data, the narrower INSERT drops it |
+
+The `UPDATE SET` omission is the dangerous one: with 18 scheduler ticks per day only the first takes
+the INSERT branch, so forgetting it would freeze both columns at their 9:01 values and the official
+close would never land in `source`. No existing test would catch it — the SQL assertions in
+`tests/test_bigquery.py:1230-1254` and `tests/test_bigquery_insert_only_merge.py:60-67` are
+substring-only.
+
+#### 2. Guard the silent failure modes with query-string assertions
+
+**File**: `tests/test_bigquery.py`, `tests/test_bigquery_insert_only_merge.py`
+
+**Intent**: Add cheap regression assertions on the generated SQL so a missed column list fails a
+test rather than production data, per `context/foundation/lessons.md:211-235`.
+
+**Contract**: Assert `"source = S.source"` and `"kurs_odn = S.kurs_odn"` appear in the
+`merge_company_daily_stats` SQL, and that both names appear in the insert-only SQL. Also update
+`tests/test_bigquery.py:1088-1103` (`test_company_daily_stats_schema_has_required_columns`) — it
+compares the column-name **set** with `==` and is the only test that breaks mechanically; extend it
+to assert `mode == "NULLABLE"` for both new fields, since the migration path depends on that.
+
+#### 3. Stop the second writer from clobbering provenance
+
+**File**: `scripts/seed_companies.py`
+
+**Intent**: Remove the `--with-stats` write path into `company_daily_stats`.
+
+**Contract**: The script's job is company reconciliation, not price authority. It shares the
+full-upsert primitive and builds rows by splatting `trading_data`, which never contains `source` or
+`kurs_odn` — so running it after the daily job would overwrite both with `NULL` for every listed
+ticker, and it swallows the failure in `except BigQueryError → logger.warning`
+(`scripts/seed_companies.py:152-162`), so the clobber would not even surface as a non-zero exit.
+Drop the flag and its write block; keep the company-seeding behaviour untouched.
+
+#### 4. Real-BigQuery round-trip
 
 **File**: `scripts/test_bq_company_stats_merge.py`
 
@@ -174,6 +224,7 @@ than trusting the repo definition (`context/foundation/lessons.md:317-320`).
 #### Automated Verification:
 
 - Unit tests pass: `uv run pytest --ignore=tests/e2e`
+- SQL regression assertions cover all four column-list sites
 - Linting passes: `uv run ruff check .`
 - Layering passes: `uv run tach check`
 
@@ -182,6 +233,7 @@ than trusting the repo definition (`context/foundation/lessons.md:317-320`).
 - `ensure_company_daily_stats_schema_current()` adds both columns to the live table without error
 - `scripts/test_bq_company_stats_merge.py` round-trip succeeds and returns both new columns
 - Live table schema shows both columns as NULLABLE
+- `scripts/seed_companies.py` no longer writes to `company_daily_stats`
 
 **Implementation Note**: After completing this phase and all automated verification passes, pause
 for manual confirmation before proceeding.
@@ -375,69 +427,16 @@ correction unchanged, and that a row for a non-existent `(ticker, snapshot_date)
 
 ---
 
-## Phase 5: Self-heal the previous session from `Kurs odn.`
+## Phase 5: Archive reader
 
 ### Overview
 
-Use the feed's own previous-close column to repair yesterday's stored close whenever it disagrees —
-which covers a failed 17:31 run and any pre-fixing capture.
+A reader for the date-parameterized GPW archive. It lands before the self-heal because the archive —
+not the feed's reference price — is the only trustworthy oracle for a completed session.
 
 ### Changes Required:
 
-#### 1. Reconciliation step in the job
-
-**File**: `company_stats_main.py`
-
-**Intent**: After fetching the official tables, compare each ticker's `kurs_odn` against the stored
-close for the most recent earlier session and correct the mismatches through the Phase 4 primitive.
-
-**Contract**: Operates only on the single most recent `snapshot_date` strictly before today that
-exists in the table — never a wider sweep, so it cannot fight the historical corrective pass.
-Corrected rows get `source="kurs_odn"`; `zmiana_procentowa` / `zmiana_kwotowa` for the corrected day
-are recomputed against that day's own preceding close. Mismatches are logged with a count summary
-and do **not** alert — occasional corrections are the expected steady state, and this job runs
-18×/day with no alert dedup. The step is idempotent: once corrected, subsequent runs find no
-mismatch. A failure here must not abort the main ingest — catch, log, continue.
-
-#### 2. Reader helper
-
-**File**: `db/bigquery.py`
-
-**Intent**: Fetch `(ticker, kurs_zamkniecia)` for the previous session in one query.
-
-**Contract**: Returns a dict keyed by ticker for the most recent `snapshot_date < @today`, with the
-date it resolved to, so the caller can log which session was reconciled.
-
-### Success Criteria:
-
-#### Automated Verification:
-
-- Self-heal tests pass: matching values produce no correction call; a mismatch produces exactly one
-  correction row with `source="kurs_odn"`; a correction failure does not abort ingest
-- Full unit suite passes: `uv run pytest --ignore=tests/e2e`
-- Linting and layering pass
-
-#### Manual Verification:
-
-- Deliberately write a wrong close for the previous session on a sentinel ticker, run the job, and
-  confirm it is corrected to the official value
-- Log line reports the reconciled session date and the number of corrections
-- A second consecutive run reports zero corrections
-
-**Implementation Note**: Pause for manual confirmation before proceeding.
-
----
-
-## Phase 6: Archive reader and corrective script
-
-### Overview
-
-A reader for the date-parameterized GPW archive and a script that corrects stored closes from
-2025-01-01 onward, gated on exact name mapping.
-
-### Changes Required:
-
-#### 1. Archive reader
+#### 1. Archive reader module
 
 **File**: `src/gpw_archive.py`
 
@@ -447,11 +446,118 @@ by the sheet's `Nazwa`.
 **Contract**: `fetch_archive_session(session_date, instrument_type="10") -> dict[str, dict]` against
 `https://www.gpw.pl/archiwum-notowan` with `type`, `instrument=` and `date=DD-MM-YYYY`. Type codes
 are module constants: `10` akcje, `241` ETF, `560` ETC, `561` ETN. Returns `kurs_otwarcia`,
-`kurs_max`, `kurs_min`, `kurs_zamkniecia`, `zmiana_procentowa`, `wartosc_obrotu` (×1000). A
-non-session date (weekend, holiday, or a session not yet published) yields no quotation table —
-return `{}`, which callers must treat as "skip", not as an error.
+`kurs_max`, `kurs_min`, `kurs_zamkniecia`, `zmiana_procentowa`, `wartosc_obrotu` (×1000).
 
-#### 2. Corrective script
+Two contracts that are not obvious:
+- A non-session date (weekend, holiday, or a session not yet published) yields no quotation table.
+  Return `{}`, which callers treat as "no session", never as an error.
+- The archive rejects rapid sequential requests — a measured 0.4 s cadence produced
+  `ConnectionReset`. The module reuses one HTTP session, paces requests at **≥1.5 s**, and retries
+  with increasing backoff. `src/http_client.py` provides no inter-request throttle despite its
+  docstring, so pacing is this module's responsibility.
+
+#### 2. Unit tests
+
+**File**: `tests/test_gpw_archive.py`
+
+**Intent**: Cover parsing and the no-session path.
+
+**Contract**: Inline HTML fixture with the archive's 8-column layout, Polish decimals and NBSP
+thousands. Cases: happy path, non-session date → `{}`, HTTP failure → `{}`, `×1000` turnover
+conversion. Patch `get` at `src.gpw_archive.get`.
+
+### Success Criteria:
+
+#### Automated Verification:
+
+- New tests pass: `uv run pytest tests/test_gpw_archive.py`
+- Full unit suite passes: `uv run pytest --ignore=tests/e2e`
+- Linting and layering pass
+
+#### Manual Verification:
+
+- Live fetch for a known session returns ~400 rows; `ALE` on 2026-07-24 is `44.735`
+- A Saturday date returns `{}` rather than raising
+- A ~20-session sequential fetch completes without a connection reset
+
+**Implementation Note**: Pause for manual confirmation before proceeding.
+
+---
+
+## Phase 6: Self-heal the previous session
+
+### Overview
+
+Detect a wrong close for the previous session using the feed's reference price, then repair it from
+the archive. The detector is cheap; the archive is the authority.
+
+### Changes Required:
+
+#### 1. Reconciliation step in the job
+
+**File**: `company_stats_main.py`
+
+**Intent**: Compare each ticker's `kurs_odn` against the stored close for the most recent earlier
+session; where they disagree, fetch that session from the archive and correct from it through the
+Phase 4 primitive.
+
+**Contract**: `kurs_odn` is a **detector only, never a value source.** GPW's reference price is the
+previous close adjusted for corporate actions, so on an ex-dividend or split date it legitimately
+differs from the previous close — measured on 2026-06-23/24, 41 of 5 230 comparisons diverged by
+more than 0.3 pp, up to 11 pp (`ECHO` reference 4.94 against a previous close of 5.34). Writing
+`kurs_odn` into `kurs_zamkniecia` would reintroduce exactly the dividend-adjustment defect this
+change removes.
+
+So: a mismatch on any ticker triggers **one** archive fetch for that session date; each mismatched
+ticker is then corrected to the archive's close, with `zmiana_procentowa` taken from the archive and
+`zmiana_kwotowa` derived from it. Tickers whose archive value already equals the stored close (the
+ex-dividend case) are left alone and counted separately in the log.
+
+Operates only on the single most recent `snapshot_date` strictly before today that exists in the
+table — never a wider sweep, so it cannot fight the historical corrective pass. Corrected rows get
+`source="archive"`. Mismatches are logged with a count summary and do **not** alert. The step is
+idempotent, and a failure here must not abort the main ingest — catch, log, continue.
+
+#### 2. Reader helper
+
+**File**: `db/bigquery.py`
+
+**Intent**: Fetch `(ticker, kurs_zamkniecia)` for the previous session in one query.
+
+**Contract**: Returns a dict keyed by ticker for the most recent `snapshot_date < @today`, plus the
+date it resolved to, so the caller can log which session was reconciled.
+
+### Success Criteria:
+
+#### Automated Verification:
+
+- Self-heal tests pass: matching values produce no archive fetch; a genuine mismatch corrects from
+  the archive with `source="archive"`; an **ex-dividend-shaped** mismatch where the archive confirms
+  the stored close produces no write; a failure does not abort ingest
+- Full unit suite passes: `uv run pytest --ignore=tests/e2e`
+- Linting and layering pass
+
+#### Manual Verification:
+
+- Deliberately write a wrong close for the previous session on a sentinel ticker, run the job, and
+  confirm it is corrected to the archive's value
+- Log reports the reconciled session date, corrections made, and reference-price divergences ignored
+- A second consecutive run reports zero corrections
+
+**Implementation Note**: Pause for manual confirmation before proceeding.
+
+---
+
+## Phase 7: Corrective script
+
+### Overview
+
+A script that corrects stored closes from 2025-01-01 onward using the Phase 5 archive reader, gated
+on exact name mapping.
+
+### Changes Required:
+
+#### 1. Corrective script
 
 **File**: `scripts/correct_official_closes.py`
 
@@ -470,13 +576,28 @@ Behaviours that are not obvious:
   companies are counted and logged. No fuzzy matching — a mis-mapped name writes a plausible price
   against the wrong ticker, which is the failure class this change removes.
 - **Only the close and its derived columns are corrected**, with `source="archive"`.
-  `zmiana_kwotowa` / `zmiana_procentowa` are recomputed from consecutive corrected closes within the
-  fetched series; the first session in the range has no predecessor and leaves them untouched.
+  `zmiana_procentowa` is taken **directly from the archive's `Zmiana kursu %` column**, and
+  `zmiana_kwotowa` is derived from it as `close − close/(1 + pct/100)`. It must **not** be
+  recomputed from consecutive closes: GPW's percentage is measured against the reference price,
+  which is adjusted for corporate actions, and naive close-to-close differencing is wrong across
+  every ex-dividend and split. Measured over 14 sessions, 41 of 5 230 pairs (0.78%) diverged by more
+  than 0.3 pp, reaching 11 pp — and `ECHO` on 2026-06-24 moved **+0.10% officially against −7.40%
+  naively**. The calendar renders this quantity directly. Using the archive column also removes the
+  "first session in the range has no predecessor" edge case entirely.
+- **Non-session detection.** The script already probes every calendar date; a date where the archive
+  reports no session but `company_daily_stats` holds rows is a phantom trading day. Report these —
+  they inflate the trading-day spine and double-count a session's P/L in the calendar. **One already
+  exists in production: 2026-06-27, a Saturday, with 739 rows.** Reporting only; deletion is a
+  separate decision (`delete_company_daily_stats_for_date` already exists at
+  `db/bigquery.py:2434-2453`).
 - **Per-year chunking** of the MERGE, as `scripts/backfill_historical_closes.py:281-291` does, to
   stay well inside BigQuery's 4 000-modified-partitions-per-job cap.
-- Politeness delay between fetches; the script is the only caller hitting the archive.
+- **Fetch pacing is a correctness concern, not politeness.** ≥1.5 s between requests, one reused
+  HTTP session, retry with increasing backoff — a 0.4 s cadence was measured to trigger
+  `ConnectionReset` from gpw.pl. The disk cache doubles as the resume mechanism: an interrupted run
+  restarts without re-fetching what it already has.
 
-#### 3. Script tests
+#### 2. Script tests
 
 **File**: `tests/test_correct_official_closes.py`
 
@@ -485,8 +606,9 @@ Behaviours that are not obvious:
 **Contract**: Loaded via the importlib idiom (`tests/test_backfill_historical_closes.py:13-17`),
 with the script segregating testable functions under a banner comment. Cover: session-date
 enumeration skipping weekends, name-map construction and its rejection of ambiguous or missing
-names, derived-column recomputation including the first-session case, per-year grouping, and
-cache-path resolution.
+names, `zmiana_kwotowa` derivation from the archive percentage (including a case where naive
+close-to-close would disagree, so the test pins the corporate-action behaviour), non-session
+detection, per-year grouping, and cache-path resolution.
 
 ### Success Criteria:
 
@@ -495,12 +617,14 @@ cache-path resolution.
 - Script tests pass: `uv run pytest tests/test_correct_official_closes.py`
 - Full unit suite passes: `uv run pytest --ignore=tests/e2e`
 - Linting and layering pass
-- `--dry-run` over the full range completes and writes zero rows
 
 #### Manual Verification:
 
+- `--dry-run` over the full range completes and writes zero rows (needs network and BigQuery
+  credentials — not CI-runnable)
 - Dry-run report shows a plausible session count (~390) and a mapped-ticker count near 697
 - Unmatched archive names are listed and are recognisably delisted or renamed instruments
+- Non-session dates holding rows are reported, and the list includes 2026-06-27
 - Spot-check: the script's computed correction for `KRU` on 2026-01-02 is `498.40`, and for
   `ALE` on 2026-07-24 is `44.735`
 - Cache directory is populated; a second dry-run performs no network requests
@@ -509,7 +633,7 @@ cache-path resolution.
 
 ---
 
-## Phase 7: Production correction run and verification
+## Phase 8: Production correction run and verification
 
 ### Overview
 
@@ -517,7 +641,20 @@ Apply the correction to production in stages and verify the user-visible result.
 
 ### Changes Required:
 
-#### 1. Sample audit
+#### 1. Pre-correction snapshot
+
+**File**: (operational — no code change)
+
+**Intent**: Capture a restorable copy of the correction window before any destructive write.
+
+**Contract**: `CREATE TABLE company_daily_stats_pre_pul98 AS SELECT * FROM company_daily_stats
+WHERE snapshot_date >= '2025-01-01'` — roughly 270 000 rows, seconds and pennies in BigQuery. The
+corrective MERGE overwrites in place with no undo; PUL-92 avoided this class of risk entirely by
+being insert-only, and this change deliberately gives that protection up, so it must put something
+back. Record the exact restore statement in the change folder alongside the run log. Dropping the
+snapshot table afterwards is a human-only action (`CLAUDE.md:11`).
+
+#### 2. Sample audit
 
 **File**: (operational — no code change)
 
@@ -528,7 +665,7 @@ and confirm nothing outside the intended columns moved.
 `kurs_otwarcia` / `kurs_min` / `kurs_max` / `wartosc_obrotu` / `liczba_transakcji` did not, no rows
 were inserted, and `source="archive"` is stamped.
 
-#### 2. Full run
+#### 3. Full run
 
 **File**: (operational — no code change)
 
@@ -538,7 +675,7 @@ were inserted, and `source="archive"` is stamped.
 keys — the calendar query joins without dedup (`db/bigquery.py:410-423`), so duplicates would
 double-count value and P/L.
 
-#### 3. User-visible verification
+#### 4. User-visible verification
 
 **File**: (operational — no code change)
 
@@ -560,14 +697,16 @@ must use a fresh `range` value or wait out the cache.
 
 #### Manual Verification:
 
+- Snapshot table exists and row count matches the window before the run starts
 - Sample audit shows only the three intended columns changed
 - Spot-check of 5 (ticker, date) pairs against `gpw.pl/archiwum-notowan` matches exactly
+- An ex-dividend date (e.g. `ECHO` 2026-06-24) carries the official `+0.10%`, not a naive `−7.40%`
 - 1-year chart point count unchanged; notes and exclusions unchanged
 - Calendar renders with plausible daily P/L
 - Next day: the 17:31 job writes official closes and the self-heal reports zero corrections
 
-**Implementation Note**: This phase touches production data. Pause for explicit human confirmation
-between the sample audit and the full run.
+**Implementation Note**: This phase touches production data. Take the snapshot first, then pause for
+explicit human confirmation between the sample audit and the full run.
 
 ---
 
@@ -575,12 +714,16 @@ between the sample audit and the full run.
 
 ### Unit Tests
 
+- Schema: column-list regression assertions on the generated SQL for all four edit sites
 - Parser: both header layouts, colspan expansion, `×1000` turnover, exact `zmiana_kwotowa`, and four
   negative paths (HTTP failure, missing table, unexpected headers, unknown market)
 - Job: source priority, bankier gap-fill only, coverage floors, ISIN conflict skip
 - MERGE primitive: query-string regression asserting no `WHEN NOT MATCHED`
-- Self-heal: match, mismatch, failure isolation, idempotency
-- Script: date enumeration, name-map gating, derived recomputation, per-year grouping
+- Archive reader: happy path, non-session date → `{}`, HTTP failure → `{}`, turnover conversion
+- Self-heal: match, genuine mismatch corrected from the archive, ex-dividend-shaped mismatch left
+  alone, failure isolation, idempotency
+- Script: date enumeration, name-map gating, derivation from the archive percentage, non-session
+  detection, per-year grouping
 
 ### Integration Tests
 
@@ -636,14 +779,16 @@ inside the corrected window means the row was never matched — a useful audit s
 #### Automated
 
 - [ ] 1.1 Unit tests pass
-- [ ] 1.2 Linting passes
-- [ ] 1.3 Layering passes
+- [ ] 1.2 SQL regression assertions cover all four column-list sites
+- [ ] 1.3 Linting passes
+- [ ] 1.4 Layering passes
 
 #### Manual
 
-- [ ] 1.4 Schema migration adds both columns to the live table
-- [ ] 1.5 Round-trip returns both new columns
-- [ ] 1.6 Live table shows both columns as NULLABLE
+- [ ] 1.5 Schema migration adds both columns to the live table
+- [ ] 1.6 Round-trip returns both new columns
+- [ ] 1.7 Live table shows both columns as NULLABLE
+- [ ] 1.8 `seed_companies.py` no longer writes to `company_daily_stats`
 
 ### Phase 2: Official quotations parser
 
@@ -687,47 +832,64 @@ inside the corrected window means the row was never matched — a useful audit s
 - [ ] 4.4 Real-BQ round-trip completes successfully
 - [ ] 4.5 Untouched columns survive and no phantom inserts occur
 
-### Phase 5: Self-heal the previous session from `Kurs odn.`
+### Phase 5: Archive reader
 
 #### Automated
 
-- [ ] 5.1 Self-heal tests pass
+- [ ] 5.1 Archive reader tests pass
 - [ ] 5.2 Full unit suite passes
 - [ ] 5.3 Linting and layering pass
 
 #### Manual
 
-- [ ] 5.4 Deliberately wrong previous close is corrected
-- [ ] 5.5 Log reports reconciled session and correction count
-- [ ] 5.6 Second consecutive run reports zero corrections
+- [ ] 5.4 Live fetch returns ~400 rows and ALE 2026-07-24 is 44.735
+- [ ] 5.5 A Saturday date returns empty rather than raising
+- [ ] 5.6 A ~20-session sequential fetch completes without a connection reset
 
-### Phase 6: Archive reader and corrective script
+### Phase 6: Self-heal the previous session
 
 #### Automated
 
-- [ ] 6.1 Script tests pass
+- [ ] 6.1 Self-heal tests pass
 - [ ] 6.2 Full unit suite passes
 - [ ] 6.3 Linting and layering pass
-- [ ] 6.4 Dry-run over the full range writes zero rows
 
 #### Manual
 
-- [ ] 6.5 Dry-run reports plausible session and mapped-ticker counts
-- [ ] 6.6 Unmatched names are recognisably delisted or renamed
-- [ ] 6.7 KRU 2026-01-02 computes to 498.40 and ALE 2026-07-24 to 44.735
-- [ ] 6.8 Second dry-run performs no network requests
+- [ ] 6.4 Deliberately wrong previous close is corrected from the archive
+- [ ] 6.5 Log reports reconciled session, corrections, and ignored reference divergences
+- [ ] 6.6 Second consecutive run reports zero corrections
 
-### Phase 7: Production correction run and verification
+### Phase 7: Corrective script
 
 #### Automated
 
-- [ ] 7.1 Duplicate-key check returns 0
-- [ ] 7.2 Full unit suite still green
+- [ ] 7.1 Script tests pass
+- [ ] 7.2 Full unit suite passes
+- [ ] 7.3 Linting and layering pass
 
 #### Manual
 
-- [ ] 7.3 Sample audit shows only the three intended columns changed
-- [ ] 7.4 Five (ticker, date) pairs match the archive exactly
-- [ ] 7.5 1-year chart point count, notes and exclusions unchanged
-- [ ] 7.6 Calendar renders with plausible daily P/L
-- [ ] 7.7 Next-day job writes official closes and self-heal reports zero corrections
+- [ ] 7.4 Dry-run over the full range writes zero rows
+- [ ] 7.5 Dry-run reports plausible session and mapped-ticker counts
+- [ ] 7.6 Unmatched names are recognisably delisted or renamed
+- [ ] 7.7 Non-session dates holding rows are reported, including 2026-06-27
+- [ ] 7.8 KRU 2026-01-02 computes to 498.40 and ALE 2026-07-24 to 44.735
+- [ ] 7.9 Second dry-run performs no network requests
+
+### Phase 8: Production correction run and verification
+
+#### Automated
+
+- [ ] 8.1 Duplicate-key check returns 0
+- [ ] 8.2 Full unit suite still green
+
+#### Manual
+
+- [ ] 8.3 Snapshot table exists and row count matches the window
+- [ ] 8.4 Sample audit shows only the three intended columns changed
+- [ ] 8.5 Five (ticker, date) pairs match the archive exactly
+- [ ] 8.6 ECHO 2026-06-24 carries the official +0.10%, not a naive −7.40%
+- [ ] 8.7 1-year chart point count, notes and exclusions unchanged
+- [ ] 8.8 Calendar renders with plausible daily P/L
+- [ ] 8.9 Next-day job writes official closes and self-heal reports zero corrections
