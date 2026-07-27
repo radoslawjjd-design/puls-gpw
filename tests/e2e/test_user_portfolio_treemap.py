@@ -1,5 +1,4 @@
 """E2E tests — per-user portfolio treemap (PUL-64 Phase 6)."""
-import re
 
 from playwright.sync_api import Page, expect
 

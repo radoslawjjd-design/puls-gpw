@@ -147,7 +147,7 @@ def run():
 
             pdf_url = find_pdf_link(ann_soup, ann_url)
             if not pdf_url:
-                print(f"         -> NO_PDF")
+                print("         -> NO_PDF")
                 results.append((ticker, ann_url, "—", "NO_PDF", 0, ""))
                 continue
 

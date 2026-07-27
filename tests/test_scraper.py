@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from zoneinfo import ZoneInfo
 
 from db.bigquery import announcement_id_for_url
@@ -53,7 +52,7 @@ def _setup_dt(mock_dt: MagicMock) -> None:
 
 def test_parse_item_fields():
     with (
-        patch("src.scraper.get", return_value=_mock_resp(_PAGE1_HTML)) as mock_get,
+        patch("src.scraper.get", return_value=_mock_resp(_PAGE1_HTML)),
         patch("src.scraper.get_processed_ids_since", return_value=set()),
         patch("src.scraper.datetime") as mock_dt,
     ):

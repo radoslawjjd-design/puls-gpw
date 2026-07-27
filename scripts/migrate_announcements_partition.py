@@ -36,7 +36,6 @@ from db.bigquery import _get_client, _DATASET, _TABLE_NAME
 
 
 def _detect_partition_clause(client) -> str:
-    from google.cloud import bigquery as bq
     table_ref = f"{client.project}.{_DATASET}.{_TABLE_NAME}"
     schema = client.get_table(table_ref).schema
     field = next((f for f in schema if f.name == "published_at"), None)
