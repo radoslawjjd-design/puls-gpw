@@ -1,10 +1,10 @@
 ---
 change_id: history-coverage-gate
 title: Full-coverage gate collapses the value-history range when a holding is a recent IPO
-status: impl_reviewed
+status: archived
 created: 2026-07-26
 updated: 2026-07-27
-archived_at: null
+archived_at: 2026-07-27T00:00:00Z
 tracking:
   linear: PUL-100
   github: 195
@@ -59,5 +59,9 @@ Two criteria remain open by design:
   `api_main.py`, `post_main.py`, `tests/test_scraper.py` and others, none in files this
   change touches (`db/bigquery.py`, `src/api.py`, `tests/test_bigquery.py`,
   `tests/test_api.py` all lint clean). Fixing them belongs in its own change.
-- **4.6** (deployed revision serves the envelope) can only be checked after merge, since
-  CI is what deploys.
+- **4.6** — closed 2026-07-27. PR #200 squash-merged as `a8265d7`; CI deployed revision
+  `puls-gpw-api-00137-sqp`; `/health` → `{"status":"ok"}` and the endpoint correctly
+  rejects an anonymous read with 401. The authenticated response *shape* was not exercised
+  against the deployed instance — prod `JWT_SECRET` lives in Secret Manager and cannot be
+  forged locally — so it was verified through `TestClient` on identical code against the
+  same real BigQuery. Visual confirmation in the browser is the owner's last mile.
