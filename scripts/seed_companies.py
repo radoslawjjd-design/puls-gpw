@@ -7,13 +7,14 @@ Run with:
     uv run python scripts/seed_companies.py --diff        # show listing vs BQ gap, no writes
     uv run python scripts/seed_companies.py --dry-run     # log only, no writes
     uv run python scripts/seed_companies.py               # upsert to BigQuery
-    uv run python scripts/seed_companies.py --with-stats  # upsert + populate company_daily_stats
+
+This script reconciles `companies` only. It deliberately does not write
+company_daily_stats (PUL-98): prices there are owned by company_stats_main.py,
+which stamps provenance columns this script has no values for.
 """
 import argparse
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -25,12 +26,9 @@ import logging
 
 from db.bigquery import (
     create_companies_table_if_not_exists,
-    create_company_daily_stats_table_if_not_exists,
     ensure_companies_schema_current,
-    ensure_company_daily_stats_schema_current,
     insert_company_if_absent,
     list_distinct_tickers,
-    merge_company_daily_stats,
     upsert_company,
 )
 from src.bankier_metrics import fetch_listing_page
@@ -38,7 +36,6 @@ from src.company_profile import fetch_company_profile, profile_url_for_ticker
 from src.exceptions import BigQueryError
 from src.logging_setup import configure_logging
 
-WARSAW = ZoneInfo("Europe/Warsaw")
 _MARKETS = ["akcje", "new-connect"]
 
 
@@ -51,11 +48,6 @@ def main() -> None:
         "--diff",
         action="store_true",
         help="Print listing vs BQ gap then exit (no writes).",
-    )
-    parser.add_argument(
-        "--with-stats",
-        action="store_true",
-        help="Also merge today's trading snapshot into company_daily_stats.",
     )
     args = parser.parse_args()
 
@@ -88,7 +80,7 @@ def main() -> None:
             for t in missing_from_bq:
                 print(f"    {t}")
         if only_in_bq:
-            print(f"\n  Tickers in BQ but NOT in listing (delisted / suspended):")
+            print("\n  Tickers in BQ but NOT in listing (delisted / suspended):")
             for t in only_in_bq:
                 print(f"    {t}")
         print()
@@ -99,15 +91,12 @@ def main() -> None:
         create_companies_table_if_not_exists()
         ensure_companies_schema_current()
 
-    # ── 4. Upsert companies, optionally collect stats rows ───────────────────
-    snapshot_date = datetime.now(WARSAW).date().isoformat()
-    fetched_at = datetime.now(timezone.utc).isoformat()
-    stats_rows: list[dict] = []
+    # ── 4. Upsert companies ──────────────────────────────────────────────────
     upserted = 0
     fallback = 0
     failed = 0
 
-    for symbol, trading_data in listing.items():
+    for symbol in listing:
         hop_url = profile_url_for_ticker(symbol)
         profile = fetch_company_profile(hop_url)
 
@@ -139,27 +128,6 @@ def main() -> None:
                 continue
 
         upserted += 1
-        if args.with_stats:
-            stats_rows.append(
-                {
-                    "ticker": ticker,
-                    "snapshot_date": snapshot_date,
-                    "fetched_at": fetched_at,
-                    **{k: v for k, v in trading_data.items() if k != "company_name"},
-                }
-            )
-
-    # ── 5. Optionally merge company_daily_stats ──────────────────────────────
-    if args.with_stats and stats_rows and not args.dry_run:
-        create_company_daily_stats_table_if_not_exists()
-        ensure_company_daily_stats_schema_current()
-        try:
-            merge_company_daily_stats(stats_rows)
-            logger.info(
-                "company_daily_stats: merged %d rows for %s", len(stats_rows), snapshot_date
-            )
-        except BigQueryError as exc:
-            logger.warning("merge_company_daily_stats failed: %s", exc)
 
     verb = "would write" if args.dry_run else "wrote"
     logger.info(

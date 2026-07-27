@@ -1093,6 +1093,7 @@ def test_company_daily_stats_schema_has_required_columns():
         "kurs_zamkniecia", "zmiana_procentowa", "zmiana_kwotowa",
         "kurs_otwarcia", "kurs_min", "kurs_max",
         "wartosc_obrotu", "liczba_transakcji", "fetched_at",
+        "source", "kurs_odn",
     }
     assert names["ticker"].mode == "REQUIRED"
     assert names["snapshot_date"].mode == "REQUIRED"
@@ -1101,6 +1102,12 @@ def test_company_daily_stats_schema_has_required_columns():
     assert names["liczba_transakcji"].field_type in ("INTEGER", "INT64")
     assert names["snapshot_date"].field_type == "DATE"
     assert names["fetched_at"].field_type == "TIMESTAMP"
+    # PUL-98: both added after initial table creation, so ensure_schema_current()'s
+    # additive ALTER TABLE ADD COLUMN path requires NULLABLE — see db/bigquery.py:2365.
+    assert names["source"].mode == "NULLABLE"
+    assert names["source"].field_type == "STRING"
+    assert names["kurs_odn"].mode == "NULLABLE"
+    assert names["kurs_odn"].field_type in ("FLOAT", "FLOAT64")
 
 
 def test_create_company_daily_stats_table_creates_with_partitioning_and_clustering():
@@ -1252,6 +1259,40 @@ def test_merge_company_daily_stats_happy_path():
     merge_sql = client.query.call_args[0][0]
     assert "MERGE" in merge_sql and "company_daily_stats" in merge_sql
     client.delete_table.assert_called_once()
+
+
+def test_merge_company_daily_stats_sql_carries_provenance_columns():
+    """PUL-98: source and kurs_odn must appear in UPDATE SET and in both INSERT lists.
+
+    Omitting them from UPDATE SET fails silently: with 18 scheduler ticks per day only
+    the first takes the INSERT branch, so both columns would freeze at their 9:01 values
+    and the official close would never land in `source`.
+    """
+    client = MagicMock()
+    client.project = "test-project"
+    load_job = MagicMock()
+    load_job.result.return_value = None
+    load_job.errors = None
+    client.load_table_from_json.return_value = load_job
+    merge_job = MagicMock()
+    merge_job.result.return_value = None
+    merge_job.errors = None
+    client.query.return_value = merge_job
+
+    rows = [{"ticker": "PKO", "snapshot_date": "2026-07-27", "kurs_zamkniecia": 108.0,
+             "source": "gpw", "kurs_odn": 107.5,
+             "fetched_at": "2026-07-27T17:31:00+00:00"}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        merge_company_daily_stats(rows)
+
+    merge_sql = client.query.call_args[0][0]
+    update_clause, insert_clause = merge_sql.split("WHEN NOT MATCHED", 1)
+    assert "source = S.source" in update_clause
+    assert "kurs_odn = S.kurs_odn" in update_clause
+    # INSERT column list and VALUES list are parallel — both must name the columns
+    assert insert_clause.count("source") == 2
+    assert insert_clause.count("kurs_odn") == 2
 
 
 def test_merge_company_daily_stats_empty_rows_is_noop():

@@ -2376,6 +2376,10 @@ _COMPANY_DAILY_STATS_SCHEMA = [
     bigquery.SchemaField("wartosc_obrotu", "FLOAT64", mode="NULLABLE"),
     bigquery.SchemaField("liczba_transakcji", "INTEGER", mode="NULLABLE"),
     bigquery.SchemaField("fetched_at", "TIMESTAMP", mode="REQUIRED"),
+    # PUL-98 — provenance and the feed's reference price. Appended last so the repo
+    # literal mirrors the live table's column order after the additive migration.
+    bigquery.SchemaField("source", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_odn", "FLOAT64", mode="NULLABLE"),
 ]
 
 
@@ -2518,14 +2522,18 @@ def merge_company_daily_stats(rows: list[dict]) -> None:
                 kurs_max = S.kurs_max,
                 wartosc_obrotu = S.wartosc_obrotu,
                 liczba_transakcji = S.liczba_transakcji,
-                fetched_at = S.fetched_at
+                fetched_at = S.fetched_at,
+                source = S.source,
+                kurs_odn = S.kurs_odn
             WHEN NOT MATCHED THEN
               INSERT (ticker, snapshot_date, kurs_zamkniecia, zmiana_procentowa,
                       zmiana_kwotowa, kurs_otwarcia, kurs_min, kurs_max,
-                      wartosc_obrotu, liczba_transakcji, fetched_at)
+                      wartosc_obrotu, liczba_transakcji, fetched_at,
+                      source, kurs_odn)
               VALUES (S.ticker, S.snapshot_date, S.kurs_zamkniecia, S.zmiana_procentowa,
                       S.zmiana_kwotowa, S.kurs_otwarcia, S.kurs_min, S.kurs_max,
-                      S.wartosc_obrotu, S.liczba_transakcji, S.fetched_at)
+                      S.wartosc_obrotu, S.liczba_transakcji, S.fetched_at,
+                      S.source, S.kurs_odn)
         """
         try:
             merge_job = client.query(merge_sql)
@@ -2835,6 +2843,7 @@ def merge_company_daily_stats_insert_only(rows: list[dict]) -> int:
             "ticker", "snapshot_date", "kurs_zamkniecia", "zmiana_procentowa",
             "zmiana_kwotowa", "kurs_otwarcia", "kurs_min", "kurs_max",
             "wartosc_obrotu", "liczba_transakcji", "fetched_at",
+            "source", "kurs_odn",
         ],
         rows,
     )

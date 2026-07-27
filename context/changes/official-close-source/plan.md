@@ -792,17 +792,17 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass
-- [ ] 1.2 SQL regression assertions cover all four column-list sites
-- [ ] 1.3 Linting passes
-- [ ] 1.4 Layering passes
+- [x] 1.1 Unit tests pass
+- [x] 1.2 SQL regression assertions cover all four column-list sites
+- [x] 1.3 Linting passes
+- [x] 1.4 Layering passes
 
 #### Manual
 
-- [ ] 1.5 Schema migration adds both columns to the live table
-- [ ] 1.6 Round-trip returns both new columns
-- [ ] 1.7 Live table shows both columns as NULLABLE
-- [ ] 1.8 `seed_companies.py` no longer writes to `company_daily_stats`
+- [x] 1.5 Schema migration adds both columns to the live table
+- [x] 1.6 Round-trip returns both new columns
+- [x] 1.7 Live table shows both columns as NULLABLE
+- [x] 1.8 `seed_companies.py` no longer writes to `company_daily_stats`
 
 ### Phase 2: Official quotations parser
 
