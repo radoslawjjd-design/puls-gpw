@@ -6,6 +6,7 @@ value, and implausibly small responses abort the run instead of becoming the day
 data. Official entries join `Skrót` directly to `companies.ticker`; the bankier
 `hop_url` → symbol indirection survives only on the fallback path.
 """
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
@@ -86,6 +87,13 @@ def m(monkeypatch):
         "sym": MagicMock(name="symbol_from_hop_url", side_effect=lambda url: url.rsplit("=", 1)[-1]),
         "merge": MagicMock(name="merge_company_daily_stats"),
         "alert": MagicMock(name="send_alert"),
+        # Self-heal (PUL-98 phase 6). By default the stored close already equals
+        # today's reference price, so the reconciliation is a no-op.
+        "prev": MagicMock(name="get_previous_session_closes",
+                          return_value=(date(2026, 7, 27), {"PKO": 106.58})),
+        "archive": MagicMock(name="fetch_archive_session", return_value={}),
+        "correct": MagicMock(name="merge_company_daily_stats_close_correction",
+                             return_value=0),
     }
     names = {
         "create": "create_company_daily_stats_table_if_not_exists",
@@ -96,6 +104,9 @@ def m(monkeypatch):
         "sym": "symbol_from_hop_url",
         "merge": "merge_company_daily_stats",
         "alert": "send_alert",
+        "prev": "get_previous_session_closes",
+        "archive": "fetch_archive_session",
+        "correct": "merge_company_daily_stats_close_correction",
     }
     for key, attr in names.items():
         monkeypatch.setattr(company_stats_main, attr, mocks[key])
@@ -237,3 +248,74 @@ def test_catastrophic_failure_sends_alert_and_exits(m):
 
     assert exc_info.value.code == 1
     m["alert"].assert_called_once()
+
+
+# ── self-heal of the previous session (PUL-98 phase 6) ────────────────────────
+
+# The archive keys rows by the exchange's abbreviated name, not by ticker — the
+# live feed's `company_name` is the bridge back to `PKO`.
+_ARCHIVE_PKOBP = {"kurs_zamkniecia": 106.58, "zmiana_procentowa": 1.33,
+                  "kurs_otwarcia": 105.0, "kurs_min": 104.8, "kurs_max": 107.0,
+                  "wartosc_obrotu": 1.0}
+
+
+def test_self_heal_does_not_touch_the_archive_when_the_stored_close_agrees(m):
+    """The detector is free; the archive fetch is not. No mismatch, no fetch."""
+    company_stats_main.main()
+
+    m["archive"].assert_not_called()
+    m["correct"].assert_not_called()
+
+
+def test_self_heal_corrects_a_wrong_close_from_the_archive(m):
+    """A stored bid/ask close disagrees with today's reference price and the
+    archive confirms the reference — that is the defect, and it gets repaired."""
+    m["prev"].return_value = (date(2026, 7, 27), {"PKO": 107.9})
+    m["archive"].return_value = {"PKOBP": _ARCHIVE_PKOBP}
+
+    company_stats_main.main()
+
+    m["archive"].assert_called_once_with(date(2026, 7, 27))
+    rows = m["correct"].call_args[0][0]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["ticker"] == "PKO"
+    assert row["snapshot_date"] == "2026-07-27"
+    assert row["kurs_zamkniecia"] == pytest.approx(106.58)
+    assert row["zmiana_procentowa"] == pytest.approx(1.33)
+    assert row["source"] == "archive"
+
+
+def test_self_heal_leaves_an_ex_dividend_divergence_alone(m):
+    """kurs_odn is adjusted for corporate actions, so it legitimately differs from
+    the previous close. When the archive confirms what we stored, writing the
+    reference price would reintroduce the dividend defect (GH #191)."""
+    m["prev"].return_value = (date(2026, 7, 27), {"PKO": 108.0})
+    m["archive"].return_value = {"PKOBP": {**_ARCHIVE_PKOBP, "kurs_zamkniecia": 108.0}}
+
+    company_stats_main.main()
+
+    m["archive"].assert_called_once()
+    m["correct"].assert_not_called()
+
+
+def test_self_heal_skips_a_ticker_the_archive_does_not_name(m):
+    """~10% of names do not map. A missing archive row is a gap to log, never a
+    reason to fall back to the reference price."""
+    m["prev"].return_value = (date(2026, 7, 27), {"PKO": 107.9})
+    m["archive"].return_value = {"SOMETHINGELSE": _ARCHIVE_PKOBP}
+
+    company_stats_main.main()
+
+    m["correct"].assert_not_called()
+
+
+def test_self_heal_failure_does_not_abort_the_ingest(m):
+    """Today's prices matter more than yesterday's repair."""
+    m["prev"].return_value = (date(2026, 7, 27), {"PKO": 107.9})
+    m["archive"].side_effect = RuntimeError("archive unreachable")
+
+    company_stats_main.main()
+
+    m["merge"].assert_called_once()
+    m["alert"].assert_not_called()

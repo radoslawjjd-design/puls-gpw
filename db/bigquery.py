@@ -2989,6 +2989,40 @@ def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
     return val.isoformat() if hasattr(val, "isoformat") else str(val)
 
 
+def get_previous_session_closes(before: date) -> tuple[date | None, dict[str, float | None]]:
+    """Return (session_date, {ticker: kurs_zamkniecia}) for the newest session before `before`.
+
+    "Session" here means a date this table actually holds — the same spine every
+    reader uses. Returns (None, {}) when there is no earlier date at all, which is
+    the empty-table case, not an error.
+
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    table = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    query = f"""
+        WITH previous AS (
+          SELECT MAX(snapshot_date) AS session_date
+          FROM `{table}`
+          WHERE snapshot_date < @before
+        )
+        SELECT s.snapshot_date, s.ticker, s.kurs_zamkniecia
+        FROM `{table}` s
+        JOIN previous p ON s.snapshot_date = p.session_date
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("before", "DATE", before)]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_previous_session_closes failed: {exc}") from exc
+
+    if not rows:
+        return None, {}
+    return rows[0].snapshot_date, {r.ticker: r.kurs_zamkniecia for r in rows}
+
+
 # ── notification subscriptions (PUL-81 slice a) ───────────────────────────────
 
 _NOTIFICATION_SUBSCRIPTIONS_TABLE_NAME = "notification_subscriptions"

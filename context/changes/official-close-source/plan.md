@@ -567,6 +567,14 @@ ticker is then corrected to the archive's close, with `zmiana_procentowa` taken 
 `zmiana_kwotowa` derived from it. Tickers whose archive value already equals the stored close (the
 ex-dividend case) are left alone and counted separately in the log.
 
+**Measured end to end on a throwaway copy of 2026-07-27 (2026-07-28), real feed and real archive**:
+238 of 732 tickers disagreed with the reference price, 188 were corrected from the archive, and 50
+stayed unresolved — **47 of them NewConnect**, which the GPW main-market archive cannot serve by
+construction, plus 3 GPW names whose abbreviation did not map. Those ~50 will re-trigger one archive
+fetch every day and resolve nothing; that is the accepted cost of keeping the detector source-blind.
+A second consecutive run corrected zero rows. Production's stored PKO close for that session was
+108.08 against the archive's 108.0 — the defect, exactly as the ticket describes.
+
 Operates only on the single most recent `snapshot_date` strictly before today that exists in the
 table — never a wider sweep, so it cannot fight the historical corrective pass. Corrected rows get
 `source="archive"`. Mismatches are logged with a count summary and do **not** alert. The step is
@@ -861,9 +869,9 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Manual
 
-- [x] 2.5 Live run returns ~372 GPW and ~332 NewConnect entries
-- [x] 2.6 Five tickers spot-checked against gpw.pl
-- [x] 2.7 Turnover magnitude confirms the ×1000 conversion
+- [x] 2.5 Live run returns ~372 GPW and ~332 NewConnect entries — 33e5195
+- [x] 2.6 Five tickers spot-checked against gpw.pl — 33e5195
+- [x] 2.7 Turnover magnitude confirms the ×1000 conversion — 33e5195
 
 ### Phase 3: Rewire the job to official sources
 
@@ -876,9 +884,9 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Manual
 
-- [x] 3.4 Local run to a sentinel date shows expected official/bankier split
-- [x] 3.5 Source distribution matches expectation
-- [x] 3.6 Simulated empty GPW response aborts without writing
+- [x] 3.4 Local run to a sentinel date shows expected official/bankier split — 33e5195
+- [x] 3.5 Source distribution matches expectation — 33e5195
+- [x] 3.6 Simulated empty GPW response aborts without writing — 33e5195
 
 ### Phase 4: Narrow close-correction MERGE primitive
 
@@ -897,29 +905,29 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Automated
 
-- [x] 5.1 Archive reader tests pass
-- [x] 5.2 Full unit suite passes
-- [x] 5.3 Linting and layering pass
+- [x] 5.1 Archive reader tests pass — 33e5195
+- [x] 5.2 Full unit suite passes — 33e5195
+- [x] 5.3 Linting and layering pass — 33e5195
 
 #### Manual
 
-- [x] 5.4 Live fetch returns ~400 rows and ALE 2026-07-24 is 44.735
-- [x] 5.5 A Saturday date returns empty rather than raising
-- [x] 5.6 A ~20-session sequential fetch retrieves every session, retries absorbing any reset
+- [x] 5.4 Live fetch returns ~400 rows and ALE 2026-07-24 is 44.735 — 33e5195
+- [x] 5.5 A Saturday date returns empty rather than raising — 33e5195
+- [x] 5.6 A ~20-session sequential fetch retrieves every session, retries absorbing any reset — 33e5195
 
 ### Phase 6: Self-heal the previous session
 
 #### Automated
 
-- [ ] 6.1 Self-heal tests pass
-- [ ] 6.2 Full unit suite passes
-- [ ] 6.3 Linting and layering pass
+- [x] 6.1 Self-heal tests pass
+- [x] 6.2 Full unit suite passes
+- [x] 6.3 Linting and layering pass
 
 #### Manual
 
-- [ ] 6.4 Deliberately wrong previous close is corrected from the archive
-- [ ] 6.5 Log reports reconciled session, corrections, and ignored reference divergences
-- [ ] 6.6 Second consecutive run reports zero corrections
+- [x] 6.4 Deliberately wrong previous close is corrected from the archive
+- [x] 6.5 Log reports reconciled session, corrections, and ignored reference divergences
+- [x] 6.6 Second consecutive run reports zero corrections
 
 ### Phase 7: Corrective script
 
