@@ -39,7 +39,46 @@ Dropping `company_daily_stats_pre_pul98` afterwards is a **human-only** action (
 |---|---|---|
 | snapshot | 2026-07-28 | 241 277 rows, count matches source |
 | sample audit (`--tickers KRU,ALE,PKO`) | 2026-07-28 | 510 rows corrected, audit clean |
-| full run | pending | awaiting the go-ahead |
+| full run | 2026-07-28 | 47 324 of 47 324 rows corrected (2025: 34 352, 2026: 12 972) |
+
+## Full-run verification
+
+Against the snapshot, across **all 241 277 joined rows**:
+
+| check | result |
+|---|---|
+| duplicate `(ticker, snapshot_date)` keys | **0** |
+| rows in window before / after | 241 277 / 241 277 — nothing inserted |
+| `kurs_zamkniecia` changed | 47 368 |
+| `source` = `archive` | 47 834 (the extra 466 are percentage-only corrections) |
+| `kurs_otwarcia`, `kurs_min`, `kurs_max` changed | **0** |
+| `wartosc_obrotu`, `liczba_transakcji`, `fetched_at` changed | **0** |
+| unit suite | 684 passed |
+
+User-visible surfaces, before -> after:
+
+| surface | before | after |
+|---|---|---|
+| 1-year chart points (all three views) | 251 | 251 — unchanged |
+| chart notes / exclusions | S2B listed_from note / none | identical |
+| 1-year return, combined view | +39.66% | **+34.71%** |
+| 1-year return, per wallet | +39.48% / +39.98% | +35.65% / +33.02% |
+| calendar (2026-06, 2026-07) | — | renders, 21 of 21 positions priced |
+| `ECHO` 2026-06-24 | — | +0.10% (official), not the naive -7.40% |
+
+The return moving **down ~5 pp is the point of the change, not a regression**: the start of the
+window was previously valued with stooq's dividend-adjusted prices, which understate what the
+holdings actually cost at the time. The end value is unchanged, so only the baseline moved.
+
+`2026-06-27` (Saturday, 739 rows) still renders as a calendar day with a +180.73 PLN change. That
+phantom is deliberately out of scope here — reported, not deleted.
+
+## Still pending
+
+`8.9` — the next daily job must write official closes and the self-heal must report zero
+corrections. That cannot be verified until this branch is merged and deployed: **production is still
+running the old bankier-sourced job**, so tomorrow's 17:31 run will write wrong closes again until
+the deploy lands.
 
 ### Sample audit result
 
