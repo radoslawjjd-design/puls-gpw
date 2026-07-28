@@ -477,6 +477,13 @@ by the sheet's `Nazwa`.
 are module constants: `10` akcje, `241` ETF, `560` ETC, `561` ETN. Returns `kurs_otwarcia`,
 `kurs_max`, `kurs_min`, `kurs_zamkniecia`, `zmiana_procentowa`, `wartosc_obrotu` (×1000).
 
+**Header contract, captured from the live page 2026-07-28** (403 rows for 2026-07-24): a flat
+8-column thead — `Nazwa`, `Waluta`, `Kurs otwarcia`, `Kurs maksymalny`, `Kurs minimalny`,
+`Kurs zamknięcia`, `Zmiana kursu %`, `Wartość obrotu (w tys.)`. No colspan, no trade count.
+`Nazwa` is the exchange's **abbreviated** name (`ALLEGRO`, `PKNORLEN`), wrapped around an empty
+toggle `span`; turnover uses `&nbsp;` thousands. The sheet is **not the first table on the page** —
+a CALL/PUT table without a thead precedes it, so it must be located by its headers.
+
 Three contracts that are not obvious:
 - A non-session date (weekend, holiday, or a session not yet published) yields no quotation table.
   Return `{}`, which callers treat as "no session", never as an error.
@@ -491,12 +498,15 @@ Three contracts that are not obvious:
   retries with increasing backoff — the retry is load-bearing, not a nicety. `src/http_client.py`
   provides no inter-request throttle despite its docstring, so pacing is this module's
   responsibility.
-- **The limit appears to be volume, not only cadence.** After ~5.5 h of 10-minute polling plus ~38
-  archive fetches in one day, both `gpw.pl` and `newconnect.pl` refused every connection from this
-  IP — including the bare domain root, across 5 retries with backoff — while `bankier.pl` and
-  unrelated hosts answered normally. Slowing down cannot buy past a daily budget. Two consequences:
-  a run must **fail loudly on a total block** rather than log 390 individual retries, and the disk
-  cache is a **prerequisite for completing the corrective pass**, not an optimisation (see Phase 7).
+- **The "daily volume budget" recorded here on 2026-07-27 was a misdiagnosis — corrected
+  2026-07-28.** Every connection to `gpw.pl` and `newconnect.pl` was refused, including the bare
+  domain root, while `bankier.pl` answered normally; that looked like an IP-level block earned by
+  volume. It was not. Those probes used `requests`; `gpw.pl` refuses that client and accepts the
+  project's own `httpx` client from the same machine, the same IP, at the same moment. Chrome
+  reached the site throughout. **Use `src.http_client.get` — never `requests` — against gpw.pl.**
+  The pacing and retry above still stand on their own evidence (`ConnectionReset` under load is
+  real), but no daily budget has been demonstrated, so the disk cache in Phase 7 is a resume
+  mechanism and an optimisation, not a prerequisite.
 
 #### 2. Unit tests
 
@@ -640,11 +650,12 @@ Behaviours that are not obvious:
   HTTP session, retry with increasing backoff — a 0.4 s cadence was measured to trigger
   `ConnectionReset` from gpw.pl. The disk cache doubles as the resume mechanism: an interrupted run
   restarts without re-fetching what it already has.
-- **Expect the run to span more than one day.** gpw.pl blocked this IP outright after roughly a
-  day's worth of polling (see Phase 5), so ~390 sequential fetches may not fit in one sitting at any
-  cadence. The script must therefore treat a wall of consecutive failures as a stop condition —
-  report how many dates were cached versus still missing and exit non-zero — rather than grinding
-  through the remaining dates emitting retry noise. Re-running the next day resumes from the cache.
+- **A wall of consecutive failures is still a stop condition.** The daily-budget theory that
+  originally motivated this was a misdiagnosis (see Phase 5, corrected 2026-07-28) — ~390 sequential
+  fetches at ≥1.5 s should complete in one sitting, roughly 10 minutes. The stop condition survives
+  on its own merit: if the site does start refusing, grinding through the remaining dates emitting
+  retry noise helps nobody. Report how many dates were cached versus still missing and exit
+  non-zero; re-running resumes from the cache.
 
 #### 2. Script tests
 
@@ -850,9 +861,9 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Manual
 
-- [ ] 2.5 Live run returns ~372 GPW and ~332 NewConnect entries
-- [ ] 2.6 Five tickers spot-checked against gpw.pl
-- [ ] 2.7 Turnover magnitude confirms the ×1000 conversion
+- [x] 2.5 Live run returns ~372 GPW and ~332 NewConnect entries
+- [x] 2.6 Five tickers spot-checked against gpw.pl
+- [x] 2.7 Turnover magnitude confirms the ×1000 conversion
 
 ### Phase 3: Rewire the job to official sources
 
@@ -865,36 +876,36 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Manual
 
-- [ ] 3.4 Local run to a sentinel date shows expected official/bankier split
-- [ ] 3.5 Source distribution matches expectation
-- [ ] 3.6 Simulated empty GPW response aborts without writing
+- [x] 3.4 Local run to a sentinel date shows expected official/bankier split
+- [x] 3.5 Source distribution matches expectation
+- [x] 3.6 Simulated empty GPW response aborts without writing
 
 ### Phase 4: Narrow close-correction MERGE primitive
 
 #### Automated
 
-- [x] 4.1 Unit tests pass
-- [x] 4.2 Query-string regression asserts no WHEN NOT MATCHED
-- [x] 4.3 Linting passes
+- [x] 4.1 Unit tests pass — 530867f
+- [x] 4.2 Query-string regression asserts no WHEN NOT MATCHED — 530867f
+- [x] 4.3 Linting passes — 530867f
 
 #### Manual
 
-- [x] 4.4 Real-BQ round-trip completes successfully
-- [x] 4.5 Untouched columns survive and no phantom inserts occur
+- [x] 4.4 Real-BQ round-trip completes successfully — 530867f
+- [x] 4.5 Untouched columns survive and no phantom inserts occur — 530867f
 
 ### Phase 5: Archive reader
 
 #### Automated
 
-- [ ] 5.1 Archive reader tests pass
-- [ ] 5.2 Full unit suite passes
-- [ ] 5.3 Linting and layering pass
+- [x] 5.1 Archive reader tests pass
+- [x] 5.2 Full unit suite passes
+- [x] 5.3 Linting and layering pass
 
 #### Manual
 
-- [ ] 5.4 Live fetch returns ~400 rows and ALE 2026-07-24 is 44.735
-- [ ] 5.5 A Saturday date returns empty rather than raising
-- [ ] 5.6 A ~20-session sequential fetch retrieves every session, retries absorbing any reset
+- [x] 5.4 Live fetch returns ~400 rows and ALE 2026-07-24 is 44.735
+- [x] 5.5 A Saturday date returns empty rather than raising
+- [x] 5.6 A ~20-session sequential fetch retrieves every session, retries absorbing any reset
 
 ### Phase 6: Self-heal the previous session
 
