@@ -646,7 +646,15 @@ Behaviours that are not obvious:
   than 0.3 pp, reaching 11 pp — and `ECHO` on 2026-06-24 moved **+0.10% officially against −7.40%
   naively**. The calendar renders this quantity directly. Using the archive column also removes the
   "first session in the range has no predecessor" edge case entirely.
-- **Non-session detection.** The script already probes every calendar date; a date where the archive
+- **A correct close can carry a wrong percentage.** Measured across 5 sampled sessions, 8 of 1 156
+  rows whose close already matched the archive had a `zmiana_procentowa` that did not — ~470 rows
+  across the window. The calendar renders that number directly, so the correction triggers on either
+  value disagreeing, not on the close alone.
+- **Non-session detection.** Weekends are never probed (they are ~40% of the calendar and never
+  trade), so a phantom is judged on two kinds of evidence: a weekend needs none, a weekday must have
+  been probed and come back empty. Judging weekends by probing would have hidden the only phantom
+  production actually has. An **unprobed** weekday is never reported — that would turn a network gap
+  into a data-integrity claim. The script probes every weekday; a date where the archive
   reports no session but `company_daily_stats` holds rows is a phantom trading day. Report these —
   they inflate the trading-day spine and double-count a session's P/L in the calendar. **One already
   exists in production: 2026-06-27, a Saturday, with 739 rows.** Reporting only; deletion is a
@@ -690,12 +698,19 @@ detection, per-year grouping, and cache-path resolution.
 
 - `--dry-run` over the full range completes and writes zero rows (needs network and BigQuery
   credentials — not CI-runnable)
-- Dry-run report shows a plausible session count (~390) and a mapped-ticker count near 697
+- Dry-run report shows a plausible session count (~390) and a plausible mapped-ticker count.
+  **Corrected 2026-07-28: the expected number is ~369, not 697.** 697 is the GPW+NewConnect match
+  against `companies`; this pass reads `archiwum-notowan?type=10`, which is the GPW main market
+  alone — 372 feed names minus 3 ambiguous ones. Measured: 391 sessions, 369 mapped, 47 834
+  corrections, 69 archive names unmatched (instruments delisted during the window, e.g. CCC and
+  COMARCH, absent from both today's feed and today's archive)
 - Unmatched archive names are listed and are recognisably delisted or renamed instruments
 - Non-session dates holding rows are reported, and the list includes 2026-06-27
 - Spot-check: the script's computed correction for `KRU` on 2026-01-02 is `498.40`, and for
   `ALE` on 2026-07-24 is `44.735`
-- Cache directory is populated; a second dry-run performs no network requests
+- Cache directory is populated; a second dry-run performs **no archive fetches**. One live-feed
+  request remains — the `Nazwa -> Skrót` map is built from the current GPW quotation table, which is
+  deliberately not cached so a re-run picks up newly listed names
 
 **Implementation Note**: Pause for manual confirmation before proceeding.
 
@@ -919,32 +934,32 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Automated
 
-- [x] 6.1 Self-heal tests pass
-- [x] 6.2 Full unit suite passes
-- [x] 6.3 Linting and layering pass
+- [x] 6.1 Self-heal tests pass — 10d87d7
+- [x] 6.2 Full unit suite passes — 10d87d7
+- [x] 6.3 Linting and layering pass — 10d87d7
 
 #### Manual
 
-- [x] 6.4 Deliberately wrong previous close is corrected from the archive
-- [x] 6.5 Log reports reconciled session, corrections, and ignored reference divergences
-- [x] 6.6 Second consecutive run reports zero corrections
+- [x] 6.4 Deliberately wrong previous close is corrected from the archive — 10d87d7
+- [x] 6.5 Log reports reconciled session, corrections, and ignored reference divergences — 10d87d7
+- [x] 6.6 Second consecutive run reports zero corrections — 10d87d7
 
 ### Phase 7: Corrective script
 
 #### Automated
 
-- [ ] 7.1 Script tests pass
-- [ ] 7.2 Full unit suite passes
-- [ ] 7.3 Linting and layering pass
+- [x] 7.1 Script tests pass — PENDING
+- [x] 7.2 Full unit suite passes — PENDING
+- [x] 7.3 Linting and layering pass — PENDING
 
 #### Manual
 
-- [ ] 7.4 Dry-run over the full range writes zero rows
-- [ ] 7.5 Dry-run reports plausible session and mapped-ticker counts
-- [ ] 7.6 Unmatched names are recognisably delisted or renamed
-- [ ] 7.7 Non-session dates holding rows are reported, including 2026-06-27
-- [ ] 7.8 KRU 2026-01-02 computes to 498.40 and ALE 2026-07-24 to 44.735
-- [ ] 7.9 Second dry-run performs no network requests
+- [x] 7.4 Dry-run over the full range writes zero rows — PENDING
+- [x] 7.5 Dry-run reports plausible session and mapped-ticker counts — PENDING
+- [x] 7.6 Unmatched names are recognisably delisted or renamed — PENDING
+- [x] 7.7 Non-session dates holding rows are reported, including 2026-06-27 — PENDING
+- [x] 7.8 KRU 2026-01-02 computes to 498.40 and ALE 2026-07-24 to 44.735 — PENDING
+- [x] 7.9 Second dry-run performs no network requests — PENDING
 
 ### Phase 8: Production correction run and verification
 

@@ -141,6 +141,19 @@ def _fetch(url: str):
     )
 
 
+def archive_url(session_date: date, instrument_type: str = INSTRUMENT_SHARES) -> str:
+    """The archive's own URL shape: DD-MM-YYYY, and `instrument` deliberately empty."""
+    return (
+        f"{ARCHIVE_URL}?type={instrument_type}&instrument="
+        f"&date={session_date.strftime('%d-%m-%Y')}"
+    )
+
+
+def fetch_archive_html(session_date: date, instrument_type: str = INSTRUMENT_SHARES) -> str:
+    """Raw page for one date — split out so a bulk pass can cache what it fetched."""
+    return _fetch(archive_url(session_date, instrument_type)).text
+
+
 def fetch_archive_session(
     session_date: date, instrument_type: str = INSTRUMENT_SHARES
 ) -> dict[str, dict]:
@@ -150,13 +163,12 @@ def fetch_archive_session(
     not yet published). Raises `ScraperError` when the fetch fails or the sheet's
     header no longer matches — neither is a holiday, and neither may look like one.
     """
-    url = (
-        f"{ARCHIVE_URL}?type={instrument_type}&instrument="
-        f"&date={session_date.strftime('%d-%m-%Y')}"
-    )
-    resp = _fetch(url)
+    return parse_archive_sheet(fetch_archive_html(session_date, instrument_type), session_date)
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+
+def parse_archive_sheet(html: str, session_date: date | None = None) -> dict[str, dict]:
+    """Parse one archive page. `session_date` only labels the logs."""
+    soup = BeautifulSoup(html, "html.parser")
     table = _find_sheet(soup)
     if table is None:
         logger.info("fetch_archive_session: no session on %s", session_date)
