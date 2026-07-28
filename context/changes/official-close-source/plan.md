@@ -351,7 +351,30 @@ and `exit(1)`. Thresholds are module constants with a comment recording the obse
 runs 18×/day with no alert dedup (GH #172) — the floors must be loose enough that a normal session
 never trips them.
 
-#### 3. Job tests
+#### 3. Carry the last real close into the positions view
+
+**File**: `db/bigquery.py`
+
+**Intent**: Stop a session with no trades from blanking a held position's price.
+
+**Contract**: `latest_stats` and `latest_etf` in `list_user_portfolio_positions` rank rows by
+`snapshot_date DESC` without excluding NULL closes, so the newest row wins even when it has no
+price. That was harmless while bankier was the source — measured 2026-07-28, its two listings return
+737 symbols with **zero** missing closes, because it publishes the last known price rather than
+reporting the session. The official GPW feed reports the session honestly: 120 of 697 replayed rows
+carried no close. After the switch, an illiquid holding would show no price at all despite the
+previous session's close sitting one row below. Add `AND kurs_zamkniecia IS NOT NULL` to both CTEs,
+matching `hist_raw` (`db/bigquery.py:821`), which has always filtered them. `price_as_of` then
+reports the older date, which is what that field exists for.
+
+Not fixed at write time: storing the previous close as today's would fabricate a session that never
+happened, and it would be indistinguishable from a real one in the calendar, the value chart and the
+Phase 7 audit. PUL-100 deliberately fills at read time for this reason. Using `kurs_otwarcia`
+instead is not an option either — measured across the GPW table, **no row has an open without a
+close**; no trades means no open. The 7-day ranking window remains a separate limit: an instrument
+untraded for longer still resolves to no price.
+
+#### 4. Job tests
 
 **File**: `tests/test_company_stats_main.py`
 
@@ -369,6 +392,7 @@ sources) does not alert.
 - Job tests pass: `uv run pytest tests/test_company_stats_main.py`
 - Full unit suite passes: `uv run pytest --ignore=tests/e2e`
 - Linting and layering pass: `uv run ruff check .`, `uv run tach check`
+- Both current-price CTEs skip NULL closes, asserted on the generated SQL
 
 #### Manual Verification:
 
@@ -834,9 +858,10 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Automated
 
-- [x] 3.1 Job tests pass
-- [x] 3.2 Full unit suite passes
-- [x] 3.3 Linting and layering pass
+- [x] 3.1 Job tests pass — a2a6ab4
+- [x] 3.2 Full unit suite passes — a2a6ab4
+- [x] 3.3 Linting and layering pass — a2a6ab4
+- [x] 3.7 Both current-price CTEs skip NULL closes
 
 #### Manual
 

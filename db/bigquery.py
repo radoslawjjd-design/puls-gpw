@@ -802,6 +802,11 @@ def list_user_portfolio_positions(
     single-call batch fetch, grouped by portfolio_id in Python).
     Uses ROW_NUMBER() OVER PARTITION BY ticker to pick the most recent company_daily_stats
     entry per ticker, then LEFT JOIN so positions without price data still appear.
+    Rows whose close is NULL are skipped when ranking: the official GPW feed reports
+    no close for an instrument that did not trade that session, and the newest row
+    winning regardless would blank a held position rather than carry the previous
+    session's price forward. `price_as_of` then reports the older date, which is
+    what that field is for.
 
     When include_history=True, each row also carries price_history: list[float] — the
     last 30 trading-session close prices (PLN, ascending by date), unioned across
@@ -857,6 +862,7 @@ def list_user_portfolio_positions(
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
           WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+            AND kurs_zamkniecia IS NOT NULL
         ),
         latest_etf AS (
           SELECT
@@ -867,6 +873,7 @@ def list_user_portfolio_positions(
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _ETF_QUOTES_TABLE_NAME)}`
           WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+            AND kurs_zamkniecia IS NOT NULL
         ){history_cte}
         SELECT
           p.portfolio_id,
