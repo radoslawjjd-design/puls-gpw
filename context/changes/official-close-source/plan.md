@@ -819,10 +819,10 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Automated
 
-- [x] 2.1 New parser tests pass
-- [x] 2.2 Full unit suite passes
-- [x] 2.3 Linting passes
-- [x] 2.4 Layering passes
+- [x] 2.1 New parser tests pass — 8573143
+- [x] 2.2 Full unit suite passes — 8573143
+- [x] 2.3 Linting passes — 8573143
+- [x] 2.4 Layering passes — 8573143
 
 #### Manual
 
@@ -834,9 +834,9 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Automated
 
-- [ ] 3.1 Job tests pass
-- [ ] 3.2 Full unit suite passes
-- [ ] 3.3 Linting and layering pass
+- [x] 3.1 Job tests pass
+- [x] 3.2 Full unit suite passes
+- [x] 3.3 Linting and layering pass
 
 #### Manual
 
