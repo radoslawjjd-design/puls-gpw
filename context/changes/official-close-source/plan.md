@@ -948,18 +948,18 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Automated
 
-- [x] 7.1 Script tests pass — PENDING
-- [x] 7.2 Full unit suite passes — PENDING
-- [x] 7.3 Linting and layering pass — PENDING
+- [x] 7.1 Script tests pass — 7ee45da
+- [x] 7.2 Full unit suite passes — 7ee45da
+- [x] 7.3 Linting and layering pass — 7ee45da
 
 #### Manual
 
-- [x] 7.4 Dry-run over the full range writes zero rows — PENDING
-- [x] 7.5 Dry-run reports plausible session and mapped-ticker counts — PENDING
-- [x] 7.6 Unmatched names are recognisably delisted or renamed — PENDING
-- [x] 7.7 Non-session dates holding rows are reported, including 2026-06-27 — PENDING
-- [x] 7.8 KRU 2026-01-02 computes to 498.40 and ALE 2026-07-24 to 44.735 — PENDING
-- [x] 7.9 Second dry-run performs no network requests — PENDING
+- [x] 7.4 Dry-run over the full range writes zero rows — 7ee45da
+- [x] 7.5 Dry-run reports plausible session and mapped-ticker counts — 7ee45da
+- [x] 7.6 Unmatched names are recognisably delisted or renamed — 7ee45da
+- [x] 7.7 Non-session dates holding rows are reported, including 2026-06-27 — 7ee45da
+- [x] 7.8 KRU 2026-01-02 computes to 498.40 and ALE 2026-07-24 to 44.735 — 7ee45da
+- [x] 7.9 Second dry-run performs no network requests — 7ee45da
 
 ### Phase 8: Production correction run and verification
 
