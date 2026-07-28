@@ -27,3 +27,12 @@ def test_seed_companies_has_no_company_daily_stats_write_path():
         assert not hasattr(seed, name), (
             f"seed_companies imports {name} — it would clobber source/kurs_odn with NULL"
         )
+
+
+def test_seed_companies_never_names_the_stats_table():
+    """Source-level guard: an aliased import would dodge the hasattr check above."""
+    source = _SCRIPT.read_text(encoding="utf-8")
+    body = source.split('"""', 2)[-1]  # skip the module docstring, which explains the ban
+    assert "company_daily_stats" not in body, (
+        "seed_companies references company_daily_stats outside its docstring"
+    )

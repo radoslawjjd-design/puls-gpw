@@ -36,8 +36,11 @@ SENTINEL_DATE = date(2000, 1, 1)
 SENTINEL_DATE_STR = SENTINEL_DATE.isoformat()
 
 # PUL-98 columns, added after initial table creation — both must be NULLABLE for
-# the additive ALTER TABLE ADD COLUMN migration path to work.
-_NEW_COLUMNS = {"source": "STRING", "kurs_odn": "FLOAT"}
+# the additive ALTER TABLE ADD COLUMN migration path to work. Types are spelled out
+# here rather than read from _COMPANY_DAILY_STATS_SCHEMA on purpose: this script
+# checks the LIVE table against an independent expectation (lessons.md:317-320).
+# BigQuery reports FLOAT64 columns as either name depending on the API surface.
+_NEW_COLUMNS = {"source": {"STRING"}, "kurs_odn": {"FLOAT", "FLOAT64"}}
 
 
 def _query_sentinel(client) -> list:
@@ -55,13 +58,14 @@ def _assert_live_schema(client) -> None:
     """Check the LIVE table, not the repo definition — lessons.md:317-320."""
     table = client.get_table(_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME))
     live = {f.name: f for f in table.schema}
-    for name, expected_type in _NEW_COLUMNS.items():
+    for name, accepted_types in _NEW_COLUMNS.items():
         assert name in live, f"Live table is missing column {name} — migration did not run"
         assert live[name].mode == "NULLABLE", (
             f"Live column {name} is {live[name].mode}, expected NULLABLE"
         )
-        assert live[name].field_type.startswith(expected_type[:5]), (
-            f"Live column {name} is {live[name].field_type}, expected {expected_type}"
+        assert live[name].field_type in accepted_types, (
+            f"Live column {name} is {live[name].field_type}, "
+            f"expected one of {sorted(accepted_types)}"
         )
     print("OK: live schema carries source + kurs_odn as NULLABLE")
 
