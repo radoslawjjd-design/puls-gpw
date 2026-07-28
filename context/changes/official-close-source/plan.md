@@ -467,6 +467,12 @@ Three contracts that are not obvious:
   retries with increasing backoff — the retry is load-bearing, not a nicety. `src/http_client.py`
   provides no inter-request throttle despite its docstring, so pacing is this module's
   responsibility.
+- **The limit appears to be volume, not only cadence.** After ~5.5 h of 10-minute polling plus ~38
+  archive fetches in one day, both `gpw.pl` and `newconnect.pl` refused every connection from this
+  IP — including the bare domain root, across 5 retries with backoff — while `bankier.pl` and
+  unrelated hosts answered normally. Slowing down cannot buy past a daily budget. Two consequences:
+  a run must **fail loudly on a total block** rather than log 390 individual retries, and the disk
+  cache is a **prerequisite for completing the corrective pass**, not an optimisation (see Phase 7).
 
 #### 2. Unit tests
 
@@ -610,6 +616,11 @@ Behaviours that are not obvious:
   HTTP session, retry with increasing backoff — a 0.4 s cadence was measured to trigger
   `ConnectionReset` from gpw.pl. The disk cache doubles as the resume mechanism: an interrupted run
   restarts without re-fetching what it already has.
+- **Expect the run to span more than one day.** gpw.pl blocked this IP outright after roughly a
+  day's worth of polling (see Phase 5), so ~390 sequential fetches may not fit in one sitting at any
+  cadence. The script must therefore treat a wall of consecutive failures as a stop condition —
+  report how many dates were cached versus still missing and exit non-zero — rather than grinding
+  through the remaining dates emitting retry noise. Re-running the next day resumes from the cache.
 
 #### 2. Script tests
 
@@ -808,10 +819,10 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Automated
 
-- [ ] 2.1 New parser tests pass
-- [ ] 2.2 Full unit suite passes
-- [ ] 2.3 Linting passes
-- [ ] 2.4 Layering passes
+- [x] 2.1 New parser tests pass
+- [x] 2.2 Full unit suite passes
+- [x] 2.3 Linting passes
+- [x] 2.4 Layering passes
 
 #### Manual
 
