@@ -310,6 +310,24 @@ def test_self_heal_skips_a_ticker_the_archive_does_not_name(m):
     m["correct"].assert_not_called()
 
 
+def test_self_heal_refuses_a_name_two_tickers_claim(m):
+    """`official` merges GPW and NewConnect, so last-one-wins on a shared company
+    name would hand a GPW-main archive close to a NewConnect ticker — a plausible
+    price against the wrong company, which is the failure this change removes. The
+    corrective script drops contested names; the self-heal must do the same."""
+    m["nc"]["NCX"] = {**_PKO_OFFICIAL, "company_name": "PKOBP", "isin": None}
+    m["list_co"].return_value = [_company("PKO", "PLPKOBP00016"), _company("NCX")]
+    # Both disagree with the reference price, so both are candidates for repair.
+    m["prev"].return_value = (date(2026, 7, 27), {"PKO": 107.9, "NCX": 50.0})
+    m["archive"].return_value = {"PKOBP": _ARCHIVE_PKOBP}
+
+    company_stats_main.main()
+
+    # Without the gate, PKOBP resolves to whichever ticker was iterated last and the
+    # GPW close is written against it.
+    m["correct"].assert_not_called()
+
+
 def test_self_heal_failure_does_not_abort_the_ingest(m):
     """Today's prices matter more than yesterday's repair."""
     m["prev"].return_value = (date(2026, 7, 27), {"PKO": 107.9})

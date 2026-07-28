@@ -85,7 +85,7 @@ def main() -> None:
             "kurs_zamkniecia": 102.5,
             "zmiana_procentowa": 1.99,
             "zmiana_kwotowa": 2.0,
-            "source": "gpw-archive",
+            "source": "archive",
             "fetched_at": "2026-07-28T09:00:00+00:00",
         }])
         assert corrected == 1, f"expected 1 corrected row, got {corrected}"
@@ -93,7 +93,7 @@ def main() -> None:
         assert row.kurs_zamkniecia == 102.5, f"close not corrected: {row.kurs_zamkniecia}"
         assert row.zmiana_procentowa == 1.99, f"pct not corrected: {row.zmiana_procentowa}"
         assert row.zmiana_kwotowa == 2.0, f"delta not corrected: {row.zmiana_kwotowa}"
-        assert row.source == "gpw-archive", f"source not corrected: {row.source}"
+        assert row.source == "archive", f"source not corrected: {row.source}"
         print("OK: close, both derived columns and source corrected")
 
         # 2. the observed session survived
@@ -113,7 +113,7 @@ def main() -> None:
             "kurs_zamkniecia": 7.0,
             "zmiana_procentowa": 0.0,
             "zmiana_kwotowa": 0.0,
-            "source": "gpw-archive",
+            "source": "archive",
             "fetched_at": "2026-07-28T09:00:00+00:00",
         }])
         after = list(client.query(f"SELECT COUNT(*) AS n FROM `{rt_ref}`").result())[0].n
@@ -127,7 +127,7 @@ def main() -> None:
             "snapshot_date": "2000-01-02",
             "zmiana_procentowa": 0.0,
             "zmiana_kwotowa": 0.0,
-            "source": "gpw-archive",
+            "source": "archive",
         }
         bq.merge_company_daily_stats_close_correction([
             {**base, "kurs_zamkniecia": 1.0, "fetched_at": "2026-07-28T08:00:00+00:00"},

@@ -9,8 +9,11 @@ import importlib.util
 import sys
 from datetime import date
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+
+from src.exceptions import ScraperError
 
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "correct_official_closes.py"
 _spec = importlib.util.spec_from_file_location("correct_official_closes", _SCRIPT)
@@ -140,6 +143,62 @@ def test_correction_rows_skip_a_session_the_archive_left_blank():
     assert rows == []
 
 
+def test_the_provenance_sentinel_matches_the_daily_job():
+    """`source = 'archive'` is the only way to tell a corrected row from an original
+    one, and the literal is defined twice — here and in the job. If they ever drift,
+    the audit query silently under-reports."""
+    import company_stats_main
+
+    assert cc.ARCHIVE_SOURCE == company_stats_main._ARCHIVE_SOURCE == "archive"
+
+
+def test_a_close_without_a_percentage_is_left_alone():
+    """The MERGE assigns all four columns unconditionally, so correcting from a row
+    the archive left without a percentage would write NULL over a good
+    zmiana_procentowa and zmiana_kwotowa — and the calendar sums the latter straight
+    into the day's P/L."""
+    sheet = {"PKOBP": {"kurs_zamkniecia": 108.0, "zmiana_procentowa": None}}
+    stored = {"PKO": {"close": 107.9, "pct": 1.24}}   # the close genuinely disagrees
+
+    rows = cc.build_correction_rows(
+        date(2026, 7, 24), sheet, {"PKOBP": "PKO"}, stored, _FETCHED_AT
+    )
+
+    assert rows == []
+
+
+# ── cache integrity ───────────────────────────────────────────────────────────
+
+def test_a_truncated_page_is_not_accepted():
+    """A half-written file or an HTTP 200 error page parses to "no sheet", which
+    would both suppress that date's corrections and report a normal session as a
+    phantom trading day."""
+    assert not cc.page_looks_complete("<html><body>archiwum-notowan<table>")
+    assert not cc.page_looks_complete("<html><body>gateway timeout</body></html>")
+    assert cc.page_looks_complete("<html>archiwum-notowan<table></table></body>\n</html>\n")
+
+
+def test_a_truncated_cache_file_is_refetched_and_replaced_atomically(tmp_path, monkeypatch):
+    good = "<html>archiwum-notowan<table></table></body>\n</html>"
+    cc.cache_path(tmp_path, date(2026, 7, 24)).write_text("<html>truncated", encoding="utf-8")
+    monkeypatch.setattr(cc, "fetch_archive_html", lambda day: good)
+
+    assert cc.load_session_html(tmp_path, date(2026, 7, 24)) == good
+    assert cc.cache_path(tmp_path, date(2026, 7, 24)).read_text(encoding="utf-8") == good
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_an_incomplete_fetch_raises_rather_than_caching_it(tmp_path, monkeypatch):
+    """Raising routes the date into the run's consecutive-failure counter; caching a
+    bad page would poison every later run."""
+    monkeypatch.setattr(cc, "fetch_archive_html", lambda day: "<html>error")
+
+    with pytest.raises(ScraperError):
+        cc.load_session_html(tmp_path, date(2026, 7, 24))
+
+    assert list(tmp_path.iterdir()) == []
+
+
 # ── phantom trading days ──────────────────────────────────────────────────────
 
 def test_phantom_dates_include_a_weekend_we_never_probed():
@@ -215,6 +274,53 @@ def test_a_correct_close_with_a_wrong_percentage_is_still_corrected():
     assert len(rows) == 1
     assert rows[0]["kurs_zamkniecia"] == pytest.approx(108.0)
     assert rows[0]["zmiana_procentowa"] == pytest.approx(1.33)
+
+
+# ── writing is opt-in ─────────────────────────────────────────────────────────
+
+@pytest.fixture
+def _one_correction(monkeypatch, tmp_path):
+    """Stub main()'s world down to a single pending correction for PKO."""
+    merge = MagicMock(return_value=1)
+    monkeypatch.setattr(cc, "_get_client", lambda: object())
+    monkeypatch.setattr(cc, "load_known_tickers", lambda client: {"PKO"})
+    monkeypatch.setattr(cc, "fetch_quotations", lambda market: {"PKO": {"company_name": "PKOBP"}})
+    monkeypatch.setattr(
+        cc, "load_stored_closes",
+        lambda client, since, until, tickers: (
+            {date(2026, 7, 24): {"PKO": {"close": 107.9, "pct": 1.24}}}, {},
+        ),
+    )
+    monkeypatch.setattr(cc, "load_session_html", lambda cache_dir, day: "<html/>")
+    monkeypatch.setattr(
+        cc, "parse_archive_sheet",
+        lambda html, day=None: {"PKOBP": {"kurs_zamkniecia": 108.0, "zmiana_procentowa": 1.33}},
+    )
+    monkeypatch.setattr(cc, "merge_company_daily_stats_close_correction", merge)
+    monkeypatch.setattr(
+        sys, "argv",
+        # An explicit cache dir keeps the run from creating the default one in the repo.
+        ["correct_official_closes.py", "--since", "2026-07-24", "--until", "2026-07-24",
+         "--cache-dir", str(tmp_path)],
+    )
+    return merge
+
+
+def test_a_bare_run_reports_without_writing(_one_correction):
+    """The pass overwrites production in place with no undo, so writing is opt-in —
+    a bare invocation must not be able to correct 19 months of history by accident."""
+    assert cc.main() == 0
+
+    _one_correction.assert_not_called()
+
+
+def test_apply_performs_the_write(_one_correction):
+    sys.argv.append("--apply")
+
+    assert cc.main() == 0
+
+    assert _one_correction.call_count == 1
+    assert _one_correction.call_args[0][0][0]["ticker"] == "PKO"
 
 
 def test_a_row_agreeing_on_both_close_and_percentage_is_left_alone():

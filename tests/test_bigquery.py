@@ -1423,7 +1423,8 @@ def test_get_portfolio_calendar_data_returns_correct_shape():
 
 
 def test_get_portfolio_calendar_data_uses_correct_date_params():
-    """lookback_start must be month_start (first day of month); end_date must be last day of month."""
+    """The scan starts before the month so the carry-forward has a predecessor for
+    the 1st; the result is still clipped to month_start..end_date."""
     from db.bigquery import get_portfolio_calendar_data
 
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
@@ -1434,10 +1435,37 @@ def test_get_portfolio_calendar_data_uses_correct_date_params():
 
     assert params_by_name["portfolio_id"].value == "port-abc"
     assert params_by_name["user_id"].value == "user-xyz"
-    assert params_by_name["lookback_start"].value == date(2026, 6, 1)
+    assert params_by_name["lookback_start"].value == date(2026, 5, 22)
+    assert params_by_name["month_start"].value == date(2026, 6, 1)
     assert params_by_name["end_date"].value == date(2026, 6, 30)
     assert params_by_name["lookback_start"].type_ == "DATE"
+    assert params_by_name["month_start"].type_ == "DATE"
     assert params_by_name["end_date"].type_ == "DATE"
+
+
+def test_calendar_carries_the_last_close_forward_over_a_no_trade_session():
+    """A session with no trades leaves no close (PUL-98: the official feed reports
+    the session honestly where bankier always republished the last number).  Scoring
+    that as zero would drop the whole position out of the day's value and render as
+    a real loss, so the calendar must carry the previous close forward — and must
+    clip the lookback rows it scans to do so out of the result."""
+    from db.bigquery import get_portfolio_calendar_data
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_calendar_data("port-abc", "user-xyz", 2026, 6)
+
+    sql = mock_get.return_value.query.call_args[0][0]
+
+    assert "LAST_VALUE(close_price IGNORE NULLS) OVER (" in sql
+    assert "PARTITION BY ticker ORDER BY snapshot_date" in sql
+    assert "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW" in sql
+    # The value and the coverage counter both read the filled column, never the raw one.
+    assert "shares * close_ff" in sql
+    assert "COUNTIF(close_ff IS NOT NULL)" in sql
+    assert "shares * close_price" not in sql
+    # A day without trades had no move, so the change is not carried forward.
+    assert "LAST_VALUE(daily_chg" not in sql
+    assert "WHERE snapshot_date >= @month_start" in sql
 
 
 def test_get_portfolio_calendar_data_returns_empty_list_when_no_positions():

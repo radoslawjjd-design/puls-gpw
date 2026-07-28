@@ -380,13 +380,16 @@ def get_portfolio_calendar_data(
 
     Note: the 35-day lookback was originally intended as a delta baseline (plan used
     consecutive-day portfolio_value differences for P&L).  The implementation uses
-    zmiana_kwotowa directly instead, so lookback rows before month_start are fetched
-    but ignored by compute_calendar_pnl().  The window is kept for potential future use.
+    zmiana_kwotowa directly instead.  A 10-day lookback is still scanned, now for a
+    different reason: it gives the close carry-forward a predecessor for the 1st of
+    the month.  Those rows are filtered out before the result is returned.
     """
     client = _get_client()
     _t = time.time()
     month_start = date(year, month, 1)
-    lookback_start = month_start
+    # Scanned only so the carry-forward below has a predecessor for the 1st of the
+    # month; rows before month_start are filtered out of the result.
+    lookback_start = month_start - timedelta(days=10)
     _, last_day = calendar.monthrange(year, month)
     end_date = date(year, month, last_day)
 
@@ -421,16 +424,34 @@ def get_portfolio_calendar_data(
             LEFT JOIN `{etf_ref}` etq
               ON etq.ticker = p.ticker AND etq.snapshot_date = td.snapshot_date
           ),
+          filled AS (
+            -- A session with no trades leaves no close.  Bankier always published
+            -- the last known number so this could not happen before PUL-98; the
+            -- official feed reports the session honestly (measured 2026-07-28: 100
+            -- of 332 NewConnect rows carry no close).  Scoring that as zero would
+            -- drop the whole position out of the day's value and render as a real
+            -- loss, so carry the last known close forward exactly as
+            -- get_portfolio_history does.  daily_chg is deliberately NOT carried
+            -- forward: a day without trades had no move.
+            SELECT
+              snapshot_date, ticker, shares, daily_chg,
+              LAST_VALUE(close_price IGNORE NULLS) OVER (
+                PARTITION BY ticker ORDER BY snapshot_date
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+              ) AS close_ff
+            FROM daily_prices
+          ),
           daily_portfolio AS (
             SELECT
               snapshot_date,
-              SUM(CASE WHEN close_price IS NOT NULL THEN shares * close_price ELSE 0 END)
+              SUM(CASE WHEN close_ff IS NOT NULL THEN shares * close_ff ELSE 0 END)
                 AS portfolio_value,
               SUM(CASE WHEN daily_chg IS NOT NULL THEN shares * daily_chg ELSE 0 END)
                 AS daily_change_pln,
-              COUNTIF(close_price IS NOT NULL) AS prices_found,
+              COUNTIF(close_ff IS NOT NULL) AS prices_found,
               COUNT(*) AS total_positions
-            FROM daily_prices
+            FROM filled
+            WHERE snapshot_date >= @month_start
             GROUP BY snapshot_date
           )
         SELECT snapshot_date, portfolio_value, daily_change_pln, prices_found, total_positions
@@ -440,6 +461,7 @@ def get_portfolio_calendar_data(
     params: list[bigquery.ScalarQueryParameter] = [
         bigquery.ScalarQueryParameter("user_id",        "STRING", user_id),
         bigquery.ScalarQueryParameter("lookback_start", "DATE",   lookback_start),
+        bigquery.ScalarQueryParameter("month_start",    "DATE",   month_start),
         bigquery.ScalarQueryParameter("end_date",       "DATE",   end_date),
     ]
     if portfolio_id is not None:

@@ -40,7 +40,7 @@ _CORRECTION_ROW = {
     "kurs_zamkniecia": 44.735,
     "zmiana_procentowa": -1.02,
     "zmiana_kwotowa": -0.46,
-    "source": "gpw-archive",
+    "source": "archive",
     "fetched_at": "2026-07-28T09:00:00+00:00",
 }
 

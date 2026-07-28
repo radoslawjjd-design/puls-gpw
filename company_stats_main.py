@@ -190,11 +190,23 @@ def _self_heal_previous_session(
 
     # The archive keys rows by the exchange's abbreviated name; the live feed's
     # company_name is the only bridge back to a ticker. ~10% never map.
+    #
+    # A name two tickers claim is dropped rather than resolved: `official` merges GPW
+    # and NewConnect, so last-one-wins would hand a GPW-main archive close to a
+    # NewConnect ticker. That is the "plausible price against the wrong company"
+    # failure this change exists to remove, so it gets the same gate the corrective
+    # script applies (scripts/correct_official_closes.py:build_name_map). Zero
+    # collisions exist today across 704 names — this guards the next new listing.
+    claimants: dict[str, set[str]] = {}
+    for ticker, (stats, _) in official.items():
+        if stats.get("company_name"):
+            claimants.setdefault(stats["company_name"], set()).add(ticker)
     ticker_of = {
-        stats["company_name"]: ticker
-        for ticker, (stats, _) in official.items()
-        if stats.get("company_name")
+        name: next(iter(tickers)) for name, tickers in claimants.items() if len(tickers) == 1
     }
+    if (ambiguous := len(claimants) - len(ticker_of)):
+        logger.warning("self_heal: %d company names claimed by more than one ticker — skipped",
+                       ambiguous)
 
     corrections: list[dict] = []
     confirmed = 0
@@ -211,6 +223,13 @@ def _self_heal_previous_session(
             confirmed += 1
             continue
         pct = archived.get("zmiana_procentowa")
+        if pct is None:
+            # The correction MERGE assigns all four columns unconditionally, so a row
+            # without a percentage would write NULL over a good zmiana_procentowa and
+            # zmiana_kwotowa — and the calendar sums the latter straight into the
+            # day's P/L. Never observed across 409 archived sessions; declining to
+            # repair costs nothing and cannot corrupt.
+            continue
         corrections.append({
             "ticker": ticker,
             "snapshot_date": session_date.isoformat(),
@@ -220,9 +239,7 @@ def _self_heal_previous_session(
             # neighbouring session, so a correction never depends on a row that
             # may itself still be wrong.
             "zmiana_kwotowa": (
-                archived_close - archived_close / (1 + pct / 100)
-                if pct is not None and pct != -100
-                else None
+                archived_close - archived_close / (1 + pct / 100) if pct != -100 else None
             ),
             "source": _ARCHIVE_SOURCE,
             "fetched_at": fetched_at,

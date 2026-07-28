@@ -22,10 +22,14 @@ Two rules the run must never break:
   for corporate actions; `ECHO` on 2026-06-24 moved +0.10% officially against -7.40%
   naively. The calendar renders this quantity directly.
 
+Reporting is the default; `--apply` is required to write. The pass overwrites in
+place with no undo, so a bare invocation must not be able to correct 19 months of
+history by accident.
+
 Run with:
-    uv run python scripts/correct_official_closes.py --dry-run
-    uv run python scripts/correct_official_closes.py --since 2025-01-01
-    uv run python scripts/correct_official_closes.py --tickers PKO,ALE --dry-run
+    uv run python scripts/correct_official_closes.py
+    uv run python scripts/correct_official_closes.py --tickers PKO,ALE
+    uv run python scripts/correct_official_closes.py --since 2025-01-01 --apply
 
 Requires ADC: gcloud auth application-default login
 """
@@ -57,7 +61,12 @@ from src.gpw_archive import fetch_archive_html, parse_archive_sheet  # noqa: E40
 from src.gpw_quotations import fetch_quotations  # noqa: E402
 
 DEFAULT_SINCE = "2025-01-01"
+DEFAULT_CACHE_DIR = ".cache/gpw-archive"
 ARCHIVE_SOURCE = "archive"
+
+# Present on every archive page, session or not — the cheapest way to tell a real
+# response from an error page served with HTTP 200.
+_PAGE_MARKER = "archiwum-notowan"
 
 # Closes carry four decimals; below this is float noise, not a disagreement.
 CLOSE_EPSILON = 1e-4
@@ -152,12 +161,19 @@ def build_correction_rows(
         if close is None:
             continue
         pct = archived.get("zmiana_procentowa")
+        if pct is None:
+            # The MERGE assigns all four columns unconditionally, so a row without a
+            # percentage would write NULL over a good zmiana_procentowa and
+            # zmiana_kwotowa — and the calendar sums the latter straight into the
+            # day's P/L. Never observed (0 of 157 899 archive rows across 409
+            # sessions), so declining to correct costs nothing and cannot corrupt.
+            continue
         current = stored[ticker]
         close_agrees = (
             current.get("close") is not None
             and abs(close - current["close"]) <= CLOSE_EPSILON
         )
-        pct_agrees = pct is None or (
+        pct_agrees = (
             current.get("pct") is not None and abs(pct - current["pct"]) <= PCT_EPSILON
         )
         if close_agrees and pct_agrees:
@@ -214,16 +230,36 @@ def cache_path(cache_dir: Path, session_date: date) -> Path:
 
 # ── I/O ───────────────────────────────────────────────────────────────────────
 
+def page_looks_complete(html: str) -> bool:
+    """Whether a page is worth caching, and worth trusting on a re-run.
+
+    Measured over 409 real pages: every one carries the marker and ends with the
+    closing tag, and a non-session date still returns a full 75 KB page. A half-
+    written file or an HTTP 200 error page fails both — and would otherwise parse
+    to "no sheet", which both suppresses that date's corrections and can report a
+    perfectly normal session as a phantom trading day.
+    """
+    return _PAGE_MARKER in html and html.rstrip().endswith("</html>")
+
+
 def load_session_html(cache_dir: Path | None, session_date: date) -> str:
-    """Cached page if we already have it, otherwise fetch and cache."""
-    if cache_dir is not None:
-        cached = cache_path(cache_dir, session_date)
-        if cached.exists():
-            return cached.read_text(encoding="utf-8")
+    """Cached page if we already have a complete one, otherwise fetch and cache."""
+    cached = cache_path(cache_dir, session_date) if cache_dir is not None else None
+    if cached is not None and cached.exists():
+        html = cached.read_text(encoding="utf-8")
+        if page_looks_complete(html):
+            return html
+        logger.warning("cached page for %s is truncated — refetching", session_date)
 
     html = fetch_archive_html(session_date)
-    if cache_dir is not None:
-        cache_path(cache_dir, session_date).write_text(html, encoding="utf-8")
+    if not page_looks_complete(html):
+        raise ScraperError(f"gpw archive returned an incomplete page for {session_date}")
+    if cached is not None:
+        # Written via a temp file so an interrupted run cannot leave a partial page
+        # behind for the next run to trust.
+        tmp = cached.with_suffix(".tmp")
+        tmp.write_text(html, encoding="utf-8")
+        tmp.replace(cached)
     return html
 
 
@@ -263,8 +299,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--since", default=DEFAULT_SINCE, help=f"ISO date (default {DEFAULT_SINCE})")
     parser.add_argument("--until", default=None, help="ISO date (default: yesterday)")
-    parser.add_argument("--cache-dir", default=None, help="directory for cached archive pages")
-    parser.add_argument("--dry-run", action="store_true", help="report only, no BQ writes")
+    # Cached by default: the cache is also the resume mechanism, so an interrupted
+    # run must not have to re-fetch ~390 pages.
+    parser.add_argument("--cache-dir", default=DEFAULT_CACHE_DIR,
+                        help=f"directory for cached archive pages (default {DEFAULT_CACHE_DIR})")
+    # Writing is opt-in. This pass overwrites production in place with no undo, so a
+    # bare invocation reports and stops rather than correcting 19 months of history.
+    parser.add_argument("--apply", action="store_true", help="write to BigQuery (default: report only)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="deprecated — reporting is the default; kept so old commands still work")
     parser.add_argument("--tickers", help="comma-separated subset, e.g. PKO,ALE")
     parser.add_argument("--chunk-size", type=int, default=0,
                         help="max rows per MERGE (0 = one MERGE per year)")
@@ -346,8 +389,9 @@ def main() -> int:
         sample = sorted(unmatched_names)[:20]
         print(f"  unmatched sample    : {', '.join(sample)}")
 
-    if args.dry_run:
-        print("\n  dry run — nothing written")
+    if not args.apply:
+        # ASCII: the Windows console this runs on is cp1250 and mangles an em dash.
+        print("\n  report only - nothing written (pass --apply to correct)")
         return 0
     if not corrections:
         print("\n  nothing to correct")
