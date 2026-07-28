@@ -5,6 +5,8 @@ from bs4 import BeautifulSoup
 
 from src.exceptions import ScraperError
 from src.http_client import get
+from src.polish_numbers import parse_int as _parse_int
+from src.polish_numbers import parse_polish_float as _parse_polish_float
 
 logger = logging.getLogger(__name__)
 
@@ -27,30 +29,6 @@ def symbol_from_hop_url(hop_url: str) -> str | None:
             return None
         return values[0] or None
     except Exception:
-        return None
-
-
-def _parse_polish_float(text: str) -> float | None:
-    """Parse a Polish-formatted number (comma decimal, space thousands separator) to float."""
-    try:
-        cleaned = (
-            text.replace("\xa0", "")
-                .replace("zł", "")
-                .replace("%", "")
-                .replace(" ", "")
-                .strip()
-        )
-        return float(cleaned.replace(",", ".")) if cleaned else None
-    except (ValueError, AttributeError):
-        return None
-
-
-def _parse_int(text: str) -> int | None:
-    """Parse a Polish-formatted integer (space thousands separator) to int."""
-    try:
-        cleaned = text.replace("\xa0", "").replace(" ", "").strip()
-        return int(cleaned) if cleaned else None
-    except (ValueError, AttributeError):
         return None
 
 

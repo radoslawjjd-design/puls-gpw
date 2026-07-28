@@ -1093,6 +1093,7 @@ def test_company_daily_stats_schema_has_required_columns():
         "kurs_zamkniecia", "zmiana_procentowa", "zmiana_kwotowa",
         "kurs_otwarcia", "kurs_min", "kurs_max",
         "wartosc_obrotu", "liczba_transakcji", "fetched_at",
+        "source", "kurs_odn",
     }
     assert names["ticker"].mode == "REQUIRED"
     assert names["snapshot_date"].mode == "REQUIRED"
@@ -1101,6 +1102,12 @@ def test_company_daily_stats_schema_has_required_columns():
     assert names["liczba_transakcji"].field_type in ("INTEGER", "INT64")
     assert names["snapshot_date"].field_type == "DATE"
     assert names["fetched_at"].field_type == "TIMESTAMP"
+    # PUL-98: both added after initial table creation, so ensure_schema_current()'s
+    # additive ALTER TABLE ADD COLUMN path requires NULLABLE — see db/bigquery.py:2365.
+    assert names["source"].mode == "NULLABLE"
+    assert names["source"].field_type == "STRING"
+    assert names["kurs_odn"].mode == "NULLABLE"
+    assert names["kurs_odn"].field_type in ("FLOAT", "FLOAT64")
 
 
 def test_create_company_daily_stats_table_creates_with_partitioning_and_clustering():
@@ -1254,6 +1261,40 @@ def test_merge_company_daily_stats_happy_path():
     client.delete_table.assert_called_once()
 
 
+def test_merge_company_daily_stats_sql_carries_provenance_columns():
+    """PUL-98: source and kurs_odn must appear in UPDATE SET and in both INSERT lists.
+
+    Omitting them from UPDATE SET fails silently: with 18 scheduler ticks per day only
+    the first takes the INSERT branch, so both columns would freeze at their 9:01 values
+    and the official close would never land in `source`.
+    """
+    client = MagicMock()
+    client.project = "test-project"
+    load_job = MagicMock()
+    load_job.result.return_value = None
+    load_job.errors = None
+    client.load_table_from_json.return_value = load_job
+    merge_job = MagicMock()
+    merge_job.result.return_value = None
+    merge_job.errors = None
+    client.query.return_value = merge_job
+
+    rows = [{"ticker": "PKO", "snapshot_date": "2026-07-27", "kurs_zamkniecia": 108.0,
+             "source": "gpw", "kurs_odn": 107.5,
+             "fetched_at": "2026-07-27T17:31:00+00:00"}]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        merge_company_daily_stats(rows)
+
+    merge_sql = client.query.call_args[0][0]
+    update_clause, insert_clause = merge_sql.split("WHEN NOT MATCHED", 1)
+    assert "source = S.source" in update_clause
+    assert "kurs_odn = S.kurs_odn" in update_clause
+    # INSERT column list and VALUES list are parallel — both must name the columns
+    assert insert_clause.count("source") == 2
+    assert insert_clause.count("kurs_odn") == 2
+
+
 def test_merge_company_daily_stats_empty_rows_is_noop():
     """merge_company_daily_stats must return immediately without any BQ calls when rows is empty."""
     client = MagicMock()
@@ -1382,7 +1423,8 @@ def test_get_portfolio_calendar_data_returns_correct_shape():
 
 
 def test_get_portfolio_calendar_data_uses_correct_date_params():
-    """lookback_start must be month_start (first day of month); end_date must be last day of month."""
+    """The scan starts before the month so the carry-forward has a predecessor for
+    the 1st; the result is still clipped to month_start..end_date."""
     from db.bigquery import get_portfolio_calendar_data
 
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
@@ -1393,10 +1435,37 @@ def test_get_portfolio_calendar_data_uses_correct_date_params():
 
     assert params_by_name["portfolio_id"].value == "port-abc"
     assert params_by_name["user_id"].value == "user-xyz"
-    assert params_by_name["lookback_start"].value == date(2026, 6, 1)
+    assert params_by_name["lookback_start"].value == date(2026, 5, 22)
+    assert params_by_name["month_start"].value == date(2026, 6, 1)
     assert params_by_name["end_date"].value == date(2026, 6, 30)
     assert params_by_name["lookback_start"].type_ == "DATE"
+    assert params_by_name["month_start"].type_ == "DATE"
     assert params_by_name["end_date"].type_ == "DATE"
+
+
+def test_calendar_carries_the_last_close_forward_over_a_no_trade_session():
+    """A session with no trades leaves no close (PUL-98: the official feed reports
+    the session honestly where bankier always republished the last number).  Scoring
+    that as zero would drop the whole position out of the day's value and render as
+    a real loss, so the calendar must carry the previous close forward — and must
+    clip the lookback rows it scans to do so out of the result."""
+    from db.bigquery import get_portfolio_calendar_data
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_calendar_data("port-abc", "user-xyz", 2026, 6)
+
+    sql = mock_get.return_value.query.call_args[0][0]
+
+    assert "LAST_VALUE(close_price IGNORE NULLS) OVER (" in sql
+    assert "PARTITION BY ticker ORDER BY snapshot_date" in sql
+    assert "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW" in sql
+    # The value and the coverage counter both read the filled column, never the raw one.
+    assert "shares * close_ff" in sql
+    assert "COUNTIF(close_ff IS NOT NULL)" in sql
+    assert "shares * close_price" not in sql
+    # A day without trades had no move, so the change is not carried forward.
+    assert "LAST_VALUE(daily_chg" not in sql
+    assert "WHERE snapshot_date >= @month_start" in sql
 
 
 def test_get_portfolio_calendar_data_returns_empty_list_when_no_positions():

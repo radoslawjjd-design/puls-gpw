@@ -6,7 +6,6 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 from dotenv import load_dotenv
 load_dotenv()
 
-import os
 import re
 import smtplib
 import ssl

@@ -23,7 +23,6 @@ from db.bigquery import (
     _table_ref,
     _USER_PORTFOLIOS_TABLE_NAME,
     get_portfolio_calendar_data,
-    list_user_portfolios,
 )
 
 TEST_USER_ID = "e2e-pul59-calendar-test"

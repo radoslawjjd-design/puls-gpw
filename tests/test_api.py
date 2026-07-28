@@ -844,6 +844,25 @@ def test_positions_query_omits_history_by_default():
     assert "price_history" not in q
 
 
+def test_current_price_skips_rows_without_a_close():
+    """A no-trade day must not blank a position's price (PUL-98).
+
+    The official GPW feed reports no close for an instrument that did not trade,
+    where bankier always published the last known number — measured 2026-07-28:
+    737 bankier symbols, zero missing closes. Once the source switches, the newest
+    row for an illiquid ticker can carry a NULL close, and ROW_NUMBER ordered only
+    by snapshot_date would hand that NULL to the portfolio instead of the previous
+    session's real price. The sparkline CTE has always filtered these out; the
+    current-price CTEs must do the same.
+    """
+    # include_history=False, so the history CTE that carries its own NULL filter is
+    # absent — every occurrence below belongs to latest_stats / latest_etf.
+    q = _capture_positions_query()
+    assert q.count("kurs_zamkniecia IS NOT NULL") == 2, (
+        "expected the NULL-close filter in both latest_stats and latest_etf"
+    )
+
+
 # ── portfolio positions endpoints (PUL-65) ────────────────────────────────────
 
 _POSITION_WITH_PRICE = {

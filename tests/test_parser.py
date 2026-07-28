@@ -2,7 +2,7 @@ import datetime
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
-from src.parser import ParsedContent, parse_announcement
+from src.parser import parse_announcement
 from src.scraper import Announcement
 
 _WARSAW = ZoneInfo("Europe/Warsaw")

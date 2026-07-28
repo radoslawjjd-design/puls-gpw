@@ -65,6 +65,10 @@ def test_merge_company_daily_stats_insert_only_never_updates():
     assert "PARTITION BY ticker, snapshot_date" in merge_sql
     client.delete_table.assert_called_once()
     assert "_tmp_" in client.delete_table.call_args.args[0]
+    # PUL-98: the temp table carries the full schema, so a column missing from this
+    # narrower INSERT list is loaded and then silently dropped.
+    assert merge_sql.count("source") == 2
+    assert merge_sql.count("kurs_odn") == 2
 
 
 def test_merge_etf_quotes_insert_only_never_updates():

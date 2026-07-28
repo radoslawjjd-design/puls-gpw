@@ -380,13 +380,16 @@ def get_portfolio_calendar_data(
 
     Note: the 35-day lookback was originally intended as a delta baseline (plan used
     consecutive-day portfolio_value differences for P&L).  The implementation uses
-    zmiana_kwotowa directly instead, so lookback rows before month_start are fetched
-    but ignored by compute_calendar_pnl().  The window is kept for potential future use.
+    zmiana_kwotowa directly instead.  A 10-day lookback is still scanned, now for a
+    different reason: it gives the close carry-forward a predecessor for the 1st of
+    the month.  Those rows are filtered out before the result is returned.
     """
     client = _get_client()
     _t = time.time()
     month_start = date(year, month, 1)
-    lookback_start = month_start
+    # Scanned only so the carry-forward below has a predecessor for the 1st of the
+    # month; rows before month_start are filtered out of the result.
+    lookback_start = month_start - timedelta(days=10)
     _, last_day = calendar.monthrange(year, month)
     end_date = date(year, month, last_day)
 
@@ -421,16 +424,34 @@ def get_portfolio_calendar_data(
             LEFT JOIN `{etf_ref}` etq
               ON etq.ticker = p.ticker AND etq.snapshot_date = td.snapshot_date
           ),
+          filled AS (
+            -- A session with no trades leaves no close.  Bankier always published
+            -- the last known number so this could not happen before PUL-98; the
+            -- official feed reports the session honestly (measured 2026-07-28: 100
+            -- of 332 NewConnect rows carry no close).  Scoring that as zero would
+            -- drop the whole position out of the day's value and render as a real
+            -- loss, so carry the last known close forward exactly as
+            -- get_portfolio_history does.  daily_chg is deliberately NOT carried
+            -- forward: a day without trades had no move.
+            SELECT
+              snapshot_date, ticker, shares, daily_chg,
+              LAST_VALUE(close_price IGNORE NULLS) OVER (
+                PARTITION BY ticker ORDER BY snapshot_date
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+              ) AS close_ff
+            FROM daily_prices
+          ),
           daily_portfolio AS (
             SELECT
               snapshot_date,
-              SUM(CASE WHEN close_price IS NOT NULL THEN shares * close_price ELSE 0 END)
+              SUM(CASE WHEN close_ff IS NOT NULL THEN shares * close_ff ELSE 0 END)
                 AS portfolio_value,
               SUM(CASE WHEN daily_chg IS NOT NULL THEN shares * daily_chg ELSE 0 END)
                 AS daily_change_pln,
-              COUNTIF(close_price IS NOT NULL) AS prices_found,
+              COUNTIF(close_ff IS NOT NULL) AS prices_found,
               COUNT(*) AS total_positions
-            FROM daily_prices
+            FROM filled
+            WHERE snapshot_date >= @month_start
             GROUP BY snapshot_date
           )
         SELECT snapshot_date, portfolio_value, daily_change_pln, prices_found, total_positions
@@ -440,6 +461,7 @@ def get_portfolio_calendar_data(
     params: list[bigquery.ScalarQueryParameter] = [
         bigquery.ScalarQueryParameter("user_id",        "STRING", user_id),
         bigquery.ScalarQueryParameter("lookback_start", "DATE",   lookback_start),
+        bigquery.ScalarQueryParameter("month_start",    "DATE",   month_start),
         bigquery.ScalarQueryParameter("end_date",       "DATE",   end_date),
     ]
     if portfolio_id is not None:
@@ -802,6 +824,11 @@ def list_user_portfolio_positions(
     single-call batch fetch, grouped by portfolio_id in Python).
     Uses ROW_NUMBER() OVER PARTITION BY ticker to pick the most recent company_daily_stats
     entry per ticker, then LEFT JOIN so positions without price data still appear.
+    Rows whose close is NULL are skipped when ranking: the official GPW feed reports
+    no close for an instrument that did not trade that session, and the newest row
+    winning regardless would blank a held position rather than carry the previous
+    session's price forward. `price_as_of` then reports the older date, which is
+    what that field is for.
 
     When include_history=True, each row also carries price_history: list[float] — the
     last 30 trading-session close prices (PLN, ascending by date), unioned across
@@ -857,6 +884,7 @@ def list_user_portfolio_positions(
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
           WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+            AND kurs_zamkniecia IS NOT NULL
         ),
         latest_etf AS (
           SELECT
@@ -867,6 +895,7 @@ def list_user_portfolio_positions(
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _ETF_QUOTES_TABLE_NAME)}`
           WHERE snapshot_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+            AND kurs_zamkniecia IS NOT NULL
         ){history_cte}
         SELECT
           p.portfolio_id,
@@ -2376,6 +2405,10 @@ _COMPANY_DAILY_STATS_SCHEMA = [
     bigquery.SchemaField("wartosc_obrotu", "FLOAT64", mode="NULLABLE"),
     bigquery.SchemaField("liczba_transakcji", "INTEGER", mode="NULLABLE"),
     bigquery.SchemaField("fetched_at", "TIMESTAMP", mode="REQUIRED"),
+    # PUL-98 — provenance and the feed's reference price. Appended last so the repo
+    # literal mirrors the live table's column order after the additive migration.
+    bigquery.SchemaField("source", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("kurs_odn", "FLOAT64", mode="NULLABLE"),
 ]
 
 
@@ -2518,14 +2551,18 @@ def merge_company_daily_stats(rows: list[dict]) -> None:
                 kurs_max = S.kurs_max,
                 wartosc_obrotu = S.wartosc_obrotu,
                 liczba_transakcji = S.liczba_transakcji,
-                fetched_at = S.fetched_at
+                fetched_at = S.fetched_at,
+                source = S.source,
+                kurs_odn = S.kurs_odn
             WHEN NOT MATCHED THEN
               INSERT (ticker, snapshot_date, kurs_zamkniecia, zmiana_procentowa,
                       zmiana_kwotowa, kurs_otwarcia, kurs_min, kurs_max,
-                      wartosc_obrotu, liczba_transakcji, fetched_at)
+                      wartosc_obrotu, liczba_transakcji, fetched_at,
+                      source, kurs_odn)
               VALUES (S.ticker, S.snapshot_date, S.kurs_zamkniecia, S.zmiana_procentowa,
                       S.zmiana_kwotowa, S.kurs_otwarcia, S.kurs_min, S.kurs_max,
-                      S.wartosc_obrotu, S.liczba_transakcji, S.fetched_at)
+                      S.wartosc_obrotu, S.liczba_transakcji, S.fetched_at,
+                      S.source, S.kurs_odn)
         """
         try:
             merge_job = client.query(merge_sql)
@@ -2835,6 +2872,7 @@ def merge_company_daily_stats_insert_only(rows: list[dict]) -> int:
             "ticker", "snapshot_date", "kurs_zamkniecia", "zmiana_procentowa",
             "zmiana_kwotowa", "kurs_otwarcia", "kurs_min", "kurs_max",
             "wartosc_obrotu", "liczba_transakcji", "fetched_at",
+            "source", "kurs_odn",
         ],
         rows,
     )
@@ -2853,6 +2891,97 @@ def merge_etf_quotes_insert_only(rows: list[dict]) -> int:
         ],
         rows,
     )
+
+
+_CLOSE_CORRECTION_COLUMNS = ("kurs_zamkniecia", "zmiana_procentowa", "zmiana_kwotowa", "source")
+
+
+def merge_company_daily_stats_close_correction(rows: list[dict]) -> int:
+    """Update-only MERGE that repairs a close written from the wrong source (PUL-98).
+
+    Two deliberate narrowings make this safe to run over history:
+
+    * Only the close and the two values derived from it are updated — plus `source`,
+      so the row records where the corrected value came from. Turnover, trade count,
+      the OHLC levels and `fetched_at` describe the session as it was observed; a
+      correction has no better knowledge of them and must not overwrite them.
+    * There is **no WHEN NOT MATCHED branch**. The trading-day spine is
+      `SELECT DISTINCT snapshot_date` from this table, so inserting a date the table
+      never carried would silently redefine what counts as a session day.
+
+    Source rows are deduped inside the MERGE (newest `fetched_at` wins) so a batch
+    that names the same (ticker, snapshot_date) twice is not a non-deterministic
+    update. Returns the number of rows actually changed; rows whose key is absent
+    from the table simply do not count towards it.
+    """
+    if not rows:
+        logger.info("merge_company_daily_stats_close_correction: no rows to merge")
+        return 0
+
+    client = _get_client()
+    target = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    tmp_table_id = _table_ref(client, f"{_COMPANY_DAILY_STATS_TABLE_NAME}_tmp_{uuid.uuid4().hex[:8]}")
+
+    try:
+        job_config = bigquery.LoadJobConfig(
+            schema=_COMPANY_DAILY_STATS_SCHEMA,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
+        )
+        tmp_table = bigquery.Table(tmp_table_id, schema=_COMPANY_DAILY_STATS_SCHEMA)
+        from datetime import timezone as _tz
+        tmp_table.expires = datetime.now(_tz.utc) + timedelta(hours=24)
+        client.create_table(tmp_table, exists_ok=True)
+
+        load_job = client.load_table_from_json(rows, tmp_table_id, job_config=job_config)
+        load_job.result()
+        if load_job.errors:
+            raise BigQueryError(
+                f"merge_company_daily_stats_close_correction load failed: {load_job.errors}"
+            )
+
+        assignments = ",\n                ".join(
+            f"{c} = S.{c}" for c in _CLOSE_CORRECTION_COLUMNS
+        )
+        merge_sql = f"""
+            MERGE `{target}` T
+            USING (
+              SELECT * FROM `{tmp_table_id}`
+              QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date ORDER BY fetched_at DESC) = 1
+            ) S
+            ON T.ticker = S.ticker AND T.snapshot_date = S.snapshot_date
+            WHEN MATCHED THEN
+              UPDATE SET
+                {assignments}
+        """
+        try:
+            merge_job = client.query(merge_sql)
+            merge_job.result()
+        except Exception as exc:
+            raise BigQueryError(
+                f"merge_company_daily_stats_close_correction MERGE failed: {exc}"
+            ) from exc
+        if merge_job.errors:
+            raise BigQueryError(
+                f"merge_company_daily_stats_close_correction MERGE failed: {merge_job.errors}"
+            )
+
+        corrected = int(merge_job.num_dml_affected_rows or 0)
+        logger.info(
+            "merge_company_daily_stats_close_correction: corrected %d of %d rows",
+            corrected,
+            len(rows),
+        )
+        return corrected
+    finally:
+        try:
+            client.delete_table(tmp_table_id, not_found_ok=True)
+        except Exception:
+            logger.warning(
+                "merge_company_daily_stats_close_correction: failed to clean up temp table %s",
+                tmp_table_id,
+                exc_info=True,
+            )
 
 
 def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
@@ -2880,6 +3009,40 @@ def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
         return None
     val = rows[0].fetched_at
     return val.isoformat() if hasattr(val, "isoformat") else str(val)
+
+
+def get_previous_session_closes(before: date) -> tuple[date | None, dict[str, float | None]]:
+    """Return (session_date, {ticker: kurs_zamkniecia}) for the newest session before `before`.
+
+    "Session" here means a date this table actually holds — the same spine every
+    reader uses. Returns (None, {}) when there is no earlier date at all, which is
+    the empty-table case, not an error.
+
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    table = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    query = f"""
+        WITH previous AS (
+          SELECT MAX(snapshot_date) AS session_date
+          FROM `{table}`
+          WHERE snapshot_date < @before
+        )
+        SELECT s.snapshot_date, s.ticker, s.kurs_zamkniecia
+        FROM `{table}` s
+        JOIN previous p ON s.snapshot_date = p.session_date
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("before", "DATE", before)]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_previous_session_closes failed: {exc}") from exc
+
+    if not rows:
+        return None, {}
+    return rows[0].snapshot_date, {r.ticker: r.kurs_zamkniecia for r in rows}
 
 
 # ── notification subscriptions (PUL-81 slice a) ───────────────────────────────

@@ -10,7 +10,6 @@ from src.post_generator import (
     _strip_domain_suffix,
     _enforce_length,
     _HOOK_VARIANTS,
-    _CLOSING_QUESTIONS,
 )
 from src.post_supervisor import validate_post
 
