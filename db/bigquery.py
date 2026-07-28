@@ -2871,6 +2871,97 @@ def merge_etf_quotes_insert_only(rows: list[dict]) -> int:
     )
 
 
+_CLOSE_CORRECTION_COLUMNS = ("kurs_zamkniecia", "zmiana_procentowa", "zmiana_kwotowa", "source")
+
+
+def merge_company_daily_stats_close_correction(rows: list[dict]) -> int:
+    """Update-only MERGE that repairs a close written from the wrong source (PUL-98).
+
+    Two deliberate narrowings make this safe to run over history:
+
+    * Only the close and the two values derived from it are updated — plus `source`,
+      so the row records where the corrected value came from. Turnover, trade count,
+      the OHLC levels and `fetched_at` describe the session as it was observed; a
+      correction has no better knowledge of them and must not overwrite them.
+    * There is **no WHEN NOT MATCHED branch**. The trading-day spine is
+      `SELECT DISTINCT snapshot_date` from this table, so inserting a date the table
+      never carried would silently redefine what counts as a session day.
+
+    Source rows are deduped inside the MERGE (newest `fetched_at` wins) so a batch
+    that names the same (ticker, snapshot_date) twice is not a non-deterministic
+    update. Returns the number of rows actually changed; rows whose key is absent
+    from the table simply do not count towards it.
+    """
+    if not rows:
+        logger.info("merge_company_daily_stats_close_correction: no rows to merge")
+        return 0
+
+    client = _get_client()
+    target = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+    tmp_table_id = _table_ref(client, f"{_COMPANY_DAILY_STATS_TABLE_NAME}_tmp_{uuid.uuid4().hex[:8]}")
+
+    try:
+        job_config = bigquery.LoadJobConfig(
+            schema=_COMPANY_DAILY_STATS_SCHEMA,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
+        )
+        tmp_table = bigquery.Table(tmp_table_id, schema=_COMPANY_DAILY_STATS_SCHEMA)
+        from datetime import timezone as _tz
+        tmp_table.expires = datetime.now(_tz.utc) + timedelta(hours=24)
+        client.create_table(tmp_table, exists_ok=True)
+
+        load_job = client.load_table_from_json(rows, tmp_table_id, job_config=job_config)
+        load_job.result()
+        if load_job.errors:
+            raise BigQueryError(
+                f"merge_company_daily_stats_close_correction load failed: {load_job.errors}"
+            )
+
+        assignments = ",\n                ".join(
+            f"{c} = S.{c}" for c in _CLOSE_CORRECTION_COLUMNS
+        )
+        merge_sql = f"""
+            MERGE `{target}` T
+            USING (
+              SELECT * FROM `{tmp_table_id}`
+              QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date ORDER BY fetched_at DESC) = 1
+            ) S
+            ON T.ticker = S.ticker AND T.snapshot_date = S.snapshot_date
+            WHEN MATCHED THEN
+              UPDATE SET
+                {assignments}
+        """
+        try:
+            merge_job = client.query(merge_sql)
+            merge_job.result()
+        except Exception as exc:
+            raise BigQueryError(
+                f"merge_company_daily_stats_close_correction MERGE failed: {exc}"
+            ) from exc
+        if merge_job.errors:
+            raise BigQueryError(
+                f"merge_company_daily_stats_close_correction MERGE failed: {merge_job.errors}"
+            )
+
+        corrected = int(merge_job.num_dml_affected_rows or 0)
+        logger.info(
+            "merge_company_daily_stats_close_correction: corrected %d of %d rows",
+            corrected,
+            len(rows),
+        )
+        return corrected
+    finally:
+        try:
+            client.delete_table(tmp_table_id, not_found_ok=True)
+        except Exception:
+            logger.warning(
+                "merge_company_daily_stats_close_correction: failed to clean up temp table %s",
+                tmp_table_id,
+                exc_info=True,
+            )
+
+
 def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
     """Return fetched_at ISO string for any row in company_daily_stats for snapshot_date.
 

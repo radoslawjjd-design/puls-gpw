@@ -861,7 +861,7 @@ inside the corrected window means the row was never matched — a useful audit s
 - [x] 3.1 Job tests pass — a2a6ab4
 - [x] 3.2 Full unit suite passes — a2a6ab4
 - [x] 3.3 Linting and layering pass — a2a6ab4
-- [x] 3.7 Both current-price CTEs skip NULL closes
+- [x] 3.7 Both current-price CTEs skip NULL closes — b804eb4
 
 #### Manual
 
@@ -873,14 +873,14 @@ inside the corrected window means the row was never matched — a useful audit s
 
 #### Automated
 
-- [ ] 4.1 Unit tests pass
-- [ ] 4.2 Query-string regression asserts no WHEN NOT MATCHED
-- [ ] 4.3 Linting passes
+- [x] 4.1 Unit tests pass
+- [x] 4.2 Query-string regression asserts no WHEN NOT MATCHED
+- [x] 4.3 Linting passes
 
 #### Manual
 
-- [ ] 4.4 Real-BQ round-trip completes successfully
-- [ ] 4.5 Untouched columns survive and no phantom inserts occur
+- [x] 4.4 Real-BQ round-trip completes successfully
+- [x] 4.5 Untouched columns survive and no phantom inserts occur
 
 ### Phase 5: Archive reader
 
