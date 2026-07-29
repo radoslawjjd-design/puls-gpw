@@ -145,7 +145,14 @@ przygotowanym na rozszerzenie. Złoty zbiór jako asercje liczbowe.
 **Intent**: Dodać `openpyxl` jako zależność runtime — najmniejszy czytnik xlsx pasujący
 do profilu projektu (czysty Python, jedna zależność tranzytywna).
 
-**Contract**: Wpis w sekcji `dependencies` (nie w grupie dev), przez `uv add openpyxl`.
+**Contract**: Wpis w sekcji `[project].dependencies` (nie w grupie `[dependency-groups].dev`),
+przez `uv add openpyxl`.
+
+**Implementation Note**: Dockerfile robi `uv sync --frozen --no-dev`, więc regenerowany
+`uv.lock` musi wejść **tym samym commitem** co `pyproject.toml` — `--frozen` wywala build
+przy rozjeździe. `uv add` aktualizuje lock automatycznie; chodzi wyłącznie o to, żeby nie
+wypadł z commita. `--no-dev` oznacza dodatkowo, że pomyłkowe umieszczenie zależności
+w grupie dev przechodzi lokalnie i CI, a pada dopiero na produkcji.
 
 #### 2. Rejestr brokerów
 
@@ -234,7 +241,13 @@ i jest tanim wykrywaczem błędu w parsowaniu fill-ów.
 - Zależność `openpyxl` jest w sekcji runtime, nie w dev: `uv run python -c "import openpyxl"`
 - Testy parsera przechodzą: `uv run pytest tests/test_brokers_xtb.py -v`
 - Pełny pakiet jednostkowy pozostaje zielony: `uv run pytest --ignore=tests/e2e`
-- Parser nie importuje warstwy danych: `uv run tach check`
+- Parser nie importuje warstwy danych — asercja w `tests/test_brokers_xtb.py`, że moduł
+  `src.brokers.xtb` nie ma w swoich importach niczego z `db` ani `fastapi` (AST na pliku
+  albo inspekcja `sys.modules` po świeżym imporcie). **`tach check` tego nie wykryje**:
+  `tach.toml:29-33` deklaruje `src` z `depends_on = [{ path = "db" }]`, więc import
+  warstwy danych z `src/` jest jawnie dozwolony, a `src.brokers` należy do modułu `src`.
+  `tach check` zostaje w pakiecie jako ogólny strażnik architektury, ale nie jest dowodem
+  czystości parsera
 
 #### Manual Verification
 
@@ -318,7 +331,15 @@ z domyślnymi wartościami zachowującymi zachowanie obecnych wywołań:
 `key_columns: tuple[str, ...] = ("ticker", "snapshot_date")` i `order_column: str = "fetched_at"`.
 Klauzule `ON` i `QUALIFY ... PARTITION BY` są budowane z `key_columns`. Obaj dzisiejsi
 wołający (`merge_company_daily_stats_insert_only`, `merge_etf_quotes_insert_only`) pozostają
-bez zmian.
+bez zmian — wołają pozycyjnie pięcioma argumentami, więc nowe parametry z domyślnymi
+wartościami ich nie dotykają.
+
+**Implementation Note**: `tests/test_bigquery_insert_only_merge.py:65` asercjonuje
+**dosłowny napis** `"PARTITION BY ticker, snapshot_date"` w wygenerowanym SQL. Builder musi
+odtworzyć dokładnie to formatowanie (przecinek + spacja), inaczej istniejący test padnie
+mimo w pełni poprawnego zachowania. Ten sam plik liczy wystąpienia podciągów `source`
+i `kurs_odn` w całym SQL — nowy interpolowany tekst zawierający te podciągi przesunąłby
+licznik.
 
 #### 4. Zapis operacji
 
@@ -387,6 +408,14 @@ tego samego klucza z innymi wartościami nie zmienia wiersza i zwraca zero; zdup
 partia źródłowa daje jeden wiersz. Czwarta asercja pokrywa agregację dywidend i obecność
 listy lat przy pustym wyniku. `load_dotenv()` przed jakimkolwiek importem `db.*`, wyjście ASCII.
 
+**Piąta asercja: pomiar czasu ściany** dla `merge_user_broker_operations` na partii
+571 wierszy (tyle liczy realny eksport). Skrypt drukuje zmierzony czas i **alarmuje powyżej
+15 s** — to jedna trzecia budżetu `--timeout=60`, z zapasem na dwa pozostałe kroki commitu
+i na narzut zimnego startu. Powód w Performance Considerations: prymityw robi create + load
+job + MERGE i nigdy nie był wykonywany w żądaniu HTTP, więc jego koszt w tym kontekście
+jest nieznany. Ten pomiar jest tani (skrypt i tak powstaje) i daje odpowiedź w fazie 2,
+zanim endpoint commitu w ogóle powstanie.
+
 ### Success Criteria
 
 #### Automated Verification
@@ -398,6 +427,7 @@ listy lat przy pustym wyniku. `load_dotenv()` przed jakimkolwiek importem `db.*`
 #### Manual Verification
 
 - Round-trip na realnym BigQuery przechodzi: `uv run python scripts/test_bq_broker_operations.py`
+- Pomiar czasu ściany dla 571 wierszy mieści się poniżej progu 15 s
 - Ponowne uruchomienie round-tripu nie tworzy duplikatów i raportuje zero nowych wierszy
 - Tabela na produkcji powstaje przy starcie rewizji z oczekiwanym klastrowaniem
 
@@ -454,10 +484,33 @@ Guard rozmiaru pliku przed parsowaniem (odrzuć powyżej 5 MB) — w aplikacji n
 w jednym przebiegu. Funkcja nie jest cache'owana, więc wywołanie per wiersz byłoby
 dwudziestoma zapytaniami.
 
+**Sekcja `closed` to przecięcie, nie surowy zbiór z parsera.** Parser zwraca w
+`closed_tickers` **każdy** ticker, który kiedykolwiek zszedł do zera — w realnych plikach
+jest ich 24. Do odpowiedzi i do `DELETE` trafia wyłącznie
+`closed_tickers ∩ tickery obecne dziś w portfelu`, wyliczone z tej samej listy pozycji,
+która zasila sekcję `untouched`. Bez tego podgląd ogłasza usunięcie kilkunastu pozycji,
+których użytkownik nie ma — `DELETE` byłby nieszkodliwym no-opem, ale fałszywe ostrzeżenie
+o operacji destrukcyjnej jest racjonalnym powodem, żeby przerwać import (i wprost przeczy
+kryterium 6.3). Przecięcie robi warstwa API, bo tylko ona zna stan portfela; parser
+pozostaje czysty i zwraca komplet.
+
 Nierozpoznany ticker trafia do `unknown_tickers` w odpowiedzi, **nie** powoduje 422.
 Odrzucenie całego uploadu z powodu jednego tickera jest złym zachowaniem dla pliku,
 którego użytkownik nie może edytować. 422 zostaje zarezerwowane dla awarii strukturalnych:
 nieparsowalny plik, nieznany broker, brak oczekiwanych arkuszy.
+
+**Commit zapisuje taką pozycję mimo wszystko, z jawnym oznaczeniem w podglądzie.**
+To świadome odstępstwo od polityki ręcznego dodawania pozycji, gdzie
+`src/api.py:833-834` odrzuca nieznany ticker przez 422. Uzasadnienie: przy ręcznym
+wpisie nieznany ticker to najpewniej literówka, a przy imporcie to stan faktyczny
+rachunku — plik brokera jest źródłem prawdy o tym, co użytkownik posiada, a
+`companies`/`etf_instruments` bywają niekompletne. Pominięcie po cichu zawężałoby
+portfel o pozycję, której nie da się dodać także ręcznie. Ta sama logika stoi za
+nieusuwaniem S2B.
+
+Konsekwencja do obsłużenia w UI: pozycja bez wyceny nie ma kursu, więc wchodzi
+do sum jako dziura. Sekcja `unknown_tickers` w podglądzie musi nazwać to wprost —
+„zostanie zapisana, ale bez wyceny" — a nie tylko wylistować ticker.
 
 #### 4. Endpoint commitu
 
@@ -471,8 +524,13 @@ a Cloud Run chodzi z dwiema instancjami, więc token podglądu zapisany przez je
 bywałby nieznany drugiej. Parser jest deterministyczny.
 
 Sekwencja: `merge_user_broker_operations` → `merge_user_portfolio_positions_bulk` →
-`delete_user_portfolio_positions` dla zamkniętych → unieważnienie cache. Trzy zapytania,
+`delete_user_portfolio_positions` dla zamkniętych → unieważnienie cache. Trzy kroki logiczne,
 nie pętla — budżet 60 s.
+
+`delete_user_portfolio_positions` dostaje **to samo przecięcie**, które podgląd pokazał
+w sekcji `closed` — nigdy surowego `closed_tickers`. Podgląd i commit muszą liczyć je
+identycznie, bo commit parsuje plik od nowa i to jedyna gwarancja, że użytkownik
+potwierdził dokładnie to, co się wykona.
 
 Odpowiedź zwraca liczby faktycznie zapisane, w tym liczbę nowych operacji z
 `num_dml_affected_rows`.
@@ -530,7 +588,7 @@ importu musi używać podzbioru albo lista musi zostać rozszerzona.
 - Testy API przechodzą: `uv run pytest tests/test_api.py -v`
 - Test potwierdza, że podgląd niczego nie zapisuje
 - Test potwierdza, że commit z sentynelem `all` jest odrzucany
-- Test potwierdza, że nierozpoznany ticker trafia do odpowiedzi, a nie kończy się 422
+- Test potwierdza, że nierozpoznany ticker trafia do odpowiedzi (nie 422) i że commit go zapisuje
 - Test unieważniania cache pokrywa `history:`, sentynel `all` i `dividends:`
 - Pełny pakiet zielony: `uv run pytest`
 
@@ -652,10 +710,25 @@ Czwarty tryb `data-mode` z wyborem roku, kafelkami i rozbiciem na spółki.
 **Contract**: Przycisk `.pp-view-tab[data-mode="dividends"]` w `#pp-view-tabs` (`:3664-3668`)
 oraz panel `#pp-dividends-wrap`.
 
-**Krytyczne**: lista ukrywania paneli w handlerze (`:3846-3849`) to **cztery jawne miejsca** —
-nowy panel musi dostać własną linię, a widoczność `#pp-portfolio-tabs-wrap` (`:3846`) musi
-uwzględnić nowy tryb, bo dziś przełącznik portfeli pokazuje się tylko dla `table` i `calendar`.
+**Krytyczne**: handler trybów to **dwa sąsiadujące bloki**, nie jeden. Plan musi ruszyć oba:
+
+1. **Blok ukrywania paneli** (`:3846-3849`) — cztery przypisania `style.display`.
+   Nowy panel dostaje własną linię, a widoczność `#pp-portfolio-tabs-wrap` (`:3846`) musi
+   uwzględnić nowy tryb, bo dziś przełącznik portfeli pokazuje się tylko dla `table`
+   i `calendar`.
+2. **Łańcuch efektów ubocznych** (`:3850-3859`) — `if (mode === 'table') … else if
+   ('treemap') … else if ('calendar')`. Bez czwartej gałęzi kliknięcie zakładki pokaże
+   **pusty panel**, bo nikt nie zawoła fetcha. Gałąź `else if (mode === 'dividends')`
+   musi wołać `stopPortfolioTreemapResize()` (inaczej przejście treemapa → dywidendy
+   zostawia działający observer resize) oraz `if (!_ppDivData) fetchPortfolioDividends()`.
+
 Dodatkowo gałąź w `_selectPortfolioTab()` (`:3536-3538`), żeby zmiana portfela odświeżała dane.
+
+Przywrócenie trybu z URL (`:3578-3580`) działa bez zmian — selektor filtruje po
+`data-mode`, więc nowa zakładka wpina się sama. Nowe przyciski roku **nie mogą** trafić
+do `#pp-view-tabs`: handler trybów jest do tego kontenera zawężony właśnie po to, żeby
+przełączniki zakresu i metryki (`:3776-3783`), które współdzielą klasę `.pp-view-tab`,
+nie przełączały widoku.
 
 Wybór roku realizowany pigułkami `.pp-view-tabs-inline` na wzór `#pp-history-ranges`
 (`:3775-3784`) — to konwencja tego widoku; lista lat pochodzi z odpowiedzi endpointu,
@@ -780,10 +853,20 @@ Brak zmian w kodzie. Wykonanie:
 
 ## Performance Considerations
 
-Commit wykonuje **trzy** zapytania do BigQuery niezależnie od liczby pozycji: MERGE operacji,
+Commit wykonuje **trzy kroki logiczne** niezależnie od liczby pozycji: MERGE operacji,
 MERGE pozycji przez `UNNEST`, oraz `DELETE` zamkniętych. To projektowana odpowiedź na limit
 `--timeout=60` — pętla po pozycjach z `upsert_user_portfolio_position` (1–3 s każde) dałaby
 realnie 20–60 s dla dwudziestu tickerów.
+
+**To nie są trzy zapytania.** `_merge_insert_only` (`db/bigquery.py:2819-2830`) tworzy tabelę
+tymczasową, ładuje wiersze osobnym jobem `load_table_from_json`, i dopiero potem wykonuje
+MERGE — sam pierwszy krok to trzy operacje BigQuery. Realny commit to około pięciu operacji.
+
+Istotniejsze od arytmetyki: **ten prymityw nigdy nie działał wewnątrz żądania HTTP.** Obaj
+dzisiejsi wołający (`scripts/backfill_historical_closes.py`, job company-stats) to zadania
+wsadowe, gdzie limit 60 s nie obowiązuje. 571 wierszy to mało i najprawdopodobniej zmieści
+się bez problemu, ale to założenie do zmierzenia, nie fakt policzony — stąd pomiar czasu
+ściany w skrypcie round-trip fazy 2, zanim cokolwiek zacznie od tego budżetu zależeć.
 
 Parsowanie plików o rozmiarze 15–41 KB jest nieistotne czasowo, ale `openpyxl` w trybie
 domyślnym materializuje cały skoroszyt — przy 512 MiB używamy `read_only=True`.
@@ -834,7 +917,7 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 - [ ] 1.1 Zależność `openpyxl` jest w sekcji runtime, nie w dev
 - [ ] 1.2 Testy parsera przechodzą
 - [ ] 1.3 Pełny pakiet jednostkowy pozostaje zielony
-- [ ] 1.4 Parser nie importuje warstwy danych (`tach check`)
+- [ ] 1.4 Asercja w teście potwierdza, że parser nie importuje `db` ani `fastapi`
 
 #### Manual
 
@@ -852,8 +935,9 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 #### Manual
 
 - [ ] 2.4 Round-trip na realnym BigQuery przechodzi
-- [ ] 2.5 Ponowny round-trip nie tworzy duplikatów i raportuje zero nowych wierszy
-- [ ] 2.6 Tabela na produkcji powstaje z oczekiwanym klastrowaniem
+- [ ] 2.5 Pomiar czasu ściany dla 571 wierszy mieści się poniżej progu 15 s
+- [ ] 2.6 Ponowny round-trip nie tworzy duplikatów i raportuje zero nowych wierszy
+- [ ] 2.7 Tabela na produkcji powstaje z oczekiwanym klastrowaniem
 
 ### Phase 3: API — upload, podgląd, commit, dywidendy
 
@@ -862,7 +946,7 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 - [ ] 3.1 Testy API przechodzą
 - [ ] 3.2 Test potwierdza, że podgląd niczego nie zapisuje
 - [ ] 3.3 Test potwierdza, że commit z sentynelem `all` jest odrzucany
-- [ ] 3.4 Test potwierdza, że nierozpoznany ticker trafia do odpowiedzi, a nie kończy się 422
+- [ ] 3.4 Test potwierdza, że nierozpoznany ticker trafia do odpowiedzi (nie 422) i że commit go zapisuje
 - [ ] 3.5 Test unieważniania cache pokrywa `history:`, sentynel `all` i `dividends:`
 - [ ] 3.6 Pełny pakiet zielony
 

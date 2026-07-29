@@ -37,7 +37,8 @@ na spółki.
 | Klucz deduplikacji | Kolumna `ID` z eksportu, jako `xtb:{ID}` | Wypełniona w 571/571 operacji, bez kolizji między plikami — hasz treści zbędny | change.md |
 | Metoda średniej ceny | FIFO po pozostałych lotach | Odtwarza to, co XTB pokazuje w UI, co do grosza na 19 z 20 pozycji | change.md |
 | Pozycje nieobecne w pliku | Nietknięte, pokazane w podglądzie | S2B to realne 272,80 zł nabyte jako dywidenda rzeczowa, strukturalnie nieobecna w eksporcie | change.md |
-| Tickery zamknięte w pliku | Usuwane, z jawnym ujawnieniem w podglądzie | Plik jednoznacznie stwierdza sprzedaż całości — zostawienie pozycji zafałszowałoby wartość | Plan |
+| Tickery zamknięte w pliku | Usuwane, ale **tylko te faktycznie obecne w portfelu** | Plik stwierdza sprzedaż całości, więc zostawienie pozycji fałszuje wartość; bez przecięcia podgląd ogłaszałby usunięcie 24 tickerów, których użytkownik nie ma | Plan-review F2 |
+| Ticker nierozpoznany przez aplikację | Zapisywany mimo wszystko, oznaczony „bez wyceny" | Przy imporcie nieznany ticker to stan faktyczny rachunku, nie literówka — świadome odstępstwo od 422 przy ręcznym dodawaniu | Plan-review F3 |
 | Potwierdzenie | Wszystko albo nic, z pięcioma sekcjami ujawnienia | Zgodne z filozofią PUL-100; eksport brokera i tak nie jest edytowalny | Plan |
 | Instrumenty zagraniczne | Pomijane w parserze | 11 operacji, wszystkie na pozycjach zamkniętych, **zero dywidend** — pominięcie nie rusza żadnej sumy | Plan |
 | Transport pliku | `UploadFile` + `python-multipart` | Idiomatyczne dla FastAPI; zależność musi wejść tym samym commitem, bo brak wywala start serwisu | Research |
