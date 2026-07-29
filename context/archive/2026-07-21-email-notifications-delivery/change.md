@@ -1,14 +1,30 @@
 ---
 change_id: email-notifications-delivery
 title: Email delivery for watchlist announcement notifications (PUL-81 slice b)
-status: implementing
+status: archived
 created: 2026-07-21
-updated: 2026-07-21
-archived_at: null
+updated: 2026-07-29
+archived_at: 2026-07-29T07:30:00Z
 tracking:
   linear: PUL-81
   github: 140
 ---
+
+## Superseded — archived 2026-07-29
+
+**This approach shipped and was then deliberately replaced.** The cron-driven delivery pass
+built here went live (PR #171 `1e0fd68` + fix #173, Cloud Run job + scheduler
+`puls-gpw-notifications*`, real mail verified on both accounts). Before it was archived the
+user decided the polling model was the wrong shape and pivoted to **event-driven** delivery:
+the mail is sent inline from `main.py` right after the analysis result is saved, so no cron
+and no watermark are needed.
+
+The replacement is `context/archive/2026-07-22-event-driven-notifications/` (PR #174
+`b23b230`). The scheduler and job created for this slice were deleted by hand — that
+deletion is a human-only action. PUL-81 and GH #140 are closed against the v2 design.
+
+Kept for the decision record: what was built, why it worked, and why polling lost to an
+event hook. The plan and research below describe the retired design, not current behaviour.
 
 ## Notes
 
