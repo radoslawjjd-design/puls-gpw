@@ -945,17 +945,17 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [x] 3.1 Testy API przechodzą
-- [x] 3.2 Test potwierdza, że podgląd niczego nie zapisuje
-- [x] 3.3 Test potwierdza, że commit z sentynelem `all` jest odrzucany
-- [x] 3.4 Test potwierdza, że nierozpoznany ticker trafia do odpowiedzi (nie 422) i że commit go zapisuje
-- [x] 3.5 Test unieważniania cache pokrywa `history:`, sentynel `all` i `dividends:`
-- [x] 3.6 Pełny pakiet zielony
+- [x] 3.1 Testy API przechodzą — 0453ba8
+- [x] 3.2 Test potwierdza, że podgląd niczego nie zapisuje — 0453ba8
+- [x] 3.3 Test potwierdza, że commit z sentynelem `all` jest odrzucany — 0453ba8
+- [x] 3.4 Test potwierdza, że nierozpoznany ticker trafia do odpowiedzi (nie 422) i że commit go zapisuje — 0453ba8
+- [x] 3.5 Test unieważniania cache pokrywa `history:`, sentynel `all` i `dividends:` — 0453ba8
+- [x] 3.6 Pełny pakiet zielony — 0453ba8
 
 #### Manual
 
-- [x] 3.7 Podgląd na realnym pliku przez TestClient zwraca 12 pozycji dla Głównego
-- [x] 3.8 Aplikacja wstaje po dodaniu `python-multipart`, `/health` odpowiada
+- [x] 3.7 Podgląd na realnym pliku przez TestClient zwraca 12 pozycji dla Głównego — 0453ba8
+- [x] 3.8 Aplikacja wstaje po dodaniu `python-multipart`, `/health` odpowiada — 0453ba8
 
 ### Phase 4: Front — okno importu
 
