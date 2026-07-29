@@ -1004,6 +1004,15 @@ html[data-theme="dark"] .filters input:focus, html[data-theme="dark"] .filters s
 html[data-theme="dark"] .filters-date-group input { background:transparent; }
 html[data-theme="dark"] .view-header h2, html[data-theme="dark"] #pp-cal-label, html[data-theme="dark"] .tc-popup h3, html[data-theme="dark"] #pp-edit-modal h3, html[data-theme="dark"] #pp-add-portfolio-modal h3, html[data-theme="dark"] #pp-import-modal h3, html[data-theme="dark"] .login-box-body h2, html[data-theme="dark"] .modal-header strong { color:#e6edf3; }
 html[data-theme="dark"] #pp-import-btn { background:#141f2b; border-color:#2b3a4d; color:#9fc1e0; }
+/* --brand (#14304a) is a dark navy and the dark theme does not override it, so
+   brand-coloured text and the brand-filled button both sink into the modal.
+   All three actions get white text; the primary also gets a lifted fill so it
+   still reads as a button. */
+html[data-theme="dark"] #pp-import-preview-btn { color:#fff; border-color:#3c5a78; }
+html[data-theme="dark"] #pp-import-preview-btn:hover { background:#1d2b3c; }
+html[data-theme="dark"] #pp-import-cancel-btn { color:#fff; border-color:#3c5a78; }
+html[data-theme="dark"] #pp-import-commit-btn { color:#fff; background:#1f4a75; }
+html[data-theme="dark"] #pp-import-commit-btn:hover { background:#2a5d8f; }
 html[data-theme="dark"] .pp-div-tile { background:#141f2b; border-color:var(--border); }
 html[data-theme="dark"] #pp-div-title { color:#e6edf3; }
 html[data-theme="dark"] .pp-import-section { border-top-color:#243141; }
@@ -3857,15 +3866,19 @@ function _buildPortfolioPositionsViewContent(view) {
       <div id="pp-portfolio-tabs"></div>
     </div>
     <div id="pp-view-tabs">
-      <button type="button" class="pp-view-tab active" data-mode="table">Tabela</button>
+      <button type="button" class="pp-view-tab active" data-mode="table">Portfel</button>
       <button type="button" class="pp-view-tab" data-mode="treemap">Treemapa</button>
       <button type="button" class="pp-view-tab" data-mode="calendar">Kalendarz</button>
       <button type="button" class="pp-view-tab" data-mode="dividends">Dywidendy</button>
     </div>
     <div id="pp-table-wrap">
-      <button type="button" id="pp-add-toggle-btn">Dodaj pozycję</button>
+      <!-- Both write controls start hidden and are revealed by
+           _ppSyncAddBtnVisibility once a real wallet is active. Rendering them
+           visible made them flash on entry and then vanish, because the default
+           tab is the read-only "Wszystkie" aggregate — which reads as a bug. -->
+      <button type="button" id="pp-add-toggle-btn" style="display:none">Dodaj pozycję</button>
       <button type="button" id="pp-export-csv-btn" title="Eksportuj pozycje do CSV">Eksport CSV</button>
-      <button type="button" id="pp-import-btn" title="Wczytaj pozycje z pliku od domu maklerskiego">Import z pliku</button>
+      <button type="button" id="pp-import-btn" style="display:none" title="Wczytaj pozycje z pliku od domu maklerskiego">Import z pliku</button>
       <div id="pp-form-wrap" style="display:none">
         <form id="pp-form">
           <div id="pp-ticker-field">
@@ -4060,7 +4073,7 @@ function _buildPortfolioPositionsViewContent(view) {
     });
   });
 
-  // view tabs toggle (Tabela | Treemapa | Kalendarz | Wartość) — scope to
+  // view tabs toggle (Portfel | Treemapa | Kalendarz | Dywidendy) — scope to
   // #pp-view-tabs so the history range/metric buttons (which reuse .pp-view-tab
   // styling) don't accidentally trigger a view-mode switch.
   $('pp-view-tabs').querySelectorAll('.pp-view-tab').forEach(btn => {

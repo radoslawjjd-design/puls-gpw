@@ -47,13 +47,13 @@ def _open_calendar_tab(page: Page) -> None:
 
 
 def test_calendar_tab_exists_and_shows_grid_on_click(page: Page, live_server_url: str):
-    """Risk: Kalendarz tab must exist alongside Tabela and Treemapa, and clicking it
+    """Risk: Kalendarz tab must exist alongside Portfel and Treemapa, and clicking it
     must reveal the calendar container and a non-empty grid."""
     _login(page, live_server_url)
     _open_portfolio(page)
 
     view_tabs = page.locator("#pp-view-tabs")
-    expect(view_tabs.get_by_role("button", name="Tabela")).to_be_visible()
+    expect(view_tabs.get_by_role("button", name="Portfel")).to_be_visible()
     expect(view_tabs.get_by_role("button", name="Treemapa")).to_be_visible()
     expect(view_tabs.get_by_role("button", name="Kalendarz")).to_be_visible()
 

@@ -75,6 +75,49 @@ def _attach_export(page: Page) -> None:
     })
 
 
+def test_write_controls_never_flash_visible_before_the_wallet_list_arrives(
+    page: Page, live_server_url: str
+):
+    """Risk: entry lands on the read-only "Wszystkie" tab.
+
+    Rendered visible, these controls appear on first paint and vanish once the
+    wallet list resolves — which reads as the feature being broken rather than as
+    the tab being read-only.
+
+    The wallet response is held open on purpose. Asserting after it lands proves
+    nothing: `_ppSyncAddBtnVisibility` has hidden them by then, so the assertion
+    passes with or without the fix. The transient state IS the bug, so the test
+    has to look while the window is open.
+    """
+    held = {"done": False}
+
+    def _hold(route):
+        # First request only. A handler that sleeps on every match is still armed
+        # at teardown, and sleeping on a closing page poisons the NEXT test's setup.
+        if not held["done"]:
+            held["done"] = True
+            page.wait_for_timeout(1500)
+        route.continue_()
+
+    try:
+        page.route("**/api/portfolio/wallets*", _hold)
+        e2e_login_email(page, live_server_url)
+        page.get_by_role("button", name="Mój portfel").click()
+        page.wait_for_timeout(200)
+
+        # `is_visible()` on purpose, never `expect(...).to_be_hidden()`: the latter
+        # retries for seconds and so passes the moment the flash ends, which makes
+        # it structurally unable to catch a transient state. Verified — with the
+        # style attribute removed this assertion fails, the expect() form does not.
+        assert page.locator("#pp-table-wrap").is_visible(), "widok się nie wyrenderował"
+        assert not page.locator("#pp-import-btn").is_visible()
+        assert not page.locator("#pp-add-toggle-btn").is_visible()
+        # Export stays available throughout — reading an aggregate wallet is allowed.
+        assert page.locator("#pp-export-csv-btn").is_visible()
+    finally:
+        page.unroute_all(behavior="ignoreErrors")
+
+
 def test_import_button_is_hidden_in_read_only_all_mode(page: Page, live_server_url: str):
     """Risk: importing into the "Wszystkie" aggregate has no write path — the button must not appear."""
     _login_and_open(page, live_server_url)
