@@ -928,15 +928,15 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [x] 2.1 Testy warstwy danych przechodzą
-- [x] 2.2 Test regresyjny na treść SQL potwierdza brak nazw zarezerwowanych
-- [x] 2.3 Istniejący pakiet pozostaje zielony
+- [x] 2.1 Testy warstwy danych przechodzą — fcd82be
+- [x] 2.2 Test regresyjny na treść SQL potwierdza brak nazw zarezerwowanych — fcd82be
+- [x] 2.3 Istniejący pakiet pozostaje zielony — fcd82be
 
 #### Manual
 
-- [x] 2.4 Round-trip na realnym BigQuery przechodzi
-- [x] 2.5 Pomiar czasu ściany dla 571 wierszy mieści się poniżej progu 15 s — zmierzone 3,7 s
-- [x] 2.6 Ponowny round-trip nie tworzy duplikatów i raportuje zero nowych wierszy
+- [x] 2.4 Round-trip na realnym BigQuery przechodzi — fcd82be
+- [x] 2.5 Pomiar czasu ściany dla 571 wierszy mieści się poniżej progu 15 s (zmierzone 3,7 s) — fcd82be
+- [x] 2.6 Ponowny round-trip nie tworzy duplikatów i raportuje zero nowych wierszy — fcd82be
 - [ ] 2.7 Tabela na produkcji powstaje z oczekiwanym klastrowaniem — funkcja DDL
       zweryfikowana na realnym BQ (klastrowanie, brak partycjonowania, idempotencja);
       część „przy starcie rewizji" domyka się deployem w fazie 6
@@ -945,17 +945,17 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [ ] 3.1 Testy API przechodzą
-- [ ] 3.2 Test potwierdza, że podgląd niczego nie zapisuje
-- [ ] 3.3 Test potwierdza, że commit z sentynelem `all` jest odrzucany
-- [ ] 3.4 Test potwierdza, że nierozpoznany ticker trafia do odpowiedzi (nie 422) i że commit go zapisuje
-- [ ] 3.5 Test unieważniania cache pokrywa `history:`, sentynel `all` i `dividends:`
-- [ ] 3.6 Pełny pakiet zielony
+- [x] 3.1 Testy API przechodzą
+- [x] 3.2 Test potwierdza, że podgląd niczego nie zapisuje
+- [x] 3.3 Test potwierdza, że commit z sentynelem `all` jest odrzucany
+- [x] 3.4 Test potwierdza, że nierozpoznany ticker trafia do odpowiedzi (nie 422) i że commit go zapisuje
+- [x] 3.5 Test unieważniania cache pokrywa `history:`, sentynel `all` i `dividends:`
+- [x] 3.6 Pełny pakiet zielony
 
 #### Manual
 
-- [ ] 3.7 Podgląd na realnym pliku przez TestClient zwraca 12 pozycji dla Głównego
-- [ ] 3.8 Aplikacja wstaje po dodaniu `python-multipart`, `/health` odpowiada
+- [x] 3.7 Podgląd na realnym pliku przez TestClient zwraca 12 pozycji dla Głównego
+- [x] 3.8 Aplikacja wstaje po dodaniu `python-multipart`, `/health` odpowiada
 
 ### Phase 4: Front — okno importu
 

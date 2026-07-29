@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -1928,3 +1928,186 @@ def test_calendar_user_b_cannot_read_user_a_wallet(api_client, jwt_env):
         )
     assert r.status_code == 403
     gc.assert_not_called()
+
+
+# ── Broker import (PUL-95) ────────────────────────────────────────────────────
+
+_IMPORT_HEADER = ["Type", "Ticker", "Instrument", "Time", "Amount", "ID", "Comment", "Product"]
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _xtb_bytes(rows: list[list]) -> bytes:
+    """Synthesize an XTB-shaped export.
+
+    The real exports carry account numbers and full transaction history and are
+    never committed, so every fixture is built to the same shape instead.
+    """
+    import io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Cash Operations"
+    for i in range(4):
+        ws.append([f"Meta {i}", "value"])
+    ws.append(_IMPORT_HEADER)
+    for row in rows:
+        ws.append(row)
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+_T0 = datetime(2026, 7, 1, 10, 0, 0)
+
+# CDR is held, PKO is bought and fully sold (closed), ZZZ is held but unknown to
+# `companies`/`etf_instruments`.
+_IMPORT_ROWS = [
+    ["Stock purchase", "CDR.PL", "CD Projekt", _T0, -1000.0, "1", "OPEN BUY 10 @ 100.00", "My Trades"],
+    ["Stock purchase", "PKO.PL", "PKO BP", _T0, -400.0, "2", "OPEN BUY 10 @ 40.00", "My Trades"],
+    ["Stock sell", "PKO.PL", "PKO BP", _T0 + timedelta(days=1), 450.0, "3", "CLOSE BUY 10 @ 45.00", "My Trades"],
+    ["Stock purchase", "ZZZ.PL", "Spolka Zzz", _T0, -200.0, "4", "OPEN BUY 20 @ 10.00", "My Trades"],
+    ["Dividend", "CDR.PL", "CD Projekt", _T0, 50.0, "5", "", "My Trades"],
+]
+
+_KNOWN_TICKERS = ["CDR", "PKO", "XTB"]
+
+
+def _import_files(rows=None):
+    return {"file": ("export.xlsx", _xtb_bytes(_IMPORT_ROWS if rows is None else rows), _XLSX_MIME)}
+
+
+def _import_form(portfolio_id=_WALLET_ID):
+    return {"broker": "xtb", "portfolio_id": portfolio_id}
+
+
+def _held(*tickers):
+    return [{"ticker": t, "company_name": t, "shares": 1.0, "avg_buy_price": 1.0} for t in tickers]
+
+
+def test_import_preview_writes_nothing(user_client):
+    """A preview is a dry run — no write primitive may fire on this path."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[{"portfolio_id": _WALLET_ID}]),
+        patch("src.api.list_distinct_portfolio_tickers", return_value=_KNOWN_TICKERS),
+        patch("src.api.list_user_portfolio_positions", return_value=_held("PKO")),
+        patch("src.api.merge_user_broker_operations") as merge_ops,
+        patch("src.api.merge_user_portfolio_positions_bulk") as merge_pos,
+        patch("src.api.delete_user_portfolio_positions") as delete_pos,
+    ):
+        r = user_client.post(
+            "/api/portfolio/import/preview", data=_import_form(), files=_import_files()
+        )
+    assert r.status_code == 200
+    merge_ops.assert_not_called()
+    merge_pos.assert_not_called()
+    delete_pos.assert_not_called()
+
+
+def test_import_preview_closed_section_names_only_holdings_actually_present(user_client):
+    """Plan-review F2: `closed` is the intersection with the wallet, not the raw parser set.
+
+    Announcing the deletion of positions the user does not hold is a false
+    destructive warning and a rational reason to abort the import.
+    """
+    with (
+        patch("src.api.list_user_portfolios", return_value=[{"portfolio_id": _WALLET_ID}]),
+        patch("src.api.list_distinct_portfolio_tickers", return_value=_KNOWN_TICKERS),
+        patch("src.api.list_user_portfolio_positions", return_value=_held("KGH")),
+    ):
+        r = user_client.post(
+            "/api/portfolio/import/preview", data=_import_form(), files=_import_files()
+        )
+    assert r.status_code == 200
+    body = r.json()
+    # PKO closed in the file but is not held → nothing to delete.
+    assert body["closed"] == []
+    # KGH is held and absent from the file → untouched, never deleted.
+    assert body["untouched"] == ["KGH"]
+
+
+def test_import_preview_reports_an_unknown_ticker_instead_of_rejecting_the_file(user_client):
+    """One unrecognized ticker must not 422 a file the user cannot edit."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[{"portfolio_id": _WALLET_ID}]),
+        patch("src.api.list_distinct_portfolio_tickers", return_value=_KNOWN_TICKERS),
+        patch("src.api.list_user_portfolio_positions", return_value=[]),
+    ):
+        r = user_client.post(
+            "/api/portfolio/import/preview", data=_import_form(), files=_import_files()
+        )
+    assert r.status_code == 200
+    assert r.json()["unknown_tickers"] == ["ZZZ"]
+
+
+def test_import_commit_writes_the_unknown_ticker_anyway(user_client):
+    """The broker file is the source of truth about what is held; `companies` is not."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[{"portfolio_id": _WALLET_ID}]),
+        patch("src.api.list_distinct_portfolio_tickers", return_value=_KNOWN_TICKERS),
+        patch("src.api.list_user_portfolio_positions", return_value=_held("PKO")),
+        patch("src.api.merge_user_broker_operations", return_value=5),
+        patch("src.api.merge_user_portfolio_positions_bulk", return_value=2) as merge_pos,
+        patch("src.api.delete_user_portfolio_positions", return_value=1) as delete_pos,
+    ):
+        r = user_client.post(
+            "/api/portfolio/import/commit", data=_import_form(), files=_import_files()
+        )
+    assert r.status_code == 200
+    written = {p["ticker"] for p in merge_pos.call_args[0][2]}
+    assert written == {"CDR", "ZZZ"}
+    # The same intersection the preview showed, never the raw closed_tickers.
+    delete_pos.assert_called_once_with(_CLIENT_ID, _WALLET_ID, ["PKO"])
+
+
+def test_import_commit_rejects_the_all_sentinel(user_client):
+    """No write path resolves `all`; the ownership guard would 404 only by accident."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[{"portfolio_id": _WALLET_ID}]),
+        patch("src.api.merge_user_broker_operations") as merge_ops,
+        patch("src.api.merge_user_portfolio_positions_bulk") as merge_pos,
+    ):
+        r = user_client.post(
+            "/api/portfolio/import/commit",
+            data=_import_form(portfolio_id="all"),
+            files=_import_files(),
+        )
+    assert r.status_code == 422
+    merge_ops.assert_not_called()
+    merge_pos.assert_not_called()
+
+
+def test_dividends_endpoint_validates_year_before_building_a_cache_key(user_client):
+    """An unvalidated `year` in the key lets any string poison the cache."""
+    import src.api as m
+
+    with patch("src.api.get_dividend_summary") as summary:
+        r = user_client.get(f"/api/portfolio/dividends?portfolio_id={_WALLET_ID}&year=abc")
+    assert r.status_code == 422
+    summary.assert_not_called()
+    assert not [k for k in m._PERF_CACHE if k.startswith("dividends:")]
+
+
+def test_perf_invalidate_clears_history_the_all_sentinel_and_dividends():
+    """The import lands on the default tab; a stale history or positions cache shows the old wallet."""
+    import src.api as m
+
+    keys = [
+        f"positions:{_CLIENT_ID}:{_WALLET_ID}",
+        f"positions:{_CLIENT_ID}:all",
+        f"calendar:{_CLIENT_ID}:{_WALLET_ID}:2026-7",
+        f"calendar:{_CLIENT_ID}:all:2026-7",
+        f"history:{_CLIENT_ID}:{_WALLET_ID}:1y",
+        f"history:{_CLIENT_ID}:all:1y",
+        f"dividends:{_CLIENT_ID}:{_WALLET_ID}:2026",
+        f"treemap:{_CLIENT_ID}",
+    ]
+    for key in keys:
+        m._perf_set(key, ["stale"])
+    m._perf_set("positions:other-user:w", ["keep"])
+
+    m._perf_invalidate_portfolio(_CLIENT_ID, _WALLET_ID)
+
+    assert [k for k in keys if k in m._PERF_CACHE] == []
+    assert "positions:other-user:w" in m._PERF_CACHE

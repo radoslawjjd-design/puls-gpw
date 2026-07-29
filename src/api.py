@@ -3,13 +3,24 @@ import logging
 import os
 import pathlib
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
 import json5
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, Security
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    Security,
+    UploadFile,
+)
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
@@ -34,6 +45,10 @@ from db.bigquery import (
     delete_announcement,
     delete_user_portfolio,
     delete_user_portfolio_position,
+    delete_user_portfolio_positions,
+    get_dividend_summary,
+    merge_user_broker_operations,
+    merge_user_portfolio_positions_bulk,
     ensure_companies_schema_current,
     ensure_user_portfolio_positions_schema_current,
     ensure_user_portfolios_schema_current,
@@ -63,6 +78,8 @@ from db.bigquery import (
 )
 from src.auth import refresh_session_if_stale, session_payload_from_request
 from src.auth import router as auth_router
+from src.brokers import BrokerImportError, get_parser
+from src.brokers.xtb import normalize_ticker
 from src.portfolio_calendar import compute_calendar_pnl
 from src.portfolio_treemap import compute_treemap_positions, compute_user_portfolio_treemap_positions
 
@@ -98,10 +115,19 @@ def _perf_set(key: str, data: Any) -> None:
 
 
 def _perf_invalidate_portfolio(user_id: str, portfolio_id: str) -> None:
-    _PERF_CACHE.pop(f"positions:{user_id}:{portfolio_id}", None)
+    # PUL-95: a write to one wallet also changes what the "Wszystkie" aggregate and
+    # the value chart show, so the sentinel variants and the history prefix have to
+    # go too. Both gaps predate the import — it just makes them visible, because the
+    # user lands back on the default tab the instant a commit succeeds.
     _PERF_CACHE.pop(f"treemap:{user_id}", None)
-    prefix = f"calendar:{user_id}:{portfolio_id}:"
-    for k in [k for k in _PERF_CACHE if k.startswith(prefix)]:
+    for scope in (portfolio_id, _ALL_PORTFOLIOS):
+        _PERF_CACHE.pop(f"positions:{user_id}:{scope}", None)
+    # calendar and history both branch on a trailing segment (month, range), so
+    # they need a prefix scan rather than a single key.
+    prefixes = [f"dividends:{user_id}:"]
+    for scope in (portfolio_id, _ALL_PORTFOLIOS):
+        prefixes += [f"calendar:{user_id}:{scope}:", f"history:{user_id}:{scope}:"]
+    for k in [k for k in _PERF_CACHE if any(k.startswith(p) for p in prefixes)]:
         _PERF_CACHE.pop(k, None)
 
 
@@ -285,6 +311,146 @@ def _history_start_date(range_: str) -> date | None:
     """Resolve a history range string to a start date, or None if unsupported."""
     days = _HISTORY_RANGE_DAYS.get(range_)
     return date.today() - timedelta(days=days) if days is not None else None
+
+
+class ImportPositionOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    ticker: str
+    company_name: str | None = None
+    shares: float
+    avg_buy_price: float
+    # True when the ticker is absent from `companies`/`etf_instruments`. The row is
+    # still written, but nothing will price it — the UI has to say so.
+    unpriced: bool = False
+
+
+class ImportPreviewResponse(BaseModel):
+    # PUL-95: the import is destructive in one direction (closed positions are
+    # deleted), so the envelope carries every consequence next to the data rather
+    # than leaving the caller to infer them from a bare position list.
+    model_config = ConfigDict(extra="ignore")
+    positions: list[ImportPositionOut] = []
+    # Held today AND closed in the file — the exact list a commit would delete.
+    closed: list[str] = []
+    # Tickers the app cannot price. Saved anyway; see the endpoint's docstring.
+    unknown_tickers: list[str] = []
+    # Held today, absent from the file — left alone. S2B and the spin-offs to come
+    # live here: a broker export structurally cannot contain them.
+    untouched: list[str] = []
+    dividends_new: int = 0
+    warnings: list[str] = []
+
+
+# openpyxl reads the whole workbook into memory and the app sets no body limit
+# anywhere; the largest real export is well under a megabyte.
+_IMPORT_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _resolve_import(user_id: str, portfolio_id: str, broker: str, data: bytes):
+    """Parse an upload and resolve it against what the wallet holds today.
+
+    Preview and commit share this entire path. The file is uploaded and parsed
+    again on commit — a preview token cached in one process would be unknown to
+    the other Cloud Run instance — so computing the disclosure in one place is
+    the only thing guaranteeing the user confirmed what actually executes.
+
+    Returns ``(preview, positions, closed)`` where ``positions`` is the payload
+    for the bulk upsert and ``closed`` is the exact delete list.
+    """
+    if portfolio_id == _ALL_PORTFOLIOS:
+        # No write path resolves the aggregate sentinel; the ownership check below
+        # would reject it only by accident, and silently.
+        raise HTTPException(status_code=422, detail="Nie mozna importowac do widoku zbiorczego")
+    if len(data) > _IMPORT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Plik przekracza 5 MB")
+
+    try:
+        wallets = list_user_portfolios(user_id)
+    except BigQueryError as exc:
+        logger.error("BQ error listing wallets during import: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+    if not any(w["portfolio_id"] == portfolio_id for w in wallets):
+        raise HTTPException(status_code=404, detail="Wallet not found")
+
+    try:
+        parsed = get_parser(broker)(data)
+    except BrokerImportError as exc:
+        # Structural failure only: unreadable file, unknown broker, missing sheet.
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    try:
+        known = set(list_distinct_portfolio_tickers())
+        held = {row["ticker"] for row in list_user_portfolio_positions(user_id, portfolio_id)}
+    except BigQueryError as exc:
+        logger.error("BQ error resolving import against the wallet: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    in_file = {p.ticker for p in parsed.positions}
+    # The parser reports every ticker that ever went to zero — two dozen on a real
+    # file. Announcing the deletion of positions the user does not hold is a false
+    # destructive warning, so only the intersection is disclosed and deleted.
+    closed = sorted(t for t in set(parsed.closed_tickers) if t in held)
+    unknown = sorted(t for t in in_file if t not in known)
+    preview = ImportPreviewResponse(
+        positions=[
+            ImportPositionOut(
+                ticker=p.ticker,
+                company_name=p.company_name,
+                shares=p.shares,
+                avg_buy_price=p.avg_buy_price,
+                unpriced=p.ticker not in known,
+            )
+            for p in parsed.positions
+        ],
+        closed=closed,
+        unknown_tickers=unknown,
+        untouched=sorted(held - in_file - set(closed)),
+        # Events present in the file. The merge is insert-only, so on a re-import
+        # none of them land — this is an upper bound, not a delta.
+        dividends_new=len(parsed.dividends),
+        warnings=list(parsed.warnings),
+    )
+    positions = [
+        {
+            "ticker": p.ticker,
+            "company_name": p.company_name,
+            "shares": p.shares,
+            "avg_buy_price": p.avg_buy_price,
+        }
+        for p in parsed.positions
+    ]
+    return preview, positions, closed, parsed
+
+
+def _operation_rows(user_id: str, portfolio_id: str, broker: str, parsed, source_file: str) -> list[dict]:
+    """Flatten parsed operations into storage rows.
+
+    ``external_id`` is namespaced by wallet: the broker's own id is unique only
+    within one account, and the MERGE keys on that column alone, so a bare id
+    would let one user's import silently swallow another's row.
+    """
+    imported_at = datetime.now(timezone.utc).isoformat()
+    rows = []
+    for index, op in enumerate(parsed.operations):
+        raw_id = op.external_id or f"idx{index}"
+        rows.append({
+            "user_id": user_id,
+            "portfolio_id": portfolio_id,
+            "broker": broker,
+            "external_id": f"{user_id}:{portfolio_id}:{broker}:{raw_id}",
+            "op_type": op.op_type,
+            "occurred_at": op.occurred_at.isoformat(),
+            "imported_at": imported_at,
+            "amount_pln": op.amount_pln,
+            "raw_type": op.raw_type,
+            "ticker": normalize_ticker(op.ticker) if op.ticker else None,
+            "instrument_name": op.instrument_name,
+            "volume": op.volume,
+            "unit_price": op.unit_price,
+            "comment": op.comment,
+            "source_file": source_file,
+        })
+    return rows
 
 
 class AnnouncementUser(BaseModel):
@@ -1065,6 +1231,88 @@ def create_app() -> FastAPI:
             ],
             excluded=list(data["excluded"]),
         ).model_dump()
+        _perf_set(cache_key, result)
+        return result
+
+    @app.post("/api/portfolio/import/preview")
+    async def post_portfolio_import_preview(
+        file: UploadFile = File(...),
+        broker: str = Form(...),
+        portfolio_id: str = Form(...),
+        role: Role = Depends(_get_role),
+        user_id: str = Depends(_get_user_id),
+    ):
+        """Dry run: parse the export and disclose every consequence, writing nothing.
+
+        An unrecognized ticker is reported, never a 422 — the user cannot edit the
+        broker's file, and rejecting the whole upload over one instrument would
+        leave them with no way in at all.
+        """
+        preview, _, _, _ = _resolve_import(user_id, portfolio_id, broker, await file.read())
+        return preview.model_dump()
+
+    @app.post("/api/portfolio/import/commit")
+    async def post_portfolio_import_commit(
+        file: UploadFile = File(...),
+        broker: str = Form(...),
+        portfolio_id: str = Form(...),
+        role: Role = Depends(_get_role),
+        user_id: str = Depends(_get_user_id),
+    ):
+        preview, positions, closed, parsed = _resolve_import(
+            user_id, portfolio_id, broker, await file.read()
+        )
+        try:
+            # Three logical steps, never a loop — the request budget is 60s and a
+            # 571-row merge alone measures ~4s.
+            operations = merge_user_broker_operations(
+                _operation_rows(user_id, portfolio_id, broker, parsed, file.filename or "")
+            )
+            written = merge_user_portfolio_positions_bulk(user_id, portfolio_id, positions)
+            removed = delete_user_portfolio_positions(user_id, portfolio_id, closed)
+        except BigQueryError as exc:
+            logger.error("BQ error in POST /api/portfolio/import/commit: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        _perf_invalidate_portfolio(user_id, portfolio_id)
+        return {
+            "operations_new": operations,
+            "positions_written": written,
+            "positions_removed": removed,
+            "unknown_tickers": preview.unknown_tickers,
+        }
+
+    @app.get("/api/portfolio/dividends")
+    async def get_portfolio_dividends(
+        portfolio_id: str = Query(...),
+        year: str | None = Query(None),
+        role: Role = Depends(_get_role),
+        user_id: str = Depends(_get_user_id),
+    ):
+        # Validated before the key is built: an unchecked value goes straight into
+        # the cache key, so any string would carve out its own entry.
+        parsed_year: int | None = None
+        if year not in (None, "", "all"):
+            if not year.isdigit():
+                raise HTTPException(status_code=422, detail="year must be a four-digit year")
+            parsed_year = int(year)
+        cache_key = f"dividends:{user_id}:{portfolio_id}:{parsed_year or 'all'}"
+        cached = _perf_get(cache_key, ttl=300)
+        if cached is not None:
+            return cached
+        all_mode = portfolio_id == _ALL_PORTFOLIOS
+        if not all_mode:
+            try:
+                wallets = list_user_portfolios(user_id)
+            except BigQueryError as exc:
+                logger.error("BQ error listing wallets in GET /api/portfolio/dividends: %s", exc)
+                raise HTTPException(status_code=500, detail=str(exc))
+            if not any(w["portfolio_id"] == portfolio_id for w in wallets):
+                raise HTTPException(status_code=404, detail="Wallet not found")
+        try:
+            result = get_dividend_summary(user_id, None if all_mode else portfolio_id, parsed_year)
+        except BigQueryError as exc:
+            logger.error("BQ error in GET /api/portfolio/dividends: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
         _perf_set(cache_key, result)
         return result
 
