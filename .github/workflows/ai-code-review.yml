@@ -61,7 +61,9 @@ jobs:
       statuses: write
     env:
       GOOGLE_CLOUD_PROJECT: puls-gpw
-      GOOGLE_CLOUD_REGION: europe-central2
+      # Same dynamic-quota 429 as the security reviewer — this one has just been
+      # getting away with it on smaller diffs.
+      GOOGLE_CLOUD_REGION: global
     steps:
       # ── Guard ──────────────────────────────────────────────────────────
       # Decide whether to run the (cost-bearing) agent. True for dispatch and

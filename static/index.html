@@ -882,15 +882,59 @@
   .pp-notice { font-size: .875rem; color: var(--text-muted); padding: .4rem 0; }
 
   /* Portfolio: add-portfolio modal */
-  #pp-add-portfolio-overlay {
+  #pp-add-portfolio-overlay, #pp-import-overlay {
     position: fixed; inset: 0; background: rgba(8,23,38,.55);
     display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1.5rem;
   }
-  #pp-add-portfolio-modal {
+  #pp-add-portfolio-modal, #pp-import-modal {
     background: #fff; border-radius: var(--radius-md); box-shadow: var(--shadow-3);
     width: 100%; max-width: 420px; padding: 1.5rem;
   }
-  #pp-add-portfolio-modal h3 { margin: 0 0 1rem; font-size: 1.05rem; font-weight: 600; color: var(--brand-dark); }
+  /* The disclosure list can outgrow the viewport on a wallet with many holdings. */
+  #pp-import-modal { max-width: 520px; max-height: 85vh; overflow-y: auto; }
+  #pp-add-portfolio-modal h3, #pp-import-modal h3 { margin: 0 0 1rem; font-size: 1.05rem; font-weight: 600; color: var(--brand-dark); }
+  #pp-import-modal select, #pp-import-modal input[type="file"] {
+    width: 100%; padding: .55rem .75rem; border: 1px solid #cdd4dc;
+    border-radius: var(--radius-sm); font-size: .95rem; margin-bottom: .75rem;
+    box-sizing: border-box; background: #fff;
+  }
+  #pp-import-error { color: var(--negative); font-size: .85rem; margin-bottom: .75rem; }
+  #pp-import-result { margin: .25rem 0 1rem; font-size: .88rem; }
+  .pp-import-section { padding: .5rem 0; border-top: 1px solid var(--border); }
+  .pp-import-section strong { display: block; margin-bottom: .2rem; font-weight: 600; }
+  .pp-import-section.pp-import-warn strong { color: var(--negative); }
+  .pp-import-section .pp-import-hint { color: var(--text-muted); font-size: .82rem; }
+  #pp-div-header-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+  #pp-div-title { margin:0; font-size:1.05rem; font-weight:600; color:var(--brand-dark); }
+  #pp-div-tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:.75rem; margin-bottom:1.25rem; }
+  .pp-div-tile { background:#fff; border:1px solid var(--border); border-radius:var(--radius-md); padding:.9rem 1rem; }
+  .pp-div-tile-label { font-size:.72rem; letter-spacing:.04em; text-transform:uppercase; color:var(--text-muted); }
+  .pp-div-tile-value { font-size:1.25rem; font-weight:600; margin-top:.25rem; }
+  .pp-div-tile-value.pp-div-tax { color:var(--negative); }
+  #pp-div-by-ticker table { width:100%; border-collapse:collapse; }
+  #pp-div-by-ticker th, #pp-div-by-ticker td { padding:.55rem .75rem; text-align:right; }
+  #pp-div-by-ticker th:first-child, #pp-div-by-ticker td:first-child { text-align:left; }
+  #pp-import-btn {
+    padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc;
+    border-radius:var(--radius-sm); cursor:pointer; font-size:.9rem; font-weight:600;
+    margin-bottom:1rem; margin-left:.5rem;
+  }
+  #pp-import-btn:hover { background: var(--brand-tint); }
+  #pp-import-commit-btn {
+    padding: .5rem 1.2rem; background: var(--brand); color: #fff;
+    border: none; border-radius: var(--radius-sm); cursor: pointer; font-weight: 600;
+  }
+  #pp-import-commit-btn:hover { background: var(--brand-dark); }
+  #pp-import-commit-btn[disabled], #pp-import-preview-btn[disabled] { opacity: .55; cursor: default; }
+  #pp-import-preview-btn {
+    padding: .5rem 1.1rem; background: transparent; color: var(--brand);
+    border: 1px solid var(--brand); border-radius: var(--radius-sm); cursor: pointer; font-weight: 600;
+  }
+  #pp-import-cancel-btn {
+    padding: .5rem 1.1rem; background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
+  }
+  #pp-import-cancel-btn:hover { background: var(--fill); }
   #pp-add-portfolio-modal select,
   #pp-add-portfolio-modal input[type="text"] {
     width: 100%; padding: .55rem .75rem; border: 1px solid #cdd4dc;
@@ -941,7 +985,7 @@ html[data-theme="dark"] .chevron-icon { border-top-color:#dbe6f0; }
 html[data-theme="dark"] .filters, html[data-theme="dark"] .table-wrap, html[data-theme="dark"] #wl-add-form, html[data-theme="dark"] #pp-form,
 html[data-theme="dark"] .treemap-wallet, html[data-theme="dark"] .treemap-legend, html[data-theme="dark"] #pp-cal-legend, html[data-theme="dark"] #pp-cal-mtd-summary,
 html[data-theme="dark"] .profile-menu, html[data-theme="dark"] .ac-dropdown, html[data-theme="dark"] .modal-box, html[data-theme="dark"] .tc-popup,
-html[data-theme="dark"] #pp-edit-modal, html[data-theme="dark"] #pp-add-portfolio-modal, html[data-theme="dark"] .login-box, html[data-theme="dark"] .wl-chip,
+html[data-theme="dark"] #pp-edit-modal, html[data-theme="dark"] #pp-add-portfolio-modal, html[data-theme="dark"] #pp-import-modal, html[data-theme="dark"] .login-box, html[data-theme="dark"] .wl-chip,
 html[data-theme="dark"] .pp-portfolio-tab, html[data-theme="dark"] .pp-view-tab.active, html[data-theme="dark"] .pp-cal-cell, html[data-theme="dark"] .treemap-container,
 html[data-theme="dark"] #pp-cal-prev, html[data-theme="dark"] #pp-cal-next, html[data-theme="dark"] .pagination-bar button, html[data-theme="dark"] #pp-tbody tr
   { background:#141f2b; color:var(--text); border-color:var(--border); }
@@ -953,11 +997,16 @@ html[data-theme="dark"] .ac-item:hover, html[data-theme="dark"] .profile-menu bu
 html[data-theme="dark"] .profile-menu button { color:var(--text); }
 html[data-theme="dark"] .filters input, html[data-theme="dark"] .filters select, html[data-theme="dark"] #wl-add-form input, html[data-theme="dark"] #pp-form input,
 html[data-theme="dark"] .login-box input, html[data-theme="dark"] #pp-edit-modal input[type="number"], html[data-theme="dark"] #pp-add-portfolio-modal select,
-html[data-theme="dark"] #pp-add-portfolio-modal input[type="text"], html[data-theme="dark"] .filters-date-group
+html[data-theme="dark"] #pp-add-portfolio-modal input[type="text"], html[data-theme="dark"] .filters-date-group,
+html[data-theme="dark"] #pp-import-modal select, html[data-theme="dark"] #pp-import-modal input[type="file"]
   { background:#0d1520; color:var(--text); border-color:#2b3a4d; }
 html[data-theme="dark"] .filters input:focus, html[data-theme="dark"] .filters select:focus, html[data-theme="dark"] #wl-add-form input:focus, html[data-theme="dark"] #pp-form input:focus, html[data-theme="dark"] .filters-date-group:focus-within { background:#0d1520; }
 html[data-theme="dark"] .filters-date-group input { background:transparent; }
-html[data-theme="dark"] .view-header h2, html[data-theme="dark"] #pp-cal-label, html[data-theme="dark"] .tc-popup h3, html[data-theme="dark"] #pp-edit-modal h3, html[data-theme="dark"] #pp-add-portfolio-modal h3, html[data-theme="dark"] .login-box-body h2, html[data-theme="dark"] .modal-header strong { color:#e6edf3; }
+html[data-theme="dark"] .view-header h2, html[data-theme="dark"] #pp-cal-label, html[data-theme="dark"] .tc-popup h3, html[data-theme="dark"] #pp-edit-modal h3, html[data-theme="dark"] #pp-add-portfolio-modal h3, html[data-theme="dark"] #pp-import-modal h3, html[data-theme="dark"] .login-box-body h2, html[data-theme="dark"] .modal-header strong { color:#e6edf3; }
+html[data-theme="dark"] #pp-import-btn { background:#141f2b; border-color:#2b3a4d; color:#9fc1e0; }
+html[data-theme="dark"] .pp-div-tile { background:#141f2b; border-color:var(--border); }
+html[data-theme="dark"] #pp-div-title { color:#e6edf3; }
+html[data-theme="dark"] .pp-import-section { border-top-color:#243141; }
 html[data-theme="dark"] .score.high { background:rgba(21,115,71,.28); color:#7fd8a8; }
 html[data-theme="dark"] .score.mid { background:rgba(201,168,106,.22); color:#e0c185; }
 html[data-theme="dark"] .score.low { background:rgba(179,38,30,.28); color:#f4a49e; }
@@ -3261,6 +3310,11 @@ let _ppTreemapData = null;
 let _ppCalData = null;
 let _ppCalYear = null;
 let _ppCalMonth = null;
+// PUL-95 dividends: null year = every year. Switching year or wallet fires a new
+// fetch, so this needs the same out-of-order guard the history slots use.
+let _ppDivData = null;
+let _ppDivYear = null;
+let _ppDivReqSeq = 0;
 const _PORTFOLIO_TYPE_LABELS = {
   glowny: 'Główny', ikze: 'IKZE', ike: 'IKE', ppk: 'PPK', ppe: 'PPE', inny: 'Inny'
 };
@@ -3520,6 +3574,10 @@ function _renderPortfolioTabs(portfolios) {
 function _ppSyncAddBtnVisibility() {
   const addBtn = $('pp-add-toggle-btn');
   if (addBtn && _ppEditingTicker === null) addBtn.style.display = _ppIsAllMode() ? 'none' : '';
+  // PUL-95: the import writes to one wallet, and the backend rejects the `all`
+  // sentinel outright — offering the button there would only produce a 422.
+  const importBtn = $('pp-import-btn');
+  if (importBtn) importBtn.style.display = _ppIsAllMode() ? 'none' : '';
 }
 
 // Shared wallet-tab click handler (per-wallet + "Wszystkie"): activate the tab,
@@ -3533,8 +3591,10 @@ function _selectPortfolioTab(portfolioId, btn) {
   _ppHistDataActive = null;
   _ppHistDataAll = null;
   _ppSyncAddBtnVisibility();
+  _ppDivData = null;
   const curMode = $('pp-view-tabs')?.querySelector('.pp-view-tab.active')?.dataset.mode;
   if (curMode === 'calendar') { fetchPortfolioCalendar(); fetchPortfolioHistory(); }
+  if (curMode === 'dividends') fetchPortfolioDividends();
   fetchPortfolioPositions();
   _ppWriteUrl(true);
 }
@@ -3603,6 +3663,141 @@ function _closeAddPortfolioModal() {
   if (overlay) overlay.style.display = 'none';
 }
 
+// ── broker-export import (PUL-95) ──────────────────────────────────────────
+
+function _openImportModal() {
+  const overlay = $('pp-import-overlay');
+  if (!overlay) return;
+  $('pp-import-file').value = '';
+  $('pp-import-error').style.display = 'none';
+  $('pp-import-result').style.display = 'none';
+  $('pp-import-result').innerHTML = '';
+  $('pp-import-commit-btn').style.display = 'none';
+  $('pp-import-preview-btn').disabled = false;
+  overlay.style.display = 'flex';
+}
+
+function _closeImportModal() {
+  const overlay = $('pp-import-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function _ppImportError(msg) {
+  const el = $('pp-import-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// The file object itself is resent on commit: a preview token cached in one
+// process would be unknown to the other Cloud Run instance.
+function _ppImportFormData() {
+  const input = $('pp-import-file');
+  if (!input.files || !input.files.length) return null;
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  fd.append('broker', $('pp-import-broker').value);
+  fd.append('portfolio_id', _activePortfolioId || '');
+  return fd;
+}
+
+// One disclosure block. `id` is what the e2e suite asserts against, so it is set
+// where the section is built rather than patched on afterwards.
+function _ppImportSection(id, title, items, opts) {
+  if (!items.length) return '';
+  const cls = (opts && opts.warn) ? ' pp-import-warn' : '';
+  const hint = (opts && opts.hint) ? `<div class="pp-import-hint">${esc(opts.hint)}</div>` : '';
+  const body = (opts && opts.perLine)
+    ? items.map(i => `<div>${esc(i)}</div>`).join('')
+    : `<div>${items.map(esc).join(', ')}</div>`;
+  return `<div class="pp-import-section${cls}" id="${id}"><strong>${esc(title)}</strong>${hint}${body}</div>`;
+}
+
+function _renderImportPreview(data) {
+  // Polish decimal comma, like every other number in this view. XTB reports
+  // fractional shares, so the share count keeps up to four places.
+  const zl = n => n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const qty = n => n.toLocaleString('pl-PL', { maximumFractionDigits: 4 });
+  const positions = (data.positions || []).map(
+    p => `${p.ticker} — ${qty(p.shares)} szt. po ${zl(p.avg_buy_price)} zł`
+  );
+  // One per line: a real wallet has a dozen holdings and a comma-joined run of
+  // them is unreadable at exactly the moment the user has to check it.
+  let html = _ppImportSection('pp-import-positions', 'Pozycje do zapisania', positions,
+                              { perLine: true });
+  html += _ppImportSection(
+    'pp-import-closed', 'Zostaną usunięte (zamknięte w pliku)', data.closed || [],
+    { warn: true, hint: 'Te pozycje masz dziś w portfelu, a plik pokazuje, że zostały sprzedane.' }
+  );
+  html += _ppImportSection(
+    'pp-import-unknown', 'Nierozpoznane instrumenty', data.unknown_tickers || [],
+    { hint: 'Pozycja zostanie zapisana, ale bez wyceny — nie mamy dla niej kursu.' }
+  );
+  html += _ppImportSection(
+    'pp-import-untouched', 'Pominięte (nie ma ich w pliku)', data.untouched || [],
+    { hint: 'Zostają w portfelu bez zmian. Eksport brokera nie zawiera np. akcji ze splitu.' }
+  );
+  // Always rendered: "zero payouts" is information, not an empty section. Named
+  // "gotówkowe" because the export has no scrip dividends and the total must not
+  // read as complete.
+  html += `<div class="pp-import-section" id="pp-import-dividends"><strong>Dywidendy gotówkowe</strong>` +
+          `<div>${esc(String(data.dividends_new || 0))} zdarzeń w pliku</div></div>`;
+  // One block, not one per warning: a real export yields eight of these and
+  // eight bordered boxes bury the four sections that actually need reading.
+  html += _ppImportSection('pp-import-warnings', 'Pominięte wiersze pliku',
+                           data.warnings || [], { perLine: true });
+  const el = $('pp-import-result');
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+async function _ppSubmitImportPreview() {
+  const fd = _ppImportFormData();
+  $('pp-import-error').style.display = 'none';
+  if (!fd) { _ppImportError('Wybierz plik eksportu.'); return; }
+  try {
+    const r = await fetch('/api/portfolio/import/preview', {
+      method: 'POST', headers: { 'X-API-Key': apiKey }, body: fd,
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) { _ppImportError('Nie udało się odczytać pliku. Sprawdź, czy to eksport z wybranego domu maklerskiego.'); return; }
+    const data = await r.json();
+    _renderImportPreview(data);
+    $('pp-import-commit-btn').style.display = '';
+    $('pp-import-commit-btn').disabled = false;
+  } catch (e) {
+    _ppImportError('Błąd połączenia podczas sprawdzania pliku.');
+  } finally {
+    $('pp-import-preview-btn').disabled = false;
+  }
+}
+
+async function _ppSubmitImportCommit() {
+  const fd = _ppImportFormData();
+  $('pp-import-error').style.display = 'none';
+  if (!fd) { _ppImportError('Wybierz plik eksportu.'); return; }
+  try {
+    const r = await fetch('/api/portfolio/import/commit', {
+      method: 'POST', headers: { 'X-API-Key': apiKey }, body: fd,
+    });
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) { _ppImportError('Zapis nie powiódł się. Portfel pozostał bez zmian.'); return; }
+    const data = await r.json();
+    _closeImportModal();
+    // The other three views render from their own caches; without this they show
+    // the pre-import wallet until the page is reloaded.
+    _ppTreemapData = null;
+    _ppCalData = null;
+    _ppHistDataActive = null;
+    _ppHistDataAll = null;
+    await fetchPortfolioPositions();
+    showToast(`Zapisano ${data.positions_written} pozycji, usunięto ${data.positions_removed}.`);
+  } catch (e) {
+    _ppImportError('Błąd połączenia podczas zapisu.');
+  } finally {
+    $('pp-import-commit-btn').disabled = false;
+  }
+}
+
 async function _submitAddPortfolio() {
   const type = $('pp-portfolio-type-select').value;
   const name = type === 'inny' ? ($('pp-portfolio-name-input').value.trim() || null) : null;
@@ -3665,10 +3860,12 @@ function _buildPortfolioPositionsViewContent(view) {
       <button type="button" class="pp-view-tab active" data-mode="table">Tabela</button>
       <button type="button" class="pp-view-tab" data-mode="treemap">Treemapa</button>
       <button type="button" class="pp-view-tab" data-mode="calendar">Kalendarz</button>
+      <button type="button" class="pp-view-tab" data-mode="dividends">Dywidendy</button>
     </div>
     <div id="pp-table-wrap">
       <button type="button" id="pp-add-toggle-btn">Dodaj pozycję</button>
       <button type="button" id="pp-export-csv-btn" title="Eksportuj pozycje do CSV">Eksport CSV</button>
+      <button type="button" id="pp-import-btn" title="Wczytaj pozycje z pliku od domu maklerskiego">Import z pliku</button>
       <div id="pp-form-wrap" style="display:none">
         <form id="pp-form">
           <div id="pp-ticker-field">
@@ -3796,6 +3993,16 @@ function _buildPortfolioPositionsViewContent(view) {
         </div>
       </div>
     </div>
+    <div id="pp-dividends-wrap" style="display:none">
+      <div id="pp-div-header-row">
+        <!-- "gotówkowe" is load-bearing: the export carries no scrip dividends,
+             so the totals must not read as the complete picture. -->
+        <h3 id="pp-div-title">Dywidendy gotówkowe</h3>
+        <div id="pp-div-years" class="pp-view-tabs-inline"></div>
+      </div>
+      <div id="pp-div-tiles"></div>
+      <div id="pp-div-by-ticker"></div>
+    </div>
     <div id="pp-add-portfolio-overlay" style="display:none">
       <div id="pp-add-portfolio-modal">
         <h3>Dodaj portfel</h3>
@@ -3814,6 +4021,24 @@ function _buildPortfolioPositionsViewContent(view) {
         <div class="pp-modal-actions">
           <button type="button" id="pp-portfolio-modal-cancel">Anuluj</button>
           <button type="button" id="pp-portfolio-modal-save">Zapisz</button>
+        </div>
+      </div>
+    </div>
+    <div id="pp-import-overlay" style="display:none">
+      <div id="pp-import-modal">
+        <h3>Import pozycji z pliku</h3>
+        <label for="pp-import-broker">Dom maklerski</label>
+        <select id="pp-import-broker">
+          <option value="xtb">XTB</option>
+        </select>
+        <label for="pp-import-file">Plik eksportu (.xlsx)</label>
+        <input type="file" id="pp-import-file" accept=".xlsx">
+        <div id="pp-import-error" style="display:none"></div>
+        <div id="pp-import-result" style="display:none"></div>
+        <div class="pp-modal-actions">
+          <button type="button" id="pp-import-cancel-btn">Anuluj</button>
+          <button type="button" id="pp-import-preview-btn">Sprawdź plik</button>
+          <button type="button" id="pp-import-commit-btn" style="display:none">Zapisz do portfela</button>
         </div>
       </div>
     </div>
@@ -3843,10 +4068,15 @@ function _buildPortfolioPositionsViewContent(view) {
       $('pp-view-tabs').querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const mode = btn.dataset.mode;
-      $('pp-portfolio-tabs-wrap').style.display = (mode === 'table' || mode === 'calendar') ? '' : 'none';
+      // Two adjacent blocks, and a new mode has to be added to BOTH: the first
+      // decides what is visible, the second what gets fetched. Wiring only the
+      // first opens the tab onto an empty panel.
+      $('pp-portfolio-tabs-wrap').style.display =
+        (mode === 'table' || mode === 'calendar' || mode === 'dividends') ? '' : 'none';
       $('pp-table-wrap').style.display = mode === 'table' ? '' : 'none';
       $('pp-treemap-wrap').style.display = mode === 'treemap' ? '' : 'none';
       $('pp-calendar-wrap').style.display = mode === 'calendar' ? '' : 'none';
+      $('pp-dividends-wrap').style.display = mode === 'dividends' ? '' : 'none';
       if (mode === 'table') {
         stopPortfolioTreemapResize();
       } else if (mode === 'treemap') {
@@ -3856,9 +4086,27 @@ function _buildPortfolioPositionsViewContent(view) {
         stopPortfolioTreemapResize();
         if (!_ppCalData) fetchPortfolioCalendar();
         if (_ppHistDataAll === null) fetchPortfolioHistory();
+      } else if (mode === 'dividends') {
+        // Without this stop, treemap → dividends leaves the resize observer running.
+        stopPortfolioTreemapResize();
+        if (!_ppDivData) fetchPortfolioDividends();
       }
       _ppWriteUrl(true);
     });
+  });
+
+  // Dividend year pills. Delegated, because the list is rebuilt from every
+  // response. Deliberately NOT inside #pp-view-tabs — that container's handler
+  // would read these as a view switch, the trap the range pills already dodge.
+  $('pp-div-years').addEventListener('click', e => {
+    const btn = e.target.closest('.pp-view-tab');
+    if (!btn) return;
+    const year = btn.dataset.year === '' ? null : Number(btn.dataset.year);
+    if (year === _ppDivYear) return;
+    _ppDivYear = year;
+    $('pp-div-years').querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    fetchPortfolioDividends();
   });
 
   // value-history range switcher (1T/1M/3M/1R) — refetch on change
@@ -3927,6 +4175,34 @@ function _buildPortfolioPositionsViewContent(view) {
     $('pp-add-toggle-btn').style.display = 'none';
   });
   $('pp-export-csv-btn').addEventListener('click', _exportPortfolioCsv);
+
+  // broker-import modal events (PUL-95)
+  $('pp-import-btn').addEventListener('click', _openImportModal);
+  $('pp-import-cancel-btn').addEventListener('click', _closeImportModal);
+  $('pp-import-overlay').addEventListener('click', e => {
+    if (e.target === $('pp-import-overlay')) _closeImportModal();
+  });
+  // Guarded by visibility: the unguarded global listener a few blocks up is an
+  // existing bug, not a pattern to copy.
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && $('pp-import-overlay')
+        && $('pp-import-overlay').style.display !== 'none') _closeImportModal();
+  });
+  // Disabled synchronously in the click handler — doing it inside the async
+  // function happens after the stack unwinds and leaves the double-click open.
+  $('pp-import-preview-btn').addEventListener('click', () => {
+    $('pp-import-preview-btn').disabled = true;
+    _ppSubmitImportPreview();
+  });
+  $('pp-import-commit-btn').addEventListener('click', () => {
+    $('pp-import-commit-btn').disabled = true;
+    _ppSubmitImportCommit();
+  });
+  // A new file invalidates the preview the commit button was enabled for.
+  $('pp-import-file').addEventListener('change', () => {
+    $('pp-import-commit-btn').style.display = 'none';
+    $('pp-import-result').style.display = 'none';
+  });
 
   $('pp-form').addEventListener('submit', e => {
     e.preventDefault();
@@ -4231,6 +4507,81 @@ async function _fetchPortfolioHistorySlot(portfolioId, chartElId) {
     if (stale()) return;
     chartEl.innerHTML = '<div class="empty">Błąd ładowania danych.</div>';
   }
+}
+
+// ── dividends tab (PUL-95) ─────────────────────────────────────────────────
+
+async function fetchPortfolioDividends() {
+  if (_activePortfolioId === null) return;
+  const tiles = $('pp-div-tiles');
+  const table = $('pp-div-by-ticker');
+  if (!tiles || !table) return;
+  tiles.innerHTML = '<div class="empty">Ładowanie…</div>';
+  table.innerHTML = '';
+  // Same out-of-order guard as the history slots: switching year and wallet in
+  // quick succession leaves two fetches racing, and the slower one must not win.
+  const seq = ++_ppDivReqSeq;
+  const stale = () => seq !== _ppDivReqSeq;
+  try {
+    let url = `/api/portfolio/dividends?portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
+    if (_ppDivYear !== null) url += `&year=${encodeURIComponent(_ppDivYear)}`;
+    const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    if (stale()) return;
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (stale()) return;
+    _ppDivData = data;
+    _renderPortfolioDividends(data);
+  } catch (e) {
+    if (stale()) return;
+    tiles.innerHTML = '<div class="empty">Błąd ładowania danych.</div>';
+  }
+}
+
+// Its own renderer: _renderPortfolioTable is bound to nine fixed position columns.
+function _renderPortfolioDividends(data) {
+  const zl = n => Number(n || 0).toLocaleString('pl-PL',
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł';
+  const totals = (data && data.totals) || {};
+
+  // Gross, tax and net are shown separately and always. IKZE withholds nothing,
+  // so gross equals net there — collapsing them to one number makes a correct
+  // account look broken.
+  $('pp-div-tiles').innerHTML =
+    `<div class="pp-div-tile"><div class="pp-div-tile-label">Brutto</div>` +
+    `<div class="pp-div-tile-value">${esc(zl(totals.gross))}</div></div>` +
+    `<div class="pp-div-tile"><div class="pp-div-tile-label">Podatek u źródła</div>` +
+    `<div class="pp-div-tile-value pp-div-tax">${esc(zl(totals.tax))}</div></div>` +
+    `<div class="pp-div-tile"><div class="pp-div-tile-label">Netto</div>` +
+    `<div class="pp-div-tile-value">${esc(zl(totals.net))}</div></div>` +
+    `<div class="pp-div-tile"><div class="pp-div-tile-label">Wypłat</div>` +
+    `<div class="pp-div-tile-value">${esc(String(totals.count || 0))}</div></div>`;
+
+  const rows = (data && data.by_ticker) || [];
+  $('pp-div-by-ticker').innerHTML = rows.length
+    ? `<table><thead><tr><th>Ticker</th><th>Brutto</th><th>Podatek</th><th>Netto</th>` +
+      `<th>Wypłat</th></tr></thead><tbody>` +
+      rows.map(r => `<tr><td>${esc(r.ticker || '')}</td><td>${esc(zl(r.gross))}</td>` +
+        `<td>${esc(zl(r.tax))}</td><td>${esc(zl(r.net))}</td>` +
+        `<td>${esc(String(r.payouts || 0))}</td></tr>`).join('') +
+      `</tbody></table>`
+    : '<div class="empty">Brak dywidend w wybranym okresie.</div>';
+
+  _renderDividendYears((data && data.years) || []);
+}
+
+// The year list travels with every response (PUL-100: a meta-first join), so a
+// year with no payouts still renders its own selector instead of stranding the
+// user on an empty tab with no way back.
+function _renderDividendYears(years) {
+  const box = $('pp-div-years');
+  if (!box) return;
+  const pill = (label, year) =>
+    `<button type="button" class="pp-view-tab${_ppDivYear === year ? ' active' : ''}" ` +
+    `data-year="${year === null ? '' : esc(String(year))}">${esc(label)}</button>`;
+  box.innerHTML = pill('Wszystkie', null) +
+    years.slice().sort((a, b) => b - a).map(y => pill(String(y), y)).join('');
 }
 
 // Rok jest konieczny: zakresy 1r/3m potrafią przekroczyć granicę roku,

@@ -426,6 +426,71 @@ def _fake_delete_user_portfolio_position(user_id, portfolio_id, ticker):
     ]
 
 
+_broker_operations_store: dict[str, list[dict]] = {}
+
+
+def _fake_merge_user_broker_operations(rows):
+    """Insert-only, keyed on external_id — mirrors the MERGE, so re-import is a no-op."""
+    inserted = 0
+    for row in rows:
+        store = _broker_operations_store.setdefault(row["user_id"], [])
+        if any(existing["external_id"] == row["external_id"] for existing in store):
+            continue
+        store.append(row)
+        inserted += 1
+    return inserted
+
+
+def _fake_merge_user_portfolio_positions_bulk(user_id, portfolio_id, positions):
+    """Upsert into the same store the position list reads from.
+
+    Stateful on purpose: the import is a multi-request flow (preview → commit →
+    read back), and a `return_value` fake would leave the wallet unchanged after a
+    commit the UI just told the user succeeded.
+    """
+    store = _portfolio_positions_store.setdefault(user_id, [])
+    for position in positions:
+        existing = next(
+            (p for p in store
+             if p["ticker"] == position["ticker"] and p.get("portfolio_id") == portfolio_id),
+            None,
+        )
+        if existing is not None:
+            existing.update(position)
+        else:
+            store.append({
+                **position, "portfolio_id": portfolio_id,
+                "current_price": 52.0, "daily_change_pct": 1.5,
+                "price_as_of": "2026-06-27",
+            })
+    return len(positions)
+
+
+def _fake_delete_user_portfolio_positions(user_id, portfolio_id, tickers):
+    if not tickers:
+        return 0
+    store = _portfolio_positions_store.get(user_id, [])
+    remaining = [
+        p for p in store
+        if not (p["ticker"] in tickers and p.get("portfolio_id") == portfolio_id)
+    ]
+    _portfolio_positions_store[user_id] = remaining
+    return len(store) - len(remaining)
+
+
+def _fake_get_dividend_summary(user_id, portfolio_id=None, year=None):
+    # IKZE pays no withholding tax, so a zero-tax ticker has to be in the fixture:
+    # a summary that only ever renders taxed payouts never exercises that branch.
+    return {
+        "years": [2025, 2026],
+        "totals": {"gross": 772.0, "tax": -137.18, "net": 634.82, "count": 3},
+        "by_ticker": [
+            {"ticker": "KRU", "gross": 722.0, "tax": -137.18, "net": 584.82, "payouts": 2},
+            {"ticker": "PKO", "gross": 50.0, "tax": 0.0, "net": 50.0, "payouts": 1},
+        ],
+    }
+
+
 def _fake_list_user_portfolio_positions(user_id, portfolio_id=None, include_history=False):
     # Lazy-init per-user store from static FAKE data on first access (regardless of
     # branch) so upsert/delete affect the list AND the all-mode (portfolio_id=None)
@@ -610,6 +675,17 @@ def live_server_url():
         patch("src.api.ensure_users_schema_current"),
         patch("src.api.create_notification_subscriptions_table_if_not_exists"),
         patch("src.api.ensure_notification_subscriptions_schema_current"),
+        # PUL-95: these two run inside the startup hook. Left unpatched, the
+        # whole e2e session issues live DDL against the configured dataset.
+        patch("src.api.create_user_broker_operations_table_if_not_exists"),
+        patch("src.api.ensure_user_broker_operations_schema_current"),
+        patch("src.api.merge_user_broker_operations",
+              side_effect=_fake_merge_user_broker_operations),
+        patch("src.api.merge_user_portfolio_positions_bulk",
+              side_effect=_fake_merge_user_portfolio_positions_bulk),
+        patch("src.api.delete_user_portfolio_positions",
+              side_effect=_fake_delete_user_portfolio_positions),
+        patch("src.api.get_dividend_summary", side_effect=_fake_get_dividend_summary),
         patch("src.api.get_notification_settings", side_effect=_fake_get_notification_settings),
         patch("src.api.upsert_notification_settings", side_effect=_fake_upsert_notification_settings),
         # Auth endpoints (PUL-71) — patched at the src.auth import site, not
