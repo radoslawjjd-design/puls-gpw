@@ -979,18 +979,18 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [x] 5.1 Testy e2e dywidend przechodzą
-- [x] 5.2 Test regresyjny potwierdza ukrycie panelu przy przełączeniu trybu
-- [x] 5.3 Pełny pakiet zielony
-- [x] 5.4 `node --check` na inline JS przechodzi
+- [x] 5.1 Testy e2e dywidend przechodzą — eb498ea
+- [x] 5.2 Test regresyjny potwierdza ukrycie panelu przy przełączeniu trybu — eb498ea
+- [x] 5.3 Pełny pakiet zielony — eb498ea
+- [x] 5.4 `node --check` na inline JS przechodzi — eb498ea
 
 #### Manual
 
-- [x] 5.5 Zakładka pokazuje lata 2025, 2026 i opcję „wszystkie"
-- [x] 5.6 Główny za 2025: 1 253,40 brutto, −238,17 podatek, 1 015,23 netto
+- [x] 5.5 Zakładka pokazuje lata 2025, 2026 i opcję „wszystkie" — eb498ea
+- [x] 5.6 Główny za 2025: 1 253,40 brutto, −238,17 podatek, 1 015,23 netto — eb498ea
       — zgodne co do grosza; realne zdarzenia z obu eksportów przepuszczone przez
       produkcyjny SQL na tabeli jednorazowej (`_p5_<uuid>`, produkcja nietknięta)
-- [x] 5.7 IKZE pokazuje brutto równe netto bez sprawiania wrażenia błędu
+- [x] 5.7 IKZE pokazuje brutto równe netto bez sprawiania wrażenia błędu — eb498ea
 - [x] 5.8 Rozbicie na spółki zgadza się z wyrocznią — KRU 721,72 / XTB 444,14 /
       VOT 421,30; wyrocznia w planie podana w pełnych złotych, wartości się do niej
       zaokrąglają. Po drodze dwa błędy znalezione i naprawione (grupowanie po roku,
