@@ -319,3 +319,34 @@ def _not_found():
     from google.cloud.exceptions import NotFound
 
     return NotFound("nope")
+
+
+def test_dividend_breakdown_has_one_row_per_ticker_not_per_year():
+    """Spanning every year must not repeat a ticker once per year.
+
+    Found by running the real exports through the real SQL: with `year=None` the
+    grouping emitted KRU three times, so the table would show three KRU rows and
+    each would understate the holding. The totals stayed right, which is exactly
+    what made it invisible.
+    """
+    client = _mock_client_for_select([])
+
+    with patch("db.bigquery._get_client", return_value=client):
+        get_dividend_summary("u-1", "pf-1", None)
+
+    sql = client.query.call_args[0][0]
+    breakdown = sql[sql.index("data AS"):sql.index("SELECT meta.all_years")]
+    assert "GROUP BY ticker" in breakdown
+    assert "GROUP BY year, ticker" not in breakdown
+
+
+def test_dividend_breakdown_names_the_payout_count_payouts():
+    """The renderer reads `payouts`; emitting `count` here silently shows zero."""
+    client = _mock_client_for_select([
+        {"all_years": [2026], "ticker": "KRU", "gross": 722.0, "tax": -137.18, "payouts": 2},
+    ])
+
+    with patch("db.bigquery._get_client", return_value=client):
+        summary = get_dividend_summary("u-1", "pf-1", None)
+
+    assert summary["by_ticker"][0]["payouts"] == 2

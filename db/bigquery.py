@@ -3411,17 +3411,19 @@ def get_dividend_summary(
             FROM scoped
         ),
         data AS (
+            -- Grouped by ticker alone. Adding `year` here splits a holding into
+            -- one row per year whenever the caller spans every year, so the
+            -- breakdown would list KRU three times and understate each row.
             SELECT
-                year,
                 ticker,
                 SUM(IF(op_type = 'dividend', amount_pln, 0)) AS gross,
                 SUM(IF(op_type = 'withholding_tax', amount_pln, 0)) AS tax,
                 COUNTIF(op_type = 'dividend') AS payouts
             FROM scoped
             WHERE (@year IS NULL OR year = @year)
-            GROUP BY year, ticker
+            GROUP BY ticker
         )
-        SELECT meta.all_years, data.year, data.ticker, data.gross, data.tax, data.payouts
+        SELECT meta.all_years, data.ticker, data.gross, data.tax, data.payouts
         FROM meta
         LEFT JOIN data ON TRUE
         ORDER BY data.gross DESC
@@ -3457,11 +3459,13 @@ def get_dividend_summary(
         count_total += payouts
         by_ticker.append({
             "ticker": row["ticker"],
-            "year": int(row["year"]) if row["year"] is not None else None,
             "gross": gross,
             "tax": tax,
             "net": gross + tax,
-            "count": payouts,
+            # Named to match the SQL column and what the renderer reads. Emitting
+            # `count` here left the "Wypłat" column showing zero on real data
+            # while every fake happily supplied `payouts`.
+            "payouts": payouts,
         })
 
     return {
