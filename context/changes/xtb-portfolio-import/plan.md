@@ -914,15 +914,15 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [ ] 1.1 Zależność `openpyxl` jest w sekcji runtime, nie w dev
-- [ ] 1.2 Testy parsera przechodzą
-- [ ] 1.3 Pełny pakiet jednostkowy pozostaje zielony
-- [ ] 1.4 Asercja w teście potwierdza, że parser nie importuje `db` ani `fastapi`
+- [x] 1.1 Zależność `openpyxl` jest w sekcji runtime, nie w dev
+- [x] 1.2 Testy parsera przechodzą
+- [x] 1.3 Pełny pakiet jednostkowy pozostaje zielony
+- [x] 1.4 Asercja w teście potwierdza, że parser nie importuje `db` ani `fastapi`
 
 #### Manual
 
-- [ ] 1.5 Parser na realnych plikach daje 12 pozycji w Głównym i 8 w IKZE
-- [ ] 1.6 Sumy dywidend zgadzają się: 2 290,71 zł i 429,75 zł
+- [x] 1.5 Parser na realnych plikach daje 12 pozycji w Głównym i 8 w IKZE
+- [x] 1.6 Sumy dywidend zgadzają się: 2 290,71 zł i 429,75 zł
 
 ### Phase 2: Warstwa BigQuery
 
