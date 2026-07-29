@@ -818,6 +818,72 @@ Brak zmian w kodzie. Wykonanie:
 
 ---
 
+## Phase 7: Poprawki zgłoszone po wdrożeniu
+
+### Overview
+
+Cztery usterki zgłoszone przez użytkownika po wejściu importu na produkcję. Trzy z nich
+są starsze niż ten change (rozjazd zmiany dziennej, dropdown typów, komunikat po
+usunięciu portfela) i wychodzą dopiero teraz, bo import dał realny portfel z dwoma
+kontami i danymi, na których widać różnicę. Czwarta — brak wskaźnika ładowania — jest
+najbardziej dotkliwa właśnie przy imporcie, najwolniejszej operacji w aplikacji.
+
+Faza dopisana do planu po fakcie, na wyraźną prośbę użytkownika, żeby zmieścić poprawki
+w tym samym PUL i branchu zamiast otwierać nowy change.
+
+### Changes Required
+
+1. **Rozjazd zmiany dziennej między zakładką Portfel a Kalendarzem.**
+   Kafelek „Zmiana dzienna" liczył `shares × current_price × pct/100`. Kurs zamknięcia
+   jest złą podstawą — giełda mierzy zmianę względem **poprzedniego** zamknięcia, więc
+   obie powierzchnie różniły się o współczynnik samego dnia (zmierzone na realnym
+   portfelu: −99,56 wobec −102,08 w kalendarzu, 29.07.2026). Kalendarz od zawsze sumuje
+   `zmiana_kwotowa`. Zapytanie o pozycje zwraca teraz tę samą liczbę
+   (`daily_change_per_share`), a front ją sumuje zamiast wyprowadzać własną.
+   Pliki: `db/bigquery.py`, `src/api.py`, `static/index.html`.
+
+2. **Dropdown typów portfela oferował typy już posiadane.**
+   Backend odpowiada 409, więc opcja była ślepą uliczką. `_ppSyncPortfolioTypeOptions`
+   ukrywa i wyłącza zajęte typy (limit „Inny" to dwa, nie jeden) i preselekcjonuje
+   pierwszy wolny. Reguła nadal jest egzekwowana po stronie serwera — to zawężenie menu,
+   nie przeniesienie walidacji na klienta.
+
+3. **Usunięcie portfela zgłaszało błąd mimo powodzenia.**
+   Wynik jest teraz rozstrzygany przez ponowne odczytanie listy portfeli, a nie przez to,
+   czy ścieżka kodu rzuciła wyjątek. Trzy stany zamiast dwóch: usunięto / nie usunięto /
+   nie dało się sprawdzić. Przy okazji dwie realne usterki po stronie serwera: kasowanie
+   portfela nie czyściło cache (agregat „Wszystkie" dalej pokazywał usunięte pozycje) i
+   nie kaskadowało na `user_broker_operations` (dywidendy usuniętego portfela zostawały
+   w sumach „Wszystkie" na zawsze).
+
+4. **Brak wskaźnika ładowania.** Helper `setBusy(el, busy, label)` (spinner + `aria-busy`
+   + blokada) na logowaniu, rejestracji, resecie hasła, ponownej wysyłce linku, dodaniu
+   tickera, zapisie pozycji, podglądzie i zapisie importu oraz tworzeniu portfela;
+   `loadingHtml()` w kalendarzu, treemapie, wykresie i dywidendach.
+
+Dodatkowo: `pos.shares` renderowało się jako `1.8113000000000001` dla ułamkowych
+jednostek ETF wprowadzonych przez import — obcięte do czterech miejsc, tak jak raportuje
+je broker i jak pokazuje je podgląd importu.
+
+### Success Criteria
+
+#### Automated Verification
+
+- Zapytanie o pozycje zawiera `daily_change_per_share` z obu źródeł kursów
+- Model odpowiedzi i scalanie „Wszystkie" przenoszą nowe pole
+- `delete_user_portfolio` kasuje z trzech tabel, wiersz portfela jako ostatni
+- `DELETE /api/portfolio/wallets/{id}` czyści cache portfela
+- Testy e2e: komunikat sukcesu i porażki po usunięciu, dropdown bez zajętych typów,
+  limit dwóch „Inny", spinner widoczny w trakcie żądania
+- Pełny pakiet zielony
+
+#### Manual Verification
+
+- Kafelek „Zmiana dzienna" i kafelek kalendarza za ten sam dzień pokazują tę samą liczbę
+- Dropdown „Dodaj portfel" nie oferuje typu, który użytkownik już ma
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -1000,13 +1066,38 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [ ] 6.1 `/health` odpowiada po deployu
-- [ ] 6.2 Zapytanie kontrolne potwierdza brak duplikatów `external_id`
+- [x] 6.1 `/health` odpowiada po deployu — rewizja 00142, 200
+- [x] 6.2 Zapytanie kontrolne potwierdza brak duplikatów `external_id`
+      — 560 wierszy, 560 unikalnych, 0 duplikatów
 
 #### Manual
 
 - [ ] 6.3 Podgląd IKZE zgadza się z wyrocznią przed jakimkolwiek zapisem
-- [ ] 6.4 Po imporcie Głównego CBF ma 188,40, a S2B pozostaje nietknięty
+      — NIEDOMKNIĘTE: import wykonano zanim ten krok ruszył, więc „przed zapisem"
+      nie da się już odtworzyć. Odpowiednik sprawdzony w fazach 1, 3 i 4 na realnych
+      plikach, zanim cokolwiek trafiło do bazy
+- [x] 6.4 Po imporcie Głównego CBF ma 188,40, a S2B pozostaje nietknięty
+      — CBF 11 szt. po 188,40 (było 199,40), S2B 4 szt. po 0,01
 - [ ] 6.5 Zakładka „Wszystkie" natychmiast po commicie pokazuje dane po imporcie
+      — NIEDOMKNIĘTE: commit wykonał użytkownik, stanu cache w tamtym momencie nie
+      obserwowałem. Zachowanie pokryte break-verified testem e2e
 - [ ] 6.6 Powtórny import obu plików raportuje zero nowych operacji
-- [ ] 6.7 Sumy dywidend na produkcji zgadzają się z wyliczonymi
+      — czeka na zgodę użytkownika: jedyny krok fazy 6, który cokolwiek zapisuje
+- [x] 6.7 Sumy dywidend na produkcji zgadzają się z wyliczonymi
+      — Główny 2 290,71, IKZE 429,75
+
+### Phase 7: Poprawki zgłoszone po wdrożeniu
+
+#### Automated
+
+- [x] 7.1 Zapytanie o pozycje zawiera `daily_change_per_share` z obu źródeł kursów
+- [x] 7.2 Model odpowiedzi i scalanie „Wszystkie" przenoszą nowe pole
+- [x] 7.3 `delete_user_portfolio` kasuje z trzech tabel, wiersz portfela jako ostatni
+- [x] 7.4 `DELETE /api/portfolio/wallets/{id}` czyści cache portfela
+- [x] 7.5 Testy e2e usuwania, dropdownu i spinnera przechodzą (break-verified)
+- [x] 7.6 Pełny pakiet zielony
+
+#### Manual
+
+- [x] 7.7 Kafelek „Zmiana dzienna" i kafelek kalendarza za ten sam dzień pokazują tę samą liczbę
+- [x] 7.8 Dropdown „Dodaj portfel" nie oferuje typu, który użytkownik już ma

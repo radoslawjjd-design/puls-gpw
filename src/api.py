@@ -502,6 +502,11 @@ class PortfolioPositionOut(BaseModel):
     avg_buy_price: float
     current_price: float | None = None
     daily_change_pct: float | None = None
+    # The session's move in PLN per share. Shipped alongside the percentage so the
+    # summary tile can sum shares x this number — the same arithmetic the calendar
+    # does — instead of re-deriving it from the percentage and landing on a
+    # different total for the same day.
+    daily_change_per_share: float | None = None
     pnl_pln: float | None = None
     pnl_pct: float | None = None
     price_as_of: str | None = None
@@ -515,6 +520,7 @@ _ALL_PORTFOLIOS = "all"
 _POSITION_MARKET_FIELDS = (
     "current_price",
     "daily_change_pct",
+    "daily_change_per_share",
     "price_as_of",
     "price_history",
 )
@@ -1094,6 +1100,10 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /api/portfolio/wallets/%s: %s", portfolio_id, exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        # Without this the "Wszystkie" aggregate, the calendar, the chart and the
+        # treemap keep serving the deleted wallet's holdings for the rest of the
+        # cache window — the refetch right after the delete lands inside it.
+        _perf_invalidate_portfolio(user_id, portfolio_id)
 
     @app.get("/api/portfolio/treemap")
     async def get_portfolio_treemap(

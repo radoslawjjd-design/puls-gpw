@@ -1002,6 +1002,7 @@ def list_user_portfolio_positions(
             ticker,
             kurs_zamkniecia,
             zmiana_procentowa,
+            zmiana_kwotowa,
             CAST(snapshot_date AS STRING) AS price_as_of,
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)}`
@@ -1013,6 +1014,7 @@ def list_user_portfolio_positions(
             ticker,
             kurs_zamkniecia,
             zmiana_procentowa,
+            zmiana_kwotowa,
             CAST(snapshot_date AS STRING) AS price_as_of,
             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY snapshot_date DESC) AS rn
           FROM `{_table_ref(client, _ETF_QUOTES_TABLE_NAME)}`
@@ -1027,6 +1029,11 @@ def list_user_portfolio_positions(
           p.avg_buy_price,
           COALESCE(ls.kurs_zamkniecia,   etf.kurs_zamkniecia)   AS current_price,
           COALESCE(ls.zmiana_procentowa, etf.zmiana_procentowa) AS daily_change_pct,
+          -- The session's absolute move per share.  The table view used to derive
+          -- this as current_price x pct, which overstates the move by exactly the
+          -- day's own factor (the correct base is the *previous* close) and so
+          -- disagreed with the calendar, which has always summed zmiana_kwotowa.
+          COALESCE(ls.zmiana_kwotowa,    etf.zmiana_kwotowa)    AS daily_change_per_share,
           COALESCE(ls.price_as_of,       etf.price_as_of)       AS price_as_of{history_select}
         FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` p
         LEFT JOIN latest_stats ls
@@ -1179,27 +1186,34 @@ def create_user_portfolio(
 
 
 def delete_user_portfolio(user_id: str, portfolio_id: str) -> None:
-    """Delete a wallet and cascade-delete all its positions (positions first).
+    """Delete a wallet and cascade-delete its positions and imported operations.
+
+    The wallet row goes last: if a cascade step fails, the wallet is still listed
+    and the user can retry, whereas the reverse order would strand rows under an
+    id nothing references any more.  Imported broker operations are part of that
+    cascade — the dividend summary sums them per user, so leaving them behind
+    keeps a deleted wallet's payouts in the "Wszystkie" totals forever.
 
     Raises BigQueryError on query failure.
     """
     client = _get_client()
-    pos_query = f"""
-        DELETE FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}`
-        WHERE user_id = @user_id AND portfolio_id = @portfolio_id
-    """
-    wallet_query = f"""
-        DELETE FROM `{_table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)}`
-        WHERE user_id = @user_id AND portfolio_id = @portfolio_id
-    """
     params = [
         bigquery.ScalarQueryParameter("user_id",      "STRING", user_id),
         bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id),
     ]
     job_config = bigquery.QueryJobConfig(query_parameters=params)
+    cascade = [
+        _USER_PORTFOLIO_POSITIONS_TABLE_NAME,
+        _USER_BROKER_OPERATIONS_TABLE_NAME,
+        _USER_PORTFOLIOS_TABLE_NAME,
+    ]
     try:
-        client.query(pos_query, job_config=job_config).result()
-        client.query(wallet_query, job_config=job_config).result()
+        for table_name in cascade:
+            query = f"""
+                DELETE FROM `{_table_ref(client, table_name)}`
+                WHERE user_id = @user_id AND portfolio_id = @portfolio_id
+            """
+            client.query(query, job_config=job_config).result()
     except Exception as exc:
         raise BigQueryError(f"delete_user_portfolio failed: {exc}") from exc
     logger.debug("delete_user_portfolio: user_id=%s portfolio_id=%s", user_id, portfolio_id)

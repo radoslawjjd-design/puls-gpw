@@ -350,3 +350,38 @@ def test_dividend_breakdown_names_the_payout_count_payouts():
         summary = get_dividend_summary("u-1", "pf-1", None)
 
     assert summary["by_ticker"][0]["payouts"] == 2
+
+
+def test_deleting_a_wallet_also_deletes_its_imported_operations():
+    """A deleted wallet must not keep contributing to the dividend totals.
+
+    get_dividend_summary sums user_broker_operations per user, so operations left
+    behind under a dead portfolio_id would show up in the "Wszystkie" view forever
+    with no wallet to trace them to and no way for the user to remove them.
+    """
+    from db.bigquery import delete_user_portfolio
+
+    client = _mock_client_for_dml()
+
+    with patch("db.bigquery._get_client", return_value=client):
+        delete_user_portfolio("u-1", "pf-1")
+
+    tables = [call[0][0].split("`")[1] for call in client.query.call_args_list]
+    assert any("user_broker_operations" in t for t in tables)
+    assert any("user_portfolio_positions" in t for t in tables)
+    assert any(t.endswith("user_portfolios") for t in tables)
+
+
+def test_wallet_row_is_deleted_last():
+    """Order is the rollback story: if a cascade step fails, the wallet must still
+    be listed so the user can retry. Deleting it first would strand the rest."""
+    from db.bigquery import delete_user_portfolio
+
+    client = _mock_client_for_dml()
+
+    with patch("db.bigquery._get_client", return_value=client):
+        delete_user_portfolio("u-1", "pf-1")
+
+    tables = [call[0][0].split("`")[1] for call in client.query.call_args_list]
+    assert tables[-1].endswith("user_portfolios")
+    assert len(tables) == 3

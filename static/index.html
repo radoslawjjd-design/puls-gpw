@@ -1027,6 +1027,27 @@ html[data-theme="dark"] #pp-import-commit-btn:hover { background:#2a5d8f; }
 html[data-theme="dark"] #pp-portfolio-modal-cancel { color:#fff; border-color:#3c5a78; }
 html[data-theme="dark"] #pp-portfolio-modal-save { color:#fff; background:#1f4a75; }
 html[data-theme="dark"] #pp-portfolio-modal-save:hover { background:#2a5d8f; }
+
+/* Busy indicators. Every write in this app crosses BigQuery and takes seconds, so
+   "nothing visibly happened" is the normal case, not a fault — without a spinner
+   the only way to tell a slow request from a dead button is to click again.
+   `currentColor` means one rule works on every button and both themes. */
+.spinner {
+  display: inline-block; width: .85em; height: .85em; border: 2px solid currentColor;
+  border-right-color: transparent; border-radius: 50%; vertical-align: -.12em;
+  animation: spin .6s linear infinite;
+}
+button .spinner { margin-right: .45em; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* Respect the OS setting rather than dropping the cue entirely — a still ring
+   next to "Ładowanie…" is the point; the rotation is decoration. */
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+button[aria-busy="true"] { cursor: progress; }
+.loading-inline { display: flex; align-items: center; justify-content: center; gap: .5rem;
+  padding: 1rem; color: var(--text-muted); font-size: .9rem; }
+/* A wallet tab mid-delete: dimmed and non-interactive, so a second click on the
+   × cannot fire a second DELETE while the first is still in flight. */
+.pp-portfolio-tab.pp-tab-busy { opacity: .45; pointer-events: none; }
 html[data-theme="dark"] .pp-div-tile { background:#141f2b; border-color:var(--border); }
 html[data-theme="dark"] #pp-div-title { color:#e6edf3; }
 html[data-theme="dark"] .pp-import-section { border-top-color:#243141; }
@@ -1073,7 +1094,7 @@ html[data-theme="dark"] #pp-ticker-label, html[data-theme="dark"] #pp-company-la
 <body>
 
 <!-- BOOT LOADER (probe sesji JWT — bez mignięcia landingu przy odświeżeniu) -->
-<div id="boot-loader" hidden>Ładowanie&hellip;</div>
+<div id="boot-loader" hidden><span class="spinner" aria-hidden="true" style="margin-right:.5em"></span>Ładowanie&hellip;</div>
 
 <!-- LANDING / LOGIN -->
 <div id="login-screen">
@@ -1716,7 +1737,9 @@ $('email-login-form').addEventListener('submit', async e => {
   if (bad) return;
   // Synchronna blokada przycisku PRZED fetchem (lessons.md — guard przed
   // podwójnym submitem nie może żyć w asynchronicznym ciele po żądaniu).
-  btn.disabled = true;
+  // setBusy blokuje i JEDNOCZEŚNIE pokazuje spinner: logowanie idzie przez
+  // Firebase i BigQuery, więc sama blokada wyglądała jak martwy przycisk.
+  setBusy(btn, true, 'Logowanie…');
   try {
     const r = await fetch('/api/auth/login', {
       method: 'POST',
@@ -1726,6 +1749,10 @@ $('email-login-form').addEventListener('submit', async e => {
     if (r.ok) {
       let data = null;
       try { data = await r.json(); } catch { /* body nie-JSON → rola 'user' */ }
+      // Przed wejściem do sesji, nie po: spinner podmienia treść przycisku, więc
+      // zostawiony włączony zmienia jego nazwę na „Logowanie…” na stałe i kolejne
+      // logowanie (po wylogowaniu) nie ma już czego kliknąć.
+      setBusy(btn, false);
       _enterUserSession(data && data.role);
       return;
     }
@@ -1736,7 +1763,7 @@ $('email-login-form').addEventListener('submit', async e => {
   } catch {
     _setAuthError('email-login-error', 'Błąd połączenia, spróbuj ponownie.');
   }
-  btn.disabled = false;
+  setBusy(btn, false);
 });
 
 $('register-form').addEventListener('submit', async e => {
@@ -1756,7 +1783,7 @@ $('register-form').addEventListener('submit', async e => {
   if (pwIssue) { _setFieldError('reg-password-error', pwIssue); bad = true; }
   if (password2 !== password) { _setFieldError('reg-password2-error', 'Hasła muszą być identyczne.'); bad = true; }
   if (bad) return;
-  btn.disabled = true;
+  setBusy(btn, true, 'Zakładanie konta…');
   try {
     const r = await fetch('/api/auth/register', {
       method: 'POST',
@@ -1771,7 +1798,7 @@ $('register-form').addEventListener('submit', async e => {
       ['reg-password', 'reg-password2'].forEach(id => { $(id).value = ''; });
       $('register-form').hidden = true;
       $('register-confirmation').hidden = false;
-      btn.disabled = false;
+      setBusy(btn, false);
       return;
     }
     await _renderAuthError(r, 'reg', 'register-error');
@@ -1781,7 +1808,7 @@ $('register-form').addEventListener('submit', async e => {
   } catch {
     _setAuthError('register-error', 'Błąd połączenia, spróbuj ponownie.');
   }
-  btn.disabled = false;
+  setBusy(btn, false);
 });
 
 $('logout-btn').addEventListener('click', () => {
@@ -1991,7 +2018,7 @@ async function _submitPasswordReset(btn, email, fieldErrId, authErrId) {
   }
   // Synchroniczna blokada przycisku PRZED fetchem (lessons.md — guard przed
   // podwójnym submitem nie może żyć w asynchronicznym ciele po żądaniu).
-  btn.disabled = true;
+  setBusy(btn, true, 'Wysyłanie…');
   try {
     const r = await fetch('/api/auth/reset-password', {
       method: 'POST',
@@ -2004,7 +2031,7 @@ async function _submitPasswordReset(btn, email, fieldErrId, authErrId) {
       _lastResetEmail = email;
       $('reset-form').hidden = true;
       $('reset-confirmation').hidden = false;
-      btn.disabled = false;
+      setBusy(btn, false);
       return;
     }
     if (r.status === 429) _setAuthError(authErrId, 'Zbyt wiele prób — spróbuj ponownie za chwilę.');
@@ -2012,7 +2039,7 @@ async function _submitPasswordReset(btn, email, fieldErrId, authErrId) {
   } catch {
     _setAuthError(authErrId, 'Błąd połączenia, spróbuj ponownie.');
   }
-  btn.disabled = false;
+  setBusy(btn, false);
 }
 
 $('reset-form').addEventListener('submit', async e => {
@@ -2044,7 +2071,7 @@ async function _submitResendVerification(btn, email, errBoxId, okBoxId) {
   if (!_EMAIL_RE.test(email)) { _setAuthError(errBoxId, 'Podaj poprawny adres e-mail.'); return; }
   // Synchroniczna blokada przycisku PRZED fetchem (lessons.md — guard przed
   // podwójnym submitem nie może żyć w asynchronicznym ciele po żądaniu).
-  btn.disabled = true;
+  setBusy(btn, true, 'Wysyłanie…');
   try {
     const r = await fetch('/api/auth/resend-verification', {
       method: 'POST',
@@ -2055,7 +2082,7 @@ async function _submitResendVerification(btn, email, errBoxId, okBoxId) {
       // Firebase throttluje sendOobCode per adres — szybki resend po
       // rejestracji może cicho nie dojść, stąd podpowiedź o odczekaniu.
       _setAuthOk(okBoxId, 'Jeśli konto wymaga potwierdzenia, wysłaliśmy nowy link. Gdy mail nie dochodzi, odczekaj kilka minut i sprawdź folder spam.');
-      btn.disabled = false;
+      setBusy(btn, false);
       return;
     }
     if (r.status === 429) _setAuthError(errBoxId, 'Zbyt wiele prób — spróbuj ponownie za chwilę.');
@@ -2063,7 +2090,7 @@ async function _submitResendVerification(btn, email, errBoxId, okBoxId) {
   } catch {
     _setAuthError(errBoxId, 'Błąd połączenia, spróbuj ponownie.');
   }
-  btn.disabled = false;
+  setBusy(btn, false);
 }
 
 $('register-resend-btn').addEventListener('click', async () => {
@@ -2341,6 +2368,39 @@ function _sortRows(rows, key, dir) {
     if (typeof va === 'number' && typeof vb === 'number') return dir * (va - vb);
     return dir * String(va).localeCompare(String(vb), 'pl');
   });
+}
+
+// Put a button into (or out of) its working state: spinner, optional label swap,
+// disabled, aria-busy. The original markup is stashed on the element so callers
+// never have to remember what the label was — which matters because several of
+// these buttons already had their labels rewritten by earlier features.
+// Re-entrant: a second setBusy(true) on an already-busy button is a no-op, so a
+// stashed label can never be overwritten with the spinner markup.
+function setBusy(el, busy, busyLabel) {
+  if (!el) return;
+  if (busy) {
+    if (el.dataset.busy === '1') return;
+    el.dataset.busy = '1';
+    el.dataset.idleHtml = el.innerHTML;
+    el.disabled = true;
+    el.setAttribute('aria-busy', 'true');
+    el.innerHTML = '<span class="spinner" aria-hidden="true"></span>'
+                 + esc(busyLabel != null ? busyLabel : el.textContent.trim());
+  } else {
+    if (el.dataset.busy === '1') {
+      el.innerHTML = el.dataset.idleHtml;
+      delete el.dataset.idleHtml;
+      delete el.dataset.busy;
+    }
+    el.disabled = false;
+    el.removeAttribute('aria-busy');
+  }
+}
+
+// Placeholder for a panel that is still fetching — same spinner, block form.
+function loadingHtml(text) {
+  return '<div class="loading-inline"><span class="spinner" aria-hidden="true"></span>'
+       + esc(text || 'Ładowanie…') + '</div>';
 }
 
 function _showSkeleton(tbodyId, cols, rows = 6) {
@@ -3078,7 +3138,7 @@ async function openSentimentListModal(bucket) {
   if (role !== 'admin') return;
   $('modal-title').textContent = 'Sentyment: ' + (_BUCKET_LABEL[bucket] || bucket);
   $('modal-meta').textContent = '';
-  $('modal-body').innerHTML = '<p>Ładowanie…</p>';
+  $('modal-body').innerHTML = loadingHtml();
   $('modal-overlay').style.display = 'flex';
   document.body.style.overflow = 'hidden';
   try {
@@ -3194,7 +3254,7 @@ async function addWatchlistTicker() {
   const companyValue  = companyInput.value.trim();
   $('wl-error').style.display = 'none';
   if (!tickerValue && !companyValue) return;
-  btn.disabled = true;
+  setBusy(btn, true, 'Dodawanie…');
   try {
     let ticker = tickerValue;
     if (!ticker) {
@@ -3227,7 +3287,7 @@ async function addWatchlistTicker() {
     $('wl-error').textContent = 'Błąd dodawania tickera.';
     $('wl-error').style.display = 'block';
   } finally {
-    btn.disabled = false;
+    setBusy(btn, false);
   }
 }
 
@@ -3277,6 +3337,8 @@ async function fetchPortfolioPositions() {
 
 async function _upsertPortfolioPosition(ticker, companyName, shares, avgBuyPrice) {
   if (_ppIsAllMode()) return;  // PUL-90: "Wszystkie" is read-only
+  const submitBtn = $('pp-submit-btn');
+  setBusy(submitBtn, true, 'Zapisywanie…');
   try {
     const r = await fetch('/api/portfolio/positions', {
       method: 'POST',
@@ -3287,14 +3349,21 @@ async function _upsertPortfolioPosition(ticker, companyName, shares, avgBuyPrice
     if (!r.ok) {
       const errDiv = $('pp-error');
       if (errDiv) { errDiv.textContent = 'Błąd dodawania pozycji (nieprawidłowy ticker lub dane).'; errDiv.style.display = 'block'; }
+      setBusy(submitBtn, false);
       return;
     }
     await fetchPortfolioPositions();
+    // Order matters: the busy state stashes the button's markup and _ppResetToAddMode
+    // rewrites its label, so clearing busy afterwards would restore the pre-click
+    // label and undo the reset.
+    setBusy(submitBtn, false);
     _ppResetToAddMode();
+    return;
   } catch (e) {
     const errDiv = $('pp-error');
     if (errDiv) { errDiv.textContent = 'Błąd dodawania pozycji.'; errDiv.style.display = 'block'; }
   }
+  setBusy(submitBtn, false);
 }
 
 async function _deletePortfolioPosition(ticker) {
@@ -3375,8 +3444,12 @@ function _updatePortfolioSummary(positions) {
       hasPrice = true;
     }
     if (pos.pnl_pln != null) { totalPnl += pos.pnl_pln; hasPnl = true; }
-    if (pos.current_price != null && pos.daily_change_pct != null) {
-      dailyPln += pos.shares * pos.current_price * (pos.daily_change_pct / 100);
+    // shares x the session's absolute per-share move — byte for byte the sum the
+    // calendar computes. The old form (current_price x pct) used the *closing*
+    // price as the base where the move is measured against the previous close, so
+    // this tile and the calendar disagreed on the same day by the day's own factor.
+    if (pos.daily_change_per_share != null) {
+      dailyPln += pos.shares * pos.daily_change_per_share;
       hasDaily = true;
     }
   }
@@ -3429,7 +3502,10 @@ function _renderPortfolioTable(positions) {
   tbody.innerHTML = positions.map(pos => {
     const ticker = esc(pos.ticker);
     const company = esc(pos.company_name || '');
-    const shares = pos.shares;
+    // Fractional ETF units come out of the import as binary floats, so a holding
+    // of 1.8113 renders as 1.8113000000000001 unless the tail is cut. Four places
+    // is what the broker itself reports and what the import preview already shows.
+    const shares = Number(pos.shares.toFixed(4));
     const avgPrice = pos.avg_buy_price.toFixed(2);
     const curPrice = pos.current_price != null ? pos.current_price.toFixed(2) + ' PLN' : '—';
     const daily = pos.daily_change_pct != null ? pos.daily_change_pct.toFixed(2) + '%' : '—';
@@ -3668,22 +3744,58 @@ async function fetchUserPortfolios() {
     } else {
       _ppWriteUrl(false);
     }
+    _portfoliosFetched = true;
+    return true;  // callers verify a write by re-reading the list, so say whether it was re-read
   } catch (e) {
     tabs.innerHTML = '<p class="pp-notice" style="color:var(--negative)">Błąd ładowania portfeli.</p>';
   }
   _portfoliosFetched = true;
+  return false;
+}
+
+// Backend caps: one wallet per named type, at most two "Inny". Offering a type the
+// user already holds is a dead end — the POST answers 409 and the only thing the
+// user learns is that the option should not have been there. So the dropdown drops
+// what is taken and preselects the first type that is actually available. The
+// backend check stays: this narrows the menu, it does not enforce the rule.
+const _PP_MAX_INNY = 2;
+
+function _ppSyncPortfolioTypeOptions() {
+  const sel = $('pp-portfolio-type-select');
+  if (!sel) return null;
+  const used = new Set(_ppPortfolios.map(p => p.portfolio_type));
+  const innyCount = _ppPortfolios.filter(p => p.portfolio_type === 'inny').length;
+  let firstFree = null;
+  sel.querySelectorAll('option').forEach(opt => {
+    const taken = opt.value === 'inny' ? innyCount >= _PP_MAX_INNY : used.has(opt.value);
+    // Both: `hidden` keeps it out of the list, `disabled` keeps it unselectable
+    // in the browsers that render hidden options anyway.
+    opt.hidden = taken;
+    opt.disabled = taken;
+    if (!taken && firstFree === null) firstFree = opt.value;
+  });
+  if (firstFree !== null) sel.value = firstFree;
+  return firstFree;
 }
 
 function _openAddPortfolioModal() {
   const overlay = $('pp-add-portfolio-overlay');
   if (!overlay) return;
-  $('pp-portfolio-type-select').value = 'glowny';
-  $('pp-portfolio-name-wrap').style.display = 'none';
+  const firstFree = _ppSyncPortfolioTypeOptions();
+  $('pp-portfolio-name-wrap').style.display = firstFree === 'inny' ? '' : 'none';
   const fileInput = $('pp-new-file');
   if (fileInput) fileInput.value = '';  // a stale file would import into the next wallet
   const errDiv = $('pp-portfolio-modal-error');
   errDiv.style.display = 'none';
   errDiv.textContent = '';
+  const saveBtn = $('pp-portfolio-modal-save');
+  if (firstFree === null) {
+    errDiv.textContent = 'Masz już wszystkie dostępne typy portfeli.';
+    errDiv.style.display = 'block';
+    if (saveBtn) saveBtn.disabled = true;
+  } else if (saveBtn) {
+    saveBtn.disabled = false;
+  }
   overlay.style.display = 'flex';
 }
 
@@ -3702,7 +3814,8 @@ function _openImportModal() {
   $('pp-import-result').style.display = 'none';
   $('pp-import-result').innerHTML = '';
   $('pp-import-commit-btn').style.display = 'none';
-  $('pp-import-preview-btn').disabled = false;
+  setBusy($('pp-import-preview-btn'), false);
+  setBusy($('pp-import-commit-btn'), false);
   overlay.style.display = 'flex';
 }
 
@@ -3796,7 +3909,7 @@ async function _ppSubmitImportPreview() {
   } catch (e) {
     _ppImportError('Błąd połączenia podczas sprawdzania pliku.');
   } finally {
-    $('pp-import-preview-btn').disabled = false;
+    setBusy($('pp-import-preview-btn'), false);
   }
 }
 
@@ -3823,7 +3936,7 @@ async function _ppSubmitImportCommit() {
   } catch (e) {
     _ppImportError('Błąd połączenia podczas zapisu.');
   } finally {
-    $('pp-import-commit-btn').disabled = false;
+    setBusy($('pp-import-commit-btn'), false);
   }
 }
 
@@ -3831,8 +3944,15 @@ async function _submitAddPortfolio() {
   const type = $('pp-portfolio-type-select').value;
   const name = type === 'inny' ? ($('pp-portfolio-name-input').value.trim() || null) : null;
   const errDiv = $('pp-portfolio-modal-error');
+  const saveBtn = $('pp-portfolio-modal-save');
+  if (saveBtn && saveBtn.dataset.busy === '1') return;
   errDiv.style.display = 'none';
   errDiv.textContent = '';
+  // With a file attached this is create-then-import: two round trips, the second
+  // of them the slowest call in the app. One spinner covers both legs.
+  const busyLabel = ($('pp-new-file') && $('pp-new-file').files && $('pp-new-file').files.length)
+    ? 'Importowanie…' : 'Tworzenie…';
+  setBusy(saveBtn, true, busyLabel);
   try {
     const r = await fetch('/api/portfolio/wallets', {
       method: 'POST',
@@ -3867,6 +3987,8 @@ async function _submitAddPortfolio() {
   } catch (e) {
     errDiv.textContent = 'Błąd tworzenia portfela.';
     errDiv.style.display = 'block';
+  } finally {
+    setBusy(saveBtn, false);
   }
 }
 
@@ -3908,20 +4030,48 @@ async function _importIntoNewWallet(portfolioId, errDiv) {
   }
 }
 
+// Deleting a wallet is three BigQuery statements behind one request, so it is
+// slow enough that the row has to show it is working. Success is decided by
+// re-reading the wallet list rather than by whether the code path threw: the
+// delete used to be reported as failed while it had in fact gone through, and a
+// scary popup over a completed destructive action is the worst way to be wrong.
 async function _deletePortfolio(portfolioId, label) {
   if (!window.confirm(`Czy na pewno chcesz usunąć portfel „${label}"?\nWszystkie pozycje w tym portfelu zostaną trwale usunięte.`)) return;
+  const tab = document.querySelector(
+    `#pp-portfolio-tabs .pp-portfolio-tab[data-portfolio-id="${CSS.escape(portfolioId)}"]`);
+  if (tab) tab.classList.add('pp-tab-busy');
+  let unauthorized = false;
   try {
     const r = await fetch(`/api/portfolio/wallets/${encodeURIComponent(portfolioId)}`, {
       method: 'DELETE',
       headers: { 'X-API-Key': apiKey }
     });
-    if (r.status === 401) { doLogout(); return; }
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    _portfoliosFetched = false;
-    _ppTreemapData = null;
-    await fetchUserPortfolios();
+    if (r.status === 401) { unauthorized = true; doLogout(); return; }
   } catch (e) {
-    alert('Błąd podczas usuwania portfela. Spróbuj ponownie.');
+    // Swallowed on purpose — the verification below decides, and a dropped
+    // response does not mean the server dropped the request.
+  } finally {
+    if (!unauthorized) {
+      _portfoliosFetched = false;
+      _ppTreemapData = null;
+      _ppCalData = null;
+      _ppHistDataActive = null;
+      _ppHistDataAll = null;
+      _ppDivData = null;
+      const reread = await fetchUserPortfolios();
+      const stillThere = _ppPortfolios.some(p => p.portfolio_id === portfolioId);
+      if (reread && !stillThere) {
+        showToast(`Usunięto portfel „${label}”.`);
+      } else if (reread) {
+        if (tab) tab.classList.remove('pp-tab-busy');
+        showToast('Nie udało się usunąć portfela. Spróbuj ponownie.');
+      } else {
+        // The list could not be re-read, so the outcome is genuinely unknown.
+        // Say that instead of picking a side and being confidently wrong.
+        if (tab) tab.classList.remove('pp-tab-busy');
+        showToast('Brak połączenia — odśwież stronę, aby sprawdzić stan portfela.');
+      }
+    }
   }
 }
 
@@ -4285,14 +4435,16 @@ function _buildPortfolioPositionsViewContent(view) {
     if (e.key === 'Escape' && $('pp-import-overlay')
         && $('pp-import-overlay').style.display !== 'none') _closeImportModal();
   });
-  // Disabled synchronously in the click handler — doing it inside the async
+  // Made busy synchronously in the click handler — doing it inside the async
   // function happens after the stack unwinds and leaves the double-click open.
+  // Parsing an export is the slowest thing this UI does (upload + openpyxl + FIFO),
+  // so the spinner here is what tells the user the click landed at all.
   $('pp-import-preview-btn').addEventListener('click', () => {
-    $('pp-import-preview-btn').disabled = true;
+    setBusy($('pp-import-preview-btn'), true, 'Sprawdzanie…');
     _ppSubmitImportPreview();
   });
   $('pp-import-commit-btn').addEventListener('click', () => {
-    $('pp-import-commit-btn').disabled = true;
+    setBusy($('pp-import-commit-btn'), true, 'Zapisywanie…');
     _ppSubmitImportCommit();
   });
   // A new file invalidates the preview the commit button was enabled for.
@@ -4444,6 +4596,8 @@ function renderXPostsTable(data) {
 
 // ── portfolio treemap: fetch + render ──────────────────────────────────────
 async function fetchPortfolioTreemap() {
+  const wrap = $('pp-treemap-wallets');
+  if (wrap && !_ppTreemapData) wrap.innerHTML = loadingHtml();
   try {
     const r = await fetch('/api/portfolio/treemap', {
       headers: { 'X-API-Key': apiKey }
@@ -4465,6 +4619,7 @@ async function fetchPortfolioCalendar() {
   }
   $('pp-cal-prev').disabled = true;
   $('pp-cal-next').disabled = true;
+  $('pp-cal-grid').innerHTML = loadingHtml();
   try {
     const url = `/api/portfolio/calendar?year=${_ppCalYear}&month=${_ppCalMonth}&portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
     const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
@@ -4587,7 +4742,7 @@ async function fetchPortfolioHistory() {
 async function _fetchPortfolioHistorySlot(portfolioId, chartElId) {
   const chartEl = $(chartElId);
   const isAll = portfolioId === _ALL_PORTFOLIOS;
-  chartEl.innerHTML = '<div class="empty">Ładowanie…</div>';
+  chartEl.innerHTML = loadingHtml();
   const seq = isAll ? (++_ppHistReqSeqAll) : (++_ppHistReqSeqActive);
   const stale = () => seq !== (isAll ? _ppHistReqSeqAll : _ppHistReqSeqActive);
   try {
@@ -4613,7 +4768,7 @@ async function fetchPortfolioDividends() {
   const tiles = $('pp-div-tiles');
   const table = $('pp-div-by-ticker');
   if (!tiles || !table) return;
-  tiles.innerHTML = '<div class="empty">Ładowanie…</div>';
+  tiles.innerHTML = loadingHtml();
   table.innerHTML = '';
   // Same out-of-order guard as the history slots: switching year and wallet in
   // quick succession leaves two fetches racing, and the slower one must not win.
