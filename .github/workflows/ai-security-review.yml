@@ -57,7 +57,12 @@ jobs:
       statuses: write
     env:
       GOOGLE_CLOUD_PROJECT: puls-gpw
-      GOOGLE_CLOUD_REGION: europe-central2
+      # `global`, not a region: regional Vertex endpoints run on a dynamic quota
+      # and return 429 under load, which surfaces here as "the agent did not
+      # produce a verdict" rather than as a security finding. src/gemini_client.py
+      # already defaults to global for exactly this reason; this env was still
+      # forcing the regional endpoint.
+      GOOGLE_CLOUD_REGION: global
     steps:
       # ── Guard ──────────────────────────────────────────────────────────
       # Decide whether to run the (cost-bearing) agent. True for dispatch and
