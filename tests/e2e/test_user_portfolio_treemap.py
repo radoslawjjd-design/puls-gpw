@@ -41,7 +41,7 @@ def test_treemap_tab_visible_for_user_role(page: Page, live_server_url: str):
     _open_portfolio_positions(page)
 
     view_tabs = page.locator("#pp-view-tabs")
-    expect(view_tabs.get_by_role("button", name="Tabela")).to_be_visible()
+    expect(view_tabs.get_by_role("button", name="Portfel")).to_be_visible()
     expect(view_tabs.get_by_role("button", name="Treemapa")).to_be_visible()
 
 
