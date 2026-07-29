@@ -961,17 +961,19 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [ ] 4.1 `node --check` na inline JS przechodzi
-- [ ] 4.2 Testy e2e importu przechodzą
-- [ ] 4.3 Pełny pakiet zielony
-- [ ] 4.4 Testy potwierdzają ukrycie przycisku importu w trybie „Wszystkie"
+- [x] 4.1 `node --check` na inline JS przechodzi
+- [x] 4.2 Testy e2e importu przechodzą
+- [x] 4.3 Pełny pakiet zielony
+- [x] 4.4 Testy potwierdzają ukrycie przycisku importu w trybie „Wszystkie"
 
 #### Manual
 
-- [ ] 4.5 Import Głównego pokazuje 12 pozycji, CBF 188,40, S2B wśród pominiętych
-- [ ] 4.6 Treemapa, kalendarz i wykres pokazują dane po imporcie bez odświeżania
-- [ ] 4.7 Escape i klik poza modalem zamykają okno, brak błędów w konsoli
-- [ ] 4.8 Motyw jasny i ciemny wyglądają poprawnie
+- [x] 4.5 Import Głównego pokazuje 12 pozycji, CBF 188,40, S2B wśród pominiętych
+- [x] 4.6 Treemapa, kalendarz i wykres pokazują dane po imporcie bez odświeżania
+      — pokryte testem e2e `test_commit_refreshes_the_other_views_without_a_reload`,
+      break-verified (usunięcie czyszczenia cache wywala test)
+- [x] 4.7 Escape i klik poza modalem zamykają okno, brak błędów w konsoli
+- [x] 4.8 Motyw jasny i ciemny wyglądają poprawnie
 
 ### Phase 5: Front — zakładka Dywidendy
 
