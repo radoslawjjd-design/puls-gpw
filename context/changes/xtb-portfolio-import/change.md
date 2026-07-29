@@ -1,7 +1,7 @@
 ---
 change_id: xtb-portfolio-import
 title: Import positions and dividends from an XTB broker export
-status: preparing
+status: planned
 created: 2026-07-29
 updated: 2026-07-29
 archived_at: null
