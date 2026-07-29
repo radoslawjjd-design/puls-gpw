@@ -3863,9 +3863,13 @@ function _buildPortfolioPositionsViewContent(view) {
       <button type="button" class="pp-view-tab" data-mode="dividends">Dywidendy</button>
     </div>
     <div id="pp-table-wrap">
-      <button type="button" id="pp-add-toggle-btn">Dodaj pozycję</button>
+      <!-- Both write controls start hidden and are revealed by
+           _ppSyncAddBtnVisibility once a real wallet is active. Rendering them
+           visible made them flash on entry and then vanish, because the default
+           tab is the read-only "Wszystkie" aggregate — which reads as a bug. -->
+      <button type="button" id="pp-add-toggle-btn" style="display:none">Dodaj pozycję</button>
       <button type="button" id="pp-export-csv-btn" title="Eksportuj pozycje do CSV">Eksport CSV</button>
-      <button type="button" id="pp-import-btn" title="Wczytaj pozycje z pliku od domu maklerskiego">Import z pliku</button>
+      <button type="button" id="pp-import-btn" style="display:none" title="Wczytaj pozycje z pliku od domu maklerskiego">Import z pliku</button>
       <div id="pp-form-wrap" style="display:none">
         <form id="pp-form">
           <div id="pp-ticker-field">
