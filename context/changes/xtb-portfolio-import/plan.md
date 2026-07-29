@@ -1090,14 +1090,14 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [x] 7.1 Zapytanie o pozycje zawiera `daily_change_per_share` z obu źródeł kursów
-- [x] 7.2 Model odpowiedzi i scalanie „Wszystkie" przenoszą nowe pole
-- [x] 7.3 `delete_user_portfolio` kasuje z trzech tabel, wiersz portfela jako ostatni
-- [x] 7.4 `DELETE /api/portfolio/wallets/{id}` czyści cache portfela
-- [x] 7.5 Testy e2e usuwania, dropdownu i spinnera przechodzą (break-verified)
-- [x] 7.6 Pełny pakiet zielony
+- [x] 7.1 Zapytanie o pozycje zawiera `daily_change_per_share` z obu źródeł kursów — 3d8f39d
+- [x] 7.2 Model odpowiedzi i scalanie „Wszystkie" przenoszą nowe pole — 3d8f39d
+- [x] 7.3 `delete_user_portfolio` kasuje z trzech tabel, wiersz portfela jako ostatni — 3d8f39d
+- [x] 7.4 `DELETE /api/portfolio/wallets/{id}` czyści cache portfela — 3d8f39d
+- [x] 7.5 Testy e2e usuwania, dropdownu i spinnera przechodzą (break-verified) — 3d8f39d
+- [x] 7.6 Pełny pakiet zielony — 3d8f39d
 
 #### Manual
 
-- [x] 7.7 Kafelek „Zmiana dzienna" i kafelek kalendarza za ten sam dzień pokazują tę samą liczbę
-- [x] 7.8 Dropdown „Dodaj portfel" nie oferuje typu, który użytkownik już ma
+- [x] 7.7 Kafelek „Zmiana dzienna" i kafelek kalendarza za ten sam dzień pokazują tę samą liczbę — 3d8f39d
+- [x] 7.8 Dropdown „Dodaj portfel" nie oferuje typu, który użytkownik już ma — 3d8f39d
