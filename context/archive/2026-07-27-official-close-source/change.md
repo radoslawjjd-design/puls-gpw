@@ -1,10 +1,10 @@
 ---
 change_id: official-close-source
 title: Use the official GPW close for kurs_zamkniecia instead of the bankier listing figure
-status: impl_reviewed
+status: archived
 created: 2026-07-27
-updated: 2026-07-28
-archived_at: null
+updated: 2026-07-29
+archived_at: 2026-07-29T07:06:45Z
 tracking:
   linear: PUL-98
   github: 193
