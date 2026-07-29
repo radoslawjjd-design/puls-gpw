@@ -783,6 +783,128 @@ def upsert_user_portfolio_position(
     logger.debug("upsert_user_portfolio_position: user_id=%s portfolio_id=%s ticker=%s", user_id, portfolio_id, ticker)
 
 
+def merge_user_portfolio_positions_bulk(
+    user_id: str, portfolio_id: str, positions: list[dict]
+) -> int:
+    """Upsert every position of one wallet in a SINGLE MERGE.
+
+    Same semantics as `upsert_user_portfolio_position`, but the source is an
+    array of STRUCTs so twenty tickers cost one query instead of twenty. That is
+    a deliberate answer to Cloud Run's 60s request budget.
+
+    There is deliberately NO `WHEN NOT MATCHED BY SOURCE` branch: it would delete
+    holdings the export cannot contain — a physical dividend like S2B never
+    appears in a broker export, and wiping it would be silent data loss.
+    """
+    if not positions:
+        logger.info("merge_user_portfolio_positions_bulk: nothing to write")
+        return 0
+
+    client = _get_client()
+    # NB: the array parameter must not be called `rows` — reserved word in BQ.
+    query = f"""
+        MERGE `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` T
+        USING (
+            SELECT
+                @user_id AS user_id,
+                @portfolio_id AS portfolio_id,
+                item.ticker AS ticker,
+                item.company_name AS company_name,
+                item.shares AS shares,
+                item.avg_buy_price AS avg_buy_price
+            FROM UNNEST(@positions) AS item
+        ) S
+        ON T.user_id = S.user_id AND T.portfolio_id = S.portfolio_id AND T.ticker = S.ticker
+        WHEN MATCHED THEN
+          UPDATE SET
+            company_name  = S.company_name,
+            shares        = S.shares,
+            avg_buy_price = S.avg_buy_price,
+            updated_at    = CURRENT_TIMESTAMP()
+        WHEN NOT MATCHED THEN
+          INSERT (user_id, portfolio_id, ticker, company_name, shares, avg_buy_price, created_at, updated_at)
+          VALUES (S.user_id, S.portfolio_id, S.ticker, S.company_name, S.shares, S.avg_buy_price,
+                  CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
+    """
+    struct_type = bigquery.StructQueryParameterType(
+        bigquery.ScalarQueryParameterType("STRING", name="ticker"),
+        bigquery.ScalarQueryParameterType("STRING", name="company_name"),
+        bigquery.ScalarQueryParameterType("FLOAT64", name="shares"),
+        bigquery.ScalarQueryParameterType("FLOAT64", name="avg_buy_price"),
+    )
+    items = [
+        bigquery.StructQueryParameter(
+            None,
+            bigquery.ScalarQueryParameter("ticker", "STRING", position["ticker"]),
+            bigquery.ScalarQueryParameter("company_name", "STRING", position.get("company_name")),
+            bigquery.ScalarQueryParameter("shares", "FLOAT64", float(position["shares"])),
+            bigquery.ScalarQueryParameter("avg_buy_price", "FLOAT64", float(position["avg_buy_price"])),
+        )
+        for position in positions
+    ]
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id),
+            bigquery.ArrayQueryParameter("positions", struct_type, items),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"merge_user_portfolio_positions_bulk failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"merge_user_portfolio_positions_bulk failed: {job.errors}")
+    written = int(job.num_dml_affected_rows or 0)
+    logger.info(
+        "merge_user_portfolio_positions_bulk: user_id=%s portfolio_id=%s wrote %d of %d",
+        user_id, portfolio_id, written, len(positions),
+    )
+    return written
+
+
+def delete_user_portfolio_positions(
+    user_id: str, portfolio_id: str, tickers: list[str]
+) -> int:
+    """Delete the given tickers from one wallet in a single statement.
+
+    An empty list issues no query at all — this is the only non-reversible path
+    in the import, so an accidental unfiltered DELETE must be impossible.
+    """
+    if not tickers:
+        logger.info("delete_user_portfolio_positions: nothing to remove")
+        return 0
+
+    client = _get_client()
+    query = f"""
+        DELETE FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}`
+        WHERE user_id = @user_id
+          AND portfolio_id = @portfolio_id
+          AND ticker IN UNNEST(@tickers)
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id),
+            bigquery.ArrayQueryParameter("tickers", "STRING", list(tickers)),
+        ]
+    )
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        raise BigQueryError(f"delete_user_portfolio_positions failed: {exc}") from exc
+    if job.errors:
+        raise BigQueryError(f"delete_user_portfolio_positions failed: {job.errors}")
+    removed = int(job.num_dml_affected_rows or 0)
+    logger.info(
+        "delete_user_portfolio_positions: user_id=%s portfolio_id=%s removed %d",
+        user_id, portfolio_id, removed,
+    )
+    return removed
+
+
 def delete_user_portfolio_position(user_id: str, portfolio_id: str, ticker: str) -> None:
     """Remove one portfolio position scoped to a wallet; silent no-op if not present.
 
@@ -2799,13 +2921,22 @@ def merge_etf_quotes(rows: list[dict]) -> None:
 
 
 def _merge_insert_only(
-    fn_name: str, table_name: str, schema: list, columns: list[str], rows: list[dict]
+    fn_name: str,
+    table_name: str,
+    schema: list,
+    columns: list[str],
+    rows: list[dict],
+    key_columns: tuple[str, ...] = ("ticker", "snapshot_date"),
+    order_column: str = "fetched_at",
 ) -> int:
-    """Insert rows via MERGE with no WHEN MATCHED branch — existing
-    (ticker, snapshot_date) rows are never touched, so backfilled data can never
-    overwrite scraper-written rows. The source is deduped inside the MERGE
-    (QUALIFY): WHEN NOT MATCHED fires per source row, so a duplicated batch key
-    would otherwise insert twice. Returns the number of inserted rows.
+    """Insert rows via MERGE with no WHEN MATCHED branch — existing rows keyed on
+    `key_columns` are never touched, so backfilled data can never overwrite
+    scraper-written rows. The source is deduped inside the MERGE (QUALIFY):
+    WHEN NOT MATCHED fires per source row, so a duplicated batch key would
+    otherwise insert twice. Returns the number of inserted rows.
+
+    The defaults reproduce the original (ticker, snapshot_date)/fetched_at
+    behaviour byte for byte, so the two daily-stats callers are unaffected.
     """
     if not rows:
         logger.info("%s: no rows to merge", fn_name)
@@ -2833,13 +2964,17 @@ def _merge_insert_only(
 
         cols = ", ".join(columns)
         vals = ", ".join(f"S.{c}" for c in columns)
+        # Spacing here is load-bearing: tests/test_bigquery_insert_only_merge.py
+        # asserts the literal string "PARTITION BY ticker, snapshot_date".
+        partition_by = ", ".join(key_columns)
+        on_clause = " AND ".join(f"T.{c} = S.{c}" for c in key_columns)
         merge_sql = f"""
             MERGE `{target}` T
             USING (
               SELECT * FROM `{tmp_table_id}`
-              QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date ORDER BY fetched_at DESC) = 1
+              QUALIFY ROW_NUMBER() OVER (PARTITION BY {partition_by} ORDER BY {order_column} DESC) = 1
             ) S
-            ON T.ticker = S.ticker AND T.snapshot_date = S.snapshot_date
+            ON {on_clause}
             WHEN NOT MATCHED THEN
               INSERT ({cols})
               VALUES ({vals})
@@ -3167,6 +3302,178 @@ def upsert_notification_settings(
     if job.errors:
         raise BigQueryError(f"upsert_notification_settings failed: {job.errors}")
     logger.debug("upsert_notification_settings: user_id=%s enabled=%s", user_id, enabled)
+
+
+# ── broker-export operations: raw source of truth for the import (PUL-95) ─────
+
+_USER_BROKER_OPERATIONS_TABLE_NAME = "user_broker_operations"
+
+# Raw operations as the source of truth: positions and dividends are projections
+# over this table. Only identity and the fields EVERY broker must supply are
+# REQUIRED — anything a future broker might not carry stays NULLABLE.
+_USER_BROKER_OPERATIONS_SCHEMA = [
+    bigquery.SchemaField("user_id",         "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("portfolio_id",    "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("broker",          "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("external_id",     "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("op_type",         "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("occurred_at",     "TIMESTAMP", mode="REQUIRED"),
+    bigquery.SchemaField("imported_at",     "TIMESTAMP", mode="REQUIRED"),
+    bigquery.SchemaField("amount_pln",      "FLOAT64",   mode="REQUIRED"),
+    bigquery.SchemaField("raw_type",        "STRING",    mode="NULLABLE"),
+    bigquery.SchemaField("ticker",          "STRING",    mode="NULLABLE"),
+    bigquery.SchemaField("instrument_name", "STRING",    mode="NULLABLE"),
+    bigquery.SchemaField("volume",          "FLOAT64",   mode="NULLABLE"),
+    bigquery.SchemaField("unit_price",      "FLOAT64",   mode="NULLABLE"),
+    bigquery.SchemaField("comment",         "STRING",    mode="NULLABLE"),
+    bigquery.SchemaField("source_file",     "STRING",    mode="NULLABLE"),
+]
+
+_USER_BROKER_OPERATIONS_COLUMNS = [field.name for field in _USER_BROKER_OPERATIONS_SCHEMA]
+
+# Clustering is chosen once and for good: ensure_schema_current only appends
+# columns, so it cannot be migrated afterwards. Every read is scoped to one user
+# and usually to one ticker. Unlike the other per-user tables, which carry no
+# clustering at all, this one only ever grows — one row per broker operation.
+_USER_BROKER_OPERATIONS_CLUSTERING = ["user_id", "ticker"]
+
+
+def create_user_broker_operations_table_if_not_exists() -> None:
+    """Create the user_broker_operations table in BigQuery if absent."""
+    client = _get_client()
+    table_id = _table_ref(client, _USER_BROKER_OPERATIONS_TABLE_NAME)
+    try:
+        client.get_table(table_id)
+        logger.info("BQ table already exists: %s", table_id)
+    except NotFound:
+        table = bigquery.Table(table_id, schema=_USER_BROKER_OPERATIONS_SCHEMA)
+        table.clustering_fields = _USER_BROKER_OPERATIONS_CLUSTERING
+        client.create_table(table)
+        logger.info("BQ table created: %s", table_id)
+
+
+def ensure_user_broker_operations_schema_current() -> None:
+    """Migrate user_broker_operations — add any missing schema columns."""
+    ensure_schema_current(_USER_BROKER_OPERATIONS_TABLE_NAME, _USER_BROKER_OPERATIONS_SCHEMA)
+
+
+def merge_user_broker_operations(rows: list[dict]) -> int:
+    """Idempotently store a batch of broker operations; returns how many were new.
+
+    Keyed on external_id ("{broker}:{ID}"), which comes straight from the
+    export's own ID column — filled in all 571 rows of the real files, unique
+    within a file and non-colliding across files, so no content hash is needed.
+
+    There is no WHEN MATCHED branch: an operation already stored is untouchable,
+    which is what makes re-importing the same file a no-op.
+    """
+    return _merge_insert_only(
+        "merge_user_broker_operations",
+        _USER_BROKER_OPERATIONS_TABLE_NAME,
+        _USER_BROKER_OPERATIONS_SCHEMA,
+        _USER_BROKER_OPERATIONS_COLUMNS,
+        rows,
+        key_columns=("external_id",),
+        order_column="imported_at",
+    )
+
+
+def get_dividend_summary(
+    user_id: str, portfolio_id: str | None = None, year: int | None = None
+) -> dict:
+    """Cash-dividend totals, per-company breakdown, and the list of years.
+
+    `portfolio_id=None` spans every wallet of the user; `year=None` spans every
+    year. Gross and tax are summed from two distinct op_types and never paired
+    up row by row — on the real exports that pairing fails in 24 cases.
+
+    The year list rides along on the SAME query, built meta-first
+    (`FROM meta LEFT JOIN data`). Written the other way round the selector goes
+    empty as soon as the chosen year has no payouts, stranding the user on a
+    year they then cannot leave — the PUL-100 lesson.
+    """
+    client = _get_client()
+    table = _table_ref(client, _USER_BROKER_OPERATIONS_TABLE_NAME)
+    query = f"""
+        WITH scoped AS (
+            SELECT
+                EXTRACT(YEAR FROM occurred_at) AS year,
+                ticker,
+                op_type,
+                amount_pln
+            FROM `{table}`
+            WHERE user_id = @user_id
+              AND op_type IN ('dividend', 'withholding_tax')
+              AND (@portfolio_id IS NULL OR portfolio_id = @portfolio_id)
+        ),
+        meta AS (
+            SELECT ARRAY_AGG(DISTINCT year ORDER BY year) AS all_years
+            FROM scoped
+        ),
+        data AS (
+            SELECT
+                year,
+                ticker,
+                SUM(IF(op_type = 'dividend', amount_pln, 0)) AS gross,
+                SUM(IF(op_type = 'withholding_tax', amount_pln, 0)) AS tax,
+                COUNTIF(op_type = 'dividend') AS payouts
+            FROM scoped
+            WHERE (@year IS NULL OR year = @year)
+            GROUP BY year, ticker
+        )
+        SELECT meta.all_years, data.year, data.ticker, data.gross, data.tax, data.payouts
+        FROM meta
+        LEFT JOIN data ON TRUE
+        ORDER BY data.gross DESC
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id),
+            bigquery.ScalarQueryParameter("year", "INT64", year),
+        ]
+    )
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_dividend_summary failed: {exc}") from exc
+
+    years: list[int] = []
+    by_ticker: list[dict] = []
+    gross_total = tax_total = 0.0
+    count_total = 0
+    for row in rows:
+        if not years:
+            # ARRAY_AGG over zero rows yields [] rather than None.
+            years = [int(y) for y in (row["all_years"] or [])]
+        # The metadata row survives the join even with no data behind it; drop it.
+        if row["ticker"] is None:
+            continue
+        gross = float(row["gross"] or 0.0)
+        tax = float(row["tax"] or 0.0)
+        payouts = int(row["payouts"] or 0)
+        gross_total += gross
+        tax_total += tax
+        count_total += payouts
+        by_ticker.append({
+            "ticker": row["ticker"],
+            "year": int(row["year"]) if row["year"] is not None else None,
+            "gross": gross,
+            "tax": tax,
+            "net": gross + tax,
+            "count": payouts,
+        })
+
+    return {
+        "years": years,
+        "totals": {
+            "gross": gross_total,
+            "tax": tax_total,
+            "net": gross_total + tax_total,
+            "count": count_total,
+        },
+        "by_ticker": by_ticker,
+    }
 
 
 # ── notification delivery: sent-log + recipient select (PUL-81 slice b) ───────

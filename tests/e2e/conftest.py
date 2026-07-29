@@ -610,6 +610,10 @@ def live_server_url():
         patch("src.api.ensure_users_schema_current"),
         patch("src.api.create_notification_subscriptions_table_if_not_exists"),
         patch("src.api.ensure_notification_subscriptions_schema_current"),
+        # PUL-95: these two run inside the startup hook. Left unpatched, the
+        # whole e2e session issues live DDL against the configured dataset.
+        patch("src.api.create_user_broker_operations_table_if_not_exists"),
+        patch("src.api.ensure_user_broker_operations_schema_current"),
         patch("src.api.get_notification_settings", side_effect=_fake_get_notification_settings),
         patch("src.api.upsert_notification_settings", side_effect=_fake_upsert_notification_settings),
         # Auth endpoints (PUL-71) — patched at the src.auth import site, not

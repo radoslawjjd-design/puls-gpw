@@ -914,30 +914,32 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [x] 1.1 Zależność `openpyxl` jest w sekcji runtime, nie w dev
-- [x] 1.2 Testy parsera przechodzą
-- [x] 1.3 Pełny pakiet jednostkowy pozostaje zielony
-- [x] 1.4 Asercja w teście potwierdza, że parser nie importuje `db` ani `fastapi`
+- [x] 1.1 Zależność `openpyxl` jest w sekcji runtime, nie w dev — 9957b33
+- [x] 1.2 Testy parsera przechodzą — 9957b33
+- [x] 1.3 Pełny pakiet jednostkowy pozostaje zielony — 9957b33
+- [x] 1.4 Asercja w teście potwierdza, że parser nie importuje `db` ani `fastapi` — 9957b33
 
 #### Manual
 
-- [x] 1.5 Parser na realnych plikach daje 12 pozycji w Głównym i 8 w IKZE
-- [x] 1.6 Sumy dywidend zgadzają się: 2 290,71 zł i 429,75 zł
+- [x] 1.5 Parser na realnych plikach daje 12 pozycji w Głównym i 8 w IKZE — 9957b33
+- [x] 1.6 Sumy dywidend zgadzają się: 2 290,71 zł i 429,75 zł — 9957b33
 
 ### Phase 2: Warstwa BigQuery
 
 #### Automated
 
-- [ ] 2.1 Testy warstwy danych przechodzą
-- [ ] 2.2 Test regresyjny na treść SQL potwierdza brak nazw zarezerwowanych
-- [ ] 2.3 Istniejący pakiet pozostaje zielony
+- [x] 2.1 Testy warstwy danych przechodzą
+- [x] 2.2 Test regresyjny na treść SQL potwierdza brak nazw zarezerwowanych
+- [x] 2.3 Istniejący pakiet pozostaje zielony
 
 #### Manual
 
-- [ ] 2.4 Round-trip na realnym BigQuery przechodzi
-- [ ] 2.5 Pomiar czasu ściany dla 571 wierszy mieści się poniżej progu 15 s
-- [ ] 2.6 Ponowny round-trip nie tworzy duplikatów i raportuje zero nowych wierszy
-- [ ] 2.7 Tabela na produkcji powstaje z oczekiwanym klastrowaniem
+- [x] 2.4 Round-trip na realnym BigQuery przechodzi
+- [x] 2.5 Pomiar czasu ściany dla 571 wierszy mieści się poniżej progu 15 s — zmierzone 3,7 s
+- [x] 2.6 Ponowny round-trip nie tworzy duplikatów i raportuje zero nowych wierszy
+- [ ] 2.7 Tabela na produkcji powstaje z oczekiwanym klastrowaniem — funkcja DDL
+      zweryfikowana na realnym BQ (klastrowanie, brak partycjonowania, idempotencja);
+      część „przy starcie rewizji" domyka się deployem w fazie 6
 
 ### Phase 3: API — upload, podgląd, commit, dywidendy
 

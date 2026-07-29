@@ -26,7 +26,9 @@ from db.bigquery import (
     create_users_table_if_not_exists,
     create_watchlist_table_if_not_exists,
     create_notification_subscriptions_table_if_not_exists,
+    create_user_broker_operations_table_if_not_exists,
     ensure_notification_subscriptions_schema_current,
+    ensure_user_broker_operations_schema_current,
     get_notification_settings,
     upsert_notification_settings,
     delete_announcement,
@@ -420,6 +422,10 @@ def create_app() -> FastAPI:
         ensure_users_schema_current()
         create_notification_subscriptions_table_if_not_exists()
         ensure_notification_subscriptions_schema_current()
+        # Order matters: ensure_schema_current is a silent no-op on a table that
+        # does not exist yet, so create_* must come first.
+        create_user_broker_operations_table_if_not_exists()
+        ensure_user_broker_operations_schema_current()
 
     @app.get("/health")
     async def health():
