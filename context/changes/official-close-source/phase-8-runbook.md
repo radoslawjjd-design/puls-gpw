@@ -73,12 +73,45 @@ holdings actually cost at the time. The end value is unchanged, so only the base
 `2026-06-27` (Saturday, 739 rows) still renders as a calendar day with a +180.73 PLN change. That
 phantom is deliberately out of scope here — reported, not deleted.
 
-## Still pending
+## 8.9 — verified 2026-07-29 after the deploy
 
-`8.9` — the next daily job must write official closes and the self-heal must report zero
-corrections. That cannot be verified until this branch is merged and deployed: **production is still
-running the old bankier-sourced job**, so tomorrow's 17:31 run will write wrong closes again until
-the deploy lands.
+Deployed as `081ca6a` (PR #202), service revision `00139`. The CI workflow updates four Cloud Run
+jobs and the API service in separate steps, so the job image was checked explicitly:
+`puls-gpw-company-stats` carries `081ca6a`.
+
+First scheduled run under the new code (09:01 Warsaw / 07:01 UTC), both halves of the criterion:
+
+| check | result |
+|---|---|
+| provenance written for `2026-07-29` | 370 `gpw` + 327 `nc` + 36 `bankier` |
+| job summary | `official=697 bankier=36 isin_conflicts=0 unpriced=11 total_companies=744` |
+| self-heal corrections | **0** |
+
+The zero is the correct outcome, not a silent no-op — the log shows the step ran
+(`57 of 732 tickers disagree with the reference price for 2026-07-28 — consulting the archive`,
+403 archive rows parsed). Reproduced read-only, the 57 suspects decompose as:
+
+| suspect | stored | `kurs_odn` | archive | why no write |
+|---|---|---|---|---|
+| 55 tickers | — | — | — | NewConnect; `archiwum-notowan?type=10` cannot serve them by construction |
+| `MBR` (MOBRUK) | 389.50 | 374.50 | **389.50** | corporate action — the archive confirms the stored close |
+| `IFC` (IFCAPITAL /Z) | 0.252 | 5.30 | absent | special-mode listing, name does not map |
+
+`MBR` is the design working as intended: writing `kurs_odn` instead of the archive value — the
+cheap option this plan explicitly rejected — would have stored 374.50 against a true close of
+389.50, a 4% error and exactly the dividend-adjustment defect (GH #191) this change removes.
+
+Only 57 of 732 stored closes disagreed at all because the bankier defect is intermittent: 361 of 361
+agreed on 2026-07-20, 228 of 361 on 2026-07-22.
+
+### Known residue
+
+`2026-07-28` still carries `source = NULL` on all 732 rows. The corrective pass defaults `--until`
+to *yesterday* and ran on 2026-07-28, so that session fell outside its window. Its GPW-main closes
+are nonetheless correct — the self-heal's reference-price check clears 675 of them outright and the
+archive confirms the one real divergence — so this is a provenance gap, not a value gap. The ~47
+NewConnect rows from that session keep their bankier closes permanently, consistent with
+"not correcting NewConnect history"; no portfolio holds a NewConnect instrument.
 
 ### Sample audit result
 

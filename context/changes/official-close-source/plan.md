@@ -976,4 +976,4 @@ inside the corrected window means the row was never matched — a useful audit s
 - [x] 8.6 ECHO 2026-06-24 carries the official +0.10%, not a naive −7.40%
 - [x] 8.7 1-year chart point count, notes and exclusions unchanged
 - [x] 8.8 Calendar renders with plausible daily P/L
-- [ ] 8.9 Next-day job writes official closes and self-heal reports zero corrections
+- [x] 8.9 Next-day job writes official closes and self-heal reports zero corrections
