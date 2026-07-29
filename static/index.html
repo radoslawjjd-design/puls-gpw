@@ -898,6 +898,14 @@
     border-radius: var(--radius-sm); font-size: .95rem; margin-bottom: .75rem;
     box-sizing: border-box; background: #fff;
   }
+  #pp-new-import-section { border-top: 1px solid var(--border); padding-top: .75rem; margin-bottom: .25rem; }
+  #pp-new-import-section label { display:block; font-size:.85rem; font-weight:600; margin-bottom:.4rem; color:var(--text-muted); }
+  .pp-hint-inline { font-weight: 400; }
+  #pp-new-broker, #pp-new-file {
+    width: 100%; padding: .55rem .75rem; border: 1px solid #cdd4dc;
+    border-radius: var(--radius-sm); font-size: .95rem; margin-bottom: .6rem;
+    box-sizing: border-box; background: #fff;
+  }
   #pp-import-error { color: var(--negative); font-size: .85rem; margin-bottom: .75rem; }
   #pp-import-result { margin: .25rem 0 1rem; font-size: .88rem; }
   .pp-import-section { padding: .5rem 0; border-top: 1px solid var(--border); }
@@ -998,7 +1006,8 @@ html[data-theme="dark"] .profile-menu button { color:var(--text); }
 html[data-theme="dark"] .filters input, html[data-theme="dark"] .filters select, html[data-theme="dark"] #wl-add-form input, html[data-theme="dark"] #pp-form input,
 html[data-theme="dark"] .login-box input, html[data-theme="dark"] #pp-edit-modal input[type="number"], html[data-theme="dark"] #pp-add-portfolio-modal select,
 html[data-theme="dark"] #pp-add-portfolio-modal input[type="text"], html[data-theme="dark"] .filters-date-group,
-html[data-theme="dark"] #pp-import-modal select, html[data-theme="dark"] #pp-import-modal input[type="file"]
+html[data-theme="dark"] #pp-import-modal select, html[data-theme="dark"] #pp-import-modal input[type="file"],
+html[data-theme="dark"] #pp-new-broker, html[data-theme="dark"] #pp-new-file
   { background:#0d1520; color:var(--text); border-color:#2b3a4d; }
 html[data-theme="dark"] .filters input:focus, html[data-theme="dark"] .filters select:focus, html[data-theme="dark"] #wl-add-form input:focus, html[data-theme="dark"] #pp-form input:focus, html[data-theme="dark"] .filters-date-group:focus-within { background:#0d1520; }
 html[data-theme="dark"] .filters-date-group input { background:transparent; }
@@ -1013,6 +1022,11 @@ html[data-theme="dark"] #pp-import-preview-btn:hover { background:#1d2b3c; }
 html[data-theme="dark"] #pp-import-cancel-btn { color:#fff; border-color:#3c5a78; }
 html[data-theme="dark"] #pp-import-commit-btn { color:#fff; background:#1f4a75; }
 html[data-theme="dark"] #pp-import-commit-btn:hover { background:#2a5d8f; }
+/* Same treatment for the create-wallet modal, which now carries the import too —
+   its actions had the identical muted-on-dark problem. */
+html[data-theme="dark"] #pp-portfolio-modal-cancel { color:#fff; border-color:#3c5a78; }
+html[data-theme="dark"] #pp-portfolio-modal-save { color:#fff; background:#1f4a75; }
+html[data-theme="dark"] #pp-portfolio-modal-save:hover { background:#2a5d8f; }
 html[data-theme="dark"] .pp-div-tile { background:#141f2b; border-color:var(--border); }
 html[data-theme="dark"] #pp-div-title { color:#e6edf3; }
 html[data-theme="dark"] .pp-import-section { border-top-color:#243141; }
@@ -3538,6 +3552,10 @@ function _renderPortfolioTabs(portfolios) {
     tabs.innerHTML = '<p class="pp-notice">Utwórz swój pierwszy portfel →</p>';
     const addBtn = $('pp-add-toggle-btn');
     if (addBtn) addBtn.style.display = 'none';
+    // Import stays offered with no wallets: it is the fastest way in, and the
+    // click routes to the create-wallet modal, which now carries the file picker.
+    const importBtn = $('pp-import-btn');
+    if (importBtn) importBtn.style.display = '';
     return;
   }
   _ppSyncAddBtnVisibility();
@@ -3661,6 +3679,8 @@ function _openAddPortfolioModal() {
   if (!overlay) return;
   $('pp-portfolio-type-select').value = 'glowny';
   $('pp-portfolio-name-wrap').style.display = 'none';
+  const fileInput = $('pp-new-file');
+  if (fileInput) fileInput.value = '';  // a stale file would import into the next wallet
   const errDiv = $('pp-portfolio-modal-error');
   errDiv.style.display = 'none';
   errDiv.textContent = '';
@@ -3827,12 +3847,64 @@ async function _submitAddPortfolio() {
       return;
     }
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    const created = await r.json().catch(() => ({}));
+    const imported = await _importIntoNewWallet(created.portfolio_id, errDiv);
+    if (imported === false) return;  // wallet exists; the error is already shown
     _closeAddPortfolioModal();
     _portfoliosFetched = false;
     await fetchUserPortfolios();
+    if (imported) {
+      _ppTreemapData = null;
+      _ppCalData = null;
+      _ppHistDataActive = null;
+      _ppHistDataAll = null;
+      _ppDivData = null;
+      showToast(`Portfel utworzony, zapisano ${imported.positions_written} pozycji.`);
+      if ((imported.unknown_tickers || []).length) {
+        showToast(`Bez wyceny: ${imported.unknown_tickers.join(', ')}`);
+      }
+    }
   } catch (e) {
     errDiv.textContent = 'Błąd tworzenia portfela.';
     errDiv.style.display = 'block';
+  }
+}
+
+// Optional second leg of "create wallet": commit the chosen export straight into
+// the wallet that was just created. No preview step — a brand-new wallet has
+// nothing to delete and nothing to leave untouched, so the disclosure the import
+// modal exists for would be empty by construction. Unknown tickers still matter,
+// so they are reported afterwards.
+//
+// Returns null when no file was chosen, false when the import failed (the wallet
+// survives and the caller must keep the modal open), otherwise the commit result.
+async function _importIntoNewWallet(portfolioId, errDiv) {
+  const input = $('pp-new-file');
+  if (!portfolioId || !input || !input.files || !input.files.length) return null;
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  fd.append('broker', $('pp-new-broker').value);
+  fd.append('portfolio_id', portfolioId);
+  try {
+    const r = await fetch('/api/portfolio/import/commit', {
+      method: 'POST', headers: { 'X-API-Key': apiKey }, body: fd,
+    });
+    if (r.status === 401) { doLogout(); return false; }
+    if (!r.ok) {
+      // The wallet was created and stays. Say so plainly rather than implying
+      // the whole operation rolled back — it did not.
+      errDiv.textContent = 'Portfel utworzono, ale nie udało się wczytać pliku. '
+                         + 'Zamknij okno i spróbuj przycisku „Import z pliku”.';
+      errDiv.style.display = 'block';
+      _portfoliosFetched = false;
+      await fetchUserPortfolios();
+      return false;
+    }
+    return await r.json();
+  } catch (e) {
+    errDiv.textContent = 'Portfel utworzono, ale import się nie powiódł.';
+    errDiv.style.display = 'block';
+    return false;
   }
 }
 
@@ -4030,6 +4102,13 @@ function _buildPortfolioPositionsViewContent(view) {
         <div id="pp-portfolio-name-wrap" style="display:none">
           <input type="text" id="pp-portfolio-name-input" placeholder="Nazwa portfela">
         </div>
+        <div id="pp-new-import-section">
+          <label for="pp-new-file">Wczytaj pozycje z pliku <span class="pp-hint-inline">(opcjonalnie)</span></label>
+          <select id="pp-new-broker">
+            <option value="xtb">XTB</option>
+          </select>
+          <input type="file" id="pp-new-file" accept=".xlsx">
+        </div>
         <div id="pp-portfolio-modal-error" style="display:none"></div>
         <div class="pp-modal-actions">
           <button type="button" id="pp-portfolio-modal-cancel">Anuluj</button>
@@ -4190,7 +4269,12 @@ function _buildPortfolioPositionsViewContent(view) {
   $('pp-export-csv-btn').addEventListener('click', _exportPortfolioCsv);
 
   // broker-import modal events (PUL-95)
-  $('pp-import-btn').addEventListener('click', _openImportModal);
+  $('pp-import-btn').addEventListener('click', () => {
+    // With no wallet there is nothing to import INTO, so the click opens the
+    // create-wallet modal instead — same destination, one step fewer.
+    if (!_ppPortfolios.length) _openAddPortfolioModal();
+    else _openImportModal();
+  });
   $('pp-import-cancel-btn').addEventListener('click', _closeImportModal);
   $('pp-import-overlay').addEventListener('click', e => {
     if (e.target === $('pp-import-overlay')) _closeImportModal();
