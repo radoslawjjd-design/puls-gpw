@@ -220,6 +220,40 @@ def _enforce_body_cashtag(tweet: str) -> str:
     return _PAREN_TICKER_RE.sub(lambda m: f"( ${m.group(1).lstrip('$')} )", tweet)
 
 
+def _enforce_body_ticker_ref(tweet: str, tickers: list[str]) -> str:
+    """Give a body tweet the parenthesised ticker `post_supervisor` requires.
+
+    Every body tweet is about one company and must carry `( TICKER )` — the exact
+    form the supervisor matches on. Gemini writes it *nearly* always, and "nearly"
+    cost a whole evening thread: on 2026-07-30 two of three attempts died on
+    `missing (LUG) in body tweets`, so the window produced no post at all. Same
+    unreliability as the ticker spacing and the `$` above, so it gets the same
+    deterministic repair rather than another retry.
+
+    Repairs only what it can prove. The tweet must name exactly ONE of the thread's
+    tickers, and that ticker must not already be parenthesised. Stamping
+    ``tickers[i - 1]`` onto body tweet *i* by position would be shorter and wrong:
+    if the model ever reorders the companies, it would label a tweet with another
+    company's ticker — a factual error on a public post, which is worse than the
+    missing post this function exists to prevent.
+
+    A tweet that names its company only by name ("Geotrans", never "GTS") is left
+    alone; there is nothing to key the repair on and guessing is the failure mode
+    above.
+    """
+    named = {t for t in tickers if re.search(rf"\b{re.escape(t)}\b", tweet)}
+    if len(named) != 1:
+        return tweet
+    ticker = next(iter(named))
+    # Case-sensitive, exactly like the supervisor's own check — a lowercase
+    # "( lug )" would not satisfy it, so it must not satisfy us either.
+    if re.search(rf"\(\s*\$?{re.escape(ticker)}\s*\)", tweet):
+        return tweet
+    # Runs before _enforce_length, so the added characters are accounted for by the
+    # trim, and _protected_spans keeps the trim off the ticker it just inserted.
+    return re.sub(rf"\b{re.escape(ticker)}\b", f"{ticker} ( ${ticker} )", tweet, count=1)
+
+
 _FULL_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 _DOMAIN_TLD_RE = re.compile(r"\b([\w-]{1,63})\.(pl|eu|com|net|org|info|io|co|uk|de|fr)\b", re.IGNORECASE)
 
@@ -376,7 +410,8 @@ def generate_post(
         salt=f"hook-{window_key}",
     )
 
-    tickers_str = _build_tickers_str([row["ticker"] for row in enriched])
+    ordered_tickers = [row["ticker"] for row in enriched]
+    tickers_str = _build_tickers_str(ordered_tickers)
     closing_q = _pick_variant(_CLOSING_QUESTIONS, salt="closing").replace("{tickers}", tickers_str)
 
     feedback_block = ""
@@ -428,6 +463,7 @@ def generate_post(
             # (top-company $ only) and closing (several plain tickers) are left to the prompt.
             # Enforce the cashtag before length so the trim accounts for the added char.
             if 0 < i < last_idx:
+                t = _enforce_body_ticker_ref(t, ordered_tickers)
                 t = _enforce_body_cashtag(t)
             tweets.append(_enforce_length(t))
         return GeneratedPost(tweets=tweets)
