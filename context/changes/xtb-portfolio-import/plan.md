@@ -1201,11 +1201,11 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 - [x] 8.6 `_CASH` nie wycieka do interfejsu ani nie dostaje linku do ogłoszeń — 4de3ac8
 - [x] 8.7 Karta przeglądarki sygnalizuje żądanie i wraca do spoczynku (break-verified) — 4de3ac8
 - [x] 8.12 Ikona w karcie faktycznie się animuje — klatki na canvasie, test porównuje
-      dwie klatki w czasie (break-verified: zamrożona ikona wywala test)
+      dwie klatki w czasie (break-verified: zamrożona ikona wywala test) — 99b8db0
 - [x] 8.13 Ikona ładowania jest jedynym linkiem `rel=icon` w trakcie żądania, a po nim
-      wracają wszystkie oryginalne (break-verified: pozostawiony konkurent wywala test)
+      wracają wszystkie oryginalne (break-verified: pozostawiony konkurent wywala test) — 691073d
 - [x] 8.14 Tytuł karty bez znacznika (glif czytał się jak druga, zamrożona ikona);
-      animacja 30 kl./s — zmierzone: 61 różnych klatek w 2 s
+      animacja 30 kl./s — zmierzone: 61 różnych klatek w 2 s — abe5a31
 - [x] 8.8 Podgląd importu ujawnia wolne środki — 4de3ac8
 - [x] 8.9 Pełny pakiet zielony — 920 testów (4de3ac8)
 
