@@ -415,8 +415,10 @@ def get_portfolio_calendar_data(
               td.snapshot_date,
               p.ticker,
               p.shares,
-              COALESCE(cds.kurs_zamkniecia, etq.kurs_zamkniecia) AS close_price,
-              COALESCE(cds.zmiana_kwotowa,  etq.zmiana_kwotowa)  AS daily_chg
+              IF(p.ticker = '{CASH_TICKER}', 1.0,
+                 COALESCE(cds.kurs_zamkniecia, etq.kurs_zamkniecia)) AS close_price,
+              IF(p.ticker = '{CASH_TICKER}', 0.0,
+                 COALESCE(cds.zmiana_kwotowa, etq.zmiana_kwotowa))  AS daily_chg
             FROM trading_days td
             CROSS JOIN positions p
             LEFT JOIN `{cds_ref}` cds
@@ -566,9 +568,17 @@ def get_portfolio_history(
             WHERE snapshot_date BETWEEN DATE_SUB(@start_date, INTERVAL 400 DAY) AND CURRENT_DATE()
               AND kurs_zamkniecia IS NOT NULL
           ),
+          px_with_cash AS (
+            -- Cash has no market-data row and never will, so without this branch
+            -- the coverage gate treats it as an unpriced holding and drops both
+            -- its value and its basis from every day of the curve.
+            SELECT ticker, snapshot_date, px, src FROM px_raw
+            UNION ALL
+            SELECT '{CASH_TICKER}', snapshot_date, 1.0, 2 FROM spine
+          ),
           px_dedup AS (
             SELECT ticker, snapshot_date, px
-            FROM px_raw
+            FROM px_with_cash
             QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date ORDER BY src) = 1
           ),
           coverage AS (
@@ -1027,14 +1037,18 @@ def list_user_portfolio_positions(
           p.company_name,
           p.shares,
           p.avg_buy_price,
-          COALESCE(ls.kurs_zamkniecia,   etf.kurs_zamkniecia)   AS current_price,
-          COALESCE(ls.zmiana_procentowa, etf.zmiana_procentowa) AS daily_change_pct,
+          IF(p.ticker = '{CASH_TICKER}', 1.0,
+             COALESCE(ls.kurs_zamkniecia, etf.kurs_zamkniecia))   AS current_price,
+          IF(p.ticker = '{CASH_TICKER}', 0.0,
+             COALESCE(ls.zmiana_procentowa, etf.zmiana_procentowa)) AS daily_change_pct,
           -- The session's absolute move per share.  The table view used to derive
           -- this as current_price x pct, which overstates the move by exactly the
           -- day's own factor (the correct base is the *previous* close) and so
           -- disagreed with the calendar, which has always summed zmiana_kwotowa.
-          COALESCE(ls.zmiana_kwotowa,    etf.zmiana_kwotowa)    AS daily_change_per_share,
-          COALESCE(ls.price_as_of,       etf.price_as_of)       AS price_as_of{history_select}
+          IF(p.ticker = '{CASH_TICKER}', 0.0,
+             COALESCE(ls.zmiana_kwotowa, etf.zmiana_kwotowa))    AS daily_change_per_share,
+          IF(p.ticker = '{CASH_TICKER}', CAST(CURRENT_DATE() AS STRING),
+             COALESCE(ls.price_as_of, etf.price_as_of))          AS price_as_of{history_select}
         FROM `{_table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)}` p
         LEFT JOIN latest_stats ls
           ON p.ticker = ls.ticker AND ls.rn = 1
@@ -1057,6 +1071,13 @@ def list_user_portfolio_positions(
     logger.debug("BQ list_user_portfolio_positions: %.0fms", (time.time() - _t) * 1000)
     return [dict(row) for row in rows]
 
+
+# Reserved ticker for uninvested cash (PUL-95 Phase 8). Kept as an ordinary
+# position row so value, treemap, calendar and chart all count it without a
+# parallel code path, and priced at 1.00 PLN in every query that resolves prices
+# — the market-data tables have no row for it and never will. The leading
+# underscore cannot collide with a GPW ticker.
+CASH_TICKER = "_CASH"
 
 _USER_PORTFOLIOS_TABLE_NAME = "user_portfolios"
 
@@ -3390,6 +3411,42 @@ def merge_user_broker_operations(rows: list[dict]) -> int:
         key_columns=("external_id",),
         order_column="imported_at",
     )
+
+
+def list_broker_trades(user_id: str, portfolio_id: str | None = None) -> list[dict]:
+    """Every stored buy/sell for the user, oldest first, for FIFO matching.
+
+    Returns plain dicts shaped for ``compute_realized_pnl``. The whole history is
+    returned with no year filter on purpose: FIFO has to walk every trade to know
+    what the shares cost, and narrowing the rows first would leave later sales
+    matched against nothing. A real account is a couple of hundred rows, so this
+    is one small scan rather than something worth pushing into SQL.
+
+    ``portfolio_id=None`` spans every wallet of the user (the "Wszystkie" view).
+    Raises BigQueryError on failure.
+    """
+    client = _get_client()
+    _t = time.time()
+    table = _table_ref(client, _USER_BROKER_OPERATIONS_TABLE_NAME)
+    portfolio_filter = "AND portfolio_id = @portfolio_id" if portfolio_id is not None else ""
+    query = f"""
+        SELECT ticker, op_type, occurred_at, volume, unit_price, instrument_name
+        FROM `{table}`
+        WHERE user_id = @user_id {portfolio_filter}
+          AND op_type IN ('buy', 'sell')
+          AND ticker IS NOT NULL
+        ORDER BY occurred_at
+    """
+    params = [bigquery.ScalarQueryParameter("user_id", "STRING", user_id)]
+    if portfolio_id is not None:
+        params.append(bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id))
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"list_broker_trades failed: {exc}") from exc
+    logger.debug("BQ list_broker_trades: %.0fms", (time.time() - _t) * 1000)
+    return [dict(row) for row in rows]
 
 
 def get_dividend_summary(

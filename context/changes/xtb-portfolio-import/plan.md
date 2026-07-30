@@ -884,6 +884,72 @@ je broker i jak pokazuje je podgląd importu.
 
 ---
 
+## Phase 8: Wolne środki, zrealizowany wynik, wskaźnik w karcie
+
+### Overview
+
+Trzy rozszerzenia zgłoszone po pierwszym imporcie. Wszystkie wynikają z tego, że
+eksport XTB zawiera więcej, niż faza 1 z niego wyciągała: saldo gotówki i pełną
+historię sprzedaży.
+
+### Changes Required
+
+1. **Wolne środki jako pozycja.** Parser czyta saldo z zamykającego wiersza `Total`
+   arkusza `Cash Operations` — własnej liczby brokera. Sumowanie zaimportowanych
+   operacji daje inny wynik, bo parser świadomie pomija instrumenty zagraniczne
+   (zmierzone: Główny 84,03 z `Total` wobec 143,94 z operacji; różnica 59,91 to
+   obce transakcje). Gotówka trafia do `user_portfolio_positions` jako zwykła
+   pozycja pod zarezerwowanym tickerem `_CASH` po 1,00 zł za „sztukę", a trzy
+   zapytania rozstrzygające ceny (pozycje, kalendarz, wykres) wyceniają ją na par.
+   Powód tej decyzji: gotówka poza tabelą pozycji nie weszłaby do treemapy,
+   kalendarza ani wykresu, a rozjazd wartości między zakładkami to dokładnie ta
+   klasa błędu, którą naprawia faza 7.
+   Saldo nieujawnione w pliku (`None`) i saldo zerowe to dwa różne fakty i nie mogą
+   renderować się tak samo; saldo ujemne (konto w rozliczeniu) jest pomijane, bo
+   jako pozycja czytałoby się jak krótka sprzedaż i odejmowałoby od wartości.
+
+2. **Zrealizowany zysk i strata.** `compute_realized_pnl` dopasowuje sprzedaże do
+   zakupów metodą FIFO na operacjach z `user_broker_operations`, więc zakładka
+   działa bez ponownego wgrywania pliku. Arkusz `Closed Positions` jest w obu
+   realnych eksportach **pusty**, więc gotowej tabelki nie ma i wynik musi powstać
+   z historii. Filtr roku zawęża **wynik**, nigdy **wejście**: FIFO zawsze
+   przechodzi całą historię, inaczej odcięte zakupy zostawiłyby późniejsze
+   sprzedaże bez kosztu i z fikcyjnym zyskiem. Sprzedaż bez zakupu w pliku liczy
+   się od zera i jest **nazwana** w interfejsie — milczenie prezentowałoby
+   zawyżony zysk jako fakt. Osobna zakładka, nie sekcja w Dywidendach: dywidenda to
+   wypłata spółki, zrealizowany wynik to rezultat sprzedaży.
+   Sprawdzone przy okazji: `Amount` w eksporcie **dokładnie** równa się
+   `wolumen × cena` na wszystkich 254 transakcjach, więc nie ma prowizji do
+   uwzględnienia.
+
+3. **Wskaźnik ładowania w karcie przeglądarki.** Natywnego spinnera karty **nie da
+   się** wywołać z JavaScriptu — należy do nawigacji dokumentu, a tu wszystko idzie
+   fetchem. Sygnał niosą więc favicon (animowany SVG w data-URI, bez własnego
+   żądania) i prefiks tytułu, opóźnione o 300 ms, żeby krótkie wywołania nie
+   migały. Licznik owija `fetch` w jednym miejscu, nie 40 wywołań osobno.
+
+### Success Criteria
+
+#### Automated Verification
+
+- Saldo czytane z wiersza `Total`; brak wiersza to `None`, nie zero
+- FIFO: najstarszy lot pierwszy, wiersze sortowane, zakup przed sprzedażą w tej
+  samej mikrosekundzie
+- Filtr roku nie psuje kosztu późniejszych sprzedaży
+- Sprzedaż bez zakupu raportowana w `unmatched_tickers`
+- Zakładka „Zrealizowane" pobiera dane i chowa się przy zmianie trybu
+- `_CASH` nie wycieka do interfejsu jako ticker i nie dostaje linku do ogłoszeń
+- Karta przeglądarki sygnalizuje żądanie w locie i wraca do stanu spoczynku
+- Podgląd importu ujawnia wolne środki
+- Pełny pakiet zielony
+
+#### Manual Verification
+
+- Wycena gotówki po 1,00 zł daje **tę samą** wartość w pozycjach, kalendarzu i wykresie
+- Zrealizowany wynik na realnych danych zgadza się z sumą per plik
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -1101,3 +1167,24 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 - [x] 7.7 Kafelek „Zmiana dzienna" i kafelek kalendarza za ten sam dzień pokazują tę samą liczbę — 3d8f39d
 - [x] 7.8 Dropdown „Dodaj portfel" nie oferuje typu, który użytkownik już ma — 3d8f39d
+
+### Phase 8: Wolne środki, zrealizowany wynik, wskaźnik w karcie
+
+#### Automated
+
+- [x] 8.1 Saldo z wiersza `Total`; brak wiersza to `None`, nie zero
+- [x] 8.2 FIFO: najstarszy lot, sortowanie, zakup przed sprzedażą w tej samej mikrosekundzie
+- [x] 8.3 Filtr roku nie psuje kosztu późniejszych sprzedaży
+- [x] 8.4 Sprzedaż bez zakupu raportowana w `unmatched_tickers`
+- [x] 8.5 Zakładka „Zrealizowane" pobiera dane i chowa się przy zmianie trybu
+- [x] 8.6 `_CASH` nie wycieka do interfejsu ani nie dostaje linku do ogłoszeń
+- [x] 8.7 Karta przeglądarki sygnalizuje żądanie i wraca do spoczynku (break-verified)
+- [x] 8.8 Podgląd importu ujawnia wolne środki
+- [x] 8.9 Pełny pakiet zielony — 920 testów
+
+#### Manual
+
+- [x] 8.10 Gotówka po 1,00 zł daje tę samą wartość w pozycjach, kalendarzu i wykresie
+      — 3 283,11 zł identycznie w trzech zapytaniach na realnym BigQuery
+- [x] 8.11 Zrealizowany wynik na realnych danych zgadza się z sumą per plik
+      — −845,63 zł = −554,22 (Główny) + −291,41 (IKZE), 21 spółek, zero bez ceny zakupu

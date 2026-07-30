@@ -876,7 +876,7 @@ def test_positions_query_returns_the_absolute_daily_move_not_only_the_percentage
     q = _capture_positions_query()
     assert "daily_change_per_share" in q
     # from both price sources, so ETFs are covered too
-    assert "COALESCE(ls.zmiana_kwotowa,    etf.zmiana_kwotowa)" in q
+    assert "COALESCE(ls.zmiana_kwotowa, etf.zmiana_kwotowa)" in q
 
 
 # ── portfolio positions endpoints (PUL-65) ────────────────────────────────────

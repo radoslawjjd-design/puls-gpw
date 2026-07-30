@@ -491,6 +491,26 @@ def _fake_get_dividend_summary(user_id, portfolio_id=None, year=None):
     }
 
 
+def _fake_list_broker_trades(user_id, portfolio_id=None):
+    """Trades shaped so the realized view exercises every branch it has.
+
+    PKO: bought across two lots and partly sold — the FIFO cost basis has to be
+    the older lot. CDR: sold with no purchase in the data, which is the branch
+    that must be disclosed rather than counted as pure profit. Two years, so the
+    year selector has something to switch between.
+    """
+    return [
+        {"ticker": "PKO", "op_type": "buy", "occurred_at": datetime(2025, 1, 10, 9, 0),
+         "volume": 100.0, "unit_price": 40.0, "instrument_name": "PKO BP"},
+        {"ticker": "PKO", "op_type": "buy", "occurred_at": datetime(2025, 3, 10, 9, 0),
+         "volume": 100.0, "unit_price": 60.0, "instrument_name": "PKO BP"},
+        {"ticker": "PKO", "op_type": "sell", "occurred_at": datetime(2026, 2, 10, 9, 0),
+         "volume": 100.0, "unit_price": 50.0, "instrument_name": "PKO BP"},
+        {"ticker": "CDR", "op_type": "sell", "occurred_at": datetime(2025, 6, 1, 9, 0),
+         "volume": 5.0, "unit_price": 120.0, "instrument_name": "CD Projekt"},
+    ]
+
+
 def _fake_list_user_portfolio_positions(user_id, portfolio_id=None, include_history=False):
     # Lazy-init per-user store from static FAKE data on first access (regardless of
     # branch) so upsert/delete affect the list AND the all-mode (portfolio_id=None)
@@ -686,6 +706,7 @@ def live_server_url():
         patch("src.api.delete_user_portfolio_positions",
               side_effect=_fake_delete_user_portfolio_positions),
         patch("src.api.get_dividend_summary", side_effect=_fake_get_dividend_summary),
+        patch("src.api.list_broker_trades", side_effect=_fake_list_broker_trades),
         patch("src.api.get_notification_settings", side_effect=_fake_get_notification_settings),
         patch("src.api.upsert_notification_settings", side_effect=_fake_upsert_notification_settings),
         # Auth endpoints (PUL-71) — patched at the src.auth import site, not

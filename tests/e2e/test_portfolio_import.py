@@ -44,6 +44,11 @@ _ROWS = [
     ["Dividend", "XTB.PL", "XTB SA", _T0, 60.0, "5", "", "My Trades"],
 ]
 
+# XTB closes the sheet with a Total whose Amount is the free-cash balance. Kept
+# out of _ROWS because normalize_operations treats it as a terminator, and the
+# preview reads it through its own path.
+_TOTAL_ROW = ["Total", None, None, None, 1234.56, None, None, None]
+
 
 def _export_bytes() -> bytes:
     """Synthesize an XTB-shaped export; the real files carry account numbers."""
@@ -57,6 +62,7 @@ def _export_bytes() -> bytes:
     ws.append(_HEADER)
     for row in _ROWS:
         ws.append(row)
+    ws.append(_TOTAL_ROW)
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
@@ -284,3 +290,27 @@ def test_with_no_wallets_the_import_button_opens_the_create_wallet_modal(
         expect(page.locator("#pp-new-file")).to_be_visible()
     finally:
         page.unroute_all(behavior="ignoreErrors")
+
+
+def test_preview_discloses_the_free_cash_the_commit_will_write(page: Page, live_server_url: str):
+    """Risk: the commit writes a cash position, so the preview has to say so.
+
+    The whole point of the preview is that nothing lands unannounced — a PLN row
+    appearing in the portfolio out of nowhere would be indistinguishable from a
+    bug. The synthesized workbook carries a Total row, which is where XTB states
+    the balance.
+    """
+    _login_and_open(page, live_server_url)
+    page.locator("#pp-import-btn").click()
+    page.locator("#pp-import-file").set_input_files(
+        files=[{"name": "xtb.xlsx", "mimeType": _XLSX_MIME, "buffer": _export_bytes()}]
+    )
+
+    with page.expect_response(re.compile(r"/api/portfolio/import/preview")):
+        page.locator("#pp-import-preview-btn").click()
+
+    cash = page.locator("#pp-import-cash")
+    expect(cash).to_be_visible()
+    expect(cash).to_contain_text("Wolne środki")
+    # \s, not a literal space: pl-PL groups thousands with a non-breaking space.
+    expect(cash).to_contain_text(re.compile(r"1\s?234,56"))
