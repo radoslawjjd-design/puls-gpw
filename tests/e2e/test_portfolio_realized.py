@@ -157,6 +157,12 @@ def test_the_browser_tab_signals_a_request_in_flight(page: Page, live_server_url
     """Risk: the whole point is a signal on the tab, and the native spinner cannot
     be driven from JS, so the favicon and title are what carry it.
 
+    The icon must also actually MOVE. The first attempt used an animated SVG,
+    which browsers render as a still image — SMIL in a favicon is ignored — so it
+    shipped as a frozen arc that read as a broken icon. Asserting only that the
+    href changed once would still have passed. Comparing two frames over time is
+    what pins the animation.
+
     Held mid-flight on purpose — the indicator only exists between the click and
     the response, so asserting after the request settles would pass regardless.
     The 300ms debounce has to be outwaited too, which is why the hold is long.
@@ -178,7 +184,12 @@ def test_the_browser_tab_signals_a_request_in_flight(page: Page, live_server_url
         page.locator('#pp-view-tabs .pp-view-tab[data-mode="realized"]').click()
 
         expect(page).to_have_title(re.compile(r"^⟳"))
-        assert page.get_attribute("#app-favicon", "href").startswith("data:image/svg+xml")
+        first = page.get_attribute("#app-favicon", "href")
+        assert first.startswith("data:image/png"), "frames are drawn on a canvas"
+        # ~70ms per frame, so this straddles several.
+        page.wait_for_timeout(300)
+        second = page.get_attribute("#app-favicon", "href")
+        assert second != first, "the icon has to advance, not sit on one frame"
     finally:
         page.unroute_all(behavior="ignoreErrors")
 

@@ -924,9 +924,16 @@ historię sprzedaży.
 
 3. **Wskaźnik ładowania w karcie przeglądarki.** Natywnego spinnera karty **nie da
    się** wywołać z JavaScriptu — należy do nawigacji dokumentu, a tu wszystko idzie
-   fetchem. Sygnał niosą więc favicon (animowany SVG w data-URI, bez własnego
-   żądania) i prefiks tytułu, opóźnione o 300 ms, żeby krótkie wywołania nie
-   migały. Licznik owija `fetch` w jednym miejscu, nie 40 wywołań osobno.
+   fetchem. Sygnał niosą więc favicon i prefiks tytułu, opóźnione o 300 ms, żeby
+   krótkie wywołania nie migały. Licznik owija `fetch` w jednym miejscu, nie 40
+   wywołań osobno.
+   Favicon rysowany jest **klatka po klatce na canvasie**, nie jako animowany SVG:
+   przeglądarki renderują favicon SVG jako obraz statyczny i ignorują SMIL, więc
+   pierwsza wersja wyglądała jak zamrożony, popsuty łuk. Wygląd wybrany przez
+   wyrenderowanie sześciu wariantów w **16 px** — rozmiarze, w jakim karta go
+   naprawdę pokazuje — na jasnym i ciemnym pasku kart. Wygrał gruby złoty łuk bez
+   wypełnionej tarczy: pierścień wewnątrz tarczy nie mieści się w 16 px, a granat
+   znika na ciemnym pasku.
 
 ### Success Criteria
 
@@ -1179,6 +1186,8 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 - [x] 8.5 Zakładka „Zrealizowane" pobiera dane i chowa się przy zmianie trybu — 4de3ac8
 - [x] 8.6 `_CASH` nie wycieka do interfejsu ani nie dostaje linku do ogłoszeń — 4de3ac8
 - [x] 8.7 Karta przeglądarki sygnalizuje żądanie i wraca do spoczynku (break-verified) — 4de3ac8
+- [x] 8.12 Ikona w karcie faktycznie się animuje — klatki na canvasie, test porównuje
+      dwie klatki w czasie (break-verified: zamrożona ikona wywala test)
 - [x] 8.8 Podgląd importu ujawnia wolne środki — 4de3ac8
 - [x] 8.9 Pełny pakiet zielony — 920 testów (4de3ac8)
 

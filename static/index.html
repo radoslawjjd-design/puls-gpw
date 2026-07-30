@@ -2428,34 +2428,78 @@ function loadingHtml(text) {
 // sync with 40 call sites the way 40 pairs of flags would.
 const _TAB_IDLE_TITLE = document.title;
 const _TAB_BUSY_PREFIX = '⟳ ';
-// Inline SVG data-URI: no extra asset to deploy and no request of its own —
-// which matters, since it is needed exactly when requests are in flight.
-const _TAB_BUSY_ICON =
-  'data:image/svg+xml;utf8,' + encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
-    '<circle cx="16" cy="16" r="13" fill="none" stroke="#dbe2ea" stroke-width="5"/>' +
-    '<path d="M16 3a13 13 0 0 1 13 13" fill="none" stroke="#14304a" stroke-width="5" ' +
-    'stroke-linecap="round">' +
-    '<animateTransform attributeName="transform" type="rotate" from="0 16 16" ' +
-    'to="360 16 16" dur="0.9s" repeatCount="indefinite"/></path></svg>');
+// Frames are drawn on a canvas and the icon is swapped per frame. An animated
+// SVG favicon does NOT work: browsers render an SVG favicon as a still image and
+// ignore SMIL, so <animateTransform> produced a frozen arc that just looked like
+// a broken icon. Canvas + href swap is the only approach that actually moves.
+const _TAB_ICON_PX = 32;
+// ~14 fps. Fast enough to read as motion, slow enough that a toDataURL per frame
+// stays irrelevant next to the request it is reporting on.
+const _TAB_FRAME_MS = 70;
+// Chosen by rendering six candidates at 16px — the size a tab actually shows —
+// against both a light and a dark tab strip. No filled disc: at 16px a ring
+// inside a disc leaves too little room and turns into a dark smudge. Gold is the
+// one colour of the palette legible on light AND dark browser chrome, so it
+// carries the moving arc; navy would vanish against dark chrome.
+const _TAB_TRACK = 'rgba(140,150,165,.42)';
+const _TAB_ARC = '#d99b1c';
+
+let _tabCanvas = null;
+
+function _tabFrame(angle) {
+  if (_tabCanvas === null) {
+    _tabCanvas = document.createElement('canvas');
+    _tabCanvas.width = _tabCanvas.height = _TAB_ICON_PX;
+  }
+  const ctx = _tabCanvas.getContext('2d');
+  const mid = _TAB_ICON_PX / 2;
+  ctx.clearRect(0, 0, _TAB_ICON_PX, _TAB_ICON_PX);
+
+  // Deliberately heavy: 8px of a 32px canvas is a quarter of it, which survives
+  // being scaled down to 16px. A hairline ring turns into grey mush there.
+  const radius = mid - 4;
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = _TAB_TRACK;
+  ctx.beginPath();
+  ctx.arc(mid, mid, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // A 144-degree arc: long enough to read as a shape, short enough that the gap
+  // is what the eye tracks as it turns.
+  ctx.strokeStyle = _TAB_ARC;
+  ctx.beginPath();
+  ctx.arc(mid, mid, radius, angle, angle + Math.PI * 0.8);
+  ctx.stroke();
+
+  return _tabCanvas.toDataURL('image/png');
+}
 
 let _tabBusyCount = 0;
 let _tabBusyTimer = null;
 let _tabIdleIcon = null;
+let _tabAnimTimer = null;
+let _tabAngle = 0;
 
 function _tabShowBusy() {
-  const link = document.getElementById('app-favicon');
-  if (link) {
-    if (_tabIdleIcon === null) _tabIdleIcon = link.getAttribute('href');
-    link.type = 'image/svg+xml';
-    link.setAttribute('href', _TAB_BUSY_ICON);
-  }
   if (!document.title.startsWith(_TAB_BUSY_PREFIX)) {
     document.title = _TAB_BUSY_PREFIX + _TAB_IDLE_TITLE;
   }
+  if (_tabAnimTimer !== null) return;
+  const link = document.getElementById('app-favicon');
+  if (!link) return;
+  if (_tabIdleIcon === null) _tabIdleIcon = link.getAttribute('href');
+  link.type = 'image/png';
+  const tick = () => {
+    _tabAngle = (_tabAngle + Math.PI / 6) % (Math.PI * 2);
+    link.setAttribute('href', _tabFrame(_tabAngle));
+  };
+  tick();  // first frame now, so the icon changes on the same turn
+  _tabAnimTimer = setInterval(tick, _TAB_FRAME_MS);
 }
 
 function _tabClearBusy() {
+  if (_tabAnimTimer !== null) { clearInterval(_tabAnimTimer); _tabAnimTimer = null; }
   const link = document.getElementById('app-favicon');
   if (link && _tabIdleIcon !== null) {
     link.type = 'image/png';
