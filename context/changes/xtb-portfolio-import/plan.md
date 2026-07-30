@@ -924,9 +924,15 @@ historię sprzedaży.
 
 3. **Wskaźnik ładowania w karcie przeglądarki.** Natywnego spinnera karty **nie da
    się** wywołać z JavaScriptu — należy do nawigacji dokumentu, a tu wszystko idzie
-   fetchem. Sygnał niosą więc favicon i prefiks tytułu, opóźnione o 300 ms, żeby
-   krótkie wywołania nie migały. Licznik owija `fetch` w jednym miejscu, nie 40
-   wywołań osobno.
+   fetchem. Sygnał niesie więc sam favicon, opóźniony o 300 ms, żeby krótkie
+   wywołania nie migały. Licznik owija `fetch` w jednym miejscu, nie 40 wywołań
+   osobno. Tytuł karty celowo zostaje nietknięty: znacznik przed tytułem renderuje
+   się tuż obok ikony i jako statyczny glif czyta się jak druga, zamrożona ikona —
+   dokładnie tak został zgłoszony.
+   Animacja: 30 klatek/s, kąt liczony z upływu czasu, a nie akumulowany po
+   klatkach, żeby prędkość była stała mimo zgubionych klatek. `setInterval`, nie
+   `requestAnimationFrame` — rAF jest w tle całkowicie wstrzymywany, czyli akurat
+   wtedy, gdy wskaźnik w karcie ma sens.
    Favicon rysowany jest **klatka po klatce na canvasie**, nie jako animowany SVG:
    przeglądarki renderują favicon SVG jako obraz statyczny i ignorują SMIL, więc
    pierwsza wersja wyglądała jak zamrożony, popsuty łuk.
@@ -1198,6 +1204,8 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
       dwie klatki w czasie (break-verified: zamrożona ikona wywala test)
 - [x] 8.13 Ikona ładowania jest jedynym linkiem `rel=icon` w trakcie żądania, a po nim
       wracają wszystkie oryginalne (break-verified: pozostawiony konkurent wywala test)
+- [x] 8.14 Tytuł karty bez znacznika (glif czytał się jak druga, zamrożona ikona);
+      animacja 30 kl./s — zmierzone: 61 różnych klatek w 2 s
 - [x] 8.8 Podgląd importu ujawnia wolne środki — 4de3ac8
 - [x] 8.9 Pełny pakiet zielony — 920 testów (4de3ac8)
 

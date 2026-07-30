@@ -2419,24 +2419,25 @@ function loadingHtml(text) {
 // ── browser-tab busy indicator ────────────────────────────────────────────────
 // The native tab spinner belongs to document navigation and cannot be driven
 // from JavaScript; in a single-page app every load is a fetch, so the browser
-// has nothing to spin. What CAN be signalled is the tab's own icon and title,
-// which is what this does — an animated favicon plus a title marker, restored
-// once the last request lands.
+// has nothing to spin. What CAN be signalled is the tab's own icon, which is
+// what this does — an animated favicon, restored once the last request lands.
 //
 // fetch is wrapped rather than each call site being annotated: the point of the
 // request was "everywhere", and a counter around one seam cannot drift out of
 // sync with 40 call sites the way 40 pairs of flags would.
-const _TAB_IDLE_TITLE = document.title;
-const _TAB_BUSY_PREFIX = '⟳ ';
+// The title is deliberately left alone. A marker character in front of it renders
+// right next to the favicon and, being a static glyph, reads as a second frozen
+// icon sitting beside the spinning one. The icon is the signal; nothing else.
+const _TAB_ICON_PX = 32;
 // Frames are drawn on a canvas and the icon is swapped per frame. An animated
 // SVG favicon does NOT work: browsers render an SVG favicon as a still image and
 // ignore SMIL, so <animateTransform> produced a frozen arc that just looked like
 // a broken icon. Canvas + href swap is the only approach that actually moves.
-const _TAB_ICON_PX = 32;
-// ~11 fps. Fast enough to read as motion, slow enough that Chrome does not
-// coalesce the icon churn, and a toDataURL per frame stays irrelevant next to
-// the request it is reporting on.
-const _TAB_FRAME_MS = 90;
+// ~30 fps, with the angle derived from elapsed time rather than accumulated per
+// frame, so the rotation keeps a constant speed even when a frame is dropped.
+// Encoding a 32px PNG is negligible next to the request being reported on.
+const _TAB_FRAME_MS = 33;
+const _TAB_SPIN_MS = 1100;  // one revolution
 // Chosen by rendering six candidates at 16px — the size a tab actually shows —
 // against both a light and a dark tab strip. No filled disc: at 16px a ring
 // inside a disc leaves too little room and turns into a dark smudge. Gold is the
@@ -2479,7 +2480,7 @@ function _tabFrame(angle) {
 let _tabBusyCount = 0;
 let _tabBusyTimer = null;
 let _tabAnimTimer = null;
-let _tabAngle = 0;
+let _tabSpinStart = 0;
 let _tabParkedIcons = null;   // the page's own icon links, detached while busy
 let _tabBusyLink = null;
 
@@ -2508,17 +2509,19 @@ function _tabPaintFrame(href) {
 }
 
 function _tabShowBusy() {
-  if (!document.title.startsWith(_TAB_BUSY_PREFIX)) {
-    document.title = _TAB_BUSY_PREFIX + _TAB_IDLE_TITLE;
-  }
   if (_tabAnimTimer !== null) return;
   if (_tabParkedIcons === null) {
     _tabParkedIcons = _tabPageIconLinks();
     _tabParkedIcons.forEach(link => link.remove());
   }
+  _tabSpinStart = Date.now();
+  // setInterval, not requestAnimationFrame: rAF is suspended entirely while the
+  // tab is in the background, which is exactly when a tab indicator is worth
+  // having. Chrome still throttles background timers to ~1/s — that ceiling
+  // belongs to the browser — but the icon keeps turning instead of stopping dead.
   const tick = () => {
-    _tabAngle = (_tabAngle + Math.PI / 6) % (Math.PI * 2);
-    _tabPaintFrame(_tabFrame(_tabAngle));
+    const elapsed = (Date.now() - _tabSpinStart) % _TAB_SPIN_MS;
+    _tabPaintFrame(_tabFrame(elapsed / _TAB_SPIN_MS * Math.PI * 2));
   };
   tick();  // first frame now, so the icon changes on the same turn
   _tabAnimTimer = setInterval(tick, _TAB_FRAME_MS);
@@ -2534,7 +2537,6 @@ function _tabClearBusy() {
     _tabParkedIcons.forEach(link => document.head.appendChild(link));
     _tabParkedIcons = null;
   }
-  document.title = _TAB_IDLE_TITLE;
 }
 
 function _tabBusyStart() {

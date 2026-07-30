@@ -179,28 +179,31 @@ def test_the_browser_tab_signals_a_request_in_flight(page: Page, live_server_url
             page.wait_for_timeout(2500)
         route.continue_()
 
+    idle_title = page.title()
     try:
         page.route("**/api/portfolio/realized**", hold)
         page.locator('#pp-view-tabs .pp-view-tab[data-mode="realized"]').click()
 
-        expect(page).to_have_title(re.compile(r"^⟳"))
         # The busy icon must be the ONLY icon link. Four of them ship in the head
         # and the browser picks from the whole set, so leaving a competitor
         # attached is how the animation ended up invisible in a real tab while
         # every attribute assertion still passed.
-        assert page.locator('link[rel~="icon"], link[rel="shortcut icon"]').count() == 1
+        expect(page.locator('link[rel~="icon"], link[rel="shortcut icon"]')).to_have_count(1)
         first = page.get_attribute("#app-favicon-busy", "href")
         assert first.startswith("data:image/png"), "frames are drawn on a canvas"
-        # ~90ms per frame, so this straddles several.
-        page.wait_for_timeout(400)
+        # ~33ms per frame, so this straddles many.
+        page.wait_for_timeout(300)
         second = page.get_attribute("#app-favicon-busy", "href")
         assert second != first, "the icon has to advance, not sit on one frame"
+        # The title must stay clean. A marker glyph in front of it renders right
+        # beside the favicon and, being static, reads as a second frozen icon —
+        # which is exactly how it was reported.
+        assert page.title() == idle_title, "the tab title carries no busy marker"
     finally:
         page.unroute_all(behavior="ignoreErrors")
 
     # And it must go back — an indicator that never clears is worse than none,
     # and the page's own icons have to be reinstated, not just the busy one dropped.
-    expect(page).not_to_have_title(re.compile(r"^⟳"))
-    assert page.locator("#app-favicon-busy").count() == 0
+    expect(page.locator("#app-favicon-busy")).to_have_count(0)
     assert page.get_attribute("#app-favicon", "href").endswith(".png?v=2")
-    assert page.locator('link[rel~="icon"], link[rel="shortcut icon"]').count() == 3
+    expect(page.locator('link[rel~="icon"], link[rel="shortcut icon"]')).to_have_count(3)
