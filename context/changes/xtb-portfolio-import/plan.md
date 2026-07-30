@@ -1172,15 +1172,15 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [x] 8.1 Saldo z wiersza `Total`; brak wiersza to `None`, nie zero
-- [x] 8.2 FIFO: najstarszy lot, sortowanie, zakup przed sprzedażą w tej samej mikrosekundzie
-- [x] 8.3 Filtr roku nie psuje kosztu późniejszych sprzedaży
-- [x] 8.4 Sprzedaż bez zakupu raportowana w `unmatched_tickers`
-- [x] 8.5 Zakładka „Zrealizowane" pobiera dane i chowa się przy zmianie trybu
-- [x] 8.6 `_CASH` nie wycieka do interfejsu ani nie dostaje linku do ogłoszeń
-- [x] 8.7 Karta przeglądarki sygnalizuje żądanie i wraca do spoczynku (break-verified)
-- [x] 8.8 Podgląd importu ujawnia wolne środki
-- [x] 8.9 Pełny pakiet zielony — 920 testów
+- [x] 8.1 Saldo z wiersza `Total`; brak wiersza to `None`, nie zero — 4de3ac8
+- [x] 8.2 FIFO: najstarszy lot, sortowanie, zakup przed sprzedażą w tej samej mikrosekundzie — 4de3ac8
+- [x] 8.3 Filtr roku nie psuje kosztu późniejszych sprzedaży — 4de3ac8
+- [x] 8.4 Sprzedaż bez zakupu raportowana w `unmatched_tickers` — 4de3ac8
+- [x] 8.5 Zakładka „Zrealizowane" pobiera dane i chowa się przy zmianie trybu — 4de3ac8
+- [x] 8.6 `_CASH` nie wycieka do interfejsu ani nie dostaje linku do ogłoszeń — 4de3ac8
+- [x] 8.7 Karta przeglądarki sygnalizuje żądanie i wraca do spoczynku (break-verified) — 4de3ac8
+- [x] 8.8 Podgląd importu ujawnia wolne środki — 4de3ac8
+- [x] 8.9 Pełny pakiet zielony — 920 testów (4de3ac8)
 
 #### Manual
 
