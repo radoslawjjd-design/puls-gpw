@@ -56,7 +56,8 @@ Pary 458/458 i 102/102 to **dwaj różni użytkownicy**, nie duplikaty — darmo
 
 - Czerwiec 2024 dla portfela Głównego renderuje się **całkowicie biało** — zero wierszy z BQ.
 - Styczeń 2025 zaczyna produkować wartości **2025-01-29** (pierwszy zakup: KRU), nie 2. stycznia.
-- Kalendarz IKZE nic nie pokazuje przed **2025-07-09**.
+- Kalendarz IKZE nic nie pokazuje przed **2025-07-10** (pierwszy zakup; wpłata z 2025-07-09
+  nie tworzy dnia).
 - Dzień wewnątrz zakresu liczy się z akcji posiadanych **tego dnia**, nie dzisiejszych.
 - Prawa krawędź wykresu nadal równa się wartości z „Mój portfel" co do grosza.
 - Portfel bez importu (`626e9da1…`) **nie regresuje do pustego widoku** — zachowuje dane
@@ -144,8 +145,9 @@ testem**, nie założone (Faza 3).
 **Trzy okna czasowe w kalendarzu to trzy różne rzeczy — nie mieszać:**
 - 10-dniowy lookback cen istnieje **wyłącznie** po to, żeby LOCF miał poprzednika dla 1. dnia
   miesiąca (`db/bigquery.py:381-385`). To nie jest baseline P&L.
-- Okno skanu **operacji** musi sięgać od początku historii portfela do końca miesiąca —
-  suma „operacji po dniu" wymaga wszystkiego, co po nim nastąpiło, aż do dziś.
+- Skan **operacji nie ma horyzontu** — obejmuje całą historię portfela aż do dziś,
+  niezależnie od oglądanego miesiąca. Suma „operacji po dniu" wymaga wszystkiego, co po nim
+  nastąpiło, więc żadna oś ograniczona miesiącem nie może jej wyznaczyć.
 - Okno **wyniku** to nadal `WHERE snapshot_date >= @month_start`.
 
 **Nowy kod musi zostać wewnątrz tych dwóch funkcji.** Nowa funkcja `db.bigquery`
@@ -192,19 +194,34 @@ Nowe/zmienione CTE, w kolejności:
 - `ops_daily` — `SUM(CASE WHEN op_type='buy' THEN volume WHEN op_type='sell' THEN -volume
   ELSE 0 END)` grupowane po `(portfolio_id, ticker, DATE(occurred_at,'Europe/Warsaw'))`.
   Agregacja **przed** joinem — chroni przed rozmnożeniem wierszy dnia.
-- `holdings` — kluczowe okno. Suma operacji **ściśle późniejszych** niż dany dzień, odjęta
-  od dzisiejszych akcji. Ta jedna linia jest całą zmianą, więc zapisana wprost:
+- `ops_totals` — `SUM(signed_volume)` po **całej** historii operacji, grupowane po
+  `(portfolio_id, ticker)`. Bez horyzontu: to jest odniesienie, do którego zbiega
+  rekonstrukcja.
+- `holdings` — rdzeń zmiany. Liczba akcji na dzień to dzisiejszy stan pomniejszony o
+  wszystko, co wydarzyło się **po** tym dniu, wyrażone jako różnica sum kumulacyjnych:
 
   ```sql
-  h.today_shares - COALESCE(SUM(o.signed_volume) OVER (
-      PARTITION BY h.portfolio_id, h.ticker
-      ORDER BY td.snapshot_date
-      ROWS BETWEEN 1 FOLLOWING AND UNBOUNDED FOLLOWING
-  ), 0) AS shares_on_day
+  h.today_shares - (t.total_signed - COALESCE(c.cum_signed_through_day, 0)) AS shares_on_day
   ```
 
-  `1 FOLLOWING` (nie `CURRENT ROW`) jest istotne: zakup wykonany danego dnia ma się liczyć
-  **od tego dnia**, a nie od następnego.
+  gdzie `cum_signed_through_day` = `SUM(signed_volume)` dla `op_date <= td.snapshot_date`,
+  liczone **warunkiem zakresu** — nie równością dat i nie oknem nad osią sesyjną.
+
+  Ta forma jest wymuszona przez dwie awarie, które okno
+  `ROWS BETWEEN 1 FOLLOWING AND UNBOUNDED FOLLOWING` nad osią sesyjną by wprowadziło
+  (F1 plan-review):
+
+  1. **Horyzont.** Oś kalendarza to jeden miesiąc, więc `UNBOUNDED FOLLOWING` kończy się na
+     jego ostatnim dniu — czerwiec 2025 obejrzany dziś nadal liczyłby akcje kupione w
+     grudniu 2025. Skan operacji **nie ma horyzontu**; oś cenowa ma.
+  2. **Operacje spoza osi.** Join po równości dat gubi operacje z dni nieobecnych w
+     `company_daily_stats`. Zmierzone: **16 z 426 dni operacyjnych**. Dziś wszystkie 16 to
+     operacje niehandlowe (`trade_days_off_spine = 0`), więc liczby akcji są bezpieczne
+     przez przypadek, nie przez konstrukcję. W różnicy sum kumulacyjnych taka operacja
+     wchodzi do obu składników i znosi się poprawnie.
+
+  `op_date <= snapshot_date` (nie `<`) jest istotne: zakup wykonany danego dnia ma się
+  liczyć **od tego dnia**.
 - `daily_prices` — jak dziś, ale `p.shares` zastąpione przez `shares_on_day`, a wiersze
   z `ABS(shares_on_day) <= 1e-9` **odfiltrowane**. Bez progu goły `SUM` zostawia ~1e-13
   i renderuje pozycję-widmo, przekłamując `total_positions` i `prices_found`.
@@ -222,10 +239,10 @@ wsteczną i wprost nazwać resztę jako świadome zachowanie dla tickerów bez o
 negatywne chroniące przed powrotem do dzisiejszych akcji.
 
 **Contract**: `test_calendar_carries_the_last_close_forward_over_a_no_trade_session` (:1446)
-zachowuje wszystkie dotychczasowe asercje LOCF; dochodzą: obecność `ROWS BETWEEN 1 FOLLOWING
-AND UNBOUNDED FOLLOWING`, `PARTITION BY h.portfolio_id, h.ticker`,
-`DATE(occurred_at, 'Europe/Warsaw')`, `QUALIFY ROW_NUMBER`, oraz **negatywna**: brak
-`CROSS JOIN positions`. `test_get_portfolio_calendar_data_uses_correct_date_params` (:1425)
+zachowuje wszystkie dotychczasowe asercje LOCF; dochodzą: obecność
+`DATE(occurred_at, 'Europe/Warsaw')`, `QUALIFY ROW_NUMBER`, oraz trzy **negatywne**
+strażniki regresji: brak `CROSS JOIN positions`, brak `ROWS BETWEEN 1 FOLLOWING` (okno nad
+osią sesyjną — F1) i brak `o.op_date = ` (join operacji po równości dat — F1). `test_get_portfolio_calendar_data_uses_correct_date_params` (:1425)
 dostaje zaktualizowany zestaw parametrów.
 
 #### 3. Test filtra portfela
@@ -276,10 +293,31 @@ do momentu powstania portfela.
 wcześniejsze **bez emitowania wiersza** — żeby `compute_calendar_pnl` renderował je jako
 `no_data` (białe), zgodnie z istniejącym stanem (`src/portfolio_calendar.py:39`).
 
-**Contract**: `inception` = `MIN(DATE(occurred_at,'Europe/Warsaw'))` po operacjach portfela;
-gdy portfel nie ma operacji — `MIN(DATE(created_at))` z `user_portfolios`. W trybie
-„Wszystkie" — minimum po wszystkich portfelach użytkownika. Dodatkowy filtr w
-`daily_portfolio`: `snapshot_date >= inception`.
+**Contract**: `inception` = `MIN(DATE(occurred_at,'Europe/Warsaw'))` po operacjach
+**zmieniających stan posiadania** (`op_type IN ('buy','sell')`); gdy portfel takich operacji
+nie ma — `MIN(DATE(created_at))` z `user_portfolios`. W trybie „Wszystkie" — minimum po
+wszystkich portfelach użytkownika. Dodatkowy filtr w `daily_portfolio`:
+`snapshot_date >= inception`.
+
+**Dlaczego pierwszy zakup, a nie pierwsza operacja (F2 plan-review).** Na prodzie pierwszą
+operacją każdego portfela jest wpłata, nie zakup: Główny `2025-01-28` przy pierwszym zakupie
+`2025-01-29`, IKZE `2025-07-09` przy `2025-07-10`. Przy granicy z `MIN(occurred_at)` dzień
+wpłaty przechodzi, a jedynym posiadaniem jest wtedy reszta gotówkowa — wyceniona po 1,00
+z `daily_chg = 0`. Daje to `prices_found = 1 > 0`, czyli stan `data`
+(`src/portfolio_calendar.py:104-109`) i komórkę **„0 PLN" renderowaną jako realny płaski
+dzień** — dokładnie to kłamstwo, które ta zmiana ma usunąć. Łamie też kryterium 5.6:
+bliźniaczy portfel bez zaimportowanej gotówki nie ma reszty, więc ten sam dzień
+wyrenderowałby się w obu portfelach różnie.
+
+**Skutek uboczny do udokumentowania:** portfel z samymi wpłatami, bez ani jednego zakupu,
+dostaje pusty kalendarz. To poprawne — nie było czego wyceniać — ale ma być świadome.
+
+**Portfel mieszany — przyjęte ograniczenie (F4 plan-review).** Fallback odpala się tylko przy
+całkowitym braku operacji zakupu/sprzedaży, więc portfel z importem plus jedną pozycją dodaną
+ręcznie dostanie granicę z operacji i będzie trzymał tę ręczną pozycję stałą aż do niej —
+potencjalnie o półtora roku za wcześnie. Granica per-ticker rozwiązałaby to kosztem drugiego
+wymiaru w zapytaniu; przy zerowej liczbie takich portfeli na prodzie nie jest tego warta.
+Zostaje jako świadome ograniczenie, nie przeoczenie.
 
 **Zero nie jest dopuszczalne jako alternatywa** — wyrenderuje się jako realny płaski dzień,
 co jest innym kłamstwem (`context/archive/2026-07-22-pul-79-portfolio-value-history/plan.md:71-77`).
@@ -290,8 +328,10 @@ co jest innym kłamstwem (`context/archive/2026-07-22-pul-79-portfolio-value-his
 
 **Intent**: Przypiąć, że granica istnieje i że ma fallback dla portfela bez operacji.
 
-**Contract**: Asercje na tekst SQL: obecność `user_portfolios` w zapytaniu (fallback) oraz
-`MIN(` po `occurred_at`. Plus test parametrów, jeśli granica wprowadza nowy parametr.
+**Contract**: Asercje na tekst SQL: obecność `user_portfolios` w zapytaniu (fallback), `MIN(`
+po `occurred_at`, oraz **zawężenie granicy do `op_type IN ('buy','sell')`** — bez tego
+warunku dzień wpłaty przechodzi i renderuje fałszywe „0 PLN" (F2). Plus test parametrów,
+jeśli granica wprowadza nowy parametr.
 
 #### 3. Test czystej funkcji
 
@@ -318,7 +358,7 @@ sprzed inception" z komentarzem wiążącym go z PUL-103.
 - **Czerwiec 2024 dla portfela Głównego zwraca zero wierszy** — zweryfikowane wywołaniem
   funkcji przeciw realnemu BQ
 - **Styczeń 2025 zwraca pierwszy wiersz 2025-01-29**, nie 2025-01-02
-- **IKZE nic nie zwraca przed 2025-07-09**
+- **IKZE nic nie zwraca przed 2025-07-10** (wpłata z 2025-07-09 nie tworzy dnia)
 - Portfel `626e9da1…` (bez operacji) **nadal zwraca wiersze** od daty założenia
 
 ---
@@ -341,9 +381,17 @@ z zachowaniem LOCF+BOCF, bramki `covered > 0` i join'a meta-first.
 
 **Contract**: Sygnatura i koperta `{series, notes, excluded}` **bez zmian**. `grid` używa
 `shares_on_day` zamiast `p.shares`; `avg_buy_price` zostaje bez zmian (poza zakresem).
-Bramka `covered > 0` liczy tylko pozycje z niezerowymi akcjami tego dnia — inaczej dzień
-sprzed inception miałby `covered = 0` i wypadłby przez bramkę zamiast przez granicę, co
-myli dwie różne przyczyny.
+
+**Próg pyłu obowiązuje tu tak samo jak w Fazie 1 (F3 plan-review).** `grid` odfiltrowuje
+`ABS(shares_on_day) <= 1e-9`, a `covered` liczy wyłącznie pozycje z niezerowymi akcjami
+danego dnia. Bez tego ticker o zerowym stanie zostaje w `filled` z niezerowym `px_ff` i
+wchodzi do `COUNTIF(px_ff IS NOT NULL)` — bramka `covered > 0` przestaje wtedy znaczyć
+„nic nie da się wycenić", a zaczyna znaczyć „nic nie ma w uniwersum". To dwa różne fakty
+i mylenie ich utrudni diagnozę następnej awarii. Skutek poboczny tego samego przeoczenia:
+`notes` zgłosiłoby debiut tickera, którego w tym oknie nie posiadano.
+
+Dzień sprzed inception ma wypadać **przez granicę, nie przez bramkę** — granica jest
+świadectwem „portfel nie istniał", bramka świadectwem „dane zawiodły".
 
 Granica inception jak w Fazie 2, ale odniesiona do `@start_date`: szereg zaczyna się od
 `GREATEST(@start_date, inception)`.
@@ -379,7 +427,8 @@ zmiana mogłaby po cichu podwoić wkład.
 **Contract**: Test SQL-owy dowodzący, że mnożenie przez cenę używa `shares_on_day`, a nie
 `p.shares` (asercja negatywna na `p.shares *`). Plus test jednostkowy na wierszach: ticker
 z operacjami kupiony w dniu debiutu ma przed debiutem `shares = 0`, więc BOCF wnosi zero;
-ticker bez operacji zachowuje stałe akcje i **korzysta** z BOCF.
+ticker bez operacji zachowuje stałe akcje i **korzysta** z BOCF. Trzecia asercja (F3): ticker
+o zerowym stanie danego dnia **nie wlicza się do `covered`**.
 
 #### 4. Fake'i e2e
 
@@ -440,12 +489,19 @@ przywrócenie stałych i `delete_table` w `finally`.
 Asercje, każda dobrana tak, żeby padła przy powrocie do dzisiejszych akcji:
 
 - **Dzień przed kupnem: wartość 0 i `total_positions = 0`.** Zasiane kupno w środku okna.
+- **Miesiąc z przeszłości nie widzi zakupu dokonanego później** — zasiać zakup po końcu
+  odpytywanego miesiąca i sprawdzić, że nie wpływa na żaden jego dzień. To jedyna asercja
+  łapiąca F1; regresja do okna nad osią sesyjną przechodzi wszystkie pozostałe.
+- **Operacja z dnia spoza osi sesyjnej nie ginie** — zasiać sprzedaż w dniu nieobecnym
+  w `company_daily_stats` i sprawdzić, że stan po niej spada.
 - **Dzień kupna: `shares × close` co do grosza.**
 - **Dzień po częściowej sprzedaży: `(shares − sprzedane) × close`.**
 - **Ticker sprzedany do zera pojawia się w historii** i znika po dacie sprzedaży.
 - **Ticker bez operacji (gotówka) trzyma stałą wartość** przez całe okno.
 - **Oversell nie produkuje ujemnych akcji** — zasiana sprzedaż bez poprzedzającego zakupu.
 - **Dzień sprzed inception nie zwraca wiersza.**
+- **Dzień wpłaty poprzedzającej pierwszy zakup nie zwraca wiersza** — inaczej reszta
+  gotówkowa wyrenderuje się jako realny płaski dzień „0 PLN" (F2).
 - **Ostatni dzień równa się dzisiejszym akcjom** — niezmiennik PUL-100.
 - **Raport reszt**: dla każdego `(portfel, ticker)` wypisać `dzisiejsze − rekonstrukcja`,
   z jawnym rozróżnieniem oczekiwanych (gotówka, brak operacji) od nieoczekiwanych. To jest
@@ -509,7 +565,7 @@ i liczbami.
 
 - **Czerwiec 2024, portfel Główny — kalendarz całkowicie biały**
 - **Styczeń 2025 — pierwsza wartość 2025-01-29 (KRU), nie 2. stycznia**
-- **IKZE — nic przed 2025-07-09**
+- **IKZE — nic przed 2025-07-10** (wpłata z 2025-07-09 nie tworzy dnia)
 - **Bliźniacze portfele dwóch użytkowników dają identyczne szeregi** (`d49d0121…` vs
   `6c6fdd5b…` po uwzględnieniu różnicy w gotówce; `10414536…` vs `57ed5830…`)
 - **Prawa krawędź wykresu = wartość z „Mój portfel" co do grosza**
@@ -607,7 +663,7 @@ w 300 s po deployu.
 
 - [ ] 2.4 Czerwiec 2024 dla Głównego zwraca zero wierszy
 - [ ] 2.5 Styczeń 2025 zwraca pierwszy wiersz 2025-01-29
-- [ ] 2.6 IKZE nic nie zwraca przed 2025-07-09
+- [ ] 2.6 IKZE nic nie zwraca przed 2025-07-10 (wpłata z 07-09 nie tworzy dnia)
 - [ ] 2.7 Portfel bez operacji nadal zwraca wiersze od daty założenia
 
 ### Phase 3: Ten sam wymiar czasu w wykresie wartości
@@ -650,7 +706,7 @@ w 300 s po deployu.
 
 - [ ] 5.3 Czerwiec 2024, Główny — kalendarz całkowicie biały
 - [ ] 5.4 Styczeń 2025 — pierwsza wartość 2025-01-29
-- [ ] 5.5 IKZE — nic przed 2025-07-09
+- [ ] 5.5 IKZE — nic przed 2025-07-10
 - [ ] 5.6 Bliźniacze portfele dwóch użytkowników dają identyczne szeregi
 - [ ] 5.7 Prawa krawędź wykresu = „Mój portfel" co do grosza
 - [ ] 5.8 Portfel bez importu nie jest pusty

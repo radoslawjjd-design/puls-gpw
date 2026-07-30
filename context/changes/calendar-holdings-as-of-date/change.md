@@ -1,7 +1,7 @@
 ---
 change_id: calendar-holdings-as-of-date
 title: Compute calendar and value-history from holdings as of each day, not today's shares
-status: planned
+status: plan_reviewed
 created: 2026-07-30
 updated: 2026-07-31
 archived_at: null

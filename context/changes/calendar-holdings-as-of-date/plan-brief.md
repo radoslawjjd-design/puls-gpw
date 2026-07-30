@@ -38,6 +38,8 @@ portfel" co do grosza, a portfel prowadzony ręcznie nie regresuje do pustego wi
 | Zakres | Kalendarz i wykres, osobne fazy | Zostawienie wykresu = dwa sprzeczne widoki tego samego portfela obok siebie | Plan |
 | Oś X wykresu | Bez zmian, notatka w `notes` | Oś jest indeksowa; naprawa geometrii dotyka SVG, gradientu i obu slotów | Plan |
 | Portfel bez importu | Granica z `user_portfolios.created_at` | `positions.created_at` to data importu (2026-07-29/30), bezużyteczna | Research |
+| Czym jest inception | Pierwszy **zakup**, nie pierwsza operacja | Pierwszą operacją jest wpłata; dzień z samą gotówką renderuje się jako realny płaski „0 PLN" | Plan-review |
+| Suma operacji po dniu | Różnica sum kumulacyjnych, nie okno nad osią | Oś kalendarza to jeden miesiąc — okno nie sięgnęłoby późniejszych zakupów | Plan-review |
 | BOCF (PUL-100) | Zachować + test rozłączności | Chroni tickery resztowe (spin-off), dla których rekonstrukcja jest bezsilna | Research |
 | Siatka bezpieczeństwa | Nowy round-trip z zasianymi danymi | Mocki nie parsują SQL-a, e2e podmienia całe funkcje — nic nie łapie złej arytmetyki | Plan |
 
@@ -64,9 +66,10 @@ sprzedany do zera **wraca** w historii; oversell nie produkuje ujemnych akcji; a
 dzień z definicji daje dokładnie dzisiejsze akcje — czyli niezmiennik PUL-100 „prawa
 krawędź = Mój portfel" spełnia się sam.
 
-Uniwersum tickerów to `pozycje ∪ operacje` (FULL OUTER JOIN), okno partycjonowane po
-`(portfolio_id, ticker)`, dni grupowane w `Europe/Warsaw`, wiersze poniżej progu pyłu
-`1e-9` odfiltrowane.
+Uniwersum tickerów to `pozycje ∪ operacje` (FULL OUTER JOIN), suma „operacji po dniu"
+wyrażona jako **różnica sum kumulacyjnych** — nie okno nad osią sesyjną, bo oś kalendarza
+kończy się na końcu miesiąca, a skan operacji nie może mieć horyzontu. Dni grupowane
+w `Europe/Warsaw`, wiersze poniżej progu pyłu `1e-9` odfiltrowane.
 
 ## Phases at a Glance
 
@@ -92,6 +95,10 @@ przeniesienie gotowych CTE.
   ale user mógł je skasować z powodu błędnych danych. Świadomie zostawione bez tombstone'a.
 - **Granica dla portfela ręcznego to data założenia portfela, nie zakupu akcji** —
   przybliżenie zmniejszone, nie usunięte.
+- **Portfel mieszany (import + pozycja dodana ręcznie) dostaje granicę z operacji**, więc
+  ręczna pozycja jest trzymana stała aż do niej — potencjalnie o półtora roku za wcześnie.
+  Granica per-ticker rozwiązałaby to kosztem drugiego wymiaru w zapytaniu; przy zerowej
+  liczbie takich portfeli na prodzie świadomie odłożone.
 - **`user_portfolio_positions.portfolio_id` jest NULLABLE** (osierocone pozycje sprzed
   PUL-64) — join musi to znieść.
 - **Baza kosztowa zostaje nieczasowa**, więc `pnl_pln` po tej zmianie ma poprawne wagi i
