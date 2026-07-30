@@ -2187,3 +2187,50 @@ def test_deleting_a_wallet_clears_the_caches_that_still_show_it(user_client):
     assert r.status_code == 204
     delete_wallet.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
     assert [k for k in keys if k in m._PERF_CACHE] == []
+
+
+# ── free-cash position (impl-review F1) ──────────────────────────────────────
+
+def test_a_stated_zero_cash_balance_is_written_not_skipped():
+    """Regression, found in impl review.
+
+    The bulk merge has no "delete what is absent from the source" branch — that
+    is what keeps a holding the export cannot see (S2B) from being wiped. The
+    same property means an omitted `_CASH` row is left behind rather than
+    cleared, so skipping a zero balance let spent cash sit in the wallet
+    forever and inflate its value on the table, treemap, calendar and chart.
+    """
+    import src.api as api
+
+    row = api._cash_position(0.0)
+
+    assert row is not None, "a stated zero must reach the merge to overwrite the old row"
+    assert row["ticker"] == api.CASH_TICKER
+    assert row["shares"] == 0.0
+
+
+def test_an_unstated_cash_balance_is_still_skipped():
+    """The one case that must stay silent. A balance the file never stated is
+    not a balance of zero, and writing zero for it would delete real cash."""
+    import src.api as api
+
+    assert api._cash_position(None) is None
+
+
+def test_a_negative_cash_balance_is_clamped_not_stored():
+    """XTB reports a small negative balance mid-settlement. As a position it
+    would read as a short and subtract from the portfolio's value."""
+    import src.api as api
+
+    row = api._cash_position(-12.34)
+
+    assert row["shares"] == 0.0
+
+
+def test_a_positive_cash_balance_carries_the_amount_at_par():
+    import src.api as api
+
+    row = api._cash_position(3283.107)
+
+    assert row["shares"] == 3283.11
+    assert row["avg_buy_price"] == 1.0

@@ -433,23 +433,31 @@ def _resolve_import(user_id: str, portfolio_id: str, broker: str, data: bytes):
 
 
 def _cash_position(cash_pln: float | None) -> dict | None:
-    """Uninvested cash as an ordinary position, or None when there is none to show.
+    """Uninvested cash as an ordinary position, or None when the file did not say.
 
     Stored as a position rather than a column on the wallet so the table, the
     treemap, the calendar and the value chart all count it through the path they
     already use. Priced at 1.00 PLN, so shares carry the balance.
 
-    A balance the export did not state (None) is skipped, and so is a
-    non-positive one: a zero row is noise, and XTB can report a small negative
-    balance on an account mid-settlement, which as a position would read as a
-    short and subtract from the portfolio's value.
+    Only an *unstated* balance is skipped. A stated one is always emitted, even
+    at zero: the bulk merge deliberately has no "delete what is absent from the
+    source" branch — that is what keeps a holding like S2B, which the export
+    cannot see, from being wiped. The same property means an omitted `_CASH` row
+    is not cleared but *left behind*, so skipping a zero balance let spent cash
+    sit in the wallet forever, inflating its value on every surface. A balance
+    the export did not state and a balance it stated as zero are two different
+    facts and must not take the same path.
+
+    A negative balance (an account mid-settlement) is clamped to zero rather
+    than stored: as a position it would read as a short and subtract from the
+    portfolio's value.
     """
-    if cash_pln is None or cash_pln <= 0.005:
+    if cash_pln is None:
         return None
     return {
         "ticker": CASH_TICKER,
         "company_name": "Wolne środki",
-        "shares": round(float(cash_pln), 2),
+        "shares": max(0.0, round(float(cash_pln), 2)),
         "avg_buy_price": 1.0,
     }
 
