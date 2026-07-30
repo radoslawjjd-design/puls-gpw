@@ -57,6 +57,10 @@ class BrokerImport:
     dividends: list[Operation]
     closed_tickers: list[str]
     warnings: list[str]
+    # Uninvested cash sitting on the account, in PLN. None when the export gives
+    # no way to know it — which is not the same as zero and must not render as
+    # "you have no cash".
+    cash_pln: float | None = None
 
 
 @dataclass(frozen=True)
@@ -244,6 +248,32 @@ def reconstruct_positions(
 _CASH_OPERATIONS_SHEET = "Cash Operations"
 
 
+def extract_cash_balance(rows: list[dict]) -> float | None:
+    """Return the account's free cash from the sheet's trailing `Total` row.
+
+    XTB closes the sheet with a Total whose Amount is the net of every cash
+    movement — deposits, trades, dividends, taxes, interest — which is exactly
+    the uninvested balance. That row is the broker's own figure, and it is the
+    one to use: summing the *imported* operations instead gives a different
+    number, because the parser drops foreign instruments on purpose (measured on
+    the real exports: Glowny 84.03 from the Total against 143.94 from the parsed
+    rows, a 59.91 gap that is entirely foreign trades).
+
+    Returns None when there is no Total row — an unknown balance, not a zero one.
+    """
+    for row in reversed(rows):
+        if (row.get("Type") or "").strip() != _TOTAL_LABEL:
+            continue
+        amount = row.get("Amount")
+        if amount is None:
+            return None
+        try:
+            return float(amount)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 def parse_xtb_export(data: bytes) -> BrokerImport:
     """Parse a whole XTB `.xlsx` export into positions, dividends and operations."""
     sheets = read_sheets(data)
@@ -252,7 +282,8 @@ def parse_xtb_export(data: bytes) -> BrokerImport:
             f"plik nie zawiera arkusza '{_CASH_OPERATIONS_SHEET}'"
         )
 
-    operations, warnings = normalize_operations(sheets[_CASH_OPERATIONS_SHEET])
+    rows = sheets[_CASH_OPERATIONS_SHEET]
+    operations, warnings = normalize_operations(rows)
     positions, closed_tickers = reconstruct_positions(operations)
     return BrokerImport(
         operations=operations,
@@ -260,6 +291,7 @@ def parse_xtb_export(data: bytes) -> BrokerImport:
         dividends=extract_dividends(operations),
         closed_tickers=closed_tickers,
         warnings=warnings,
+        cash_pln=extract_cash_balance(rows),
     )
 
 

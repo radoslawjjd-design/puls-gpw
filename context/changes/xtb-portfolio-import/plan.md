@@ -818,6 +818,159 @@ Brak zmian w kodzie. Wykonanie:
 
 ---
 
+## Phase 7: Poprawki zgłoszone po wdrożeniu
+
+### Overview
+
+Cztery usterki zgłoszone przez użytkownika po wejściu importu na produkcję. Trzy z nich
+są starsze niż ten change (rozjazd zmiany dziennej, dropdown typów, komunikat po
+usunięciu portfela) i wychodzą dopiero teraz, bo import dał realny portfel z dwoma
+kontami i danymi, na których widać różnicę. Czwarta — brak wskaźnika ładowania — jest
+najbardziej dotkliwa właśnie przy imporcie, najwolniejszej operacji w aplikacji.
+
+Faza dopisana do planu po fakcie, na wyraźną prośbę użytkownika, żeby zmieścić poprawki
+w tym samym PUL i branchu zamiast otwierać nowy change.
+
+### Changes Required
+
+1. **Rozjazd zmiany dziennej między zakładką Portfel a Kalendarzem.**
+   Kafelek „Zmiana dzienna" liczył `shares × current_price × pct/100`. Kurs zamknięcia
+   jest złą podstawą — giełda mierzy zmianę względem **poprzedniego** zamknięcia, więc
+   obie powierzchnie różniły się o współczynnik samego dnia (zmierzone na realnym
+   portfelu: −99,56 wobec −102,08 w kalendarzu, 29.07.2026). Kalendarz od zawsze sumuje
+   `zmiana_kwotowa`. Zapytanie o pozycje zwraca teraz tę samą liczbę
+   (`daily_change_per_share`), a front ją sumuje zamiast wyprowadzać własną.
+   Pliki: `db/bigquery.py`, `src/api.py`, `static/index.html`.
+
+2. **Dropdown typów portfela oferował typy już posiadane.**
+   Backend odpowiada 409, więc opcja była ślepą uliczką. `_ppSyncPortfolioTypeOptions`
+   ukrywa i wyłącza zajęte typy (limit „Inny" to dwa, nie jeden) i preselekcjonuje
+   pierwszy wolny. Reguła nadal jest egzekwowana po stronie serwera — to zawężenie menu,
+   nie przeniesienie walidacji na klienta.
+
+3. **Usunięcie portfela zgłaszało błąd mimo powodzenia.**
+   Wynik jest teraz rozstrzygany przez ponowne odczytanie listy portfeli, a nie przez to,
+   czy ścieżka kodu rzuciła wyjątek. Trzy stany zamiast dwóch: usunięto / nie usunięto /
+   nie dało się sprawdzić. Przy okazji dwie realne usterki po stronie serwera: kasowanie
+   portfela nie czyściło cache (agregat „Wszystkie" dalej pokazywał usunięte pozycje) i
+   nie kaskadowało na `user_broker_operations` (dywidendy usuniętego portfela zostawały
+   w sumach „Wszystkie" na zawsze).
+
+4. **Brak wskaźnika ładowania.** Helper `setBusy(el, busy, label)` (spinner + `aria-busy`
+   + blokada) na logowaniu, rejestracji, resecie hasła, ponownej wysyłce linku, dodaniu
+   tickera, zapisie pozycji, podglądzie i zapisie importu oraz tworzeniu portfela;
+   `loadingHtml()` w kalendarzu, treemapie, wykresie i dywidendach.
+
+Dodatkowo: `pos.shares` renderowało się jako `1.8113000000000001` dla ułamkowych
+jednostek ETF wprowadzonych przez import — obcięte do czterech miejsc, tak jak raportuje
+je broker i jak pokazuje je podgląd importu.
+
+### Success Criteria
+
+#### Automated Verification
+
+- Zapytanie o pozycje zawiera `daily_change_per_share` z obu źródeł kursów
+- Model odpowiedzi i scalanie „Wszystkie" przenoszą nowe pole
+- `delete_user_portfolio` kasuje z trzech tabel, wiersz portfela jako ostatni
+- `DELETE /api/portfolio/wallets/{id}` czyści cache portfela
+- Testy e2e: komunikat sukcesu i porażki po usunięciu, dropdown bez zajętych typów,
+  limit dwóch „Inny", spinner widoczny w trakcie żądania
+- Pełny pakiet zielony
+
+#### Manual Verification
+
+- Kafelek „Zmiana dzienna" i kafelek kalendarza za ten sam dzień pokazują tę samą liczbę
+- Dropdown „Dodaj portfel" nie oferuje typu, który użytkownik już ma
+
+---
+
+## Phase 8: Wolne środki, zrealizowany wynik, wskaźnik w karcie
+
+### Overview
+
+Trzy rozszerzenia zgłoszone po pierwszym imporcie. Wszystkie wynikają z tego, że
+eksport XTB zawiera więcej, niż faza 1 z niego wyciągała: saldo gotówki i pełną
+historię sprzedaży.
+
+### Changes Required
+
+1. **Wolne środki jako pozycja.** Parser czyta saldo z zamykającego wiersza `Total`
+   arkusza `Cash Operations` — własnej liczby brokera. Sumowanie zaimportowanych
+   operacji daje inny wynik, bo parser świadomie pomija instrumenty zagraniczne
+   (zmierzone: Główny 84,03 z `Total` wobec 143,94 z operacji; różnica 59,91 to
+   obce transakcje). Gotówka trafia do `user_portfolio_positions` jako zwykła
+   pozycja pod zarezerwowanym tickerem `_CASH` po 1,00 zł za „sztukę", a trzy
+   zapytania rozstrzygające ceny (pozycje, kalendarz, wykres) wyceniają ją na par.
+   Powód tej decyzji: gotówka poza tabelą pozycji nie weszłaby do treemapy,
+   kalendarza ani wykresu, a rozjazd wartości między zakładkami to dokładnie ta
+   klasa błędu, którą naprawia faza 7.
+   Saldo nieujawnione w pliku (`None`) i saldo zerowe to dwa różne fakty i nie mogą
+   renderować się tak samo; saldo ujemne (konto w rozliczeniu) jest pomijane, bo
+   jako pozycja czytałoby się jak krótka sprzedaż i odejmowałoby od wartości.
+
+2. **Zrealizowany zysk i strata.** `compute_realized_pnl` dopasowuje sprzedaże do
+   zakupów metodą FIFO na operacjach z `user_broker_operations`, więc zakładka
+   działa bez ponownego wgrywania pliku. Arkusz `Closed Positions` jest w obu
+   realnych eksportach **pusty**, więc gotowej tabelki nie ma i wynik musi powstać
+   z historii. Filtr roku zawęża **wynik**, nigdy **wejście**: FIFO zawsze
+   przechodzi całą historię, inaczej odcięte zakupy zostawiłyby późniejsze
+   sprzedaże bez kosztu i z fikcyjnym zyskiem. Sprzedaż bez zakupu w pliku liczy
+   się od zera i jest **nazwana** w interfejsie — milczenie prezentowałoby
+   zawyżony zysk jako fakt. Osobna zakładka, nie sekcja w Dywidendach: dywidenda to
+   wypłata spółki, zrealizowany wynik to rezultat sprzedaży.
+   Sprawdzone przy okazji: `Amount` w eksporcie **dokładnie** równa się
+   `wolumen × cena` na wszystkich 254 transakcjach, więc nie ma prowizji do
+   uwzględnienia.
+
+3. **Wskaźnik ładowania w karcie przeglądarki.** Natywnego spinnera karty **nie da
+   się** wywołać z JavaScriptu — należy do nawigacji dokumentu, a tu wszystko idzie
+   fetchem. Sygnał niesie więc sam favicon, opóźniony o 300 ms, żeby krótkie
+   wywołania nie migały. Licznik owija `fetch` w jednym miejscu, nie 40 wywołań
+   osobno. Tytuł karty celowo zostaje nietknięty: znacznik przed tytułem renderuje
+   się tuż obok ikony i jako statyczny glif czyta się jak druga, zamrożona ikona —
+   dokładnie tak został zgłoszony.
+   Animacja: 30 klatek/s, kąt liczony z upływu czasu, a nie akumulowany po
+   klatkach, żeby prędkość była stała mimo zgubionych klatek. `setInterval`, nie
+   `requestAnimationFrame` — rAF jest w tle całkowicie wstrzymywany, czyli akurat
+   wtedy, gdy wskaźnik w karcie ma sens.
+   Favicon rysowany jest **klatka po klatce na canvasie**, nie jako animowany SVG:
+   przeglądarki renderują favicon SVG jako obraz statyczny i ignorują SMIL, więc
+   pierwsza wersja wyglądała jak zamrożony, popsuty łuk.
+   Druga pułapka, znaleziona dopiero na realnej karcie: `<head>` deklaruje **cztery**
+   linki do ikon, a przeglądarka wybiera z całego zestawu. Podmiana jednego z nich
+   (`sizes="32x32"`) nie wystarczała — Chrome malował inny link i animacja nie
+   docierała do karty, mimo że każde twierdzenie o atrybutach w teście przechodziło.
+   Na czas ładowania wszystkie konkurencyjne linki są więc odpinane, a w ich miejsce
+   wstawiany jest jeden, **tworzony od nowa przy każdej klatce** (Chrome odświeża
+   pewnie przy wstawieniu elementu, a szybkie zmiany `href` scala lub gubi).
+   Po zakończeniu oryginalne linki wracają w swojej kolejności. Wygląd wybrany przez
+   wyrenderowanie sześciu wariantów w **16 px** — rozmiarze, w jakim karta go
+   naprawdę pokazuje — na jasnym i ciemnym pasku kart. Wygrał gruby złoty łuk bez
+   wypełnionej tarczy: pierścień wewnątrz tarczy nie mieści się w 16 px, a granat
+   znika na ciemnym pasku.
+
+### Success Criteria
+
+#### Automated Verification
+
+- Saldo czytane z wiersza `Total`; brak wiersza to `None`, nie zero
+- FIFO: najstarszy lot pierwszy, wiersze sortowane, zakup przed sprzedażą w tej
+  samej mikrosekundzie
+- Filtr roku nie psuje kosztu późniejszych sprzedaży
+- Sprzedaż bez zakupu raportowana w `unmatched_tickers`
+- Zakładka „Zrealizowane" pobiera dane i chowa się przy zmianie trybu
+- `_CASH` nie wycieka do interfejsu jako ticker i nie dostaje linku do ogłoszeń
+- Karta przeglądarki sygnalizuje żądanie w locie i wraca do stanu spoczynku
+- Podgląd importu ujawnia wolne środki
+- Pełny pakiet zielony
+
+#### Manual Verification
+
+- Wycena gotówki po 1,00 zł daje **tę samą** wartość w pozycjach, kalendarzu i wykresie
+- Zrealizowany wynik na realnych danych zgadza się z sumą per plik
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -1000,13 +1153,65 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 
 #### Automated
 
-- [ ] 6.1 `/health` odpowiada po deployu
-- [ ] 6.2 Zapytanie kontrolne potwierdza brak duplikatów `external_id`
+- [x] 6.1 `/health` odpowiada po deployu — rewizja 00142, 200
+- [x] 6.2 Zapytanie kontrolne potwierdza brak duplikatów `external_id`
+      — 560 wierszy, 560 unikalnych, 0 duplikatów
 
 #### Manual
 
 - [ ] 6.3 Podgląd IKZE zgadza się z wyrocznią przed jakimkolwiek zapisem
-- [ ] 6.4 Po imporcie Głównego CBF ma 188,40, a S2B pozostaje nietknięty
+      — NIEDOMKNIĘTE: import wykonano zanim ten krok ruszył, więc „przed zapisem"
+      nie da się już odtworzyć. Odpowiednik sprawdzony w fazach 1, 3 i 4 na realnych
+      plikach, zanim cokolwiek trafiło do bazy
+- [x] 6.4 Po imporcie Głównego CBF ma 188,40, a S2B pozostaje nietknięty
+      — CBF 11 szt. po 188,40 (było 199,40), S2B 4 szt. po 0,01
 - [ ] 6.5 Zakładka „Wszystkie" natychmiast po commicie pokazuje dane po imporcie
+      — NIEDOMKNIĘTE: commit wykonał użytkownik, stanu cache w tamtym momencie nie
+      obserwowałem. Zachowanie pokryte break-verified testem e2e
 - [ ] 6.6 Powtórny import obu plików raportuje zero nowych operacji
-- [ ] 6.7 Sumy dywidend na produkcji zgadzają się z wyliczonymi
+      — czeka na zgodę użytkownika: jedyny krok fazy 6, który cokolwiek zapisuje
+- [x] 6.7 Sumy dywidend na produkcji zgadzają się z wyliczonymi
+      — Główny 2 290,71, IKZE 429,75
+
+### Phase 7: Poprawki zgłoszone po wdrożeniu
+
+#### Automated
+
+- [x] 7.1 Zapytanie o pozycje zawiera `daily_change_per_share` z obu źródeł kursów — 3d8f39d
+- [x] 7.2 Model odpowiedzi i scalanie „Wszystkie" przenoszą nowe pole — 3d8f39d
+- [x] 7.3 `delete_user_portfolio` kasuje z trzech tabel, wiersz portfela jako ostatni — 3d8f39d
+- [x] 7.4 `DELETE /api/portfolio/wallets/{id}` czyści cache portfela — 3d8f39d
+- [x] 7.5 Testy e2e usuwania, dropdownu i spinnera przechodzą (break-verified) — 3d8f39d
+- [x] 7.6 Pełny pakiet zielony — 3d8f39d
+
+#### Manual
+
+- [x] 7.7 Kafelek „Zmiana dzienna" i kafelek kalendarza za ten sam dzień pokazują tę samą liczbę — 3d8f39d
+- [x] 7.8 Dropdown „Dodaj portfel" nie oferuje typu, który użytkownik już ma — 3d8f39d
+
+### Phase 8: Wolne środki, zrealizowany wynik, wskaźnik w karcie
+
+#### Automated
+
+- [x] 8.1 Saldo z wiersza `Total`; brak wiersza to `None`, nie zero — 4de3ac8
+- [x] 8.2 FIFO: najstarszy lot, sortowanie, zakup przed sprzedażą w tej samej mikrosekundzie — 4de3ac8
+- [x] 8.3 Filtr roku nie psuje kosztu późniejszych sprzedaży — 4de3ac8
+- [x] 8.4 Sprzedaż bez zakupu raportowana w `unmatched_tickers` — 4de3ac8
+- [x] 8.5 Zakładka „Zrealizowane" pobiera dane i chowa się przy zmianie trybu — 4de3ac8
+- [x] 8.6 `_CASH` nie wycieka do interfejsu ani nie dostaje linku do ogłoszeń — 4de3ac8
+- [x] 8.7 Karta przeglądarki sygnalizuje żądanie i wraca do spoczynku (break-verified) — 4de3ac8
+- [x] 8.12 Ikona w karcie faktycznie się animuje — klatki na canvasie, test porównuje
+      dwie klatki w czasie (break-verified: zamrożona ikona wywala test) — 99b8db0
+- [x] 8.13 Ikona ładowania jest jedynym linkiem `rel=icon` w trakcie żądania, a po nim
+      wracają wszystkie oryginalne (break-verified: pozostawiony konkurent wywala test) — 691073d
+- [x] 8.14 Tytuł karty bez znacznika (glif czytał się jak druga, zamrożona ikona);
+      animacja 30 kl./s — zmierzone: 61 różnych klatek w 2 s — abe5a31
+- [x] 8.8 Podgląd importu ujawnia wolne środki — 4de3ac8
+- [x] 8.9 Pełny pakiet zielony — 920 testów (4de3ac8)
+
+#### Manual
+
+- [x] 8.10 Gotówka po 1,00 zł daje tę samą wartość w pozycjach, kalendarzu i wykresie
+      — 3 283,11 zł identycznie w trzech zapytaniach na realnym BigQuery
+- [x] 8.11 Zrealizowany wynik na realnych danych zgadza się z sumą per plik
+      — −845,63 zł = −554,22 (Główny) + −291,41 (IKZE), 21 spółek, zero bez ceny zakupu

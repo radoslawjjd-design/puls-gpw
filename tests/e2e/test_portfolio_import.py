@@ -44,6 +44,11 @@ _ROWS = [
     ["Dividend", "XTB.PL", "XTB SA", _T0, 60.0, "5", "", "My Trades"],
 ]
 
+# XTB closes the sheet with a Total whose Amount is the free-cash balance. Kept
+# out of _ROWS because normalize_operations treats it as a terminator, and the
+# preview reads it through its own path.
+_TOTAL_ROW = ["Total", None, None, None, 1234.56, None, None, None]
+
 
 def _export_bytes() -> bytes:
     """Synthesize an XTB-shaped export; the real files carry account numbers."""
@@ -57,6 +62,7 @@ def _export_bytes() -> bytes:
     ws.append(_HEADER)
     for row in _ROWS:
         ws.append(row)
+    ws.append(_TOTAL_ROW)
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
@@ -208,3 +214,103 @@ def test_escape_closes_the_import_modal(page: Page, live_server_url: str):
     page.keyboard.press("Escape")
 
     expect(page.locator("#pp-import-overlay")).to_be_hidden()
+
+
+# ── create-wallet-with-import (follow-up to PUL-95) ──────────────────────────
+
+
+def test_create_wallet_modal_offers_an_optional_import(page: Page, live_server_url: str):
+    """Risk: a new user has no wallet, so the plain import button has nowhere to write."""
+    _login_and_open(page, live_server_url)
+
+    page.locator("#pp-add-portfolio-btn").click()
+
+    expect(page.locator("#pp-add-portfolio-overlay")).to_be_visible()
+    expect(page.locator("#pp-new-broker")).to_be_visible()
+    expect(page.locator("#pp-new-file")).to_be_visible()
+    # The wallet-type control is still the primary input; import is the extra.
+    expect(page.locator("#pp-portfolio-type-select")).to_be_visible()
+
+
+def test_creating_a_wallet_with_a_file_imports_in_one_step(page: Page, live_server_url: str):
+    """Risk: the two calls are chained client-side, so a broken chain silently
+    leaves an empty wallet with no signal that the file was ignored."""
+    _login_and_open(page, live_server_url)
+
+    page.locator("#pp-add-portfolio-btn").click()
+    # 'glowny' already exists in the fixture and would 409 before reaching import.
+    page.locator("#pp-portfolio-type-select").select_option("ikze")
+    page.locator("#pp-new-file").set_input_files({
+        "name": "export.xlsx", "mimeType": _XLSX_MIME, "buffer": _export_bytes(),
+    })
+
+    with page.expect_response(re.compile(r"/api/portfolio/import/commit")):
+        page.locator("#pp-portfolio-modal-save").click()
+
+    expect(page.locator("#pp-add-portfolio-overlay")).to_be_hidden()
+    expect(page.locator("#pp-tbody")).to_contain_text("ZZZ")
+
+
+def test_creating_a_wallet_without_a_file_does_not_call_the_import(page: Page, live_server_url: str):
+    """Risk: import must stay optional — the plain create path has to remain untouched."""
+    _login_and_open(page, live_server_url)
+    calls = []
+    page.on("request", lambda r: calls.append(r.url) if "/import/" in r.url else None)
+
+    page.locator("#pp-add-portfolio-btn").click()
+    page.locator("#pp-portfolio-type-select").select_option("ike")
+    with page.expect_response(re.compile(r"/api/portfolio/wallets")):
+        page.locator("#pp-portfolio-modal-save").click()
+
+    expect(page.locator("#pp-add-portfolio-overlay")).to_be_hidden()
+    assert calls == [], f"import wywolany mimo braku pliku: {calls}"
+
+
+def test_with_no_wallets_the_import_button_opens_the_create_wallet_modal(
+    page: Page, live_server_url: str
+):
+    """Risk: with zero wallets the import button previously had no target at all.
+
+    The wallet list is emptied at the network layer rather than in the shared
+    conftest — PUL-90 showed that adding entities there destabilizes the suite.
+    """
+    page.route("**/api/portfolio/wallets",
+               lambda route: route.fulfill(status=200, content_type="application/json", body="[]")
+               if route.request.method == "GET" else route.continue_())
+    try:
+        e2e_login_email(page, live_server_url)
+        page.get_by_role("button", name="Mój portfel").click()
+
+        expect(page.locator("#pp-import-btn")).to_be_visible()
+        page.locator("#pp-import-btn").click()
+
+        # Routed to wallet creation, not to the import modal that has no target.
+        expect(page.locator("#pp-add-portfolio-overlay")).to_be_visible()
+        expect(page.locator("#pp-import-overlay")).to_be_hidden()
+        expect(page.locator("#pp-new-file")).to_be_visible()
+    finally:
+        page.unroute_all(behavior="ignoreErrors")
+
+
+def test_preview_discloses_the_free_cash_the_commit_will_write(page: Page, live_server_url: str):
+    """Risk: the commit writes a cash position, so the preview has to say so.
+
+    The whole point of the preview is that nothing lands unannounced — a PLN row
+    appearing in the portfolio out of nowhere would be indistinguishable from a
+    bug. The synthesized workbook carries a Total row, which is where XTB states
+    the balance.
+    """
+    _login_and_open(page, live_server_url)
+    page.locator("#pp-import-btn").click()
+    page.locator("#pp-import-file").set_input_files(
+        files=[{"name": "xtb.xlsx", "mimeType": _XLSX_MIME, "buffer": _export_bytes()}]
+    )
+
+    with page.expect_response(re.compile(r"/api/portfolio/import/preview")):
+        page.locator("#pp-import-preview-btn").click()
+
+    cash = page.locator("#pp-import-cash")
+    expect(cash).to_be_visible()
+    expect(cash).to_contain_text("Wolne środki")
+    # \s, not a literal space: pl-PL groups thousands with a non-breaking space.
+    expect(cash).to_contain_text(re.compile(r"1\s?234,56"))

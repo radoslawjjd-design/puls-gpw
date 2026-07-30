@@ -863,6 +863,22 @@ def test_current_price_skips_rows_without_a_close():
     )
 
 
+def test_positions_query_returns_the_absolute_daily_move_not_only_the_percentage():
+    """The summary tile has to agree with the calendar for the same session.
+
+    The calendar sums shares x zmiana_kwotowa. The table used to re-derive the
+    move as current_price x pct, which measures the change against the *closing*
+    price where the exchange measures it against the previous close — so the two
+    surfaces disagreed by the day's own factor (measured on the owner's real
+    wallet: -99.56 vs the calendar's -102.08 on 2026-07-29). Shipping the
+    absolute figure removes the derivation instead of correcting it.
+    """
+    q = _capture_positions_query()
+    assert "daily_change_per_share" in q
+    # from both price sources, so ETFs are covered too
+    assert "COALESCE(ls.zmiana_kwotowa, etf.zmiana_kwotowa)" in q
+
+
 # ── portfolio positions endpoints (PUL-65) ────────────────────────────────────
 
 _POSITION_WITH_PRICE = {
@@ -1012,6 +1028,36 @@ def test_merge_positions_carries_company_name_and_skips_priceless_rows():
     assert m["company_name"] == "PKO BP"  # first non-null wins for company_name
     assert m["current_price"] == 50.0     # market data from the priced row
     assert m["price_history"] == [50.0]
+
+
+def test_merge_positions_carries_the_absolute_daily_move():
+    """The "Wszystkie" view merges rows per ticker; a market field missing from
+    the carried bundle arrives as None and silently drops out of the summary."""
+    from src.api import _merge_positions_by_ticker
+
+    rows = [
+        {"ticker": "PKO", "company_name": "PKO BP", "shares": 10.0, "avg_buy_price": 40.0,
+         "current_price": 50.0, "daily_change_pct": 1.5, "daily_change_per_share": 0.74,
+         "price_as_of": "2026-06-27", "price_history": [50.0]},
+        {"ticker": "PKO", "company_name": "PKO BP", "shares": 30.0, "avg_buy_price": 60.0,
+         "current_price": 50.0, "daily_change_pct": 1.5, "daily_change_per_share": 0.74,
+         "price_as_of": "2026-06-27", "price_history": [50.0]},
+    ]
+    merged = _merge_positions_by_ticker(rows)
+    assert merged[0]["daily_change_per_share"] == 0.74
+    assert merged[0]["shares"] == 40.0
+
+
+def test_positions_response_exposes_the_absolute_daily_move(user_client):
+    """End to end: the field has to survive the response model, which drops extras."""
+    row = dict(_POSITION_WITH_PRICE, daily_change_per_share=0.77)
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_user_portfolio_positions", return_value=[row]),
+    ):
+        r = user_client.get(f"/api/portfolio/positions?portfolio_id={_WALLET_ID}")
+    assert r.status_code == 200
+    assert r.json()[0]["daily_change_per_share"] == 0.77
 
 
 def test_merge_positions_carries_freshest_price_not_first_or_last():
@@ -2111,3 +2157,33 @@ def test_perf_invalidate_clears_history_the_all_sentinel_and_dividends():
 
     assert [k for k in keys if k in m._PERF_CACHE] == []
     assert "positions:other-user:w" in m._PERF_CACHE
+
+
+def test_deleting_a_wallet_clears_the_caches_that_still_show_it(user_client):
+    """The UI refetches immediately after the delete, well inside the cache window.
+
+    Without invalidation the "Wszystkie" aggregate, the calendar, the chart and the
+    treemap keep serving the deleted wallet's holdings — which reads as "the delete
+    did not work" even though it did.
+    """
+    import src.api as m
+
+    keys = [
+        f"positions:{_CLIENT_ID}:all",
+        f"calendar:{_CLIENT_ID}:all:2026-7",
+        f"history:{_CLIENT_ID}:all:1y",
+        f"dividends:{_CLIENT_ID}:all:2026",
+        f"treemap:{_CLIENT_ID}",
+    ]
+    for key in keys:
+        m._perf_set(key, ["stale"])
+
+    with (
+        patch("src.api.list_user_portfolios", return_value=[{"portfolio_id": _WALLET_ID}]),
+        patch("src.api.delete_user_portfolio") as delete_wallet,
+    ):
+        r = user_client.delete(f"/api/portfolio/wallets/{_WALLET_ID}")
+
+    assert r.status_code == 204
+    delete_wallet.assert_called_once_with(_CLIENT_ID, _WALLET_ID)
+    assert [k for k in keys if k in m._PERF_CACHE] == []

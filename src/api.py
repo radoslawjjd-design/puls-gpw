@@ -43,6 +43,7 @@ from db.bigquery import (
     get_notification_settings,
     upsert_notification_settings,
     delete_announcement,
+    CASH_TICKER,
     delete_user_portfolio,
     delete_user_portfolio_position,
     delete_user_portfolio_positions,
@@ -65,6 +66,7 @@ from db.bigquery import (
     list_distinct_portfolio_tickers,
     list_etf_instruments_for_autocomplete,
     list_top_announcements_public,
+    list_broker_trades,
     list_user_portfolio_positions,
     get_portfolio_calendar_data,
     get_portfolio_history,
@@ -81,6 +83,7 @@ from src.auth import router as auth_router
 from src.brokers import BrokerImportError, get_parser
 from src.brokers.xtb import normalize_ticker
 from src.portfolio_calendar import compute_calendar_pnl
+from src.portfolio_realized import compute_realized_pnl
 from src.portfolio_treemap import compute_treemap_positions, compute_user_portfolio_treemap_positions
 
 _AC_CACHE: dict[str, tuple[list, float]] = {}
@@ -124,7 +127,7 @@ def _perf_invalidate_portfolio(user_id: str, portfolio_id: str) -> None:
         _PERF_CACHE.pop(f"positions:{user_id}:{scope}", None)
     # calendar and history both branch on a trailing segment (month, range), so
     # they need a prefix scan rather than a single key.
-    prefixes = [f"dividends:{user_id}:"]
+    prefixes = [f"dividends:{user_id}:", f"realized:{user_id}:"]
     for scope in (portfolio_id, _ALL_PORTFOLIOS):
         prefixes += [f"calendar:{user_id}:{scope}:", f"history:{user_id}:{scope}:"]
     for k in [k for k in _PERF_CACHE if any(k.startswith(p) for p in prefixes)]:
@@ -338,6 +341,9 @@ class ImportPreviewResponse(BaseModel):
     # live here: a broker export structurally cannot contain them.
     untouched: list[str] = []
     dividends_new: int = 0
+    # None means the export did not state a balance — deliberately distinct from
+    # 0.0, which means the account really is empty.
+    cash_pln: float | None = None
     warnings: list[str] = []
 
 
@@ -408,6 +414,7 @@ def _resolve_import(user_id: str, portfolio_id: str, broker: str, data: bytes):
         # Events present in the file. The merge is insert-only, so on a re-import
         # none of them land — this is an upper bound, not a delta.
         dividends_new=len(parsed.dividends),
+        cash_pln=getattr(parsed, "cash_pln", None),
         warnings=list(parsed.warnings),
     )
     positions = [
@@ -419,7 +426,32 @@ def _resolve_import(user_id: str, portfolio_id: str, broker: str, data: bytes):
         }
         for p in parsed.positions
     ]
+    cash = _cash_position(getattr(parsed, "cash_pln", None))
+    if cash is not None:
+        positions.append(cash)
     return preview, positions, closed, parsed
+
+
+def _cash_position(cash_pln: float | None) -> dict | None:
+    """Uninvested cash as an ordinary position, or None when there is none to show.
+
+    Stored as a position rather than a column on the wallet so the table, the
+    treemap, the calendar and the value chart all count it through the path they
+    already use. Priced at 1.00 PLN, so shares carry the balance.
+
+    A balance the export did not state (None) is skipped, and so is a
+    non-positive one: a zero row is noise, and XTB can report a small negative
+    balance on an account mid-settlement, which as a position would read as a
+    short and subtract from the portfolio's value.
+    """
+    if cash_pln is None or cash_pln <= 0.005:
+        return None
+    return {
+        "ticker": CASH_TICKER,
+        "company_name": "Wolne środki",
+        "shares": round(float(cash_pln), 2),
+        "avg_buy_price": 1.0,
+    }
 
 
 def _operation_rows(user_id: str, portfolio_id: str, broker: str, parsed, source_file: str) -> list[dict]:
@@ -502,6 +534,11 @@ class PortfolioPositionOut(BaseModel):
     avg_buy_price: float
     current_price: float | None = None
     daily_change_pct: float | None = None
+    # The session's move in PLN per share. Shipped alongside the percentage so the
+    # summary tile can sum shares x this number — the same arithmetic the calendar
+    # does — instead of re-deriving it from the percentage and landing on a
+    # different total for the same day.
+    daily_change_per_share: float | None = None
     pnl_pln: float | None = None
     pnl_pct: float | None = None
     price_as_of: str | None = None
@@ -515,6 +552,7 @@ _ALL_PORTFOLIOS = "all"
 _POSITION_MARKET_FIELDS = (
     "current_price",
     "daily_change_pct",
+    "daily_change_per_share",
     "price_as_of",
     "price_history",
 )
@@ -1094,6 +1132,10 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in DELETE /api/portfolio/wallets/%s: %s", portfolio_id, exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        # Without this the "Wszystkie" aggregate, the calendar, the chart and the
+        # treemap keep serving the deleted wallet's holdings for the rest of the
+        # cache window — the refetch right after the delete lands inside it.
+        _perf_invalidate_portfolio(user_id, portfolio_id)
 
     @app.get("/api/portfolio/treemap")
     async def get_portfolio_treemap(
@@ -1313,6 +1355,49 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/dividends: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        _perf_set(cache_key, result)
+        return result
+
+    @app.get("/api/portfolio/realized")
+    async def get_portfolio_realized(
+        portfolio_id: str = Query(...),
+        year: str | None = Query(None),
+        role: Role = Depends(_get_role),
+        user_id: str = Depends(_get_user_id),
+    ):
+        """Realized profit/loss on what has been sold, matched FIFO.
+
+        Separate from the dividend totals on purpose: a dividend is cash the
+        company paid, a realized result is what a sale returned against what the
+        shares cost. One combined number would hide which of the two the
+        portfolio is actually living on.
+        """
+        # Validated before the key is built, like the dividends endpoint: an
+        # unchecked value goes straight into the cache key and carves out an entry.
+        parsed_year: int | None = None
+        if year not in (None, "", "all"):
+            if not year.isdigit():
+                raise HTTPException(status_code=422, detail="year must be a four-digit year")
+            parsed_year = int(year)
+        cache_key = f"realized:{user_id}:{portfolio_id}:{parsed_year or 'all'}"
+        cached = _perf_get(cache_key, ttl=300)
+        if cached is not None:
+            return cached
+        all_mode = portfolio_id == _ALL_PORTFOLIOS
+        if not all_mode:
+            try:
+                wallets = list_user_portfolios(user_id)
+            except BigQueryError as exc:
+                logger.error("BQ error listing wallets in GET /api/portfolio/realized: %s", exc)
+                raise HTTPException(status_code=500, detail=str(exc))
+            if not any(w["portfolio_id"] == portfolio_id for w in wallets):
+                raise HTTPException(status_code=404, detail="Wallet not found")
+        try:
+            trades = list_broker_trades(user_id, None if all_mode else portfolio_id)
+        except BigQueryError as exc:
+            logger.error("BQ error in GET /api/portfolio/realized: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+        result = compute_realized_pnl(trades, parsed_year)
         _perf_set(cache_key, result)
         return result
 

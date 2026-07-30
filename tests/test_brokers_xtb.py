@@ -15,6 +15,7 @@ from src.brokers.xtb import (
     OP_SELL,
     OP_WITHHOLDING_TAX,
     Operation,
+    extract_cash_balance,
     extract_dividends,
     normalize_operations,
     parse_trade_comment,
@@ -448,3 +449,54 @@ def test_buys_are_ordered_by_time_not_by_input_order():
 
     # The day-2 lot at 100 is the oldest and must be the one consumed.
     assert positions[0].avg_buy_price == pytest.approx(200.0)
+
+
+# ── free cash (PUL-95 Phase 8) ────────────────────────────────────────────────
+
+
+def test_cash_balance_comes_from_the_total_row_not_from_the_parsed_rows():
+    """The Total is the broker's own net of every movement — including the ones
+    the parser deliberately drops. Re-adding only what was imported gives a
+    different number (measured on the real Glowny export: 84.03 vs 143.94, the
+    gap being foreign trades)."""
+    rows = [
+        _row("Stock purchase", "PKO.PL", "PKO", amount=-1000.0, comment="OPEN BUY 10 @ 100.00"),
+        _row("Stock purchase", "AAPL.US", "Apple", amount=-500.0, comment="OPEN BUY 2 @ 250.00"),
+        _row("Deposit", amount=2000.0, oid="d1"),
+        {"Type": "Total", "Ticker": None, "Instrument": None, "Time": None, "Amount": 500.0},
+    ]
+
+    assert extract_cash_balance(rows) == pytest.approx(500.0)
+
+    # And the parsed operations really do disagree — the foreign row is dropped.
+    operations, warnings = normalize_operations(rows)
+    assert sum(op.amount_pln for op in operations) == pytest.approx(1000.0)
+    assert len(warnings) == 1
+
+
+def test_a_missing_total_row_means_unknown_not_zero():
+    """Zero cash and unknown cash are different facts and must not render alike."""
+    assert extract_cash_balance([_row("Deposit", amount=100.0)]) is None
+    assert extract_cash_balance([]) is None
+
+
+def test_a_non_numeric_total_does_not_take_the_import_down():
+    rows = [{"Type": "Total", "Amount": "n/d"}]
+    assert extract_cash_balance(rows) is None
+
+
+def test_parse_export_carries_the_cash_balance_through():
+    wb = Workbook()
+    sheet = wb.active
+    sheet.title = "Cash Operations"
+    sheet.append(["Type", "Ticker", "Instrument", "Time", "Amount", "ID", "Comment"])
+    sheet.append(["Stock purchase", "PKO.PL", "PKO", datetime(2026, 1, 2, 9, 0),
+                  -1000.0, "1", "OPEN BUY 10 @ 100.00"])
+    sheet.append(["Deposit", None, None, datetime(2026, 1, 1, 9, 0), 1500.0, "2", ""])
+    sheet.append(["Total", None, None, None, 500.0, None, None])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+
+    result = parse_xtb_export(buffer.getvalue())
+
+    assert result.cash_pln == pytest.approx(500.0)

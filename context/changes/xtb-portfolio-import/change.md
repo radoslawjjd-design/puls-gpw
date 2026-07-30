@@ -3,7 +3,7 @@ change_id: xtb-portfolio-import
 title: Import positions and dividends from an XTB broker export
 status: implementing
 created: 2026-07-29
-updated: 2026-07-29
+updated: 2026-07-30
 archived_at: null
 tracking:
   linear: PUL-95
