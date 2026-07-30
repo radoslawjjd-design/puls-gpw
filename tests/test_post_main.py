@@ -217,3 +217,34 @@ def test_publish_belt_allows_numbered_results(monkeypatch, bq_mocks):
 
     assert status == "published"
     bq_mocks["publisher"].publish_thread.assert_called_once_with(_NUMBERED_RESULTS)
+
+
+# ── Failure e-mail wording ────────────────────────────────────────────────────
+
+def test_failure_email_leads_with_the_supervisor_and_names_the_issues():
+    """The 2026-07-30 evening run: one 429 and two identical supervisor rejections.
+
+    The old wording opened with "Gemini API niedostępny" and never mentioned LUG,
+    which pointed the reader at a quota problem that was not the blocker.
+    """
+    reason = post_main._failure_reason(1, 2, ["missing (LUG) in body tweets"])
+
+    assert reason.startswith("Supervisor odrzucił 2 z 3 prób")
+    assert "missing (LUG) in body tweets" in reason
+
+
+def test_failure_email_does_not_assert_a_429_it_cannot_know():
+    """generate_post returns None for malformed JSON exactly as it does for a rate
+    limit, so naming 429 as the cause was a guess printed as a fact."""
+    reason = post_main._failure_reason(3, 0, [])
+
+    assert "429 RESOURCE_EXHAUSTED" not in reason
+    assert "nie zwróciło poprawnej odpowiedzi" in reason
+
+
+def test_failure_email_for_a_pure_supervisor_failure_lists_every_distinct_issue():
+    reason = post_main._failure_reason(0, 3, ["missing #GPW in last tweet", "tweet 2 too long"])
+
+    assert reason.startswith("Supervisor odrzucił wszystkie 3 próby.")
+    assert "- missing #GPW in last tweet" in reason
+    assert "- tweet 2 too long" in reason

@@ -7,6 +7,7 @@ from src.post_generator import (
     _build_tickers_str,
     _normalize_ticker_spacing,
     _enforce_body_cashtag,
+    _enforce_body_ticker_ref,
     _strip_domain_suffix,
     _enforce_length,
     _HOOK_VARIANTS,
@@ -68,6 +69,28 @@ def test_happy_path_returns_generated_post():
     assert isinstance(result, GeneratedPost)
     assert len(result.tweets) == 6
     assert result.tweets[0] == _SIX_TWEETS[0]
+
+
+def test_a_body_tweet_missing_its_paren_ticker_is_repaired_end_to_end():
+    """The helper passing in isolation proves nothing about the pipeline — the repair
+    has to be wired into generate_post's per-tweet loop, and it has to run before
+    _enforce_length so the added characters are inside the trim's budget.
+
+    This is the 2026-07-30 failure in miniature: Gemini names the company, omits the
+    parenthesised ticker, and the supervisor throws the whole thread away.
+    """
+    tweets = [
+        "🚨 2 kluczowe ESPI z GPW dzisiaj:",
+        "📊 PKO\nWyniki Q1: 120,1 mln PLN zysku netto.",
+        "📊 XTB ( $XTB )\nWzrost klientów o 27%.",
+        "Która spółka Cię interesuje? #GPW Nie jest to rekomendacja inwestycyjna.",
+    ]
+    payload = json.dumps({"tweets": tweets}, ensure_ascii=False)
+    with patch("src.post_generator.get_client", return_value=_mock_client(payload)):
+        result = generate_post(_ANNOUNCEMENTS)
+
+    assert "( $PKO )" in result.tweets[1]
+    assert validate_post(result, ["XTB", "PKO"], expected_tweets=4).approved
 
 
 # ── Failure paths ─────────────────────────────────────────────────────────────
@@ -189,6 +212,49 @@ def test_enforce_body_cashtag_noop_on_multiple_tickers():
     # Several distinct tickers (e.g. a closing line) → ambiguous, leave untouched.
     tweet = "( PKO ), ( XTB ) czy ( LBW )?"
     assert _enforce_body_cashtag(tweet) == tweet
+
+
+def test_enforce_body_ticker_ref_adds_the_paren_the_supervisor_requires():
+    """The 2026-07-30 regression: Gemini named LUG but never parenthesised it, the
+    supervisor rejected twice on `missing (LUG)`, and the window lost its post."""
+    tweet = "📊 LUG\nUkład przyjęty przez większość wierzycieli."
+    out = _enforce_body_ticker_ref(tweet, ["GTS", "LUG", "ARL"])
+    assert out == "📊 LUG ( $LUG )\nUkład przyjęty przez większość wierzycieli."
+    # The repaired tweet has to satisfy the supervisor's own check, not merely look right.
+    assert validate_post(GeneratedPost(tweets=["hook", out, "closing"]), ["LUG"]).issues == [
+        "missing #GPW in last tweet",
+        "missing disclaimer ('rekomendacj') in last tweet",
+    ]
+
+
+def test_enforce_body_ticker_ref_is_a_noop_when_already_parenthesised():
+    tweet = "📊 LUG ( $LUG )\nUkład przyjęty."
+    assert _enforce_body_ticker_ref(tweet, ["LUG"]) == tweet
+
+
+def test_enforce_body_ticker_ref_marks_only_the_first_mention():
+    """A second `( $LUG )` in the same tweet would read as a duplicate cashtag."""
+    out = _enforce_body_ticker_ref("LUG rośnie, a LUG dalej rośnie", ["LUG"])
+    assert out == "LUG ( $LUG ) rośnie, a LUG dalej rośnie"
+
+
+def test_enforce_body_ticker_ref_refuses_to_guess_between_two_companies():
+    """Two tickers named means the tweet's subject is ambiguous. Labelling it with
+    the wrong company is a factual error on a public post — worse than no post."""
+    tweet = "GTS i ARL podpisały umowę"
+    assert _enforce_body_ticker_ref(tweet, ["GTS", "ARL"]) == tweet
+
+
+def test_enforce_body_ticker_ref_leaves_a_tweet_naming_no_ticker_alone():
+    """"Geotrans" without "GTS" gives nothing to key the repair on."""
+    tweet = "📊 Geotrans\nPrzychody spadły o 51%."
+    assert _enforce_body_ticker_ref(tweet, ["GTS"]) == tweet
+
+
+def test_enforce_body_ticker_ref_does_not_fire_inside_a_longer_word():
+    """`\\b` matters: LUG inside "SLUGI" is not a ticker mention."""
+    tweet = "SLUGI wzrosły"
+    assert _enforce_body_ticker_ref(tweet, ["LUG"]) == tweet
 
 
 def test_enforce_body_cashtag_leaves_year_alone():

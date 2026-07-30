@@ -200,6 +200,40 @@ def _detect_window(now_warsaw: datetime) -> str | None:
     return None
 
 
+def _failure_reason(
+    gemini_failures: int, supervisor_failures: int, issues: list[str]
+) -> str:
+    """Explain a window that produced no post, leading with the cause we actually know.
+
+    The supervisor's verdict is specific and actionable ("missing (LUG) in body
+    tweets"); a Gemini call failure is not, so the supervisor leads whenever it
+    rejected anything. The previous wording did the opposite — it opened with Gemini
+    and asserted `429 RESOURCE_EXHAUSTED` unconditionally, even though
+    `generate_post` returns None for a malformed-JSON response just as readily as
+    for a rate limit. On 2026-07-30 that put a quota error at the top of an e-mail
+    about a run whose blocker was two identical supervisor rejections.
+    """
+    total = _MAX_ATTEMPTS
+    issues_block = ""
+    if issues:
+        issues_block = "\n\nPowody odrzucenia:\n" + "\n".join(f"- {i}" for i in issues)
+
+    if supervisor_failures and gemini_failures:
+        return (
+            f"Supervisor odrzucił {supervisor_failures} z {total} prób; w pozostałych "
+            f"{gemini_failures} Gemini nie zwróciło poprawnej odpowiedzi "
+            f"(np. błąd 429 lub niepoprawny JSON — szczegóły w logach joba)."
+            f"{issues_block}"
+        )
+    if supervisor_failures:
+        return f"Supervisor odrzucił wszystkie {total} próby.{issues_block}"
+    return (
+        f"Gemini nie zwróciło poprawnej odpowiedzi w żadnej z {total} prób "
+        f"(np. błąd 429 lub niepoprawny JSON — szczegóły w logach joba). "
+        f"Spróbuj ponownie za kilka minut."
+    )
+
+
 def _window_bounds(window: str, now_warsaw: datetime) -> tuple[datetime, datetime]:
     today = now_warsaw.date()
     if window == "ranek":
@@ -275,6 +309,7 @@ def main() -> None:
         previous_issues: list[str] | None = None
         gemini_failures = 0
         supervisor_failures = 0
+        rejection_issues: list[str] = []
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             post = generate_post(announcements, window=window, previous_issues=previous_issues)
             if post is None:
@@ -308,25 +343,28 @@ def main() -> None:
                 )
                 return
             logger.warning("post_main: attempt %d rejected: %s", attempt, result.issues)
+            # The rejected thread itself, not just the verdict. A failed window saves
+            # post_text=NULL, so without this the text that failed is gone the moment
+            # the job exits — which is exactly why the 2026-07-30 LUG rejection could
+            # not be diagnosed after the fact.
+            logger.warning(
+                "post_main: rejected thread (attempt %d):\n%s",
+                attempt,
+                "\n---\n".join(post.tweets),
+            )
             supervisor_failures += 1
             previous_issues = result.issues
+            for issue in result.issues:
+                if issue not in rejection_issues:
+                    rejection_issues.append(issue)
 
         save_x_post(ann_ids, None, window, _MAX_ATTEMPTS)
         logger.warning("post_main: all %d attempts failed for window %s", _MAX_ATTEMPTS, window)
-        if gemini_failures == _MAX_ATTEMPTS:
-            failure_reason = (
-                f"Gemini API niedostępny — wszystkie {_MAX_ATTEMPTS} próby zwróciły błąd "
-                "429 RESOURCE_EXHAUSTED. Spróbuj ponownie za kilka minut."
-            )
-        elif gemini_failures > 0:
-            failure_reason = (
-                f"Gemini API niedostępny w {gemini_failures}/{_MAX_ATTEMPTS} próbach "
-                f"(429 RESOURCE_EXHAUSTED); supervisor odrzucił {supervisor_failures} "
-                f"{'próbę' if supervisor_failures == 1 else 'próby'}."
-            )
-        else:
-            failure_reason = f"Supervisor odrzucił wszystkie {_MAX_ATTEMPTS} próby."
-        send_no_post_email(window_name, date_str, failure_reason)
+        send_no_post_email(
+            window_name,
+            date_str,
+            _failure_reason(gemini_failures, supervisor_failures, rejection_issues),
+        )
 
     except Exception as exc:
         logger.exception("post_main: pipeline failed")
