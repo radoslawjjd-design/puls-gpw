@@ -929,7 +929,15 @@ historię sprzedaży.
    wywołań osobno.
    Favicon rysowany jest **klatka po klatce na canvasie**, nie jako animowany SVG:
    przeglądarki renderują favicon SVG jako obraz statyczny i ignorują SMIL, więc
-   pierwsza wersja wyglądała jak zamrożony, popsuty łuk. Wygląd wybrany przez
+   pierwsza wersja wyglądała jak zamrożony, popsuty łuk.
+   Druga pułapka, znaleziona dopiero na realnej karcie: `<head>` deklaruje **cztery**
+   linki do ikon, a przeglądarka wybiera z całego zestawu. Podmiana jednego z nich
+   (`sizes="32x32"`) nie wystarczała — Chrome malował inny link i animacja nie
+   docierała do karty, mimo że każde twierdzenie o atrybutach w teście przechodziło.
+   Na czas ładowania wszystkie konkurencyjne linki są więc odpinane, a w ich miejsce
+   wstawiany jest jeden, **tworzony od nowa przy każdej klatce** (Chrome odświeża
+   pewnie przy wstawieniu elementu, a szybkie zmiany `href` scala lub gubi).
+   Po zakończeniu oryginalne linki wracają w swojej kolejności. Wygląd wybrany przez
    wyrenderowanie sześciu wariantów w **16 px** — rozmiarze, w jakim karta go
    naprawdę pokazuje — na jasnym i ciemnym pasku kart. Wygrał gruby złoty łuk bez
    wypełnionej tarczy: pierścień wewnątrz tarczy nie mieści się w 16 px, a granat
@@ -1188,6 +1196,8 @@ zamkniętych jest jedyną operacją nieodwracalną bez takiego zrzutu.
 - [x] 8.7 Karta przeglądarki sygnalizuje żądanie i wraca do spoczynku (break-verified) — 4de3ac8
 - [x] 8.12 Ikona w karcie faktycznie się animuje — klatki na canvasie, test porównuje
       dwie klatki w czasie (break-verified: zamrożona ikona wywala test)
+- [x] 8.13 Ikona ładowania jest jedynym linkiem `rel=icon` w trakcie żądania, a po nim
+      wracają wszystkie oryginalne (break-verified: pozostawiony konkurent wywala test)
 - [x] 8.8 Podgląd importu ujawnia wolne środki — 4de3ac8
 - [x] 8.9 Pełny pakiet zielony — 920 testów (4de3ac8)
 

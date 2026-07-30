@@ -2433,9 +2433,10 @@ const _TAB_BUSY_PREFIX = '⟳ ';
 // ignore SMIL, so <animateTransform> produced a frozen arc that just looked like
 // a broken icon. Canvas + href swap is the only approach that actually moves.
 const _TAB_ICON_PX = 32;
-// ~14 fps. Fast enough to read as motion, slow enough that a toDataURL per frame
-// stays irrelevant next to the request it is reporting on.
-const _TAB_FRAME_MS = 70;
+// ~11 fps. Fast enough to read as motion, slow enough that Chrome does not
+// coalesce the icon churn, and a toDataURL per frame stays irrelevant next to
+// the request it is reporting on.
+const _TAB_FRAME_MS = 90;
 // Chosen by rendering six candidates at 16px — the size a tab actually shows —
 // against both a light and a dark tab strip. No filled disc: at 16px a ring
 // inside a disc leaves too little room and turns into a dark smudge. Gold is the
@@ -2477,22 +2478,47 @@ function _tabFrame(angle) {
 
 let _tabBusyCount = 0;
 let _tabBusyTimer = null;
-let _tabIdleIcon = null;
 let _tabAnimTimer = null;
 let _tabAngle = 0;
+let _tabParkedIcons = null;   // the page's own icon links, detached while busy
+let _tabBusyLink = null;
+
+// The head declares four icon links (32x32, 16x16, .ico, apple-touch). The tab
+// icon is chosen from that whole set, so mutating one of them is not enough —
+// updating only the 32x32 link left Chrome painting a different one and the
+// animation never showed. Every competing link is therefore detached for the
+// duration and a single unambiguous one is installed in their place.
+function _tabPageIconLinks() {
+  return Array.from(
+    document.querySelectorAll('link[rel~="icon"], link[rel="shortcut icon"]')
+  ).filter(link => link !== _tabBusyLink);
+}
+
+// A fresh element per frame rather than a new href on the same one: Chrome
+// repaints dependably on insertion, and coalesces or drops rapid href mutations.
+function _tabPaintFrame(href) {
+  const link = document.createElement('link');
+  link.id = 'app-favicon-busy';
+  link.rel = 'icon';
+  link.type = 'image/png';
+  link.href = href;
+  if (_tabBusyLink && _tabBusyLink.parentNode) _tabBusyLink.remove();
+  document.head.appendChild(link);
+  _tabBusyLink = link;
+}
 
 function _tabShowBusy() {
   if (!document.title.startsWith(_TAB_BUSY_PREFIX)) {
     document.title = _TAB_BUSY_PREFIX + _TAB_IDLE_TITLE;
   }
   if (_tabAnimTimer !== null) return;
-  const link = document.getElementById('app-favicon');
-  if (!link) return;
-  if (_tabIdleIcon === null) _tabIdleIcon = link.getAttribute('href');
-  link.type = 'image/png';
+  if (_tabParkedIcons === null) {
+    _tabParkedIcons = _tabPageIconLinks();
+    _tabParkedIcons.forEach(link => link.remove());
+  }
   const tick = () => {
     _tabAngle = (_tabAngle + Math.PI / 6) % (Math.PI * 2);
-    link.setAttribute('href', _tabFrame(_tabAngle));
+    _tabPaintFrame(_tabFrame(_tabAngle));
   };
   tick();  // first frame now, so the icon changes on the same turn
   _tabAnimTimer = setInterval(tick, _TAB_FRAME_MS);
@@ -2500,10 +2526,13 @@ function _tabShowBusy() {
 
 function _tabClearBusy() {
   if (_tabAnimTimer !== null) { clearInterval(_tabAnimTimer); _tabAnimTimer = null; }
-  const link = document.getElementById('app-favicon');
-  if (link && _tabIdleIcon !== null) {
-    link.type = 'image/png';
-    link.setAttribute('href', _tabIdleIcon);
+  if (_tabBusyLink && _tabBusyLink.parentNode) _tabBusyLink.remove();
+  _tabBusyLink = null;
+  if (_tabParkedIcons !== null) {
+    // Re-attached in their original order so the browser's own choice among them
+    // is exactly what it was before the request started.
+    _tabParkedIcons.forEach(link => document.head.appendChild(link));
+    _tabParkedIcons = null;
   }
   document.title = _TAB_IDLE_TITLE;
 }
