@@ -211,6 +211,47 @@ def test_the_picker_offers_no_month_that_has_not_happened_yet(page: Page, live_s
     months = page.locator("#pp-cal-picker-month option")
     expect(months).to_have_count(date.today().month)
 
-    # A past year is unrestricted — the cut is about "not yet", not about the picker.
+    # A past year within the wallet's life is unrestricted — the cut is about "not
+    # yet", not about the picker.
     page.locator("#pp-cal-picker-year").select_option(str(date.today().year - 1))
     expect(months).to_have_count(12)
+
+
+# ── PUL-115: the picker is bounded by the wallet, not by a round number ───────
+
+def test_the_picker_offers_no_year_before_the_wallet_existed(
+    page: Page, live_server_url: str
+):
+    """Risk (PUL-115): the floor was a flat ten years, chosen because nothing on the
+    client knew when the wallet began. Five of those years the API rejected outright
+    (422), so the picker could produce "Błąd ładowania kalendarza" on its own.
+
+    Fixture inception: conftest._FAKE_INCEPTION — 1 March, two years back.
+    """
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    _open_calendar_tab(page)
+
+    page.get_by_role("button", name="Wybierz miesiąc i rok").click()
+    years = page.locator("#pp-cal-picker-year option")
+    values = years.evaluate_all("opts => opts.map(o => Number(o.value))")
+
+    assert min(values) == date.today().year - 2, values
+    assert max(values) == date.today().year, values
+
+
+def test_the_picker_offers_no_month_before_the_wallet_held_anything(
+    page: Page, live_server_url: str
+):
+    """Risk (PUL-115): a bound that only rounds to the year still offers January and
+    February of an inception year that starts in March — months with nothing in them."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    _open_calendar_tab(page)
+
+    page.get_by_role("button", name="Wybierz miesiąc i rok").click()
+    page.locator("#pp-cal-picker-year").select_option(str(date.today().year - 2))
+
+    months = page.locator("#pp-cal-picker-month option")
+    values = months.evaluate_all("opts => opts.map(o => Number(o.value))")
+    assert values == list(range(3, 13)), values

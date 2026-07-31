@@ -1685,9 +1685,63 @@ def test_get_portfolio_calendar_returns_422_when_month_zero(user_client):
 def test_get_portfolio_calendar_returns_422_when_year_too_old(user_client):
     with patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]):
         r = user_client.get(
-            f"/api/portfolio/calendar?year=2010&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
+            f"/api/portfolio/calendar?year=1990&month=6&portfolio_id={_CAL_PORTFOLIO_ID}",
         )
     assert r.status_code == 422
+
+
+def test_get_portfolio_calendar_accepts_a_year_the_picker_offers(user_client):
+    """PUL-115: the floor was five years while the picker offered ten, so half of
+    what it offered came back 422 and the user saw "Błąd ładowania kalendarza".
+    A wallet's imported history reaches as far back as the broker's export does."""
+    year = date.today().year - 8
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_calendar_data", return_value=[]),
+        patch("src.api.get_portfolio_inception", return_value=date(year, 3, 9)),
+        patch("src.api.compute_calendar_pnl", return_value={**_CAL_RESPONSE, "year": year, "month": 3}),
+    ):
+        r = user_client.get(
+            f"/api/portfolio/calendar?year={year}&month=3&portfolio_id={_CAL_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 200
+
+
+def test_get_portfolio_calendar_carries_the_wallet_inception(user_client):
+    """PUL-115: the picker cannot bound itself — nothing on the client knows when the
+    wallet began, and created_at is not it (the import backfills older operations)."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_calendar_data", return_value=[]),
+        patch("src.api.get_portfolio_inception", return_value=date(2023, 4, 17)) as mock_inc,
+        patch("src.api.compute_calendar_pnl", return_value=_CAL_RESPONSE),
+    ):
+        r = user_client.get(
+            f"/api/portfolio/calendar?year=2026&month=5&portfolio_id={_CAL_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 200
+    assert r.json()["inception"] == "2023-04-17"
+    assert mock_inc.call_args[0][0] == _CAL_PORTFOLIO_ID
+
+
+def test_get_portfolio_calendar_survives_a_failed_inception_lookup(user_client):
+    """The bound is a convenience; the grid is the view. Losing the first must not
+    cost the second — without it the picker simply falls back to its fixed span."""
+    from src.exceptions import BigQueryError
+
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_calendar_data", return_value=[]),
+        patch("src.api.get_portfolio_inception", side_effect=BigQueryError("bq down")),
+        patch("src.api.compute_calendar_pnl", return_value=_CAL_RESPONSE),
+    ):
+        r = user_client.get(
+            f"/api/portfolio/calendar?year=2026&month=4&portfolio_id={_CAL_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["inception"] is None
+    assert isinstance(body["days"], list)
 
 
 def test_get_portfolio_calendar_returns_500_on_bq_error(user_client):
