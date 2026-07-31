@@ -628,17 +628,25 @@
     text-align: center; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
     color: var(--text-muted); padding: .3rem 0;
   }
+  /* PUL-110: the day number used to be absolutely positioned over a centred
+     amount. Two things fighting for the same box collide as soon as the amount
+     runs to four digits, and at the mobile min-height they overlap outright.
+     One column, two rows: the day owns the top line, the amount owns what is
+     left. Nothing is layered over anything. */
   .pp-cal-cell {
-    position: relative; border-radius: 8px;
-    min-height: 56px; padding: 6px 8px;
+    border-radius: 8px;
+    min-height: 56px; padding: 5px 6px;
     background: #fff; border: 1px solid var(--border); font-size: .8rem;
-    display: flex; align-items: center; justify-content: center;
+    display: flex; flex-direction: column;
   }
   .pp-cal-cell .pp-cal-day {
-    position: absolute; top: 4px; left: 6px;
     font-size: .68rem; color: var(--text-muted); line-height: 1;
   }
-  .pp-cal-cell .pp-cal-pnl { font-weight: 600; font-size: .82rem; text-align: center; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .pp-cal-cell .pp-cal-pnl {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: .82rem; text-align: center; line-height: 1.15;
+    font-variant-numeric: tabular-nums; word-break: break-word;
+  }
   .pp-cal-gain { color: var(--positive); }
   .pp-cal-gain .pp-cal-day { color: rgba(21,115,71,.6); }
   .pp-cal-loss { color: var(--negative); }
@@ -665,9 +673,37 @@
   .pp-cal-swatch-neutral { background: #f2f4f6; border: 1px solid var(--border); }
   .pp-cal-swatch-white { background: #fff; border: 1px solid var(--border); }
   @media (max-width: 600px) {
-    .pp-cal-cell { min-height: 44px; font-size: .72rem; }
-    .pp-cal-cell .pp-cal-pnl { font-size: .72rem; }
+    .pp-cal-cell { min-height: 48px; font-size: .72rem; padding: 3px 3px 4px; }
+    .pp-cal-cell .pp-cal-day { font-size: .62rem; }
+    .pp-cal-cell .pp-cal-pnl { font-size: .68rem; }
+    #pp-cal-grid { gap: 3px; }
   }
+  /* PUL-110: month/year jump. Twelve clicks to reach last year, each firing its
+     own fetch, to change one number in the URL. A button, not a hover target —
+     the whole point is that it is reachable by keyboard and by thumb. */
+  #pp-cal-pick {
+    background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: .3rem .6rem; cursor: pointer; color: var(--brand); font-size: .95rem; line-height: 1;
+    transition: background .15s;
+  }
+  #pp-cal-pick:hover { background: var(--brand-tint); }
+  #pp-cal-nav { position: relative; }
+  #pp-cal-picker {
+    position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    z-index: 40; margin-top: .35rem; display: flex; gap: .4rem; align-items: center;
+    background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: .55rem .65rem; box-shadow: var(--shadow-2);
+  }
+  #pp-cal-picker[hidden] { display: none; }
+  #pp-cal-picker select {
+    padding: .35rem .5rem; border: 1px solid #cdd4dc; border-radius: var(--radius-sm);
+    font-size: .85rem; background: #fff; color: var(--text);
+  }
+  #pp-cal-picker-go {
+    padding: .35rem .8rem; border: none; border-radius: var(--radius-sm);
+    background: var(--brand); color: #fff; font-size: .85rem; font-weight: 600; cursor: pointer;
+  }
+  #pp-cal-picker-go:hover { background: var(--brand-dark); }
   #pp-cal-mtd-summary {
     display: none; margin-top: .5rem; padding: .6rem .75rem;
     background: #fff; border: 1px solid var(--border);
@@ -693,13 +729,17 @@
   #wl-error { color: var(--negative); font-size: .85rem; margin-bottom: .75rem; }
 
   /* Portfolio Positions */
+  /* PUL-108: the row owns the spacing so every button sits on one baseline,
+     however many of them are visible and however narrow the screen. */
+  #pp-table-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: stretch; margin-bottom: 1rem; }
+  #pp-table-actions > button { margin: 0; }
   #pp-add-toggle-btn {
     padding: .55rem 1.15rem; background: var(--brand); color: #fff;
     border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: .9rem; font-weight: 600;
-    margin-bottom: 1rem; display: inline-block;
+    display: inline-block;
   }
   #pp-add-toggle-btn:hover { background: var(--brand-dark); }
-  #pp-export-csv-btn { padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc; border-radius:var(--radius-sm); cursor:pointer; font-size:.9rem; font-weight:600; margin-bottom:1rem; margin-left:.5rem; }
+  #pp-export-csv-btn { padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc; border-radius:var(--radius-sm); cursor:pointer; font-size:.9rem; font-weight:600; }
   #pp-export-csv-btn:hover { background: var(--brand-tint); }
   #pp-form {
     display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
@@ -838,6 +878,11 @@
     display: inline-flex; gap: 2px; margin-bottom: .75rem;
     background: var(--fill); border-radius: var(--radius-sm); padding: 3px;
     border: 1px solid var(--border);
+    /* PUL-108: five tabs do not fit 360 px. Wrapping keeps every one of them
+       reachable without a swipe, and — unlike a scroll strip — cannot hand the
+       overflow back to the page. max-width stops the inline-flex box from
+       claiming its content width and pushing <body> wider than the viewport. */
+    flex-wrap: wrap; max-width: 100%;
   }
   .pp-view-tab {
     padding: .35rem 1rem; border: none; border-radius: 6px;
@@ -933,10 +978,47 @@
   #pp-real-by-ticker td.positive { color:var(--positive); }
   #pp-real-by-ticker td.negative { color:var(--negative); }
   #pp-real-note { margin-bottom:1rem; }
+  /* PUL-108: these two tables were the only wide ones with neither a scroll
+     container nor a mobile layout, so on a phone they pushed the whole PAGE
+     sideways — which is also why the sticky topbar slid away: sticky pins along
+     the axis its scroll container scrolls, and once <body> scrolls, it goes too.
+     Same card treatment the positions table already uses; five and seven columns
+     become five and seven labelled rows, and nothing is off-screen. */
+  @media (max-width: 640px) {
+    #pp-div-by-ticker thead, #pp-real-by-ticker thead { display: none; }
+    #pp-div-by-ticker tr, #pp-real-by-ticker tr {
+      display: block; background: #fff; border: 1px solid var(--border);
+      border-radius: var(--radius-md); margin-bottom: .75rem; overflow: hidden;
+      box-shadow: var(--shadow-card);
+    }
+    #pp-div-by-ticker td, #pp-real-by-ticker td {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: .5rem; padding: .32rem .85rem; text-align: right; font-size: .88rem;
+    }
+    #pp-div-by-ticker td::before, #pp-real-by-ticker td::before {
+      content: attr(data-label);
+      color: var(--text-muted); font-size: .8rem; font-weight: 500;
+      flex-shrink: 0; text-align: left;
+    }
+    /* The ticker heads the card, so it gets no label of its own. */
+    #pp-div-by-ticker td:first-child, #pp-real-by-ticker td:first-child {
+      display: block; text-align: left;
+      font-size: 1.05rem; font-weight: 700; color: var(--brand);
+      padding: .6rem .85rem .1rem;
+    }
+    #pp-div-by-ticker td:first-child::before, #pp-real-by-ticker td:first-child::before { content: none; }
+    /* Zrealizowane carries the company name in column two — a subtitle, not a row. */
+    #pp-real-by-ticker td:nth-child(2) {
+      display: block; text-align: left;
+      font-size: .82rem; color: var(--text-muted);
+      padding: 0 .85rem .55rem; border-bottom: 1px solid var(--border);
+    }
+    #pp-real-by-ticker td:nth-child(2)::before { content: none; }
+    #pp-div-by-ticker td:last-child, #pp-real-by-ticker td:last-child { padding-bottom: .6rem; }
+  }
   #pp-import-btn {
     padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc;
     border-radius:var(--radius-sm); cursor:pointer; font-size:.9rem; font-weight:600;
-    margin-bottom:1rem; margin-left:.5rem;
   }
   #pp-import-btn:hover { background: var(--brand-tint); }
   #pp-import-commit-btn {
@@ -1006,7 +1088,8 @@ html[data-theme="dark"] .treemap-wallet, html[data-theme="dark"] .treemap-legend
 html[data-theme="dark"] .profile-menu, html[data-theme="dark"] .ac-dropdown, html[data-theme="dark"] .modal-box, html[data-theme="dark"] .tc-popup,
 html[data-theme="dark"] #pp-edit-modal, html[data-theme="dark"] #pp-add-portfolio-modal, html[data-theme="dark"] #pp-import-modal, html[data-theme="dark"] .login-box, html[data-theme="dark"] .wl-chip,
 html[data-theme="dark"] .pp-portfolio-tab, html[data-theme="dark"] .pp-view-tab.active, html[data-theme="dark"] .pp-cal-cell, html[data-theme="dark"] .treemap-container,
-html[data-theme="dark"] #pp-cal-prev, html[data-theme="dark"] #pp-cal-next, html[data-theme="dark"] .pagination-bar button, html[data-theme="dark"] #pp-tbody tr
+html[data-theme="dark"] #pp-cal-prev, html[data-theme="dark"] #pp-cal-next, html[data-theme="dark"] .pagination-bar button, html[data-theme="dark"] #pp-tbody tr,
+html[data-theme="dark"] #pp-cal-pick, html[data-theme="dark"] #pp-cal-picker, html[data-theme="dark"] #pp-cal-picker select
   { background:#141f2b; color:var(--text); border-color:var(--border); }
 html[data-theme="dark"] th, html[data-theme="dark"] .pagination-bar, html[data-theme="dark"] .modal-meta { background:#101a25; }
 html[data-theme="dark"] td { border-bottom-color:#1c2836; }
@@ -4299,9 +4382,14 @@ function _buildPortfolioPositionsViewContent(view) {
            _ppSyncAddBtnVisibility once a real wallet is active. Rendering them
            visible made them flash on entry and then vanish, because the default
            tab is the read-only "Wszystkie" aggregate — which reads as a bug. -->
-      <button type="button" id="pp-add-toggle-btn" style="display:none">Dodaj pozycję</button>
-      <button type="button" id="pp-export-csv-btn" title="Eksportuj pozycje do CSV">Eksport CSV</button>
-      <button type="button" id="pp-import-btn" style="display:none" title="Wczytaj pozycje z pliku od domu maklerskiego">Import z pliku</button>
+      <!-- PUL-108: one flex row instead of three inline-blocks carrying their own
+           margins. Ad-hoc margin-left/margin-bottom per button lined up by accident
+           on a wide screen and not at all once the row wrapped on a phone. -->
+      <div id="pp-table-actions">
+        <button type="button" id="pp-add-toggle-btn" style="display:none">Dodaj pozycję</button>
+        <button type="button" id="pp-export-csv-btn" title="Eksportuj pozycje do CSV">Eksport CSV</button>
+        <button type="button" id="pp-import-btn" style="display:none" title="Wczytaj pozycje z pliku od domu maklerskiego">Import z pliku</button>
+      </div>
       <div id="pp-form-wrap" style="display:none">
         <form id="pp-form">
           <div id="pp-ticker-field">
@@ -4392,7 +4480,14 @@ function _buildPortfolioPositionsViewContent(view) {
       <div id="pp-cal-nav">
         <button type="button" id="pp-cal-prev">&#8249;</button>
         <span id="pp-cal-label"></span>
+        <button type="button" id="pp-cal-pick" aria-expanded="false" aria-controls="pp-cal-picker"
+                aria-label="Wybierz miesiąc i rok">&#128197;</button>
         <button type="button" id="pp-cal-next">&#8250;</button>
+        <div id="pp-cal-picker" hidden>
+          <select id="pp-cal-picker-month" aria-label="Miesiąc"></select>
+          <select id="pp-cal-picker-year" aria-label="Rok"></select>
+          <button type="button" id="pp-cal-picker-go">Pokaż</button>
+        </div>
       </div>
       <div id="pp-cal-grid"></div>
       <div id="pp-cal-mtd-summary"></div>
@@ -4713,24 +4808,86 @@ function _buildPortfolioPositionsViewContent(view) {
   _ppCalMonth = _now.getMonth() + 1;
 
   // change #6: month navigation handlers (disable synchronously — lessons.md SPA rule)
-  $('pp-cal-prev').addEventListener('click', () => {
-    $('pp-cal-prev').disabled = true;
-    $('pp-cal-next').disabled = true;
-    _ppCalData = null;
-    _ppCalMonth--;
-    if (_ppCalMonth < 1) { _ppCalMonth = 12; _ppCalYear--; }
-    _ppWriteUrl(true);
-    fetchPortfolioCalendar();
+  $('pp-cal-prev').addEventListener('click', () => _ppCalGoTo(_ppCalYear, _ppCalMonth - 1));
+  $('pp-cal-next').addEventListener('click', () => _ppCalGoTo(_ppCalYear, _ppCalMonth + 1));
+
+  // PUL-110: month/year jump. Same three lines of state the arrows move, so the
+  // URL contract and the caching behaviour are unchanged — only the number of
+  // clicks it takes to get somewhere.
+  const pickBtn = $('pp-cal-pick');
+  pickBtn.addEventListener('click', () => {
+    _ppCalPickerOpen(pickBtn.getAttribute('aria-expanded') !== 'true');
   });
-  $('pp-cal-next').addEventListener('click', () => {
-    $('pp-cal-prev').disabled = true;
-    $('pp-cal-next').disabled = true;
-    _ppCalData = null;
-    _ppCalMonth++;
-    if (_ppCalMonth > 12) { _ppCalMonth = 1; _ppCalYear++; }
-    _ppWriteUrl(true);
-    fetchPortfolioCalendar();
+  $('pp-cal-picker-go').addEventListener('click', () => {
+    const y = parseInt($('pp-cal-picker-year').value, 10);
+    const m = parseInt($('pp-cal-picker-month').value, 10);
+    _ppCalPickerOpen(false);
+    if (Number.isFinite(y) && Number.isFinite(m)) _ppCalGoTo(y, m);
   });
+  // Escape closes and hands focus back, so the picker is not a keyboard trap.
+  $('pp-cal-picker').addEventListener('keydown', e => {
+    if (e.key === 'Escape') { _ppCalPickerOpen(false); pickBtn.focus(); }
+  });
+}
+
+// Single mover for the calendar's month state: the arrows, the picker and any
+// future caller all go through here, so month overflow and the disable-then-fetch
+// order are written down once.
+function _ppCalGoTo(year, month) {
+  while (month < 1) { month += 12; year -= 1; }
+  while (month > 12) { month -= 12; year += 1; }
+  $('pp-cal-prev').disabled = true;
+  $('pp-cal-next').disabled = true;
+  _ppCalData = null;
+  _ppCalYear = year;
+  _ppCalMonth = month;
+  _ppWriteUrl(true);
+  fetchPortfolioCalendar();
+}
+
+function _ppCalPickerOpen(open) {
+  const picker = $('pp-cal-picker');
+  const btn = $('pp-cal-pick');
+  if (!picker || !btn) return;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  picker.hidden = !open;
+  if (!open) return;
+
+  // Rebuilt on every open so "no month past the current one" stays true across a
+  // midnight boundary, and so the selects always show where the calendar is now.
+  const now = new Date();
+  const curYear = now.getFullYear(), curMonth = now.getMonth() + 1;
+  const yearSel = $('pp-cal-picker-year');
+  yearSel.innerHTML = '';
+  for (let y = curYear; y >= curYear - 10; y--) {
+    const o = document.createElement('option');
+    o.value = String(y);
+    o.textContent = String(y);
+    yearSel.appendChild(o);
+  }
+  yearSel.value = String(_ppCalYear);
+
+  const monthSel = $('pp-cal-picker-month');
+  const fillMonths = () => {
+    const y = parseInt(yearSel.value, 10);
+    const keep = parseInt(monthSel.value, 10) || _ppCalMonth;
+    monthSel.innerHTML = '';
+    _PP_MONTHS_PL.forEach((name, i) => {
+      const m = i + 1;
+      // A month that has not happened yet has no P&L to show; offering it would
+      // spend a fetch to render an empty grid.
+      if (y === curYear && m > curMonth) return;
+      const o = document.createElement('option');
+      o.value = String(m);
+      o.textContent = name;
+      monthSel.appendChild(o);
+    });
+    monthSel.value = String(Math.min(keep, y === curYear ? curMonth : 12));
+  };
+  yearSel.onchange = fillMonths;
+  monthSel.value = String(_ppCalMonth);
+  fillMonths();
+  monthSel.focus();
 }
 
 function showPortfolioPositionsView() {
@@ -4862,10 +5019,13 @@ async function fetchPortfolioCalendar() {
   }
 }
 
+// Hoisted out of _renderPortfolioCalendar: the month/year picker names the same
+// months, and two lists that have to agree is one list too many.
+const _PP_MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec',
+  'Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+
 function _renderPortfolioCalendar(data) {
-  const MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec',
-    'Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
-  const label = MONTHS_PL[data.month - 1] + ' ' + data.year;
+  const label = _PP_MONTHS_PL[data.month - 1] + ' ' + data.year;
 
   const grid = $('pp-cal-grid');
   grid.innerHTML = '';
@@ -5040,12 +5200,14 @@ function _renderPortfolioRealized(data) {
   $('pp-real-by-ticker').innerHTML = rows.length
     ? `<table><thead><tr><th>Ticker</th><th>Spółka</th><th>Sprzedano</th>` +
       `<th>Przychód</th><th>Koszt</th><th>Wynik</th><th>Zwrot</th></tr></thead><tbody>` +
-      rows.map(r => `<tr><td>${esc(r.ticker || '')}</td>` +
-        `<td>${esc(r.company_name || '')}</td>` +
-        `<td>${esc(Number(r.shares_sold || 0).toLocaleString('pl-PL', { maximumFractionDigits: 4 }))}</td>` +
-        `<td>${esc(zl(r.proceeds))}</td><td>${esc(zl(r.cost))}</td>` +
-        `<td class="${cls(r.pnl)}">${esc(sign(r.pnl) + zl(r.pnl))}</td>` +
-        `<td class="${cls(r.pnl)}">${esc(pct(r.pnl_pct))}</td></tr>`).join('') +
+      // data-label feeds the mobile card layout's ::before — seven columns become
+      // seven labelled rows rather than three that need a swipe to reach (PUL-108).
+      rows.map(r => `<tr><td data-label="Ticker">${esc(r.ticker || '')}</td>` +
+        `<td data-label="Spółka">${esc(r.company_name || '')}</td>` +
+        `<td data-label="Sprzedano">${esc(Number(r.shares_sold || 0).toLocaleString('pl-PL', { maximumFractionDigits: 4 }))}</td>` +
+        `<td data-label="Przychód">${esc(zl(r.proceeds))}</td><td data-label="Koszt">${esc(zl(r.cost))}</td>` +
+        `<td data-label="Wynik" class="${cls(r.pnl)}">${esc(sign(r.pnl) + zl(r.pnl))}</td>` +
+        `<td data-label="Zwrot" class="${cls(r.pnl)}">${esc(pct(r.pnl_pct))}</td></tr>`).join('') +
       `</tbody></table>`
     : '<div class="empty">Brak sprzedanych pozycji w wybranym okresie.</div>';
 
@@ -5130,9 +5292,10 @@ function _renderPortfolioDividends(data) {
   $('pp-div-by-ticker').innerHTML = rows.length
     ? `<table><thead><tr><th>Ticker</th><th>Brutto</th><th>Podatek</th><th>Netto</th>` +
       `<th>Wypłat</th></tr></thead><tbody>` +
-      rows.map(r => `<tr><td>${esc(r.ticker || '')}</td><td>${esc(zl(r.gross))}</td>` +
-        `<td>${esc(zl(r.tax))}</td><td>${esc(zl(r.net))}</td>` +
-        `<td>${esc(String(r.payouts || 0))}</td></tr>`).join('') +
+      rows.map(r => `<tr><td data-label="Ticker">${esc(r.ticker || '')}</td>` +
+        `<td data-label="Brutto">${esc(zl(r.gross))}</td>` +
+        `<td data-label="Podatek">${esc(zl(r.tax))}</td><td data-label="Netto">${esc(zl(r.net))}</td>` +
+        `<td data-label="Wypłat">${esc(String(r.payouts || 0))}</td></tr>`).join('') +
       `</tbody></table>`
     : '<div class="empty">Brak dywidend w wybranym okresie.</div>';
 
@@ -5155,6 +5318,44 @@ function _renderDividendYears(years) {
 // Rok jest konieczny: zakresy 1r/3m potrafią przekroczyć granicę roku,
 // a same DD.MM nie mówią, czy „24.07" to ten rok czy poprzedni.
 function _ppFmtDatePl(ds) { const p = String(ds).split('-'); return p[2] + '.' + p[1] + '.' + p[0]; }
+
+const _PP_MONTHS_SHORT_PL = ['sty','lut','mar','kwi','maj','cze','lip','sie','wrz','paź','lis','gru'];
+
+// PUL-109: pick the tick DATES first, then find where they fall.
+//
+// The chart's X axis is index-based: point i sits at i/(n-1) of the width. The
+// series carries trading days only, so a month with a long holiday occupies fewer
+// slots than the one before it — equal index spacing is not equal time spacing.
+// Ticks placed every n/5 points would drift off round dates and label them wrong.
+// So the boundaries are generated on the calendar and each one is then matched to
+// the first trading day that reaches it.
+//
+// Granularity follows the window: months for a quarter or more, Mondays for a few
+// weeks, days for anything shorter. Thinning to a readable count happens at the
+// call site, where the plot width is known.
+function _ppHistTickDates(firstDs, lastDs) {
+  const toD = ds => { const p = String(ds).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+  const a = toD(firstDs), b = toD(lastDs);
+  const spanDays = Math.round((b - a) / 86400000);
+  const dates = [];
+  // Guard against a malformed edge and against a runaway loop on absurd input.
+  if (!(spanDays > 0) || spanDays > 4000) return { spanDays: spanDays || 0, dates };
+  if (spanDays >= 60) {
+    const d = new Date(a.getFullYear(), a.getMonth() + 1, 1);
+    while (d <= b) { dates.push(new Date(d)); d.setMonth(d.getMonth() + 1); }
+  } else if (spanDays >= 14) {
+    // getDay() is 0 for Sunday; `|| 7` makes Monday 1 and Sunday 7, so the
+    // arithmetic below reads as "days until next Monday" for every weekday.
+    const d = new Date(a);
+    d.setDate(d.getDate() + ((8 - (d.getDay() || 7)) % 7 || 7));
+    while (d <= b) { dates.push(new Date(d)); d.setDate(d.getDate() + 7); }
+  } else {
+    const d = new Date(a);
+    d.setDate(d.getDate() + 1);
+    while (d <= b) { dates.push(new Date(d)); d.setDate(d.getDate() + 1); }
+  }
+  return { spanDays, dates };
+}
 
 // PUL-100: what the chart is quietly assuming, in plain sentences.
 // Wording is deliberately about DATA, never about a listing — `listed_from` is the
@@ -5213,6 +5414,46 @@ function _renderPortfolioHistory(data, chartEl) {
     return '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" class="pp-hist-grid"/>';
   }).join('');
 
+  // PUL-109: intermediate ticks between the two endpoint dates. The dates come
+  // first and the positions follow — see _ppHistTickDates for why the reverse
+  // does not work on this axis.
+  const ticks = _ppHistTickDates(points[0].date, points[n - 1].date);
+  const fmtTick = d => ticks.spanDays >= 60
+    ? _PP_MONTHS_SHORT_PL[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2)
+    : String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
+  // Both charts render into the same 640-unit viewBox and scale as a whole, so a
+  // gap that clears a label here clears it at 360 px too — the text shrinks with
+  // everything else. Six slots across the plot is the cap.
+  const minGap = Math.max(78, plotW / 6);
+  const xTicks = [];
+  let lastTickX = padL;
+  for (const d of ticks.dates) {
+    const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+      '-' + String(d.getDate()).padStart(2, '0');
+    // ISO dates compare correctly as strings; the first point at or after the
+    // boundary is the trading day that boundary actually landed on.
+    const idx = points.findIndex(p => p.date >= iso);
+    if (idx <= 0 || idx >= n - 1) continue;
+    const x = xFor(idx);
+    if (x - lastTickX < minGap || (W - padR) - x < minGap) continue;
+    xTicks.push({ x, label: fmtTick(d) });
+    lastTickX = x;
+  }
+  const tickMarks = xTicks.map(t =>
+    '<line x1="' + t.x.toFixed(1) + '" y1="' + padT + '" x2="' + t.x.toFixed(1) +
+    '" y2="' + baseY + '" class="pp-hist-grid"/>').join('');
+  const tickLabels = xTicks.map(t =>
+    '<text class="pp-hist-axis" x="' + t.x.toFixed(1) + '" y="' + (H - 6) +
+    '" text-anchor="middle">' + esc(t.label) + '</text>').join('');
+  // A flat series puts all three Y labels on the same baseline; one is the honest
+  // number of distinct values there are to report.
+  const yLabels = (max === min)
+    ? '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(max) + 4).toFixed(1) +
+        '" text-anchor="end">' + esc(fmt(max)) + '</text>'
+    : [max, (max + min) / 2, min].map(v =>
+        '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(v) + 4).toFixed(1) +
+        '" text-anchor="end">' + esc(fmt(v)) + '</text>').join('');
+
   const scopeLabel = chartEl.id === 'pp-history-chart-all' ? 'wszystkich portfeli' : 'portfela';
   const svg =
     '<svg class="pp-hist-svg ' + (up ? 'up' : 'down') + '" viewBox="0 0 ' + W + ' ' + H + '" ' +
@@ -5221,14 +5462,14 @@ function _renderPortfolioHistory(data, chartEl) {
       '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
         '<stop offset="0%" stop-color="currentColor" stop-opacity="0.20"/>' +
         '<stop offset="100%" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>' +
-      grids +
+      grids + tickMarks +
       '<path d="' + area + '" fill="url(#' + gid + ')"/>' +
       '<polyline points="' + poly + '" fill="none" stroke="currentColor" stroke-width="2" ' +
         'vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>' +
       '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="3.5" fill="currentColor"/>' +
-      '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(max) + 4).toFixed(1) + '" text-anchor="end">' + esc(fmt(max)) + '</text>' +
-      '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(min) + 4).toFixed(1) + '" text-anchor="end">' + esc(fmt(min)) + '</text>' +
+      yLabels +
       '<text class="pp-hist-axis" x="' + padL + '" y="' + (H - 6) + '">' + esc(fmtDate(points[0].date)) + '</text>' +
+      tickLabels +
       '<text class="pp-hist-axis" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + esc(fmtDate(points[n - 1].date)) + '</text>' +
     '</svg>';
 

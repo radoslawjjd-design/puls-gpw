@@ -190,3 +190,101 @@ def test_metric_toggle_redraws_both_from_cache_without_refetch(page: Page, live_
     expect(active_val).to_contain_text("420")
     expect(aggregate_val).to_contain_text("840")
     assert history_calls == [], f"metric toggle must not refetch, saw: {history_calls}"
+
+
+_YEAR_SERIES_JS = """() => {
+    // A year of trading days, weekends skipped — the same shape the endpoint
+    // returns, which is what makes the index-vs-time distinction bite.
+    const series = [];
+    const d = new Date(2025, 0, 2);
+    while (d < new Date(2025, 11, 20)) {
+      const wd = d.getDay();
+      if (wd !== 0 && wd !== 6) {
+        const iso = d.getFullYear() + '-' +
+          String(d.getMonth() + 1).padStart(2, '0') + '-' +
+          String(d.getDate()).padStart(2, '0');
+        series.push({ date: iso, value_pln: 10000 + series.length * 3, pnl_pln: series.length });
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    _renderPortfolioHistory(
+      { series, notes: [], excluded: [] },
+      document.getElementById('pp-history-chart-active')
+    );
+    return series.length;
+}"""
+
+
+def test_the_chart_labels_more_than_its_two_endpoints(page: Page, live_server_url: str):
+    """Risk (PUL-109): the axis carried exactly two dates — the first point and the
+    last — so a reader could not tell where in the window a move happened."""
+    _login(page, live_server_url)
+    _open_portfolio_glowny(page)
+    _open_calendar_tab(page)
+
+    count = page.evaluate(_YEAR_SERIES_JS)
+    assert count > 200, "fixture must span a real year of trading days"
+
+    # SVG <text> is not an HTMLElement, so inner_text() refuses it — read the DOM text.
+    texts = page.evaluate(
+        """() => Array.from(
+             document.querySelectorAll('#pp-history-chart-active .pp-hist-axis')
+           ).map(t => t.textContent)"""
+    )
+    # Two endpoint dates + intermediate month ticks + the Y labels.
+    month_ticks = [t for t in texts if re.fullmatch(r"[a-ząćęłńóśźż]{3} \d{2}", t)]
+    assert 3 <= len(month_ticks) <= 6, f"expected 4-6 x ticks incl. endpoints, got {texts}"
+
+
+def test_the_chart_ticks_land_on_month_boundaries_not_on_equal_index_steps(
+    page: Page, live_server_url: str
+):
+    """Risk (PUL-109): the X axis is index-based and the series holds trading days
+    only, so a month with a long holiday occupies fewer slots than its neighbour.
+    Ticks spaced every n/5 points would drift off the month they claim to mark —
+    the proof is that consecutive ticks are NOT evenly spaced in x."""
+    _login(page, live_server_url)
+    _open_portfolio_glowny(page)
+    _open_calendar_tab(page)
+    page.evaluate(_YEAR_SERIES_JS)
+
+    xs = page.evaluate(
+        """() => Array.from(
+             document.querySelectorAll('#pp-history-chart-active .pp-hist-axis')
+           ).filter(t => /^[a-ząćęłńóśźż]{3} \d{2}$/.test(t.textContent))
+            .map(t => parseFloat(t.getAttribute('x')))"""
+    )
+    assert len(xs) >= 3
+    gaps = [round(xs[i + 1] - xs[i], 1) for i in range(len(xs) - 1)]
+    assert len(set(gaps)) > 1, f"ticks are evenly spaced ({gaps}) — that is index math, not dates"
+
+
+def test_a_flat_series_does_not_stack_three_labels_on_one_baseline(
+    page: Page, live_server_url: str
+):
+    """Risk (PUL-109): the Y axis gained a midpoint label. When every value is equal,
+    max, midpoint and min share a baseline — printing all three overlays them.
+
+    Selected by x, not by text-anchor: the right-hand endpoint date is anchored
+    "end" too, and catching it made this test read three labels as two."""
+    _login(page, live_server_url)
+    _open_portfolio_glowny(page)
+    _open_calendar_tab(page)
+
+    page.evaluate(
+        """() => _renderPortfolioHistory(
+             { series: [
+                 { date: '2026-07-01', value_pln: 5000, pnl_pln: 0 },
+                 { date: '2026-07-02', value_pln: 5000, pnl_pln: 0 },
+                 { date: '2026-07-03', value_pln: 5000, pnl_pln: 0 },
+               ], notes: [], excluded: [] },
+             document.getElementById('pp-history-chart-active'))"""
+    )
+
+    ys = page.evaluate(
+        """() => Array.from(
+             document.querySelectorAll('#pp-history-chart-active .pp-hist-axis')
+           ).filter(t => t.getAttribute('x') === '44')
+            .map(t => t.getAttribute('y'))"""
+    )
+    assert len(ys) == 1, f"expected a single Y label for a flat series, got {ys}"

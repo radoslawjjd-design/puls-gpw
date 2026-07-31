@@ -1365,11 +1365,24 @@ def test_get_latest_company_stats_fetched_at_returns_isoformat_string():
     assert result == mock_dt.isoformat()
     query_str = mock_get.return_value.query.call_args[0][0]
     assert "company_daily_stats" in query_str
-    assert "LIMIT 1" in query_str
+    # PUL-113: the row must be chosen, not stumbled upon. `LIMIT 1` with no ORDER BY
+    # let an arbitrary row decide the answer.
+    assert "MAX(fetched_at)" in query_str
+    assert "LIMIT 1" not in query_str
 
 
 def test_get_latest_company_stats_fetched_at_returns_none_when_no_rows():
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
+        result = get_latest_company_stats_fetched_at(date(2026, 6, 27))
+    assert result is None
+
+
+def test_get_latest_company_stats_fetched_at_returns_none_for_a_null_aggregate():
+    """PUL-113: an aggregate always yields a row, so emptiness shows up as a NULL
+    value rather than an empty result set. Returning `str(None)` here is what put
+    the literal string "None" on the wire, where the frontend read it as truthy and
+    rendered "NaN:NaN"."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([{"fetched_at": None}])):
         result = get_latest_company_stats_fetched_at(date(2026, 6, 27))
     assert result is None
 
