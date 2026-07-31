@@ -968,6 +968,14 @@
      so it shares every rule rather than cloning them under new names. */
   #pp-div-header-row, #pp-real-header-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
   #pp-div-title, #pp-real-title { margin:0; font-size:1.05rem; font-weight:600; color:var(--brand-dark); }
+  /* A dropdown, not a pill per year: a wallet twenty years old would otherwise
+     put twenty buttons across the header and wrap them onto the content. */
+  .pp-year-select {
+    padding:.4rem 2rem .4rem .7rem; border:1px solid #cdd4dc; border-radius:var(--radius-sm);
+    background:#fff; color:var(--brand); font-size:.9rem; font-weight:600; font-family:inherit;
+    cursor:pointer; max-width:100%;
+  }
+  .pp-year-select:focus { border-color:var(--brand); box-shadow:var(--focus-ring); outline:none; }
   #pp-div-tiles, #pp-real-tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:.75rem; margin-bottom:1.25rem; }
   .pp-div-tile { background:#fff; border:1px solid var(--border); border-radius:var(--radius-md); padding:.9rem 1rem; }
   .pp-div-tile-label { font-size:.72rem; letter-spacing:.04em; text-transform:uppercase; color:var(--text-muted); }
@@ -1111,8 +1119,12 @@ html[data-theme="dark"] .profile-menu, html[data-theme="dark"] .ac-dropdown, htm
 html[data-theme="dark"] #pp-edit-modal, html[data-theme="dark"] #pp-add-portfolio-modal, html[data-theme="dark"] #pp-import-modal, html[data-theme="dark"] .login-box, html[data-theme="dark"] .wl-chip,
 html[data-theme="dark"] .pp-portfolio-tab, html[data-theme="dark"] .pp-view-tab.active, html[data-theme="dark"] .pp-cal-cell, html[data-theme="dark"] .treemap-container,
 html[data-theme="dark"] #pp-cal-prev, html[data-theme="dark"] #pp-cal-next, html[data-theme="dark"] .pagination-bar button, html[data-theme="dark"] #pp-tbody tr,
-html[data-theme="dark"] #pp-cal-pick, html[data-theme="dark"] #pp-cal-picker, html[data-theme="dark"] #pp-cal-picker select
+html[data-theme="dark"] #pp-cal-pick, html[data-theme="dark"] #pp-cal-picker, html[data-theme="dark"] #pp-cal-picker select,
+html[data-theme="dark"] .pp-year-select
   { background:#141f2b; color:var(--text); border-color:var(--border); }
+/* var(--brand) is navy and dark mode never redefines it, so a brand-coloured
+   heading lands navy-on-navy. Same stand-in as links and the mobile ticker. */
+html[data-theme="dark"] .treemap-wallet h3 { color:#9fc1e0; }
 html[data-theme="dark"] th, html[data-theme="dark"] .pagination-bar, html[data-theme="dark"] .modal-meta { background:#101a25; }
 html[data-theme="dark"] td { border-bottom-color:#1c2836; }
 html[data-theme="dark"] tr:hover td { background:#16222f; }
@@ -4587,7 +4599,7 @@ function _buildPortfolioPositionsViewContent(view) {
         <!-- "gotówkowe" is load-bearing: the export carries no scrip dividends,
              so the totals must not read as the complete picture. -->
         <h3 id="pp-div-title">Dywidendy gotówkowe</h3>
-        <div id="pp-div-years" class="pp-view-tabs-inline"></div>
+        <div id="pp-div-years"></div>
       </div>
       <div id="pp-div-tiles"></div>
       <div id="pp-div-by-ticker"></div>
@@ -4595,7 +4607,7 @@ function _buildPortfolioPositionsViewContent(view) {
     <div id="pp-realized-wrap" style="display:none">
       <div id="pp-real-header-row">
         <h3 id="pp-real-title">Zrealizowany zysk i strata</h3>
-        <div id="pp-real-years" class="pp-view-tabs-inline"></div>
+        <div id="pp-real-years"></div>
       </div>
       <div id="pp-real-tiles"></div>
       <div id="pp-real-note" class="pp-import-hint" style="display:none"></div>
@@ -4705,28 +4717,25 @@ function _buildPortfolioPositionsViewContent(view) {
     });
   });
 
-  // Dividend year pills. Delegated, because the list is rebuilt from every
-  // response. Deliberately NOT inside #pp-view-tabs — that container's handler
-  // would read these as a view switch, the trap the range pills already dodge.
-  $('pp-real-years').addEventListener('click', e => {
-    const btn = e.target.closest('.pp-view-tab');
-    if (!btn) return;
-    const year = btn.dataset.year === '' ? null : Number(btn.dataset.year);
+  // Year selectors. Delegated on the container, because the <select> inside it
+  // is rebuilt from every response — a listener bound to the element itself
+  // would die on the first refetch. Deliberately NOT inside #pp-view-tabs:
+  // that container's handler would read these as a view switch.
+  $('pp-real-years').addEventListener('change', e => {
+    const sel = e.target.closest('select');
+    if (!sel) return;
+    const year = sel.value === '' ? null : Number(sel.value);
     if (year === _ppRealYear) return;
     _ppRealYear = year;
-    $('pp-real-years').querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
     fetchPortfolioRealized();
   });
 
-  $('pp-div-years').addEventListener('click', e => {
-    const btn = e.target.closest('.pp-view-tab');
-    if (!btn) return;
-    const year = btn.dataset.year === '' ? null : Number(btn.dataset.year);
+  $('pp-div-years').addEventListener('change', e => {
+    const sel = e.target.closest('select');
+    if (!sel) return;
+    const year = sel.value === '' ? null : Number(sel.value);
     if (year === _ppDivYear) return;
     _ppDivYear = year;
-    $('pp-div-years').querySelectorAll('.pp-view-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
     fetchPortfolioDividends();
   });
 
@@ -5316,14 +5325,30 @@ async function _fetchPortfolioHistorySlot(portfolioId, chartElId) {
 // the shares cost. Showing them as one figure hides which one the portfolio is
 // actually living on.
 
-function _renderRealizedYears(years) {
-  const box = $('pp-real-years');
+// One selector shared by both tabs — a dropdown rather than a pill per year,
+// because a twenty-year-old wallet would lay twenty buttons across the header.
+//
+// `years` carries only the years that actually paid out or sold something;
+// `inception` carries when the wallet started. The list spans both, so a year
+// with no activity is still reachable — "nothing came in 2023" is an answer the
+// user has to be able to ask for — and a year holding data from outside the
+// recorded inception is never dropped off the end.
+function _renderYearSelect(boxId, years, inception, selected, label) {
+  const box = $(boxId);
   if (!box) return;
-  const pill = (label, year) =>
-    `<button type="button" class="pp-view-tab${_ppRealYear === year ? ' active' : ''}" ` +
-    `data-year="${year === null ? '' : esc(String(year))}">${esc(label)}</button>`;
-  box.innerHTML = pill('Wszystkie', null) +
-    years.slice().sort((a, b) => b - a).map(y => pill(String(y), y)).join('');
+  const known = (years || []).map(Number).filter(y => y > 0);
+  const firstYear = inception ? Number(String(inception).slice(0, 4)) : null;
+  const now = new Date().getFullYear();
+  let lo = known.length ? Math.min.apply(null, known) : now;
+  let hi = Math.max(known.length ? Math.max.apply(null, known) : now, now);
+  if (firstYear) lo = Math.min(lo, firstYear);
+  // A year already chosen must survive its own re-render, whatever the range says.
+  if (selected) { lo = Math.min(lo, selected); hi = Math.max(hi, selected); }
+  const opts = ['<option value="">Wszystkie</option>'];
+  for (let y = hi; y >= lo; y--) {
+    opts.push(`<option value="${y}"${selected === y ? ' selected' : ''}>${y}</option>`);
+  }
+  box.innerHTML = `<select class="pp-year-select" aria-label="${esc(label)}">${opts.join('')}</select>`;
 }
 
 function _renderPortfolioRealized(data) {
@@ -5372,7 +5397,8 @@ function _renderPortfolioRealized(data) {
       `</tbody></table>`
     : '<div class="empty">Brak sprzedanych pozycji w wybranym okresie.</div>';
 
-  _renderRealizedYears((data && data.all_years) || []);
+  _renderYearSelect('pp-real-years', (data && data.all_years) || [],
+                    data && data.inception, _ppRealYear, 'Rok sprzedaży');
 }
 
 async function fetchPortfolioRealized() {
@@ -5460,20 +5486,11 @@ function _renderPortfolioDividends(data) {
       `</tbody></table>`
     : '<div class="empty">Brak dywidend w wybranym okresie.</div>';
 
-  _renderDividendYears((data && data.years) || []);
-}
-
-// The year list travels with every response (PUL-100: a meta-first join), so a
-// year with no payouts still renders its own selector instead of stranding the
-// user on an empty tab with no way back.
-function _renderDividendYears(years) {
-  const box = $('pp-div-years');
-  if (!box) return;
-  const pill = (label, year) =>
-    `<button type="button" class="pp-view-tab${_ppDivYear === year ? ' active' : ''}" ` +
-    `data-year="${year === null ? '' : esc(String(year))}">${esc(label)}</button>`;
-  box.innerHTML = pill('Wszystkie', null) +
-    years.slice().sort((a, b) => b - a).map(y => pill(String(y), y)).join('');
+  // The year list travels with every response (PUL-100: a meta-first join), so a
+  // year with no payouts still renders its own selector instead of stranding the
+  // user on an empty tab with no way back.
+  _renderYearSelect('pp-div-years', (data && data.years) || [],
+                    data && data.inception, _ppDivYear, 'Rok wypłat dywidend');
 }
 
 // Rok jest konieczny: zakresy 1r/3m potrafią przekroczyć granicę roku,

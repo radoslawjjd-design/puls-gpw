@@ -582,6 +582,26 @@ _POSITION_MARKET_FIELDS = (
 )
 
 
+def _wallet_inception_iso(portfolio_id: str | None, user_id: str, surface: str) -> str | None:
+    """The wallet's first day as ISO, for the pickers that need a lower bound.
+
+    Never fatal. Three views ask for it — the calendar's month picker, and the
+    year selectors on dividends and realized — and in all three the answer only
+    sets how far back the control offers to go. A wallet the user can otherwise
+    see must not 500 over the bound of its own picker; each caller has a
+    fallback range for exactly this case.
+    """
+    try:
+        first = get_portfolio_inception(portfolio_id, user_id)
+    except BigQueryError as exc:
+        logger.warning(
+            "inception lookup failed for portfolio=%s (%s), picker falls back: %s",
+            portfolio_id, surface, exc,
+        )
+        return None
+    return first.isoformat() if first else None
+
+
 def _merge_positions_by_ticker(rows: list[dict]) -> list[dict]:
     """Merge positions across portfolios into one row per ticker (the "Wszystkie" view).
 
@@ -1264,17 +1284,10 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/calendar: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
-        # The picker's lower bound. A failure here must not cost the user the
-        # calendar itself — without it the picker just falls back to its old range.
-        try:
-            inception = get_portfolio_inception(None if all_mode else portfolio_id, user_id)
-        except BigQueryError as exc:
-            logger.warning("inception lookup failed for portfolio=%s, picker falls back: %s", portfolio_id, exc)
-            inception = None
+        # The month picker's lower bound.
+        inception = _wallet_inception_iso(None if all_mode else portfolio_id, user_id, "calendar")
         cal = compute_calendar_pnl(rows, year, month)
-        result = PortfolioCalendarResponse(
-            **cal, inception=inception.isoformat() if inception else None
-        ).model_dump()
+        result = PortfolioCalendarResponse(**cal, inception=inception).model_dump()
         _perf_set(cache_key, result)
         return result
 
@@ -1408,6 +1421,12 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/dividends: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        # `years` holds only the years that paid something. The selector offers
+        # every year the wallet has existed, so "nothing in 2023" is an answer
+        # the user can reach instead of a year that silently isn't on the list.
+        result["inception"] = _wallet_inception_iso(
+            None if all_mode else portfolio_id, user_id, "dividends"
+        )
         _perf_set(cache_key, result)
         return result
 
@@ -1451,6 +1470,9 @@ def create_app() -> FastAPI:
             logger.error("BQ error in GET /api/portfolio/realized: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
         result = compute_realized_pnl(trades, parsed_year)
+        result["inception"] = _wallet_inception_iso(
+            None if all_mode else portfolio_id, user_id, "realized"
+        )
         _perf_set(cache_key, result)
         return result
 
