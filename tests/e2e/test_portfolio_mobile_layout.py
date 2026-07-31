@@ -128,3 +128,73 @@ def test_the_topbar_stays_pinned_after_a_sideways_drag(page: Page, live_server_u
     after = page.locator(".topbar").bounding_box()
     assert before is not None and after is not None
     assert abs(after["x"] - before["x"]) <= 1, f"topbar moved from {before['x']} to {after['x']}"
+
+
+# ── Card colours and the tap that must not repaint them ──────────────────────
+
+# Relative luminance of a computed `rgb()/rgba()` string, so a contrast claim can
+# be made without hardcoding either theme's palette — the point is that text and
+# the surface behind it are not the same shade, whichever shade that is.
+_LUMINANCE_JS = """
+  const lum = s => {
+    const [r, g, b] = s.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+"""
+
+
+def _card_contrast(page: Page, table_id: str) -> dict:
+    return page.evaluate(
+        _LUMINANCE_JS
+        + """
+        (id) => {
+          const row = document.querySelector('#' + id + ' tbody tr');
+          const value = row.querySelectorAll('td')[2];
+          const bg = getComputedStyle(row).backgroundColor;
+          const fg = getComputedStyle(value).color;
+          const label = getComputedStyle(value, '::before').color;
+          return { bg, fg, ratio: Math.abs(lum(bg) - lum(fg)),
+                   labelRatio: Math.abs(lum(bg) - lum(label)) };
+        }""",
+        table_id,
+    )
+
+
+def _switch_theme(page: Page, theme: str) -> None:
+    page.evaluate("t => { localStorage.setItem('faro_theme', t); _applyTheme(t); }", theme)
+
+
+def test_the_stacked_cards_stay_legible_in_both_themes(page: Page, live_server_url: str):
+    """The card background was a hardcoded #fff with no dark counterpart, so dark
+    mode put near-white values (--text) on white and they simply disappeared —
+    only the muted grey labels showed, which is what "szary jest nieczytelny"
+    was describing. Luminance, not a palette, because the claim is about contrast."""
+    _open_on_a_phone(page, live_server_url)
+
+    for theme in ("light", "dark"):
+        _switch_theme(page, theme)
+        for tab, table_id in (("Dywidendy", "pp-div-by-ticker"), ("Zrealizowane", "pp-real-by-ticker")):
+            page.locator("#pp-view-tabs").get_by_role("button", name=tab).click()
+            expect(page.locator(f"#{table_id} table").first).to_be_visible()
+            seen = _card_contrast(page, table_id)
+            assert seen["ratio"] > 0.3, f"{theme}/{tab}: value on card is {seen}"
+            assert seen["labelRatio"] > 0.15, f"{theme}/{tab}: label on card is {seen}"
+
+
+def test_touching_a_card_does_not_repaint_it(page: Page, live_server_url: str):
+    """A card is a layout, not a control. Mobile browsers apply :hover on tap, so
+    the desktop table's row tint reads on a phone as "touching it changed
+    something"."""
+    _open_on_a_phone(page, live_server_url)
+    page.locator("#pp-view-tabs").get_by_role("button", name="Zrealizowane").click()
+    expect(page.locator("#pp-real-by-ticker table").first).to_be_visible()
+
+    row = page.locator("#pp-real-by-ticker tbody tr").first
+    cell = row.locator("td").nth(2)
+    before = cell.evaluate("e => getComputedStyle(e).backgroundColor")
+    row.hover()
+    after = cell.evaluate("e => getComputedStyle(e).backgroundColor")
+    assert before == after, f"tap repainted the card: {before} → {after}"
