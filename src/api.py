@@ -303,6 +303,11 @@ class PortfolioHistoryResponse(BaseModel):
     series: list[PortfolioHistoryPoint]
     notes: list[PortfolioHistoryNote] = []
     excluded: list[str] = []
+    # PUL-103: the day the series really starts, when the wallet's inception falls inside
+    # the requested range. Not a note — a note is per-ticker, this is per-portfolio — but
+    # it renders in the same (i) popover. The X axis is index-based, so without it two
+    # months of history inside a 1y range looks exactly like a full year.
+    data_from: str | None = None  # ISO YYYY-MM-DD
 
 
 # Supported history ranges → day-based floor from today. `1d` is intentionally
@@ -1292,6 +1297,7 @@ def create_app() -> FastAPI:
                 for note in data["notes"]
             ],
             excluded=list(data["excluded"]),
+            data_from=data["data_from"].isoformat() if data.get("data_from") else None,
         ).model_dump()
         _perf_set(cache_key, result)
         return result

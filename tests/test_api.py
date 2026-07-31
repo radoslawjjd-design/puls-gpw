@@ -1743,7 +1743,7 @@ def test_get_portfolio_history_returns_200_with_series(user_client):
         )
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {"series", "notes", "excluded"}
+    assert set(body) == {"series", "notes", "excluded", "data_from"}
     assert body["series"][0] == {"date": "2026-06-02", "value_pln": 10000.0, "pnl_pln": 500.0}
 
 
@@ -1764,8 +1764,11 @@ def test_get_portfolio_history_surfaces_notes_and_excluded(user_client):
 
 
 def test_get_portfolio_history_empty_returns_well_formed_envelope(user_client):
-    """A portfolio with nothing to show must still return all three keys — the chart
-    reads .series unconditionally and would break on null."""
+    """A portfolio with nothing to show must still return every envelope key — the chart
+    reads .series unconditionally and would break on null.
+
+    The mock deliberately omits data_from (PUL-103): the endpoint must tolerate a
+    db-layer result predating that key rather than 500 on a KeyError."""
     with (
         patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
         patch(
@@ -1777,7 +1780,26 @@ def test_get_portfolio_history_empty_returns_well_formed_envelope(user_client):
             f"/api/portfolio/history?range=1y&portfolio_id={_HIST_PORTFOLIO_ID}",
         )
     assert r.status_code == 200
-    assert r.json() == {"series": [], "notes": [], "excluded": []}
+    assert r.json() == {"series": [], "notes": [], "excluded": [], "data_from": None}
+
+
+def test_get_portfolio_history_announces_a_range_it_could_not_fill(user_client):
+    """PUL-103: when the wallet's inception cuts the requested range short, the envelope
+    says so. The chart's X axis is index-based, so a two-month series inside a 1y range
+    stretches to the full width and is otherwise indistinguishable from a full year."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch(
+            "src.api.get_portfolio_history",
+            return_value={"series": [], "notes": [], "excluded": [],
+                          "data_from": date(2025, 1, 29)},
+        ),
+    ):
+        r = user_client.get(
+            f"/api/portfolio/history?range=3m&portfolio_id={_HIST_PORTFOLIO_ID}",
+        )
+    assert r.status_code == 200
+    assert r.json()["data_from"] == "2025-01-29"
 
 
 def test_get_portfolio_history_returns_401_without_session(api_client):

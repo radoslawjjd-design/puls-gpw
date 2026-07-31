@@ -1470,7 +1470,10 @@ def test_calendar_carries_the_last_close_forward_over_a_no_trade_session():
     sql = mock_get.return_value.query.call_args[0][0]
 
     assert "LAST_VALUE(close_price IGNORE NULLS) OVER (" in sql
-    assert "PARTITION BY ticker ORDER BY snapshot_date" in sql
+    # Partitioned by wallet as well as ticker since PUL-103: in "Wszystkie" mode the
+    # same ticker is held in two wallets, and one carry-forward per ticker would mix
+    # them.
+    assert "PARTITION BY portfolio_id, ticker ORDER BY snapshot_date" in sql
     assert "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW" in sql
     # The value and the coverage counter both read the filled column, never the raw one.
     assert "shares * close_ff" in sql
@@ -1479,6 +1482,142 @@ def test_calendar_carries_the_last_close_forward_over_a_no_trade_session():
     # A day without trades had no move, so the change is not carried forward.
     assert "LAST_VALUE(daily_chg" not in sql
     assert "WHERE snapshot_date >= @month_start" in sql
+
+
+def test_calendar_values_each_day_at_the_shares_held_that_day():
+    """PUL-103.  The calendar used to cross every trading day with the *current*
+    positions snapshot, so it reported daily P&L for dates the portfolio did not hold
+    what it holds today.  Holdings are now reconstructed as a backward correction over
+    that snapshot, and the three guards below are what keep the shape honest —
+    each one is a regression that mocked tests cannot otherwise see."""
+    from db.bigquery import get_portfolio_calendar_data
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_calendar_data("port-abc", "user-xyz", 2026, 6)
+
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+
+    # Operations are bucketed in exchange-local time: occurred_at is stored naive and
+    # therefore read as UTC.
+    assert "DATE(occurred_at, 'Europe/Warsaw')" in sql
+    # Direction from op_type only — a sale's own comment reads "CLOSE BUY 5 @ 55.00".
+    assert "WHEN op_type = 'buy' THEN volume" in sql
+    assert "WHEN op_type = 'sell' THEN -volume" in sql
+    # Positions ∪ operations, or a ticker sold to zero drops out of history entirely.
+    assert "FULL OUTER JOIN ops_totals" in sql
+    # Dust from float volumes would otherwise render as a phantom holding, and the
+    # threshold is strictly positive on purpose: a negative reconstruction (buys on
+    # record with no position row, which deleting a position by hand leaves behind)
+    # must be dropped, never subtracted from the day's value.
+    assert "hd.shares_on_day > 1e-9" in sql
+    assert "ABS(hd.shares_on_day)" not in sql
+    # The calendar joined the price tables raw until PUL-103; a duplicate row fanned
+    # out and double-counted the day.
+    assert "QUALIFY ROW_NUMBER() OVER ( PARTITION BY ticker, snapshot_date" in sql
+
+    # Regression guards (plan-review F1). Each of these forms was rejected for a
+    # measured reason, and each would pass every other assertion in this file.
+    assert "CROSS JOIN positions" not in sql, "today's shares must not reach the grid"
+    assert "ROWS BETWEEN 1 FOLLOWING" not in sql, (
+        "a window over the trading-day spine stops at the month boundary, so a past "
+        "month would still count shares bought later"
+    )
+    assert "o.op_date = " not in sql, (
+        "operations must match by range, not by date equality — an operation day need "
+        "not be a trading day (measured: 16 of 426)"
+    )
+    assert "o.op_date <= td.snapshot_date" in sql
+
+
+def test_calendar_bounds_the_month_at_the_first_share_affecting_operation():
+    """PUL-103 / plan-review F2.  The bound is the first buy or sell, never the first
+    operation of any kind.  On every real wallet the first row is a deposit, and a
+    deposit day holds nothing but the cash residual — priced at 1.00 with a zero move,
+    which the UI paints as a green "+0 PLN" cell: a flat session that never happened.
+    Measured on production: Glowny's first operation is 2025-01-28, its first buy
+    2025-01-29; IKZE 2025-07-09 against 2025-07-10."""
+    from db.bigquery import get_portfolio_calendar_data
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_calendar_data("port-abc", "user-xyz", 2026, 6)
+
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+
+    # The bound reads ops_daily, which is already narrowed to buy/sell.
+    assert "SELECT MIN(op_date) FROM ops_daily" in sql
+    # A wallet with no operations falls back to when it was created. NOT to
+    # user_portfolio_positions.created_at, which records the import, not the purchase.
+    assert "user_portfolios" in sql
+    assert "SELECT MIN(DATE(created_at" in sql
+    # Both date derivations in this CTE chain bucket in exchange-local time; a wallet
+    # created after 23:00 Warsaw would otherwise get a bound one day early.
+    assert "created_at, 'Europe/Warsaw'" in sql
+    # Days before the bound produce no row, so they render as no_data (blank).
+    assert "AND snapshot_date >= COALESCE((SELECT first_day FROM inception)" in sql
+
+
+def test_both_queries_count_the_holdings_their_operations_cannot_explain(caplog):
+    """PUL-103 phase 4.  Absorbing a residual is the correct behaviour — cash, positions
+    entered by hand and in-kind distributions carry no operation and must stay flat
+    rather than vanish.  But an *unexpected* residual means the reconstruction lost
+    something, and the first person to notice must not be the user staring at a wrong
+    number.  Both queries count it; cash is excluded because it is residual by
+    definition."""
+    import logging
+
+    from db.bigquery import CASH_TICKER, get_portfolio_calendar_data, get_portfolio_history
+
+    cal_rows = [{"snapshot_date": date(2026, 6, 2), "portfolio_value": 10500.0,
+                 "daily_change_pln": 120.0, "prices_found": 3, "total_positions": 3,
+                 "residual_holders": 2}]
+    with caplog.at_level(logging.DEBUG, logger="db.bigquery"):
+        with patch("db.bigquery._get_client",
+                   return_value=_mock_bq_client_with_rows(cal_rows)) as mock_get:
+            get_portfolio_calendar_data("port-1", "user-1", 2026, 6)
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+    assert "ABS(today_shares - total_signed) > 1e-9) AS residual_holders" in sql
+    assert f"WHERE ticker != '{CASH_TICKER}'" in sql
+    assert "unexplained holdings: 2" in caplog.text
+
+    caplog.clear()
+    hist_rows = [dict(_hist_row(date(2026, 6, 2), 10500, 500), residual_holders=5)]
+    with caplog.at_level(logging.DEBUG, logger="db.bigquery"):
+        with patch("db.bigquery._get_client",
+                   return_value=_mock_bq_client_with_rows(hist_rows)) as mock_get:
+            get_portfolio_history("port-1", "user-1", date(2026, 6, 1))
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+    assert "AS residual_holders" in sql
+    # Carried by meta, so it survives a window in which no day passes the gate.
+    assert "m.residual_holders" in sql
+    assert "unexplained holdings: 5" in caplog.text
+
+
+def test_an_unexplained_holding_is_reported_at_a_level_production_actually_emits(caplog):
+    """Impl-review F1.  The count rides in a DEBUG line, but `api_main.py` configures
+    the root logger at INFO — so in Cloud Run the phase-4 diagnostic would never have
+    left the process, which is precisely where it was meant to live.  A non-zero count
+    now also emits at INFO; zero is the normal case and stays silent, so the log volume
+    cost is nothing and the signal fires only when there is something to look at."""
+    import logging
+
+    from db.bigquery import get_portfolio_calendar_data
+
+    rows = [{"snapshot_date": date(2026, 6, 2), "portfolio_value": 10500.0,
+             "daily_change_pln": 120.0, "prices_found": 3, "total_positions": 3,
+             "residual_holders": 2}]
+    with caplog.at_level(logging.INFO, logger="db.bigquery"):
+        with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(rows)):
+            get_portfolio_calendar_data("port-1", "user-1", 2026, 6)
+    assert "2 holding(s) not explained by broker operations" in caplog.text
+    assert "portfolio=port-1" in caplog.text
+
+    # Zero must not chatter: every healthy request would otherwise log a line.
+    caplog.clear()
+    rows[0]["residual_holders"] = 0
+    with caplog.at_level(logging.INFO, logger="db.bigquery"):
+        with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(rows)):
+            get_portfolio_calendar_data(None, "user-1", 2026, 6)
+    assert "not explained by broker operations" not in caplog.text
 
 
 def test_get_portfolio_calendar_data_returns_empty_list_when_no_positions():
@@ -1507,7 +1646,8 @@ def test_get_portfolio_calendar_data_raises_bigquery_error_on_failure():
 
 # ── get_portfolio_history (PUL-79 / FARO-5) ──────────────────────────────────
 
-def _hist_row(snapshot_date, value_pln, pnl_pln, notes=None, excluded=None) -> dict:
+def _hist_row(snapshot_date, value_pln, pnl_pln, notes=None, excluded=None,
+              data_from=None) -> dict:
     """One row as BigQuery returns it: series columns plus the cross-joined metadata."""
     return {
         "snapshot_date": snapshot_date,
@@ -1515,6 +1655,7 @@ def _hist_row(snapshot_date, value_pln, pnl_pln, notes=None, excluded=None) -> d
         "pnl_pln": pnl_pln,
         "notes": notes if notes is not None else [],
         "excluded": excluded if excluded is not None else [],
+        "data_from": data_from,
     }
 
 
@@ -1530,7 +1671,7 @@ def test_get_portfolio_history_returns_series_and_metadata():
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(bq_rows)):
         result = get_portfolio_history("port-123", "user-abc", date(2026, 6, 1))
 
-    assert set(result) == {"series", "notes", "excluded"}
+    assert set(result) == {"series", "notes", "excluded", "data_from"}
     series = result["series"]
     assert len(series) == 2
     assert series[0]["snapshot_date"] == date(2026, 6, 2)
@@ -1566,7 +1707,7 @@ def test_get_portfolio_history_returns_empty_envelope_when_no_rows():
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])):
         result = get_portfolio_history("empty-port", "user-1", date(2026, 6, 1))
 
-    assert result == {"series": [], "notes": [], "excluded": []}
+    assert result == {"series": [], "notes": [], "excluded": [], "data_from": None}
 
 
 def test_get_portfolio_history_raises_bigquery_error_on_failure():
@@ -1608,6 +1749,86 @@ def test_get_portfolio_history_query_fills_both_directions_and_demotes_the_gate(
     assert "LEFT JOIN daily" in q, "meta must be the left side so metadata survives"
     # ETF-safe: history values must include etf_quotes
     assert "etf_quotes" in q, "history must include etf_quotes for ETF positions"
+
+
+def test_history_values_each_day_at_the_shares_held_that_day():
+    """PUL-103 phase 3.  The chart shared the calendar's defect: today's share counts
+    crossed with every trading day.  It now reads the same backward-corrected holdings,
+    bounded at the wallet's inception."""
+    from db.bigquery import get_portfolio_history
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_history("port-1", "user-1", date(2026, 6, 1))
+
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+
+    assert "DATE(occurred_at, 'Europe/Warsaw')" in sql
+    assert "WHEN op_type = 'buy' THEN volume" in sql
+    assert "WHEN op_type = 'sell' THEN -volume" in sql
+    assert "FULL OUTER JOIN ops_totals" in sql
+    assert "o.op_date <= s.snapshot_date" in sql
+    # The bound is the same one the calendar uses, clamped to the requested range.
+    assert "SELECT MIN(op_date) FROM ops_daily" in sql
+    assert "user_portfolios" in sql
+
+    # Regression guards: today's shares must not reach the valuation.
+    assert "CROSS JOIN positions" not in sql, "today's shares must not reach the grid"
+    assert "p.shares *" not in sql, "the valuation must multiply shares_on_day, not p.shares"
+    assert "shares_on_day * px_ff" in sql
+    assert "o.op_date = " not in sql, (
+        "operations must match by range, not by date equality"
+    )
+
+
+def test_history_zero_share_day_neither_pays_nor_counts_towards_coverage():
+    """PUL-103 / plan-review F3.  The three corrections must stay disjoint: the holdings
+    reconstruction decides *whether* a ticker is held, the price fill decides *at what
+    price*, and the ``covered > 0`` gate decides whether anything could be priced at all.
+
+    A ticker at zero shares that survived into the fill would still carry a non-NULL
+    px_ff and be counted by COUNTIF, so the gate would stop meaning "nothing could be
+    priced" and start meaning "the universe was empty" — two different facts.  The same
+    oversight would make ``notes`` announce the debut of a ticker nobody held in the
+    window.  Both are prevented by dropping the row before either consumer sees it."""
+    from db.bigquery import get_portfolio_history
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_history("port-1", "user-1", date(2026, 6, 1))
+
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+
+    # Strictly positive, never ABS(): a negative reconstruction means buys on record
+    # with no position row, and subtracting it would paint a large red loss.
+    assert "WHERE shares_on_day > 1e-9" in sql
+    assert "ABS(shares_on_day)" not in sql
+    # Coverage and the note universe both read the *filtered* holdings, not the
+    # positions table.
+    assert "COUNTIF(px_ff IS NOT NULL) AS covered" in sql
+    assert "FROM (SELECT DISTINCT ticker FROM held)" in sql
+    assert "FROM positions p LEFT JOIN px_dedup" not in sql
+    # BOCF survives — it is now narrowed to residual tickers, which is the point.
+    assert "FIRST_VALUE" in sql and "UNBOUNDED FOLLOWING" in sql
+
+
+def test_history_announces_a_range_it_could_not_fill():
+    """The X axis is index-based (static/index.html), so two months of history inside a
+    1y range looks exactly like a full year.  When the wallet's inception cuts the range
+    short, say so — about the DATA, never about a listing (PUL-100 F2)."""
+    from db.bigquery import get_portfolio_history
+
+    rows = [_hist_row(date(2026, 6, 2), 10500, 500, data_from=date(2026, 6, 2))]
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(rows)) as mock_get:
+        result = get_portfolio_history("port-1", "user-1", date(2026, 6, 1))
+
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+    assert "AS data_from" in sql
+    assert result["data_from"] == date(2026, 6, 2)
+
+    # A wallet that predates the requested range says nothing.
+    rows = [_hist_row(date(2026, 6, 2), 10500, 500)]
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(rows)):
+        result = get_portfolio_history("port-1", "user-1", date(2026, 6, 1))
+    assert result["data_from"] is None
 
 
 def test_get_portfolio_history_uses_correct_params():

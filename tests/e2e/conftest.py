@@ -382,6 +382,9 @@ _FAKE_HISTORY_NOTES = [
     {"ticker": "S2B", "listed_from": _cal_weekdays[1], "price": 35.7},
 ]
 _FAKE_HISTORY_EXCLUDED = ["AAS"]
+# PUL-103: the wallet's inception falls inside the requested range, so the series is
+# shorter than it looks — the X axis is index-based and stretches whatever it is given.
+_FAKE_HISTORY_DATA_FROM = _cal_weekdays[0]
 
 
 def _fake_get_portfolio_history(portfolio_id, user_id, start_date):
@@ -390,10 +393,12 @@ def _fake_get_portfolio_history(portfolio_id, user_id, start_date):
             "series": _FAKE_HISTORY_ROWS,
             "notes": _FAKE_HISTORY_NOTES,
             "excluded": _FAKE_HISTORY_EXCLUDED,
+            "data_from": _FAKE_HISTORY_DATA_FROM,
         }
     if portfolio_id is None:  # all-mode aggregate (portfolio_id=all → None)
-        return {"series": _FAKE_HISTORY_ROWS_ALL, "notes": [], "excluded": []}
-    return {"series": [], "notes": [], "excluded": []}
+        return {"series": _FAKE_HISTORY_ROWS_ALL, "notes": [], "excluded": [],
+                "data_from": None}
+    return {"series": [], "notes": [], "excluded": [], "data_from": None}
 
 
 def _fake_create_user_portfolio_positions_table_if_not_exists():
