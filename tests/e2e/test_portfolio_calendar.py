@@ -159,3 +159,58 @@ def test_mtd_summary_hidden_when_portfolio_has_no_data(page: Page, live_server_u
 
     expect(page.locator("#pp-cal-label .pp-cal-mtd")).to_have_count(0)
     expect(page.locator("#pp-cal-mtd-summary")).not_to_be_visible()
+
+
+def test_the_day_number_does_not_sit_on_top_of_the_amount(page: Page, live_server_url: str):
+    """Risk (PUL-110): the day number used to be absolutely positioned over a centred
+    amount. Geometry, not appearance, is the thing to assert — two boxes fighting for
+    the same space is exactly what "nachodzą na siebie" means."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    _open_calendar_tab(page)
+
+    cell = page.locator("#pp-cal-grid .pp-cal-gain").first
+    expect(cell).to_be_visible()
+    day_box = cell.locator(".pp-cal-day").bounding_box()
+    pnl_box = cell.locator(".pp-cal-pnl").bounding_box()
+    assert day_box is not None and pnl_box is not None
+    # The day's bottom edge must not reach past the amount's top edge.
+    assert day_box["y"] + day_box["height"] <= pnl_box["y"] + 1, (
+        f"day {day_box} overlaps amount {pnl_box}"
+    )
+
+
+def test_the_picker_reaches_last_year_without_twelve_clicks(page: Page, live_server_url: str):
+    """Risk (PUL-110): stepping to a month a year back cost twelve clicks and twelve
+    fetches to change one number. The jump must land on the chosen month and leave the
+    URL saying the same thing the arrows would have."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    _open_calendar_tab(page)
+
+    target_year = date.today().year - 1
+    page.get_by_role("button", name="Wybierz miesiąc i rok").click()
+    page.locator("#pp-cal-picker-year").select_option(str(target_year))
+    page.locator("#pp-cal-picker-month").select_option("1")
+    page.get_by_role("button", name="Pokaż").click()
+
+    expect(page.locator("#pp-cal-label")).to_contain_text(f"Styczeń {target_year}")
+    expect(page.locator("#pp-cal-picker")).to_be_hidden()
+    page.wait_for_url(re.compile(rf"year={target_year}"))
+    page.wait_for_url(re.compile(r"month=1(&|$)"))
+
+
+def test_the_picker_offers_no_month_that_has_not_happened_yet(page: Page, live_server_url: str):
+    """Risk (PUL-110): a future month has no P&L to show, so offering it spends a fetch
+    to render an empty grid. The arrows keep their old freedom — this is about the picker."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    _open_calendar_tab(page)
+
+    page.get_by_role("button", name="Wybierz miesiąc i rok").click()
+    months = page.locator("#pp-cal-picker-month option")
+    expect(months).to_have_count(date.today().month)
+
+    # A past year is unrestricted — the cut is about "not yet", not about the picker.
+    page.locator("#pp-cal-picker-year").select_option(str(date.today().year - 1))
+    expect(months).to_have_count(12)

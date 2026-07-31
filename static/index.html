@@ -628,17 +628,25 @@
     text-align: center; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
     color: var(--text-muted); padding: .3rem 0;
   }
+  /* PUL-110: the day number used to be absolutely positioned over a centred
+     amount. Two things fighting for the same box collide as soon as the amount
+     runs to four digits, and at the mobile min-height they overlap outright.
+     One column, two rows: the day owns the top line, the amount owns what is
+     left. Nothing is layered over anything. */
   .pp-cal-cell {
-    position: relative; border-radius: 8px;
-    min-height: 56px; padding: 6px 8px;
+    border-radius: 8px;
+    min-height: 56px; padding: 5px 6px;
     background: #fff; border: 1px solid var(--border); font-size: .8rem;
-    display: flex; align-items: center; justify-content: center;
+    display: flex; flex-direction: column;
   }
   .pp-cal-cell .pp-cal-day {
-    position: absolute; top: 4px; left: 6px;
     font-size: .68rem; color: var(--text-muted); line-height: 1;
   }
-  .pp-cal-cell .pp-cal-pnl { font-weight: 600; font-size: .82rem; text-align: center; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .pp-cal-cell .pp-cal-pnl {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: .82rem; text-align: center; line-height: 1.15;
+    font-variant-numeric: tabular-nums; word-break: break-word;
+  }
   .pp-cal-gain { color: var(--positive); }
   .pp-cal-gain .pp-cal-day { color: rgba(21,115,71,.6); }
   .pp-cal-loss { color: var(--negative); }
@@ -665,9 +673,37 @@
   .pp-cal-swatch-neutral { background: #f2f4f6; border: 1px solid var(--border); }
   .pp-cal-swatch-white { background: #fff; border: 1px solid var(--border); }
   @media (max-width: 600px) {
-    .pp-cal-cell { min-height: 44px; font-size: .72rem; }
-    .pp-cal-cell .pp-cal-pnl { font-size: .72rem; }
+    .pp-cal-cell { min-height: 48px; font-size: .72rem; padding: 3px 3px 4px; }
+    .pp-cal-cell .pp-cal-day { font-size: .62rem; }
+    .pp-cal-cell .pp-cal-pnl { font-size: .68rem; }
+    #pp-cal-grid { gap: 3px; }
   }
+  /* PUL-110: month/year jump. Twelve clicks to reach last year, each firing its
+     own fetch, to change one number in the URL. A button, not a hover target —
+     the whole point is that it is reachable by keyboard and by thumb. */
+  #pp-cal-pick {
+    background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: .3rem .6rem; cursor: pointer; color: var(--brand); font-size: .95rem; line-height: 1;
+    transition: background .15s;
+  }
+  #pp-cal-pick:hover { background: var(--brand-tint); }
+  #pp-cal-nav { position: relative; }
+  #pp-cal-picker {
+    position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    z-index: 40; margin-top: .35rem; display: flex; gap: .4rem; align-items: center;
+    background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: .55rem .65rem; box-shadow: var(--shadow-2);
+  }
+  #pp-cal-picker[hidden] { display: none; }
+  #pp-cal-picker select {
+    padding: .35rem .5rem; border: 1px solid #cdd4dc; border-radius: var(--radius-sm);
+    font-size: .85rem; background: #fff; color: var(--text);
+  }
+  #pp-cal-picker-go {
+    padding: .35rem .8rem; border: none; border-radius: var(--radius-sm);
+    background: var(--brand); color: #fff; font-size: .85rem; font-weight: 600; cursor: pointer;
+  }
+  #pp-cal-picker-go:hover { background: var(--brand-dark); }
   #pp-cal-mtd-summary {
     display: none; margin-top: .5rem; padding: .6rem .75rem;
     background: #fff; border: 1px solid var(--border);
@@ -1006,7 +1042,8 @@ html[data-theme="dark"] .treemap-wallet, html[data-theme="dark"] .treemap-legend
 html[data-theme="dark"] .profile-menu, html[data-theme="dark"] .ac-dropdown, html[data-theme="dark"] .modal-box, html[data-theme="dark"] .tc-popup,
 html[data-theme="dark"] #pp-edit-modal, html[data-theme="dark"] #pp-add-portfolio-modal, html[data-theme="dark"] #pp-import-modal, html[data-theme="dark"] .login-box, html[data-theme="dark"] .wl-chip,
 html[data-theme="dark"] .pp-portfolio-tab, html[data-theme="dark"] .pp-view-tab.active, html[data-theme="dark"] .pp-cal-cell, html[data-theme="dark"] .treemap-container,
-html[data-theme="dark"] #pp-cal-prev, html[data-theme="dark"] #pp-cal-next, html[data-theme="dark"] .pagination-bar button, html[data-theme="dark"] #pp-tbody tr
+html[data-theme="dark"] #pp-cal-prev, html[data-theme="dark"] #pp-cal-next, html[data-theme="dark"] .pagination-bar button, html[data-theme="dark"] #pp-tbody tr,
+html[data-theme="dark"] #pp-cal-pick, html[data-theme="dark"] #pp-cal-picker, html[data-theme="dark"] #pp-cal-picker select
   { background:#141f2b; color:var(--text); border-color:var(--border); }
 html[data-theme="dark"] th, html[data-theme="dark"] .pagination-bar, html[data-theme="dark"] .modal-meta { background:#101a25; }
 html[data-theme="dark"] td { border-bottom-color:#1c2836; }
@@ -4392,7 +4429,14 @@ function _buildPortfolioPositionsViewContent(view) {
       <div id="pp-cal-nav">
         <button type="button" id="pp-cal-prev">&#8249;</button>
         <span id="pp-cal-label"></span>
+        <button type="button" id="pp-cal-pick" aria-expanded="false" aria-controls="pp-cal-picker"
+                aria-label="Wybierz miesiąc i rok">&#128197;</button>
         <button type="button" id="pp-cal-next">&#8250;</button>
+        <div id="pp-cal-picker" hidden>
+          <select id="pp-cal-picker-month" aria-label="Miesiąc"></select>
+          <select id="pp-cal-picker-year" aria-label="Rok"></select>
+          <button type="button" id="pp-cal-picker-go">Pokaż</button>
+        </div>
       </div>
       <div id="pp-cal-grid"></div>
       <div id="pp-cal-mtd-summary"></div>
@@ -4713,24 +4757,86 @@ function _buildPortfolioPositionsViewContent(view) {
   _ppCalMonth = _now.getMonth() + 1;
 
   // change #6: month navigation handlers (disable synchronously — lessons.md SPA rule)
-  $('pp-cal-prev').addEventListener('click', () => {
-    $('pp-cal-prev').disabled = true;
-    $('pp-cal-next').disabled = true;
-    _ppCalData = null;
-    _ppCalMonth--;
-    if (_ppCalMonth < 1) { _ppCalMonth = 12; _ppCalYear--; }
-    _ppWriteUrl(true);
-    fetchPortfolioCalendar();
+  $('pp-cal-prev').addEventListener('click', () => _ppCalGoTo(_ppCalYear, _ppCalMonth - 1));
+  $('pp-cal-next').addEventListener('click', () => _ppCalGoTo(_ppCalYear, _ppCalMonth + 1));
+
+  // PUL-110: month/year jump. Same three lines of state the arrows move, so the
+  // URL contract and the caching behaviour are unchanged — only the number of
+  // clicks it takes to get somewhere.
+  const pickBtn = $('pp-cal-pick');
+  pickBtn.addEventListener('click', () => {
+    _ppCalPickerOpen(pickBtn.getAttribute('aria-expanded') !== 'true');
   });
-  $('pp-cal-next').addEventListener('click', () => {
-    $('pp-cal-prev').disabled = true;
-    $('pp-cal-next').disabled = true;
-    _ppCalData = null;
-    _ppCalMonth++;
-    if (_ppCalMonth > 12) { _ppCalMonth = 1; _ppCalYear++; }
-    _ppWriteUrl(true);
-    fetchPortfolioCalendar();
+  $('pp-cal-picker-go').addEventListener('click', () => {
+    const y = parseInt($('pp-cal-picker-year').value, 10);
+    const m = parseInt($('pp-cal-picker-month').value, 10);
+    _ppCalPickerOpen(false);
+    if (Number.isFinite(y) && Number.isFinite(m)) _ppCalGoTo(y, m);
   });
+  // Escape closes and hands focus back, so the picker is not a keyboard trap.
+  $('pp-cal-picker').addEventListener('keydown', e => {
+    if (e.key === 'Escape') { _ppCalPickerOpen(false); pickBtn.focus(); }
+  });
+}
+
+// Single mover for the calendar's month state: the arrows, the picker and any
+// future caller all go through here, so month overflow and the disable-then-fetch
+// order are written down once.
+function _ppCalGoTo(year, month) {
+  while (month < 1) { month += 12; year -= 1; }
+  while (month > 12) { month -= 12; year += 1; }
+  $('pp-cal-prev').disabled = true;
+  $('pp-cal-next').disabled = true;
+  _ppCalData = null;
+  _ppCalYear = year;
+  _ppCalMonth = month;
+  _ppWriteUrl(true);
+  fetchPortfolioCalendar();
+}
+
+function _ppCalPickerOpen(open) {
+  const picker = $('pp-cal-picker');
+  const btn = $('pp-cal-pick');
+  if (!picker || !btn) return;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  picker.hidden = !open;
+  if (!open) return;
+
+  // Rebuilt on every open so "no month past the current one" stays true across a
+  // midnight boundary, and so the selects always show where the calendar is now.
+  const now = new Date();
+  const curYear = now.getFullYear(), curMonth = now.getMonth() + 1;
+  const yearSel = $('pp-cal-picker-year');
+  yearSel.innerHTML = '';
+  for (let y = curYear; y >= curYear - 10; y--) {
+    const o = document.createElement('option');
+    o.value = String(y);
+    o.textContent = String(y);
+    yearSel.appendChild(o);
+  }
+  yearSel.value = String(_ppCalYear);
+
+  const monthSel = $('pp-cal-picker-month');
+  const fillMonths = () => {
+    const y = parseInt(yearSel.value, 10);
+    const keep = parseInt(monthSel.value, 10) || _ppCalMonth;
+    monthSel.innerHTML = '';
+    _PP_MONTHS_PL.forEach((name, i) => {
+      const m = i + 1;
+      // A month that has not happened yet has no P&L to show; offering it would
+      // spend a fetch to render an empty grid.
+      if (y === curYear && m > curMonth) return;
+      const o = document.createElement('option');
+      o.value = String(m);
+      o.textContent = name;
+      monthSel.appendChild(o);
+    });
+    monthSel.value = String(Math.min(keep, y === curYear ? curMonth : 12));
+  };
+  yearSel.onchange = fillMonths;
+  monthSel.value = String(_ppCalMonth);
+  fillMonths();
+  monthSel.focus();
 }
 
 function showPortfolioPositionsView() {
@@ -4862,10 +4968,13 @@ async function fetchPortfolioCalendar() {
   }
 }
 
+// Hoisted out of _renderPortfolioCalendar: the month/year picker names the same
+// months, and two lists that have to agree is one list too many.
+const _PP_MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec',
+  'Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+
 function _renderPortfolioCalendar(data) {
-  const MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec',
-    'Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
-  const label = MONTHS_PL[data.month - 1] + ' ' + data.year;
+  const label = _PP_MONTHS_PL[data.month - 1] + ' ' + data.year;
 
   const grid = $('pp-cal-grid');
   grid.innerHTML = '';
