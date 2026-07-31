@@ -273,6 +273,8 @@ class PortfolioCalendarDay(BaseModel):
     prices_found: int = 0
     total_positions: int = 0
     mtd_diff: float | None = None
+    # PUL-111: why the exchange was closed, in words. None for a day that traded.
+    reason: str | None = None
 
 
 class PortfolioCalendarResponse(BaseModel):

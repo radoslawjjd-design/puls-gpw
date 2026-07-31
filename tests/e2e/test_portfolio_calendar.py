@@ -255,3 +255,62 @@ def test_the_picker_offers_no_month_before_the_wallet_held_anything(
     months = page.locator("#pp-cal-picker-month option")
     values = months.evaluate_all("opts => opts.map(o => Number(o.value))")
     assert values == list(range(3, 13)), values
+
+
+# ── PUL-111: what happened on this day ───────────────────────────────────────
+
+def test_clicking_a_closed_day_says_why_the_exchange_was_shut(
+    page: Page, live_server_url: str
+):
+    """Risk (PUL-111): a blank tile looked the same whether the exchange was closed
+    or we simply had no price for it. The reason is derived on the backend, so this
+    proves the whole path: computed name → response → cell → dialog."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    _open_calendar_tab(page)
+
+    # A weekend is the one closed day every month is guaranteed to have.
+    page.locator("#pp-cal-grid .pp-cal-neutral").first.click()
+
+    popup = page.locator("#pp-cal-popup-backdrop")
+    expect(popup).to_be_visible()
+    expect(page.locator("#pp-cal-popup-state")).to_contain_text("giełda nie prowadzi sesji")
+    # A closed day has no P&L to report, and a "+0 PLN" there would read as a real
+    # flat session — the same fabrication PUL-103 removed from the grid.
+    expect(page.locator("#pp-cal-popup-pnl")).to_be_hidden()
+
+
+def test_clicking_a_session_day_reports_its_numbers_and_no_closure_reason(
+    page: Page, live_server_url: str
+):
+    """Risk (PUL-111): the popup must not answer "why was it closed" for a day that
+    traded. Fixture: the month's first weekday is +300 on 2 of 2 priced positions."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    _open_calendar_tab(page)
+
+    page.locator("#pp-cal-grid .pp-cal-gain").first.click()
+
+    expect(page.locator("#pp-cal-popup-backdrop")).to_be_visible()
+    expect(page.locator("#pp-cal-popup-state")).to_have_text("Sesja giełdowa")
+    expect(page.locator("#pp-cal-popup-pnl")).to_contain_text("300,00 PLN")
+    expect(page.locator("#pp-cal-popup-coverage")).to_contain_text("2 z 2")
+
+
+def test_the_day_popup_closes_and_is_reachable_without_a_mouse(
+    page: Page, live_server_url: str
+):
+    """Risk (PUL-111): the tiles are divs, so click alone would make the day context
+    mouse-only, and a dialog with no Escape is a keyboard trap."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    _open_calendar_tab(page)
+
+    cell = page.locator("#pp-cal-grid .pp-cal-gain").first
+    cell.focus()
+    cell.press("Enter")
+
+    popup = page.locator("#pp-cal-popup-backdrop")
+    expect(popup).to_be_visible()
+    popup.press("Escape")
+    expect(popup).to_be_hidden()

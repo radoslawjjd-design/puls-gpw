@@ -3,7 +3,7 @@
 No I/O — takes raw BQ rows and builds a full monthly grid with state and P&L.
 """
 import calendar
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 # GPW official no-session days (holidays) — source: https://www.gpw.pl/szczegoly-sesji
 # Last updated: 2026-06-29. TODO: update for 2028+ before Dec 31 2027 (stale list → holidays show white, not gray).
@@ -21,6 +21,73 @@ _GPW_HOLIDAYS: frozenset[date] = frozenset([
     date(2027, 5, 3), date(2027, 5, 27), date(2027, 11, 1), date(2027, 11, 11),
     date(2027, 12, 24), date(2027, 12, 31),
 ])
+
+
+def _easter_sunday(year: int) -> date:
+    """Gregorian Easter (anonymous algorithm). Two Polish holidays hang off it."""
+    a = year % 19
+    b, c = divmod(year, 100)
+    d, e = divmod(b, 4)
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    m = (32 + 2 * e + 2 * i - h - k) % 7
+    n = (a + 11 * h + 22 * m) // 451
+    month, day = divmod(h + m - 7 * n + 114, 31)
+    return date(year, month, day + 1)
+
+
+def _statutory_holiday_name(d: date) -> str | None:
+    """The Polish public-holiday name for a date, or None if it is an ordinary day.
+
+    PUL-111: the GPW session calendar publishes *dates* with no reason attached, so
+    the reason is derived here.  The distinction is the point: 1 May is closed
+    because the country is, while 31 December is closed because the exchange decided
+    to be — two different answers to "why was there no session on a Thursday".
+
+    Christmas Eve is on this list only from 2025, the year it became a statutory
+    non-working day in Poland; before that GPW closed on it by its own decision.
+    """
+    fixed = {
+        (1, 1): "Nowy Rok",
+        (1, 6): "Trzech Króli",
+        (5, 1): "Święto Pracy",
+        (5, 3): "Święto Konstytucji 3 Maja",
+        (8, 15): "Wniebowzięcie NMP / Święto Wojska Polskiego",
+        (11, 1): "Wszystkich Świętych",
+        (11, 11): "Narodowe Święto Niepodległości",
+        (12, 25): "Boże Narodzenie",
+        (12, 26): "Boże Narodzenie (drugi dzień)",
+    }
+    if (d.month, d.day) in fixed:
+        return fixed[(d.month, d.day)]
+    if d.year >= 2025 and (d.month, d.day) == (12, 24):
+        return "Wigilia Bożego Narodzenia"
+
+    easter = _easter_sunday(d.year)
+    if d == easter:
+        return "Wielkanoc"
+    if d == easter + timedelta(days=1):
+        return "Poniedziałek Wielkanocny"
+    if d == easter + timedelta(days=49):
+        return "Zielone Świątki"
+    if d == easter + timedelta(days=60):
+        return "Boże Ciało"
+    return None
+
+
+def _closure_reason(d: date, state: str) -> str | None:
+    """Why the exchange was shut on a given day, in words, or None when it wasn't."""
+    if state == "weekend":
+        return "Weekend — giełda nie prowadzi sesji"
+    if state == "holiday":
+        name = _statutory_holiday_name(d)
+        if name:
+            return f"{name} — dzień ustawowo wolny od pracy"
+        # Left over: the exchange's own decision. 31 December is the standing case.
+        return "Dzień wolny od sesji — decyzja GPW"
+    return None
 
 
 def compute_calendar_pnl(
@@ -43,6 +110,10 @@ def compute_calendar_pnl(
 
     Gray in UI: weekend + holiday only.
     White in UI: everything else without a green/red value.
+
+    Every day also carries `reason` (PUL-111): why the exchange was shut, in words,
+    for 'weekend' and 'holiday'; None for every state that had a session or could
+    have had one.
     """
     today = datetime.now(tz=timezone.utc).date()
     _, last_day = calendar.monthrange(year, month)
@@ -123,5 +194,10 @@ def compute_calendar_pnl(
             "total_positions": total_pos,
             "mtd_diff": mtd_diff,
         })
+
+    # PUL-111: attached once, at the end, rather than at each of the five places a
+    # day is appended — the reason is a function of (date, state) and nothing else.
+    for entry in days:
+        entry["reason"] = _closure_reason(date.fromisoformat(entry["date"]), entry["state"])
 
     return {"year": year, "month": month, "days": days}
