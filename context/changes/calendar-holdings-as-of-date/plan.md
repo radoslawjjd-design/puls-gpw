@@ -702,14 +702,21 @@ w 300 s po deployu.
 
 #### Automated
 
-- [ ] 4.1 Skrypt round-trip przechodzi w całości
-- [ ] 4.2 Skrypt sprząta tabele-jednorazówki
-- [ ] 4.3 Pełna suita nadal zielona
+- [x] 4.1 Skrypt round-trip przechodzi w całości — 15 sprawdzeń, 6 portfeli
+- [x] 4.2 Skrypt sprząta tabele-jednorazówki — `bq ls espi_ebi | grep _rt_` puste
+- [x] 4.3 Pełna suita nadal zielona
 
 #### Manual
 
-- [ ] 4.4 Raport reszt pokazuje dokładnie trzy znane przypadki i zero nieoczekiwanych
-- [ ] 4.5 Oba zapytania mieszczą się w budżecie czasu
+- [x] 4.4 Raport reszt pokazuje dokładnie trzy znane przypadki i zero nieoczekiwanych
+      Na produkcji: `10414536… _CASH 2160,11`, `d49d0121… _CASH 84,03`,
+      `626e9da1… XTB 1,0` — co do wiersza to, co zmierzył research; nic poza tym.
+      Log DEBUG w obu zapytaniach liczy to samo z pominięciem gotówki (resztowej
+      z definicji), więc na prodzie zgłasza 1 dla portfela ręcznego i 0 dla reszty.
+- [x] 4.5 Oba zapytania mieszczą się w budżecie czasu
+      Na realnych danych: kalendarz 1,16 s, wykres 1,50 s (1r) / 1,90 s (od 2024-06-01)
+      / 1,60 s („Wszystkie"). Baseline wykresu sprzed zmiany to ~1,6 s, więc dwa nowe
+      CTE nic nie kosztowały. Budżet w skrypcie to 20 s na zapytanie.
 
 ### Phase 5: Weryfikacja na produkcji
 

@@ -1543,6 +1543,42 @@ def test_calendar_bounds_the_month_at_the_first_share_affecting_operation():
     assert "AND snapshot_date >= COALESCE((SELECT first_day FROM inception)" in sql
 
 
+def test_both_queries_count_the_holdings_their_operations_cannot_explain(caplog):
+    """PUL-103 phase 4.  Absorbing a residual is the correct behaviour — cash, positions
+    entered by hand and in-kind distributions carry no operation and must stay flat
+    rather than vanish.  But an *unexpected* residual means the reconstruction lost
+    something, and the first person to notice must not be the user staring at a wrong
+    number.  Both queries count it; cash is excluded because it is residual by
+    definition."""
+    import logging
+
+    from db.bigquery import CASH_TICKER, get_portfolio_calendar_data, get_portfolio_history
+
+    cal_rows = [{"snapshot_date": date(2026, 6, 2), "portfolio_value": 10500.0,
+                 "daily_change_pln": 120.0, "prices_found": 3, "total_positions": 3,
+                 "residual_holders": 2}]
+    with caplog.at_level(logging.DEBUG, logger="db.bigquery"):
+        with patch("db.bigquery._get_client",
+                   return_value=_mock_bq_client_with_rows(cal_rows)) as mock_get:
+            get_portfolio_calendar_data("port-1", "user-1", 2026, 6)
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+    assert "ABS(today_shares - total_signed) > 1e-9) AS residual_holders" in sql
+    assert f"WHERE ticker != '{CASH_TICKER}'" in sql
+    assert "unexplained holdings: 2" in caplog.text
+
+    caplog.clear()
+    hist_rows = [dict(_hist_row(date(2026, 6, 2), 10500, 500), residual_holders=5)]
+    with caplog.at_level(logging.DEBUG, logger="db.bigquery"):
+        with patch("db.bigquery._get_client",
+                   return_value=_mock_bq_client_with_rows(hist_rows)) as mock_get:
+            get_portfolio_history("port-1", "user-1", date(2026, 6, 1))
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+    assert "AS residual_holders" in sql
+    # Carried by meta, so it survives a window in which no day passes the gate.
+    assert "m.residual_holders" in sql
+    assert "unexplained holdings: 5" in caplog.text
+
+
 def test_get_portfolio_calendar_data_returns_empty_list_when_no_positions():
     """Returns [] when portfolio has no positions (BQ query returns 0 rows)."""
     from db.bigquery import get_portfolio_calendar_data

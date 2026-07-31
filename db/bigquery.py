@@ -634,7 +634,15 @@ def get_portfolio_calendar_data(
               AND snapshot_date >= COALESCE((SELECT first_day FROM inception), snapshot_date)
             GROUP BY snapshot_date
           )
-        SELECT snapshot_date, portfolio_value, daily_change_pln, prices_found, total_positions
+        SELECT snapshot_date, portfolio_value, daily_change_pln, prices_found, total_positions,
+               -- Diagnostic only, never returned: how many holdings the operations do
+               -- NOT explain.  Absorbing a residual is the correct behaviour, but an
+               -- unexpected one means the reconstruction lost something, and the first
+               -- person to notice should not be the user looking at a wrong number.
+               -- Cash is excluded because it is residual by construction.
+               (SELECT COUNT(*) FROM holders
+                WHERE ticker != '{CASH_TICKER}'
+                  AND ABS(today_shares - total_signed) > 1e-9) AS residual_holders
         FROM daily_portfolio
         ORDER BY snapshot_date
     """
@@ -651,7 +659,11 @@ def get_portfolio_calendar_data(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"get_portfolio_calendar_data failed: {exc}") from exc
-    logger.debug("BQ get_portfolio_calendar_data: %.0fms", (time.time() - _t) * 1000)
+    logger.debug(
+        "BQ get_portfolio_calendar_data: %.0fms, unexplained holdings: %s",
+        (time.time() - _t) * 1000,
+        getattr(rows[0], "residual_holders", None) if rows else 0,
+    )
     return [
         {
             "snapshot_date": row.snapshot_date,
@@ -919,7 +931,13 @@ def get_portfolio_history(
               ) AS notes,
               ARRAY(SELECT ticker FROM coverage WHERE first_px_date IS NULL) AS excluded,
               (SELECT IF(first_day > @start_date, first_day, NULL) FROM inception)
-                AS data_from
+                AS data_from,
+              -- Diagnostic only, never returned — see get_portfolio_calendar_data.
+              -- Carried by meta rather than by the series so it survives a window in
+              -- which no day passes the gate.
+              (SELECT COUNT(*) FROM holders
+               WHERE ticker != '{CASH_TICKER}'
+                 AND ABS(today_shares - total_signed) > 1e-9) AS residual_holders
           ),
           valued AS (
             SELECT h.snapshot_date, h.shares_on_day, h.avg_price, f.px_ff
@@ -940,7 +958,8 @@ def get_portfolio_history(
             WHERE snapshot_date >= COALESCE((SELECT first_day FROM inception), @start_date)
             GROUP BY snapshot_date
           )
-        SELECT d.snapshot_date, d.value_pln, d.pnl_pln, m.notes, m.excluded, m.data_from
+        SELECT d.snapshot_date, d.value_pln, d.pnl_pln, m.notes, m.excluded, m.data_from,
+               m.residual_holders
         FROM meta m
         LEFT JOIN daily d ON d.covered > 0
         ORDER BY d.snapshot_date
@@ -956,7 +975,11 @@ def get_portfolio_history(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"get_portfolio_history failed: {exc}") from exc
-    logger.debug("BQ get_portfolio_history: %.0fms", (time.time() - _t) * 1000)
+    logger.debug(
+        "BQ get_portfolio_history: %.0fms, unexplained holdings: %s",
+        (time.time() - _t) * 1000,
+        getattr(rows[0], "residual_holders", None) if rows else 0,
+    )
     # The meta-first join emits one metadata-only row (NULL date) when no day survives the
     # gate — carry its lists, but never let it become a data point.
     series = [
