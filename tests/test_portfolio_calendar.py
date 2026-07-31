@@ -280,3 +280,58 @@ def test_days_before_inception_carry_the_same_blank_payload_as_future_days():
     assert {d["state"] for d in past["days"]} <= {"weekend", "holiday", "no_data"}
     assert {d["state"] for d in future["days"]} <= {"weekend", "holiday", "future"}
     assert payloads(past) == payloads(future) == {(None, None, None)}
+
+
+# ── PUL-111: why the exchange was closed ─────────────────────────────────────
+
+def test_a_statutory_holiday_says_which_one_it_is():
+    """A weekday with no bar said nothing about why. Naming the holiday is the
+    difference between "the country is off" and "something is broken"."""
+    result = compute_calendar_pnl([], 2026, 5)
+    days = {d["date"]: d for d in result["days"]}
+
+    assert days["2026-05-01"]["state"] == "holiday"
+    assert days["2026-05-01"]["reason"] == "Święto Pracy — dzień ustawowo wolny od pracy"
+
+
+def test_an_easter_dependent_holiday_is_computed_not_tabulated():
+    """Corpus Christi moves with Easter, so a fixed table would be wrong every year.
+    4 June 2026 is Easter (5 April) + 60 days."""
+    result = compute_calendar_pnl([], 2026, 6)
+    days = {d["date"]: d for d in result["days"]}
+
+    assert days["2026-06-04"]["state"] == "holiday"
+    assert days["2026-06-04"]["reason"].startswith("Boże Ciało")
+
+
+def test_an_exchange_only_closure_does_not_claim_to_be_a_public_holiday():
+    """31 December is a working day in Poland — the exchange simply does not trade.
+    Saying "dzień ustawowo wolny" there would be a plain falsehood."""
+    result = compute_calendar_pnl([], 2026, 12)
+    days = {d["date"]: d for d in result["days"]}
+
+    assert days["2026-12-31"]["state"] == "holiday"
+    assert days["2026-12-31"]["reason"] == "Dzień wolny od sesji — decyzja GPW"
+
+
+def test_christmas_eve_is_statutory_only_from_the_year_it_became_one():
+    """Christmas Eve became a non-working day in Poland in 2025; before that GPW
+    closed on it by its own decision. The reason has to follow the law, not the
+    habit — 2024 is checked through the helper because GPW's own list does not
+    reach back that far."""
+    from src.portfolio_calendar import _statutory_holiday_name
+
+    assert _statutory_holiday_name(date(2026, 12, 24)) == "Wigilia Bożego Narodzenia"
+    assert _statutory_holiday_name(date(2024, 12, 24)) is None
+
+
+def test_a_day_that_traded_gives_no_closure_reason():
+    """`reason` answers "why was it shut". A session day was not shut, and a filled
+    string there would put a contradiction next to a P&L number."""
+    rows = [_make_row(date(2026, 6, 3), 10000.0, 150.0)]
+    result = compute_calendar_pnl(rows, 2026, 6)
+    days = {d["date"]: d for d in result["days"]}
+
+    assert days["2026-06-03"]["state"] == "data"
+    assert days["2026-06-03"]["reason"] is None
+    assert days["2026-06-06"]["reason"] == "Weekend — giełda nie prowadzi sesji"
