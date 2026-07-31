@@ -1492,8 +1492,12 @@ def test_calendar_values_each_day_at_the_shares_held_that_day():
     assert "WHEN op_type = 'sell' THEN -volume" in sql
     # Positions ∪ operations, or a ticker sold to zero drops out of history entirely.
     assert "FULL OUTER JOIN ops_totals" in sql
-    # Dust from float volumes would otherwise render as a phantom holding.
-    assert "ABS(hd.shares_on_day) > 1e-9" in sql
+    # Dust from float volumes would otherwise render as a phantom holding, and the
+    # threshold is strictly positive on purpose: a negative reconstruction (buys on
+    # record with no position row, which deleting a position by hand leaves behind)
+    # must be dropped, never subtracted from the day's value.
+    assert "hd.shares_on_day > 1e-9" in sql
+    assert "ABS(hd.shares_on_day)" not in sql
     # The calendar joined the price tables raw until PUL-103; a duplicate row fanned
     # out and double-counted the day.
     assert "QUALIFY ROW_NUMBER() OVER ( PARTITION BY ticker, snapshot_date" in sql
@@ -1531,7 +1535,10 @@ def test_calendar_bounds_the_month_at_the_first_share_affecting_operation():
     # A wallet with no operations falls back to when it was created. NOT to
     # user_portfolio_positions.created_at, which records the import, not the purchase.
     assert "user_portfolios" in sql
-    assert "SELECT MIN(DATE(created_at))" in sql
+    assert "SELECT MIN(DATE(created_at" in sql
+    # Both date derivations in this CTE chain bucket in exchange-local time; a wallet
+    # created after 23:00 Warsaw would otherwise get a bound one day early.
+    assert "created_at, 'Europe/Warsaw'" in sql
     # Days before the bound produce no row, so they render as no_data (blank).
     assert "AND snapshot_date >= COALESCE((SELECT first_day FROM inception)" in sql
 

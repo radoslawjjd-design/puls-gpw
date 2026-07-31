@@ -408,6 +408,24 @@ def get_portfolio_calendar_data(
     date equality, because operation days need not be trading days (measured: 16 of
     426).
 
+    The series is also bounded at the wallet's inception — the first *share-affecting*
+    operation, or, for a wallet with no operations at all, the day it was created.
+    Days before it emit no row, so the calendar renders them blank, exactly like days
+    that have not arrived yet.  A zero would be a different lie: it reads as a real
+    flat session.  Deliberately not the first operation of any kind, because on every
+    real wallet that is a deposit, and a deposit day holds nothing but the cash
+    residual — which prices at 1.00 with a zero move and renders as a green "+0 PLN".
+    Accepted consequence: a wallet that has only ever received deposits, without a
+    single purchase, gets an empty calendar.  There was nothing to value.
+
+    The bound trims the left edge only.  A wallet that later sold everything and sat
+    in cash still reports those days, at a zero move — which is true, it really was
+    flat — but the cash figure shown is *today's* balance, not that day's, because
+    cash carries no operation and is therefore pure residual.  Reconstructing it is
+    not possible from what is stored: summing amount_pln over the imported operations
+    misses the foreign trades the parser drops on purpose (measured on the real
+    export: 84.03 from the broker's own total against 143.94 from the parsed rows).
+
     A 10-day price lookback is still scanned, for an unrelated reason: it gives the
     close carry-forward a predecessor for the 1st of the month.  Those rows are
     filtered out before the result is returned.
@@ -439,11 +457,18 @@ def get_portfolio_calendar_data(
             -- Deduplicated per (ticker, date): the calendar joined the price tables
             -- raw, so a duplicate row fanned out and double-counted the day.  The
             -- value chart has carried this guard since PUL-100.
+            -- A real close outranks a fresher fetch: since PUL-98 the official feed
+            -- honestly reports a session with no trades, so the newest row for a
+            -- (ticker, date) pair can carry no price at all.  Ordering on fetched_at
+            -- alone would then discard the real number in favour of the NULL.  The
+            -- value chart sidesteps this by filtering NULLs before deduping; the
+            -- calendar cannot copy that, because it also needs zmiana_kwotowa.
             SELECT ticker, snapshot_date, kurs_zamkniecia, zmiana_kwotowa
             FROM `{cds_ref}`
             WHERE snapshot_date BETWEEN @lookback_start AND @end_date
             QUALIFY ROW_NUMBER() OVER (
-              PARTITION BY ticker, snapshot_date ORDER BY fetched_at DESC
+              PARTITION BY ticker, snapshot_date
+              ORDER BY (kurs_zamkniecia IS NOT NULL) DESC, fetched_at DESC
             ) = 1
           ),
           px_etf AS (
@@ -451,7 +476,8 @@ def get_portfolio_calendar_data(
             FROM `{etf_ref}`
             WHERE snapshot_date BETWEEN @lookback_start AND @end_date
             QUALIFY ROW_NUMBER() OVER (
-              PARTITION BY ticker, snapshot_date ORDER BY fetched_at DESC
+              PARTITION BY ticker, snapshot_date
+              ORDER BY (kurs_zamkniecia IS NOT NULL) DESC, fetched_at DESC
             ) = 1
           ),
           positions AS (
@@ -499,7 +525,7 @@ def get_portfolio_calendar_data(
             -- 2026-07-29/30 stamp).
             SELECT COALESCE(
               (SELECT MIN(op_date) FROM ops_daily),
-              (SELECT MIN(DATE(created_at)) FROM `{pfs_ref}`
+              (SELECT MIN(DATE(created_at, 'Europe/Warsaw')) FROM `{pfs_ref}`
                WHERE user_id = @user_id {portfolio_filter})
             ) AS first_day
           ),
@@ -512,6 +538,15 @@ def get_portfolio_calendar_data(
               COALESCE(p.ticker, t.ticker)             AS ticker,
               COALESCE(p.shares, 0)                    AS today_shares,
               COALESCE(t.total_signed, 0)              AS total_signed
+            --
+            -- portfolio_id is NULLABLE on positions (orphan rows predating PUL-64),
+            -- and a plain `=` never matches NULL, so such a position does not pair
+            -- with that ticker's operations — it becomes its own holder row and the
+            -- operations become another.  Deliberate: nothing says the two are the
+            -- same holding, and a NULL-safe key would only assert that they are.
+            -- The ops-only row reconstructs negative before its first buy and is
+            -- dropped by the positive threshold below, leaving the orphan position
+            -- held constant — which is exactly the residual semantics.
             FROM positions p
             FULL OUTER JOIN ops_totals t
               ON t.portfolio_id = p.portfolio_id AND t.ticker = p.ticker
@@ -552,7 +587,16 @@ def get_portfolio_calendar_data(
             -- Float volumes leave ~1e-13 behind on a fully sold lot; without the
             -- threshold that dust renders as a phantom holding and inflates both
             -- total_positions and prices_found.
-            WHERE ABS(hd.shares_on_day) > 1e-9
+            --
+            -- Strictly positive, never ABS(): a negative reconstruction means the
+            -- snapshot and the operations disagree in the one direction the residual
+            -- cannot absorb — buys on record with no position row, which is what
+            -- deleting a position by hand leaves behind (the delete does not touch
+            -- user_broker_operations).  Letting that through would subtract it from
+            -- the day's value and paint a large red loss.  Dropping it says "we do
+            -- not know what was held", which is the truth.  The oversell case is
+            -- unaffected: it reconstructs positive (3 − (−5) = 8).
+            WHERE hd.shares_on_day > 1e-9
           ),
           filled AS (
             -- A session with no trades leaves no close.  Bankier always published
