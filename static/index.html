@@ -729,13 +729,17 @@
   #wl-error { color: var(--negative); font-size: .85rem; margin-bottom: .75rem; }
 
   /* Portfolio Positions */
+  /* PUL-108: the row owns the spacing so every button sits on one baseline,
+     however many of them are visible and however narrow the screen. */
+  #pp-table-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: stretch; margin-bottom: 1rem; }
+  #pp-table-actions > button { margin: 0; }
   #pp-add-toggle-btn {
     padding: .55rem 1.15rem; background: var(--brand); color: #fff;
     border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: .9rem; font-weight: 600;
-    margin-bottom: 1rem; display: inline-block;
+    display: inline-block;
   }
   #pp-add-toggle-btn:hover { background: var(--brand-dark); }
-  #pp-export-csv-btn { padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc; border-radius:var(--radius-sm); cursor:pointer; font-size:.9rem; font-weight:600; margin-bottom:1rem; margin-left:.5rem; }
+  #pp-export-csv-btn { padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc; border-radius:var(--radius-sm); cursor:pointer; font-size:.9rem; font-weight:600; }
   #pp-export-csv-btn:hover { background: var(--brand-tint); }
   #pp-form {
     display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
@@ -874,6 +878,11 @@
     display: inline-flex; gap: 2px; margin-bottom: .75rem;
     background: var(--fill); border-radius: var(--radius-sm); padding: 3px;
     border: 1px solid var(--border);
+    /* PUL-108: five tabs do not fit 360 px. Wrapping keeps every one of them
+       reachable without a swipe, and — unlike a scroll strip — cannot hand the
+       overflow back to the page. max-width stops the inline-flex box from
+       claiming its content width and pushing <body> wider than the viewport. */
+    flex-wrap: wrap; max-width: 100%;
   }
   .pp-view-tab {
     padding: .35rem 1rem; border: none; border-radius: 6px;
@@ -969,10 +978,47 @@
   #pp-real-by-ticker td.positive { color:var(--positive); }
   #pp-real-by-ticker td.negative { color:var(--negative); }
   #pp-real-note { margin-bottom:1rem; }
+  /* PUL-108: these two tables were the only wide ones with neither a scroll
+     container nor a mobile layout, so on a phone they pushed the whole PAGE
+     sideways — which is also why the sticky topbar slid away: sticky pins along
+     the axis its scroll container scrolls, and once <body> scrolls, it goes too.
+     Same card treatment the positions table already uses; five and seven columns
+     become five and seven labelled rows, and nothing is off-screen. */
+  @media (max-width: 640px) {
+    #pp-div-by-ticker thead, #pp-real-by-ticker thead { display: none; }
+    #pp-div-by-ticker tr, #pp-real-by-ticker tr {
+      display: block; background: #fff; border: 1px solid var(--border);
+      border-radius: var(--radius-md); margin-bottom: .75rem; overflow: hidden;
+      box-shadow: var(--shadow-card);
+    }
+    #pp-div-by-ticker td, #pp-real-by-ticker td {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: .5rem; padding: .32rem .85rem; text-align: right; font-size: .88rem;
+    }
+    #pp-div-by-ticker td::before, #pp-real-by-ticker td::before {
+      content: attr(data-label);
+      color: var(--text-muted); font-size: .8rem; font-weight: 500;
+      flex-shrink: 0; text-align: left;
+    }
+    /* The ticker heads the card, so it gets no label of its own. */
+    #pp-div-by-ticker td:first-child, #pp-real-by-ticker td:first-child {
+      display: block; text-align: left;
+      font-size: 1.05rem; font-weight: 700; color: var(--brand);
+      padding: .6rem .85rem .1rem;
+    }
+    #pp-div-by-ticker td:first-child::before, #pp-real-by-ticker td:first-child::before { content: none; }
+    /* Zrealizowane carries the company name in column two — a subtitle, not a row. */
+    #pp-real-by-ticker td:nth-child(2) {
+      display: block; text-align: left;
+      font-size: .82rem; color: var(--text-muted);
+      padding: 0 .85rem .55rem; border-bottom: 1px solid var(--border);
+    }
+    #pp-real-by-ticker td:nth-child(2)::before { content: none; }
+    #pp-div-by-ticker td:last-child, #pp-real-by-ticker td:last-child { padding-bottom: .6rem; }
+  }
   #pp-import-btn {
     padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc;
     border-radius:var(--radius-sm); cursor:pointer; font-size:.9rem; font-weight:600;
-    margin-bottom:1rem; margin-left:.5rem;
   }
   #pp-import-btn:hover { background: var(--brand-tint); }
   #pp-import-commit-btn {
@@ -4336,9 +4382,14 @@ function _buildPortfolioPositionsViewContent(view) {
            _ppSyncAddBtnVisibility once a real wallet is active. Rendering them
            visible made them flash on entry and then vanish, because the default
            tab is the read-only "Wszystkie" aggregate — which reads as a bug. -->
-      <button type="button" id="pp-add-toggle-btn" style="display:none">Dodaj pozycję</button>
-      <button type="button" id="pp-export-csv-btn" title="Eksportuj pozycje do CSV">Eksport CSV</button>
-      <button type="button" id="pp-import-btn" style="display:none" title="Wczytaj pozycje z pliku od domu maklerskiego">Import z pliku</button>
+      <!-- PUL-108: one flex row instead of three inline-blocks carrying their own
+           margins. Ad-hoc margin-left/margin-bottom per button lined up by accident
+           on a wide screen and not at all once the row wrapped on a phone. -->
+      <div id="pp-table-actions">
+        <button type="button" id="pp-add-toggle-btn" style="display:none">Dodaj pozycję</button>
+        <button type="button" id="pp-export-csv-btn" title="Eksportuj pozycje do CSV">Eksport CSV</button>
+        <button type="button" id="pp-import-btn" style="display:none" title="Wczytaj pozycje z pliku od domu maklerskiego">Import z pliku</button>
+      </div>
       <div id="pp-form-wrap" style="display:none">
         <form id="pp-form">
           <div id="pp-ticker-field">
@@ -5149,12 +5200,14 @@ function _renderPortfolioRealized(data) {
   $('pp-real-by-ticker').innerHTML = rows.length
     ? `<table><thead><tr><th>Ticker</th><th>Spółka</th><th>Sprzedano</th>` +
       `<th>Przychód</th><th>Koszt</th><th>Wynik</th><th>Zwrot</th></tr></thead><tbody>` +
-      rows.map(r => `<tr><td>${esc(r.ticker || '')}</td>` +
-        `<td>${esc(r.company_name || '')}</td>` +
-        `<td>${esc(Number(r.shares_sold || 0).toLocaleString('pl-PL', { maximumFractionDigits: 4 }))}</td>` +
-        `<td>${esc(zl(r.proceeds))}</td><td>${esc(zl(r.cost))}</td>` +
-        `<td class="${cls(r.pnl)}">${esc(sign(r.pnl) + zl(r.pnl))}</td>` +
-        `<td class="${cls(r.pnl)}">${esc(pct(r.pnl_pct))}</td></tr>`).join('') +
+      // data-label feeds the mobile card layout's ::before — seven columns become
+      // seven labelled rows rather than three that need a swipe to reach (PUL-108).
+      rows.map(r => `<tr><td data-label="Ticker">${esc(r.ticker || '')}</td>` +
+        `<td data-label="Spółka">${esc(r.company_name || '')}</td>` +
+        `<td data-label="Sprzedano">${esc(Number(r.shares_sold || 0).toLocaleString('pl-PL', { maximumFractionDigits: 4 }))}</td>` +
+        `<td data-label="Przychód">${esc(zl(r.proceeds))}</td><td data-label="Koszt">${esc(zl(r.cost))}</td>` +
+        `<td data-label="Wynik" class="${cls(r.pnl)}">${esc(sign(r.pnl) + zl(r.pnl))}</td>` +
+        `<td data-label="Zwrot" class="${cls(r.pnl)}">${esc(pct(r.pnl_pct))}</td></tr>`).join('') +
       `</tbody></table>`
     : '<div class="empty">Brak sprzedanych pozycji w wybranym okresie.</div>';
 
@@ -5239,9 +5292,10 @@ function _renderPortfolioDividends(data) {
   $('pp-div-by-ticker').innerHTML = rows.length
     ? `<table><thead><tr><th>Ticker</th><th>Brutto</th><th>Podatek</th><th>Netto</th>` +
       `<th>Wypłat</th></tr></thead><tbody>` +
-      rows.map(r => `<tr><td>${esc(r.ticker || '')}</td><td>${esc(zl(r.gross))}</td>` +
-        `<td>${esc(zl(r.tax))}</td><td>${esc(zl(r.net))}</td>` +
-        `<td>${esc(String(r.payouts || 0))}</td></tr>`).join('') +
+      rows.map(r => `<tr><td data-label="Ticker">${esc(r.ticker || '')}</td>` +
+        `<td data-label="Brutto">${esc(zl(r.gross))}</td>` +
+        `<td data-label="Podatek">${esc(zl(r.tax))}</td><td data-label="Netto">${esc(zl(r.net))}</td>` +
+        `<td data-label="Wypłat">${esc(String(r.payouts || 0))}</td></tr>`).join('') +
       `</tbody></table>`
     : '<div class="empty">Brak dywidend w wybranym okresie.</div>';
 
