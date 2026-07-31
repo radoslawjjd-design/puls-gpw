@@ -3155,18 +3155,25 @@ def merge_company_daily_stats_close_correction(rows: list[dict]) -> int:
 
 
 def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
-    """Return fetched_at ISO string for any row in company_daily_stats for snapshot_date.
+    """Return the newest fetched_at ISO string in company_daily_stats for snapshot_date.
 
-    Returns None if no data exists for that date.
+    Returns None if no data exists for that date, or if the date's rows carry no
+    fetched_at at all.
     Raises BigQueryError on query failure.
+
+    PUL-113: `MAX`, not `LIMIT 1`. The old form returned an arbitrary row, so a
+    single NULL among ~730 rows decided the answer — and it decided it badly:
+    `str(None)` reached the frontend as the truthy string "None", became an
+    Invalid Date and rendered the timestamp as "NaN:NaN". Aggregating also skips
+    NULLs by definition, so the only way back is a genuinely empty column, which
+    is what None is for.
     """
     client = _get_client()
     table = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
     query = f"""
-        SELECT fetched_at
+        SELECT MAX(fetched_at) AS fetched_at
         FROM `{table}`
         WHERE snapshot_date = @snapshot_date
-        LIMIT 1
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date)]
@@ -3175,9 +3182,11 @@ def get_latest_company_stats_fetched_at(snapshot_date: date) -> str | None:
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"get_latest_company_stats_fetched_at failed: {exc}") from exc
-    if not rows:
+    # An aggregate always returns one row; the value inside it is NULL when the
+    # date has no rows, so the emptiness test has to be on the value, not the list.
+    val = rows[0].fetched_at if rows else None
+    if val is None:
         return None
-    val = rows[0].fetched_at
     return val.isoformat() if hasattr(val, "isoformat") else str(val)
 
 

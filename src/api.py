@@ -1160,7 +1160,10 @@ def create_app() -> FastAPI:
             logger.error("BQ error listing wallets in GET /api/portfolio/treemap: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
         if not wallets:
-            return {"portfolios": [], "as_of": None}
+            # Same keys as every other return from this endpoint — a response that
+            # is a different shape depending on how much data exists is a trap for
+            # whatever reads it next.
+            return {"portfolios": [], "as_of": None, "stats_fetched_at": None}
         try:
             all_rows = list_user_portfolio_positions(user_id)
         except BigQueryError as exc:
@@ -1192,8 +1195,17 @@ def create_app() -> FastAPI:
                 from datetime import date as _date
                 as_of_date = _date.fromisoformat(as_of)
                 stats_fetched_at = get_latest_company_stats_fetched_at(as_of_date)
-            except Exception:
-                pass
+            except Exception as exc:
+                # PUL-113: the header degrading to a bare date is a real reported
+                # symptom, and a silent `pass` left no way to tell a failed lookup
+                # from a date that genuinely has no stats. Swallowing stays right —
+                # a missing timestamp must not cost the user their treemap — but it
+                # now leaves a trace.
+                logger.warning(
+                    "stats_fetched_at lookup failed for as_of=%s, header will show the date only: %s",
+                    as_of,
+                    exc,
+                )
         response_data = {"portfolios": portfolios, "as_of": as_of, "stats_fetched_at": stats_fetched_at}
         _perf_set(cache_key, response_data)
         return response_data

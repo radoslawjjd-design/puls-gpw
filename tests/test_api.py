@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
@@ -1552,10 +1553,50 @@ def test_get_portfolio_treemap_returns_correct_shape(user_client):
 
 
 def test_get_portfolio_treemap_zero_portfolios_returns_empty(user_client):
+    """PUL-113: the empty case must carry the same keys as the populated one — a
+    response whose shape depends on how much data exists is a trap for its reader."""
     with patch("src.api.list_user_portfolios", return_value=[]):
         r = user_client.get("/api/portfolio/treemap")
     assert r.status_code == 200
-    assert r.json() == {"portfolios": [], "as_of": None}
+    assert r.json() == {"portfolios": [], "as_of": None, "stats_fetched_at": None}
+
+
+def test_get_portfolio_treemap_logs_a_failed_timestamp_lookup(user_client, caplog):
+    """PUL-113: a failed lookup silently degraded the header to a bare date, which is
+    exactly the reported symptom — and left nothing behind to diagnose it with. The
+    swallow itself is correct (a missing timestamp must not cost the user the treemap);
+    the silence was not."""
+    _computed = [{
+        "ticker": "PKO",
+        "position_value_pln": 520.0,
+        "daily_change_pct": 1.5,
+        "daily_change_pln": 7.72,
+        "since_purchase_pct": 30.0,
+        "since_purchase_pln": 120.0,
+        "portfolio_share_pct": 100.0,
+    }]
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        # The position has to carry the wallet's id: the endpoint buckets rows by
+        # portfolio_id, and a row that lands in no bucket contributes no price_as_of,
+        # so `as_of` stays None and the lookup this test is about never runs.
+        patch(
+            "src.api.list_user_portfolio_positions",
+            return_value=[{**_POSITION_WITH_PRICE, "portfolio_id": _WALLET_ID}],
+        ),
+        patch(
+            "src.api.compute_user_portfolio_treemap_positions",
+            create=True,
+            return_value=_computed,
+        ),
+        patch("src.api.get_latest_company_stats_fetched_at", side_effect=Exception("bq down")),
+    ):
+        caplog.set_level(logging.WARNING, logger="src.api")
+        r = user_client.get("/api/portfolio/treemap")
+
+    assert r.status_code == 200
+    assert r.json()["stats_fetched_at"] is None
+    assert "stats_fetched_at lookup failed" in caplog.text
 
 
 def test_admin_portfolio_treemap_endpoint_unaffected(api_client):
