@@ -745,9 +745,9 @@
   #pp-add-toggle-btn:hover { background: var(--brand-dark); }
   #pp-export-csv-btn, #pp-cal-export-btn { padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc; border-radius:var(--radius-sm); cursor:pointer; font-size:.9rem; font-weight:600; }
   #pp-export-csv-btn:hover, #pp-cal-export-btn:hover { background: var(--brand-tint); }
-  /* PUL-104: the calendar's own export sits under the grid, on the same baseline
-     as the legend it follows. */
-  #pp-cal-actions { display: flex; justify-content: flex-end; margin: .25rem 0 1rem; }
+  /* PUL-104: the calendar's export sits above the grid, between the view tabs and
+     the month — the same place, and the same left edge, as the positions export. */
+  #pp-cal-actions { display: flex; justify-content: flex-start; margin: 0 0 1rem; }
   #pp-form {
     display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
     background: #fff; padding: .9rem 1rem; border-radius: var(--radius-md);
@@ -1022,6 +1022,21 @@
     }
     #pp-real-by-ticker td:nth-child(2)::before { content: none; }
     #pp-div-by-ticker td:last-child, #pp-real-by-ticker td:last-child { padding-bottom: .6rem; }
+    /* A card is a layout, not a control. Mobile browsers apply :hover on tap, so
+       the row tint the desktop table wants reads on a phone as "touching it broke
+       something" — the positions table already opts out the same way. */
+    #pp-div-by-ticker tr:hover td, #pp-real-by-ticker tr:hover td { background: none; }
+    #pp-div-by-ticker tr, #pp-real-by-ticker tr { -webkit-tap-highlight-color: transparent; }
+    /* The card background was a hardcoded #fff with no dark counterpart, so in dark
+       mode near-white values (--text) landed on white and simply vanished, and the
+       muted labels were the grey the report was about. */
+    html[data-theme="dark"] #pp-div-by-ticker tr, html[data-theme="dark"] #pp-real-by-ticker tr {
+      background: #141f2b; border-color: var(--border);
+    }
+    /* var(--brand) is the light theme's dark navy — invisible on a dark card. */
+    html[data-theme="dark"] #pp-div-by-ticker td:first-child,
+    html[data-theme="dark"] #pp-real-by-ticker td:first-child { color: #9fc1e0; }
+    html[data-theme="dark"] #pp-real-by-ticker td:nth-child(2) { border-bottom-color: #243141; }
   }
   #pp-import-btn {
     padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc;
@@ -4505,6 +4520,9 @@ function _buildPortfolioPositionsViewContent(view) {
       </div>
     </div>
     <div id="pp-calendar-wrap" style="display:none">
+      <div id="pp-cal-actions">
+        <button type="button" id="pp-cal-export-btn" title="Eksportuj wyświetlany miesiąc do CSV">Eksport CSV</button>
+      </div>
       <div id="pp-cal-nav">
         <button type="button" id="pp-cal-prev">&#8249;</button>
         <span id="pp-cal-label"></span>
@@ -4536,9 +4554,6 @@ function _buildPortfolioPositionsViewContent(view) {
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-loss"></span>strata</span>
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-neutral"></span>weekend / święto GPW</span>
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-white"></span>brak danych</span>
-      </div>
-      <div id="pp-cal-actions">
-        <button type="button" id="pp-cal-export-btn" title="Eksportuj wyświetlany miesiąc do CSV">Eksport CSV</button>
       </div>
       <div id="pp-history-section">
         <div id="pp-history-header-row">

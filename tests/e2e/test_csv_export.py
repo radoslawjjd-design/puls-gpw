@@ -68,6 +68,25 @@ def test_the_displayed_calendar_month_can_be_exported(page: Page, live_server_ur
     assert "-150,00" in amounts
 
 
+def test_the_calendar_export_sits_between_the_tabs_and_the_grid(
+    page: Page, live_server_url: str
+):
+    """It first shipped under the legend, at the bottom of a long view — past the
+    grid, the legend and two charts. Geometry, because "between the tabs and the
+    calendar" is a claim about where it lands on screen, not about DOM order."""
+    _login(page, live_server_url)
+    _open_portfolio_glowny(page)
+    _open_calendar_tab(page)
+
+    tabs = page.locator("#pp-view-tabs").bounding_box()
+    button = page.locator("#pp-cal-actions").bounding_box()
+    grid = page.locator("#pp-cal-grid").bounding_box()
+    assert tabs is not None and button is not None and grid is not None
+
+    assert tabs["y"] + tabs["height"] <= button["y"] + 1, "the button is above the view tabs"
+    assert button["y"] + button["height"] <= grid["y"] + 1, "the button is below the grid"
+
+
 def test_a_day_without_a_session_exports_no_number_at_all(page: Page, live_server_url: str):
     """Risk: a weekend written as 0 reads in a spreadsheet as a real flat session —
     the same fabrication PUL-103 removed from the rendered calendar. A saved file
