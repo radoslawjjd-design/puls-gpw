@@ -5265,6 +5265,44 @@ function _renderDividendYears(years) {
 // a same DD.MM nie mówią, czy „24.07" to ten rok czy poprzedni.
 function _ppFmtDatePl(ds) { const p = String(ds).split('-'); return p[2] + '.' + p[1] + '.' + p[0]; }
 
+const _PP_MONTHS_SHORT_PL = ['sty','lut','mar','kwi','maj','cze','lip','sie','wrz','paź','lis','gru'];
+
+// PUL-109: pick the tick DATES first, then find where they fall.
+//
+// The chart's X axis is index-based: point i sits at i/(n-1) of the width. The
+// series carries trading days only, so a month with a long holiday occupies fewer
+// slots than the one before it — equal index spacing is not equal time spacing.
+// Ticks placed every n/5 points would drift off round dates and label them wrong.
+// So the boundaries are generated on the calendar and each one is then matched to
+// the first trading day that reaches it.
+//
+// Granularity follows the window: months for a quarter or more, Mondays for a few
+// weeks, days for anything shorter. Thinning to a readable count happens at the
+// call site, where the plot width is known.
+function _ppHistTickDates(firstDs, lastDs) {
+  const toD = ds => { const p = String(ds).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+  const a = toD(firstDs), b = toD(lastDs);
+  const spanDays = Math.round((b - a) / 86400000);
+  const dates = [];
+  // Guard against a malformed edge and against a runaway loop on absurd input.
+  if (!(spanDays > 0) || spanDays > 4000) return { spanDays: spanDays || 0, dates };
+  if (spanDays >= 60) {
+    const d = new Date(a.getFullYear(), a.getMonth() + 1, 1);
+    while (d <= b) { dates.push(new Date(d)); d.setMonth(d.getMonth() + 1); }
+  } else if (spanDays >= 14) {
+    // getDay() is 0 for Sunday; `|| 7` makes Monday 1 and Sunday 7, so the
+    // arithmetic below reads as "days until next Monday" for every weekday.
+    const d = new Date(a);
+    d.setDate(d.getDate() + ((8 - (d.getDay() || 7)) % 7 || 7));
+    while (d <= b) { dates.push(new Date(d)); d.setDate(d.getDate() + 7); }
+  } else {
+    const d = new Date(a);
+    d.setDate(d.getDate() + 1);
+    while (d <= b) { dates.push(new Date(d)); d.setDate(d.getDate() + 1); }
+  }
+  return { spanDays, dates };
+}
+
 // PUL-100: what the chart is quietly assuming, in plain sentences.
 // Wording is deliberately about DATA, never about a listing — `listed_from` is the
 // first date we hold a quote for, which for a ticker whose history starts when the
@@ -5322,6 +5360,46 @@ function _renderPortfolioHistory(data, chartEl) {
     return '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" class="pp-hist-grid"/>';
   }).join('');
 
+  // PUL-109: intermediate ticks between the two endpoint dates. The dates come
+  // first and the positions follow — see _ppHistTickDates for why the reverse
+  // does not work on this axis.
+  const ticks = _ppHistTickDates(points[0].date, points[n - 1].date);
+  const fmtTick = d => ticks.spanDays >= 60
+    ? _PP_MONTHS_SHORT_PL[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2)
+    : String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
+  // Both charts render into the same 640-unit viewBox and scale as a whole, so a
+  // gap that clears a label here clears it at 360 px too — the text shrinks with
+  // everything else. Six slots across the plot is the cap.
+  const minGap = Math.max(78, plotW / 6);
+  const xTicks = [];
+  let lastTickX = padL;
+  for (const d of ticks.dates) {
+    const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+      '-' + String(d.getDate()).padStart(2, '0');
+    // ISO dates compare correctly as strings; the first point at or after the
+    // boundary is the trading day that boundary actually landed on.
+    const idx = points.findIndex(p => p.date >= iso);
+    if (idx <= 0 || idx >= n - 1) continue;
+    const x = xFor(idx);
+    if (x - lastTickX < minGap || (W - padR) - x < minGap) continue;
+    xTicks.push({ x, label: fmtTick(d) });
+    lastTickX = x;
+  }
+  const tickMarks = xTicks.map(t =>
+    '<line x1="' + t.x.toFixed(1) + '" y1="' + padT + '" x2="' + t.x.toFixed(1) +
+    '" y2="' + baseY + '" class="pp-hist-grid"/>').join('');
+  const tickLabels = xTicks.map(t =>
+    '<text class="pp-hist-axis" x="' + t.x.toFixed(1) + '" y="' + (H - 6) +
+    '" text-anchor="middle">' + esc(t.label) + '</text>').join('');
+  // A flat series puts all three Y labels on the same baseline; one is the honest
+  // number of distinct values there are to report.
+  const yLabels = (max === min)
+    ? '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(max) + 4).toFixed(1) +
+        '" text-anchor="end">' + esc(fmt(max)) + '</text>'
+    : [max, (max + min) / 2, min].map(v =>
+        '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(v) + 4).toFixed(1) +
+        '" text-anchor="end">' + esc(fmt(v)) + '</text>').join('');
+
   const scopeLabel = chartEl.id === 'pp-history-chart-all' ? 'wszystkich portfeli' : 'portfela';
   const svg =
     '<svg class="pp-hist-svg ' + (up ? 'up' : 'down') + '" viewBox="0 0 ' + W + ' ' + H + '" ' +
@@ -5330,14 +5408,14 @@ function _renderPortfolioHistory(data, chartEl) {
       '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
         '<stop offset="0%" stop-color="currentColor" stop-opacity="0.20"/>' +
         '<stop offset="100%" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>' +
-      grids +
+      grids + tickMarks +
       '<path d="' + area + '" fill="url(#' + gid + ')"/>' +
       '<polyline points="' + poly + '" fill="none" stroke="currentColor" stroke-width="2" ' +
         'vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>' +
       '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="3.5" fill="currentColor"/>' +
-      '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(max) + 4).toFixed(1) + '" text-anchor="end">' + esc(fmt(max)) + '</text>' +
-      '<text class="pp-hist-axis" x="' + (padL - 8) + '" y="' + (yFor(min) + 4).toFixed(1) + '" text-anchor="end">' + esc(fmt(min)) + '</text>' +
+      yLabels +
       '<text class="pp-hist-axis" x="' + padL + '" y="' + (H - 6) + '">' + esc(fmtDate(points[0].date)) + '</text>' +
+      tickLabels +
       '<text class="pp-hist-axis" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + esc(fmtDate(points[n - 1].date)) + '</text>' +
     '</svg>';
 
