@@ -359,6 +359,32 @@ def get_latest_snapshot_for_wallet(wallet: str) -> dict | None:
     }
 
 
+def _log_unexplained_holdings(
+    fn: str, user_id: str, portfolio_id: str | None, residual: int | None
+) -> None:
+    """Report holdings the broker operations do not account for, at a level prod sees.
+
+    Phase 4 of PUL-103 asked for this count so an unexplained residual is noticed by
+    us rather than by the user. The count itself rides in the DEBUG timing line, but
+    `api_main.py` configures the root logger at INFO, so DEBUG never leaves the
+    process in Cloud Run — the diagnostic would have been dead exactly where it was
+    meant to live.
+
+    Zero is the normal case and stays silent, so this costs nothing in log volume and
+    fires only when there is something to look at. Cash is already excluded by the
+    query; what reaches here is a real position no operation explains.
+    """
+    if not residual:
+        return
+    logger.info(
+        "%s: %s holding(s) not explained by broker operations (user=%s, portfolio=%s)",
+        fn,
+        residual,
+        user_id,
+        portfolio_id if portfolio_id is not None else "all",
+    )
+
+
 def get_portfolio_calendar_data(
     portfolio_id: str | None,
     user_id: str,
@@ -659,11 +685,13 @@ def get_portfolio_calendar_data(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"get_portfolio_calendar_data failed: {exc}") from exc
+    _residual = getattr(rows[0], "residual_holders", None) if rows else 0
     logger.debug(
         "BQ get_portfolio_calendar_data: %.0fms, unexplained holdings: %s",
         (time.time() - _t) * 1000,
-        getattr(rows[0], "residual_holders", None) if rows else 0,
+        _residual,
     )
+    _log_unexplained_holdings("get_portfolio_calendar_data", user_id, portfolio_id, _residual)
     return [
         {
             "snapshot_date": row.snapshot_date,
@@ -975,11 +1003,13 @@ def get_portfolio_history(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"get_portfolio_history failed: {exc}") from exc
+    _residual = getattr(rows[0], "residual_holders", None) if rows else 0
     logger.debug(
         "BQ get_portfolio_history: %.0fms, unexplained holdings: %s",
         (time.time() - _t) * 1000,
-        getattr(rows[0], "residual_holders", None) if rows else 0,
+        _residual,
     )
+    _log_unexplained_holdings("get_portfolio_history", user_id, portfolio_id, _residual)
     # The meta-first join emits one metadata-only row (NULL date) when no day survives the
     # gate — carry its lists, but never let it become a data point.
     series = [

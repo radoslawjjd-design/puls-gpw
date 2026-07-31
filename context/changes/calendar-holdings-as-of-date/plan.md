@@ -417,6 +417,15 @@ wcześniej"*, zgodnie z lekcją PUL-100 F2 (nigdy „notowany od").
 **Uwaga:** wszystkie modele mają `model_config = ConfigDict(extra="ignore")` — pole
 niezadeklarowane w modelu zostanie **po cichu wycięte**.
 
+> **Addendum (impl-review faz 3-4, F2): zrealizowane jako klucz najwyższego poziomu,
+> nie wpis w `notes`.** `PortfolioHistoryNote` wymaga `ticker: str`, a ten fakt dotyczy
+> **portfela**, nie tickera — wciśnięcie go w tablicę not wymagałoby albo pola-atrapy,
+> albo rozluźnienia modelu dla wszystkich not. Kontrakt mówił „koperta bez zmian", więc
+> to jest odstępstwo: koperta ma nowy klucz `data_from: str | None = None`. Odstępstwo
+> jest addytywne i wstecznie zgodne — domyślne `None` plus `.get()` po stronie endpointu
+> sprawiają, że wynik z bazy sprzed tej zmiany nadal się serializuje. Front renderuje
+> to w tym samym popoverze `(i)`, więc dla użytkownika nic się nie rozjeżdża.
+
 #### 3. Test rozłączności z BOCF
 
 **File**: `tests/test_bigquery.py`

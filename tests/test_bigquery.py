@@ -1579,6 +1579,34 @@ def test_both_queries_count_the_holdings_their_operations_cannot_explain(caplog)
     assert "unexplained holdings: 5" in caplog.text
 
 
+def test_an_unexplained_holding_is_reported_at_a_level_production_actually_emits(caplog):
+    """Impl-review F1.  The count rides in a DEBUG line, but `api_main.py` configures
+    the root logger at INFO — so in Cloud Run the phase-4 diagnostic would never have
+    left the process, which is precisely where it was meant to live.  A non-zero count
+    now also emits at INFO; zero is the normal case and stays silent, so the log volume
+    cost is nothing and the signal fires only when there is something to look at."""
+    import logging
+
+    from db.bigquery import get_portfolio_calendar_data
+
+    rows = [{"snapshot_date": date(2026, 6, 2), "portfolio_value": 10500.0,
+             "daily_change_pln": 120.0, "prices_found": 3, "total_positions": 3,
+             "residual_holders": 2}]
+    with caplog.at_level(logging.INFO, logger="db.bigquery"):
+        with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(rows)):
+            get_portfolio_calendar_data("port-1", "user-1", 2026, 6)
+    assert "2 holding(s) not explained by broker operations" in caplog.text
+    assert "portfolio=port-1" in caplog.text
+
+    # Zero must not chatter: every healthy request would otherwise log a line.
+    caplog.clear()
+    rows[0]["residual_holders"] = 0
+    with caplog.at_level(logging.INFO, logger="db.bigquery"):
+        with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows(rows)):
+            get_portfolio_calendar_data(None, "user-1", 2026, 6)
+    assert "not explained by broker operations" not in caplog.text
+
+
 def test_get_portfolio_calendar_data_returns_empty_list_when_no_positions():
     """Returns [] when portfolio has no positions (BQ query returns 0 rows)."""
     from db.bigquery import get_portfolio_calendar_data
