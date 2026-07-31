@@ -731,15 +731,22 @@ w 300 s po deployu.
 
 #### Automated
 
-- [ ] 5.1 CI zielone na PR
-- [ ] 5.2 Deploy przeszedł, /health odpowiada
+- [x] 5.1 CI zielone na PR — PR #225: Tests pass, ai-code-review 8, ai-security-review 9
+- [x] 5.2 Deploy przeszedł, /health odpowiada — `748bd46`, `{"status":"ok"}`
 
 #### Manual
 
-- [ ] 5.3 Czerwiec 2024, Główny — kalendarz całkowicie biały
-- [ ] 5.4 Styczeń 2025 — pierwsza wartość 2025-01-29
-- [ ] 5.5 IKZE — nic przed 2025-07-10
-- [ ] 5.6 Bliźniacze portfele dwóch użytkowników dają identyczne szeregi
-- [ ] 5.7 Prawa krawędź wykresu = „Mój portfel" co do grosza
-- [ ] 5.8 Portfel bez importu nie jest pusty
-- [ ] 5.9 Próbkowany dzień uzgadnia się z wyciągiem XTB
+- [x] 5.3 Czerwiec 2024, Główny — kalendarz całkowicie biały — **0 wierszy dla wszystkich
+      9 portfeli**, nie tylko Głównego; przed zmianą kalendarz wymyślał wartości na cały 2024
+- [x] 5.4 Styczeń 2025 — pierwsza wartość 2025-01-29 — oba Główne: 377 pkt od 2025-01-29,
+      `data_from=2025-01-29`
+- [x] 5.5 IKZE — nic przed 2025-07-10 — oba IKZE: 265 pkt od 2025-07-10
+- [x] 5.6 Bliźniacze portfele dwóch użytkowników dają identyczne szeregi — identyczna
+      długość i daty; IKZE mają `pnl_pln` zgodne co do 14 miejsc (−40,47087284210527),
+      wartości różnią się wyłącznie gotówką (988,62 vs 1 072,65 w Głównym)
+- [x] 5.7 Prawa krawędź wykresu = „Mój portfel" co do grosza — **delta +0,00 na wszystkich
+      pięciu portfelach z danymi**: 44 402,40 / 24 901,20 / 44 486,43 / 27 061,31 / 148,72
+- [x] 5.8 Portfel bez importu nie jest pusty — `X0rSuPo2` (ręczny): 7 pkt od 2026-07-23,
+      granica z `user_portfolios.created_at` działa
+- [ ] 5.9 Próbkowany dzień uzgadnia się z wyciągiem XTB — **czeka na wyciąg od usera**;
+      to jedyne kryterium, którego nie da się sprawdzić bez danych spoza systemu

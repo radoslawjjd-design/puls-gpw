@@ -16,6 +16,28 @@ PUL-103: kalendarz i wykres wartości liczą dzienne P&L z dzisiejszych stanów 
 
 Blokuje PUL-104 (eksport CSV kalendarza) — GH #212.
 
+### Weryfikacja na produkcji (Faza 5, 2026-07-31)
+
+Deploy `748bd46`, `/health` → `{"status":"ok"}`. Zapytania odpytane przeciw realnemu
+BigQuery kodem z mastera.
+
+| Kryterium | Wynik |
+|---|---|
+| Czerwiec 2024 — kalendarz biały | **0 wierszy dla wszystkich 9 portfeli** (nie tylko Głównego) |
+| Styczeń 2025 — start 2025-01-29 | oba Główne: 377 pkt, `data_from=2025-01-29` |
+| IKZE — nic przed 2025-07-10 | oba IKZE: 265 pkt od 2025-07-10 |
+| Bliźniaki dwóch userów | identyczne szeregi; IKZE zgodne `pnl_pln` co do 14 miejsc |
+| Prawa krawędź = „Mój portfel" | **delta +0,00 na pięciu portfelach z danymi** |
+| Portfel bez importu | `X0rSuPo2`: 7 pkt od 2026-07-23 — granica z `created_at` |
+
+Prawa krawędź, co do grosza: 44 402,40 / 24 901,20 / 44 486,43 / 27 061,31 / 148,72.
+
+Portfele bez danych zwracają 0 punktów i `data_from` równe dacie utworzenia — granica dla
+portfela ręcznego działa tak, jak zaplanowano.
+
+**Zostało 5.9** — próbkowany dzień przeciw wyciągowi XTB. Jedyne kryterium wymagające danych
+spoza systemu; czeka na wyciąg od usera.
+
 ### Dopisane w Fazie 3 poza planem: `ops_basis` (impl-review F3)
 
 Plan mówił wprost, że `avg_buy_price` **zostaje bez zmian (poza zakresem)**. Faza 3
