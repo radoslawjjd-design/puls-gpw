@@ -365,24 +365,52 @@ def get_portfolio_calendar_data(
     year: int,
     month: int,
 ) -> list[dict]:
-    """Return daily portfolio values for a given month + 35-day lookback.
+    """Return daily portfolio values for a given month, valued at the shares held that day.
 
     When portfolio_id is provided, results are scoped to that wallet.  When it is
-    None, the positions CTE spans *all* of the user's wallets, so the daily SUM(...)
-    becomes the combined-across-all-portfolios value/change (the "Wszystkie" view).
+    None, the CTEs span *all* of the user's wallets, so the daily SUM(...) becomes
+    the combined-across-all-portfolios value/change (the "Wszystkie" view).
 
-    Crosses all trading days in the extended range (month_start − 35 days through
-    month_end) against the user's current positions, left-joins closing prices, and
-    groups by snapshot_date.  Returns one dict per trading day with keys:
-    snapshot_date (date), portfolio_value (float, best-effort sum), daily_change_pln
-    (float, SUM(shares × zmiana_kwotowa)), prices_found (int), total_positions (int).
-    Returns [] when the portfolio has no positions.  Raises BigQueryError on failure.
+    Returns one dict per trading day with keys: snapshot_date (date),
+    portfolio_value (float, best-effort sum), daily_change_pln (float,
+    SUM(shares_on_day × zmiana_kwotowa)), prices_found (int), total_positions (int).
+    Returns [] when the portfolio holds nothing in the window.  Raises BigQueryError
+    on failure.
 
-    Note: the 35-day lookback was originally intended as a delta baseline (plan used
-    consecutive-day portfolio_value differences for P&L).  The implementation uses
-    zmiana_kwotowa directly instead.  A 10-day lookback is still scanned, now for a
-    different reason: it gives the close carry-forward a predecessor for the 1st of
-    the month.  Those rows are filtered out before the result is returned.
+    Holdings are time-aware (PUL-103).  Until then the query crossed every trading
+    day with the *current* positions snapshot, so it reported daily P&L for dates the
+    portfolio did not hold what it holds today — including dates before it existed at
+    all.  The share count is now reconstructed as a **backward correction over the
+    snapshot**::
+
+        shares(day) = today_shares − Σ(±volume of operations later than that day)
+
+    written as a difference of cumulative sums over ``user_broker_operations``.  That
+    direction is deliberate and load-bearing.  The operations table is a complete
+    record of *movements the broker saw*, not of holdings: cash carries no operation
+    at all, positions added by hand carry none, and in-kind distributions (spin-offs)
+    are structurally absent from the XTB export.  Rebuilding forward from operations
+    would erase all three.  Correcting backwards leaves whatever the operations do
+    not explain — the *residual* — constant across the window instead, which is the
+    honest answer for those tickers, and makes the last day equal today's stored
+    share count by construction (the PUL-100 right-edge invariant).
+
+    The same formula absorbs three more cases without a branch: a ticker sold to zero
+    reappears in history even though its position row was deleted at import, an
+    export window that starts after a purchase yields a positive residual rather than
+    negative shares, and any operation vocabulary we learn to parse later simply
+    shrinks the residual.
+
+    Two traps the shape guards against.  The cumulative sums span the operation
+    history with **no horizon** — a window function over the trading-day spine would
+    stop at the end of the month being viewed, so June would still count shares
+    bought in December.  And operations are matched with a range condition, never by
+    date equality, because operation days need not be trading days (measured: 16 of
+    426).
+
+    A 10-day price lookback is still scanned, for an unrelated reason: it gives the
+    close carry-forward a predecessor for the 1st of the month.  Those rows are
+    filtered out before the result is returned.
     """
     client = _get_client()
     _t = time.time()
@@ -396,6 +424,8 @@ def get_portfolio_calendar_data(
     cds_ref = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
     etf_ref = _table_ref(client, _ETF_QUOTES_TABLE_NAME)
     pos_ref = _table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)
+    ops_ref = _table_ref(client, _USER_BROKER_OPERATIONS_TABLE_NAME)
+    pfs_ref = _table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)
     portfolio_filter = "AND portfolio_id = @portfolio_id" if portfolio_id is not None else ""
 
     query = f"""
@@ -405,26 +435,124 @@ def get_portfolio_calendar_data(
             FROM `{cds_ref}`
             WHERE snapshot_date BETWEEN @lookback_start AND @end_date
           ),
+          px_cds AS (
+            -- Deduplicated per (ticker, date): the calendar joined the price tables
+            -- raw, so a duplicate row fanned out and double-counted the day.  The
+            -- value chart has carried this guard since PUL-100.
+            SELECT ticker, snapshot_date, kurs_zamkniecia, zmiana_kwotowa
+            FROM `{cds_ref}`
+            WHERE snapshot_date BETWEEN @lookback_start AND @end_date
+            QUALIFY ROW_NUMBER() OVER (
+              PARTITION BY ticker, snapshot_date ORDER BY fetched_at DESC
+            ) = 1
+          ),
+          px_etf AS (
+            SELECT ticker, snapshot_date, kurs_zamkniecia, zmiana_kwotowa
+            FROM `{etf_ref}`
+            WHERE snapshot_date BETWEEN @lookback_start AND @end_date
+            QUALIFY ROW_NUMBER() OVER (
+              PARTITION BY ticker, snapshot_date ORDER BY fetched_at DESC
+            ) = 1
+          ),
           positions AS (
-            SELECT ticker, shares
+            SELECT portfolio_id, ticker, shares
             FROM `{pos_ref}`
             WHERE user_id = @user_id {portfolio_filter}
           ),
-          daily_prices AS (
+          ops_daily AS (
+            -- Aggregated to one row per (wallet, ticker, day) BEFORE any join, so a
+            -- second operation on the same day cannot multiply the day's holdings.
+            -- Direction comes from op_type alone: volume is always positive, and a
+            -- sale's own comment reads "CLOSE BUY 5 @ 55.00".
+            SELECT
+              portfolio_id, ticker,
+              DATE(occurred_at, 'Europe/Warsaw') AS op_date,
+              SUM(CASE WHEN op_type = 'buy'  THEN volume
+                       WHEN op_type = 'sell' THEN -volume
+                       ELSE 0 END) AS signed_volume
+            FROM `{ops_ref}`
+            WHERE user_id = @user_id {portfolio_filter}
+              AND ticker IS NOT NULL
+              AND op_type IN ('buy', 'sell')
+            GROUP BY portfolio_id, ticker, op_date
+          ),
+          ops_totals AS (
+            -- The whole history, with no horizon: this is what the reconstruction
+            -- converges to, and subtracting a bounded sum from it is what makes the
+            -- window-free formula work.
+            SELECT portfolio_id, ticker, SUM(signed_volume) AS total_signed
+            FROM ops_daily
+            GROUP BY portfolio_id, ticker
+          ),
+          inception AS (
+            -- The earliest day this wallet can honestly report.  Deliberately the
+            -- first *share-affecting* operation, not the first operation of any kind:
+            -- on every real wallet the first row is a deposit, and a deposit day
+            -- holds nothing but the cash residual — priced at 1.00 with a zero move,
+            -- which renders as a green "+0 PLN" cell, i.e. a real flat day that never
+            -- happened.  ops_daily is already narrowed to buy/sell and scoped to the
+            -- wallet (or to all of them in "Wszystkie" mode).
+            --
+            -- A wallet with no operations at all falls back to when it was created.
+            -- user_portfolio_positions.created_at is NOT usable here: it records the
+            -- import, not the purchase (every imported position carries the same
+            -- 2026-07-29/30 stamp).
+            SELECT COALESCE(
+              (SELECT MIN(op_date) FROM ops_daily),
+              (SELECT MIN(DATE(created_at)) FROM `{pfs_ref}`
+               WHERE user_id = @user_id {portfolio_filter})
+            ) AS first_day
+          ),
+          holders AS (
+            -- Positions ∪ operations.  Positions alone would lose a ticker sold to
+            -- zero (its row is deleted at import); operations alone would lose cash,
+            -- hand-entered positions and in-kind distributions.
+            SELECT
+              COALESCE(p.portfolio_id, t.portfolio_id) AS portfolio_id,
+              COALESCE(p.ticker, t.ticker)             AS ticker,
+              COALESCE(p.shares, 0)                    AS today_shares,
+              COALESCE(t.total_signed, 0)              AS total_signed
+            FROM positions p
+            FULL OUTER JOIN ops_totals t
+              ON t.portfolio_id = p.portfolio_id AND t.ticker = p.ticker
+          ),
+          holdings AS (
+            -- shares(day) = today − (everything ever − everything up to and including
+            -- that day).  The join is a RANGE condition, never date equality: an
+            -- operation may fall on a day the exchange did not trade.
             SELECT
               td.snapshot_date,
-              p.ticker,
-              p.shares,
-              IF(p.ticker = '{CASH_TICKER}', 1.0,
-                 COALESCE(cds.kurs_zamkniecia, etq.kurs_zamkniecia)) AS close_price,
-              IF(p.ticker = '{CASH_TICKER}', 0.0,
-                 COALESCE(cds.zmiana_kwotowa, etq.zmiana_kwotowa))  AS daily_chg
+              h.portfolio_id,
+              h.ticker,
+              h.today_shares - (h.total_signed - COALESCE(SUM(o.signed_volume), 0))
+                AS shares_on_day
             FROM trading_days td
-            CROSS JOIN positions p
-            LEFT JOIN `{cds_ref}` cds
-              ON cds.ticker = p.ticker AND cds.snapshot_date = td.snapshot_date
-            LEFT JOIN `{etf_ref}` etq
-              ON etq.ticker = p.ticker AND etq.snapshot_date = td.snapshot_date
+            CROSS JOIN holders h
+            LEFT JOIN ops_daily o
+              ON  o.portfolio_id = h.portfolio_id
+              AND o.ticker       = h.ticker
+              AND o.op_date     <= td.snapshot_date
+            GROUP BY td.snapshot_date, h.portfolio_id, h.ticker, h.today_shares, h.total_signed
+          ),
+          daily_prices AS (
+            SELECT
+              hd.snapshot_date,
+              hd.portfolio_id,
+              hd.ticker,
+              hd.shares_on_day AS shares,
+              IF(hd.ticker = '{CASH_TICKER}', 1.0,
+                 COALESCE(cds.kurs_zamkniecia, etq.kurs_zamkniecia)) AS close_price,
+              IF(hd.ticker = '{CASH_TICKER}', 0.0,
+                 COALESCE(cds.zmiana_kwotowa, etq.zmiana_kwotowa))  AS daily_chg
+            FROM holdings hd
+            LEFT JOIN px_cds cds
+              ON cds.ticker = hd.ticker AND cds.snapshot_date = hd.snapshot_date
+            LEFT JOIN px_etf etq
+              ON etq.ticker = hd.ticker AND etq.snapshot_date = hd.snapshot_date
+            -- Float volumes leave ~1e-13 behind on a fully sold lot; without the
+            -- threshold that dust renders as a phantom holding and inflates both
+            -- total_positions and prices_found.
+            WHERE ABS(hd.shares_on_day) > 1e-9
           ),
           filled AS (
             -- A session with no trades leaves no close.  Bankier always published
@@ -438,7 +566,7 @@ def get_portfolio_calendar_data(
             SELECT
               snapshot_date, ticker, shares, daily_chg,
               LAST_VALUE(close_price IGNORE NULLS) OVER (
-                PARTITION BY ticker ORDER BY snapshot_date
+                PARTITION BY portfolio_id, ticker ORDER BY snapshot_date
                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
               ) AS close_ff
             FROM daily_prices
@@ -454,6 +582,12 @@ def get_portfolio_calendar_data(
               COUNT(*) AS total_positions
             FROM filled
             WHERE snapshot_date >= @month_start
+              -- Before inception the wallet emits no row at all, so the day renders
+              -- as no_data (white) — the same as a day that has not arrived yet.  A
+              -- zero would be a different lie: it reads as a real flat session.
+              -- COALESCE keeps a wallet whose inception cannot be determined (an
+              -- orphan position with no portfolio_id) reporting rather than blank.
+              AND snapshot_date >= COALESCE((SELECT first_day FROM inception), snapshot_date)
             GROUP BY snapshot_date
           )
         SELECT snapshot_date, portfolio_value, daily_change_pln, prices_found, total_positions

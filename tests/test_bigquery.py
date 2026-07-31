@@ -1457,7 +1457,10 @@ def test_calendar_carries_the_last_close_forward_over_a_no_trade_session():
     sql = mock_get.return_value.query.call_args[0][0]
 
     assert "LAST_VALUE(close_price IGNORE NULLS) OVER (" in sql
-    assert "PARTITION BY ticker ORDER BY snapshot_date" in sql
+    # Partitioned by wallet as well as ticker since PUL-103: in "Wszystkie" mode the
+    # same ticker is held in two wallets, and one carry-forward per ticker would mix
+    # them.
+    assert "PARTITION BY portfolio_id, ticker ORDER BY snapshot_date" in sql
     assert "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW" in sql
     # The value and the coverage counter both read the filled column, never the raw one.
     assert "shares * close_ff" in sql
@@ -1466,6 +1469,71 @@ def test_calendar_carries_the_last_close_forward_over_a_no_trade_session():
     # A day without trades had no move, so the change is not carried forward.
     assert "LAST_VALUE(daily_chg" not in sql
     assert "WHERE snapshot_date >= @month_start" in sql
+
+
+def test_calendar_values_each_day_at_the_shares_held_that_day():
+    """PUL-103.  The calendar used to cross every trading day with the *current*
+    positions snapshot, so it reported daily P&L for dates the portfolio did not hold
+    what it holds today.  Holdings are now reconstructed as a backward correction over
+    that snapshot, and the three guards below are what keep the shape honest —
+    each one is a regression that mocked tests cannot otherwise see."""
+    from db.bigquery import get_portfolio_calendar_data
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_calendar_data("port-abc", "user-xyz", 2026, 6)
+
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+
+    # Operations are bucketed in exchange-local time: occurred_at is stored naive and
+    # therefore read as UTC.
+    assert "DATE(occurred_at, 'Europe/Warsaw')" in sql
+    # Direction from op_type only — a sale's own comment reads "CLOSE BUY 5 @ 55.00".
+    assert "WHEN op_type = 'buy' THEN volume" in sql
+    assert "WHEN op_type = 'sell' THEN -volume" in sql
+    # Positions ∪ operations, or a ticker sold to zero drops out of history entirely.
+    assert "FULL OUTER JOIN ops_totals" in sql
+    # Dust from float volumes would otherwise render as a phantom holding.
+    assert "ABS(hd.shares_on_day) > 1e-9" in sql
+    # The calendar joined the price tables raw until PUL-103; a duplicate row fanned
+    # out and double-counted the day.
+    assert "QUALIFY ROW_NUMBER() OVER ( PARTITION BY ticker, snapshot_date" in sql
+
+    # Regression guards (plan-review F1). Each of these forms was rejected for a
+    # measured reason, and each would pass every other assertion in this file.
+    assert "CROSS JOIN positions" not in sql, "today's shares must not reach the grid"
+    assert "ROWS BETWEEN 1 FOLLOWING" not in sql, (
+        "a window over the trading-day spine stops at the month boundary, so a past "
+        "month would still count shares bought later"
+    )
+    assert "o.op_date = " not in sql, (
+        "operations must match by range, not by date equality — an operation day need "
+        "not be a trading day (measured: 16 of 426)"
+    )
+    assert "o.op_date <= td.snapshot_date" in sql
+
+
+def test_calendar_bounds_the_month_at_the_first_share_affecting_operation():
+    """PUL-103 / plan-review F2.  The bound is the first buy or sell, never the first
+    operation of any kind.  On every real wallet the first row is a deposit, and a
+    deposit day holds nothing but the cash residual — priced at 1.00 with a zero move,
+    which the UI paints as a green "+0 PLN" cell: a flat session that never happened.
+    Measured on production: Glowny's first operation is 2025-01-28, its first buy
+    2025-01-29; IKZE 2025-07-09 against 2025-07-10."""
+    from db.bigquery import get_portfolio_calendar_data
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get:
+        get_portfolio_calendar_data("port-abc", "user-xyz", 2026, 6)
+
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+
+    # The bound reads ops_daily, which is already narrowed to buy/sell.
+    assert "SELECT MIN(op_date) FROM ops_daily" in sql
+    # A wallet with no operations falls back to when it was created. NOT to
+    # user_portfolio_positions.created_at, which records the import, not the purchase.
+    assert "user_portfolios" in sql
+    assert "SELECT MIN(DATE(created_at))" in sql
+    # Days before the bound produce no row, so they render as no_data (blank).
+    assert "AND snapshot_date >= COALESCE((SELECT first_day FROM inception)" in sql
 
 
 def test_get_portfolio_calendar_data_returns_empty_list_when_no_positions():

@@ -640,31 +640,35 @@ w 300 s po deployu.
 
 #### Automated
 
-- [ ] 1.1 Testy jednostkowe BQ przechodzą
-- [ ] 1.2 Testy API przechodzą
-- [ ] 1.3 Testy ETF przechodzą
-- [ ] 1.4 Pełna szybka pętla zielona (--ignore=tests/e2e)
-- [ ] 1.5 tach check
+- [x] 1.1 Testy jednostkowe BQ przechodzą
+- [x] 1.2 Testy API przechodzą
+- [x] 1.3 Testy ETF przechodzą
+- [x] 1.4 Pełna szybka pętla zielona (--ignore=tests/e2e)
+- [x] 1.5 tach check
 
 #### Manual
 
-- [ ] 1.6 Zapytanie wykonuje się na realnym BQ bez błędu składni
-- [ ] 1.7 Kalendarz bieżącego miesiąca pokazuje te same wartości co przed zmianą
+- [x] 1.6 Zapytanie wykonuje się na realnym BQ bez błędu składni
+- [x] 1.7 Kalendarz bieżącego miesiąca pokazuje te same wartości co przed zmianą — prawa
+      krawędź bez zmian (44 476,98 na 2026-07-30, zgodne co do grosza z pomiarem z researchu);
+      wcześniejsze dni lipca **celowo** się zmieniły (11 pozycji zamiast 13 przed zakupem ASB
+      2026-07-17 i VOT 07-21) — kryterium było w planie sformułowane zbyt szeroko
 
 ### Phase 2: Granica inception w kalendarzu
 
 #### Automated
 
-- [ ] 2.1 Testy jednostkowe przechodzą
-- [ ] 2.2 Pełna szybka pętla zielona
-- [ ] 2.3 tach check
+- [x] 2.1 Testy jednostkowe przechodzą
+- [x] 2.2 Pełna szybka pętla zielona
+- [x] 2.3 tach check
 
 #### Manual
 
-- [ ] 2.4 Czerwiec 2024 dla Głównego zwraca zero wierszy
-- [ ] 2.5 Styczeń 2025 zwraca pierwszy wiersz 2025-01-29
-- [ ] 2.6 IKZE nic nie zwraca przed 2025-07-10 (wpłata z 07-09 nie tworzy dnia)
-- [ ] 2.7 Portfel bez operacji nadal zwraca wiersze od daty założenia
+- [x] 2.4 Czerwiec 2024 dla Głównego zwraca zero wierszy
+- [x] 2.5 Styczeń 2025 zwraca pierwszy wiersz 2025-01-29 — oba portfele Główne
+- [x] 2.6 IKZE nic nie zwraca przed 2025-07-10 (wpłata z 07-09 nie tworzy dnia) — oba IKZE
+- [x] 2.7 Portfel bez operacji nadal zwraca wiersze od daty założenia — `626e9da1…`,
+      8 wierszy od 2026-07-22; cztery portfele bez ani jednej pozycji słusznie zwracają zero
 
 ### Phase 3: Ten sam wymiar czasu w wykresie wartości
 

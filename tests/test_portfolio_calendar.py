@@ -238,3 +238,45 @@ def test_mtd_diff_none_for_non_data_states():
     assert days["2026-06-06"]["mtd_diff"] is None
     assert days["2026-06-05"]["state"] == "partial"
     assert days["2026-06-05"]["mtd_diff"] is None
+
+
+# ── pre-inception months (PUL-103) ───────────────────────────────────────────
+
+def test_month_entirely_before_inception_renders_a_full_blank_grid():
+    """PUL-103.  A month before the portfolio's first trade returns no rows at all,
+    and the grid must still be complete and blank — the same as a month that has not
+    arrived yet.
+
+    This is the contract the whole "no row instead of a new state" decision rests on.
+    Emitting a zero instead would render as a real flat session: the JS paints any
+    `state == 'data'` day with `pnl_abs >= 0` green (static/index.html:4900), so a
+    zero shows up as a green "+0 PLN" cell. And an empty `days` array would throw in
+    the renderer, which reads `data.days[0].weekday` unguarded (:4873).
+    """
+    result = compute_calendar_pnl([], 2024, 6)
+
+    assert len(result["days"]) == 30, "the grid must stay complete even with no data"
+    for day in result["days"]:
+        assert day["state"] in {"weekend", "holiday", "no_data"}
+        assert day["pnl_abs"] is None, "a pre-inception day must carry no number"
+        assert day["portfolio_value"] is None
+        assert day["mtd_diff"] is None
+    assert any(d["state"] == "no_data" for d in result["days"]), (
+        "weekdays before inception are no_data, which the UI leaves blank"
+    )
+
+
+def test_days_before_inception_carry_the_same_blank_payload_as_future_days():
+    """Both render blank: the renderer has a branch for 'data', 'weekend' and
+    'holiday' and for nothing else, so 'no_data' and 'future' are painted the same
+    empty cell.  What has to match is the payload, not the calendar layout."""
+    def payloads(result):
+        return {(d["pnl_abs"], d["portfolio_value"], d["mtd_diff"])
+                for d in result["days"] if d["state"] not in {"weekend", "holiday"}}
+
+    past = compute_calendar_pnl([], 2024, 6)
+    future = compute_calendar_pnl([], 2099, 6)
+
+    assert {d["state"] for d in past["days"]} <= {"weekend", "holiday", "no_data"}
+    assert {d["state"] for d in future["days"]} <= {"weekend", "holiday", "future"}
+    assert payloads(past) == payloads(future) == {(None, None, None)}
