@@ -359,6 +359,16 @@ def _fake_get_portfolio_calendar_data(portfolio_id, user_id, year, month):
     return []
 
 
+# PUL-115: the wallet's first share-affecting day, which bounds the month/year
+# picker. Two years and a bit back, and deliberately NOT January — the interesting
+# case is the inception year itself, where the months before it must not be offered.
+_FAKE_INCEPTION = date(date.today().year - 2, 3, 1)
+
+
+def _fake_get_portfolio_inception(portfolio_id, user_id):
+    return _FAKE_INCEPTION
+
+
 _FAKE_HISTORY_ROWS = [
     {"snapshot_date": _cal_weekdays[0], "value_pln": 10000.0, "pnl_pln": 300.0},
     {"snapshot_date": _cal_weekdays[1], "value_pln": 10150.0, "pnl_pln": 450.0},
@@ -691,6 +701,10 @@ def live_server_url():
         patch(
             "src.api.get_portfolio_calendar_data",
             side_effect=_fake_get_portfolio_calendar_data,
+        ),
+        patch(
+            "src.api.get_portfolio_inception",
+            side_effect=_fake_get_portfolio_inception,
         ),
         patch(
             "src.api.get_portfolio_history",

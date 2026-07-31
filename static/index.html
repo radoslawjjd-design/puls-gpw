@@ -3659,6 +3659,20 @@ let _ppTreemapData = null;
 let _ppCalData = null;
 let _ppCalYear = null;
 let _ppCalMonth = null;
+// PUL-115: the day the active wallet began — first share-affecting operation, or
+// its creation date — as the calendar endpoint reports it. The month/year picker
+// offers nothing earlier. Null until a calendar response has arrived, and for a
+// wallet the backend cannot date; the picker then falls back to a fixed span.
+let _ppCalInception = null;
+const _PP_CAL_FALLBACK_YEARS = 5;   // conservative, and well inside the endpoint's
+                                    // own guard — a fallback must not offer a
+                                    // year the API would reject
+function _ppCalInceptionParts() {
+  if (!_ppCalInception) return null;
+  const p = String(_ppCalInception).split('-');
+  const year = parseInt(p[0], 10), month = parseInt(p[1], 10);
+  return year && month ? { year, month } : null;
+}
 // PUL-95 dividends: null year = every year. Switching year or wallet fires a new
 // fetch, so this needs the same out-of-order guard the history slots use.
 let _ppRealData = null;
@@ -4871,9 +4885,14 @@ function _ppCalPickerOpen(open) {
   // midnight boundary, and so the selects always show where the calendar is now.
   const now = new Date();
   const curYear = now.getFullYear(), curMonth = now.getMonth() + 1;
+  // PUL-115: the floor is the wallet's own beginning, not a flat ten years. Ten
+  // years offered months in which the wallet did not exist — and five of those
+  // years the API rejected outright, so the picker could produce an error.
+  const first = _ppCalInceptionParts();
+  const firstYear = first ? first.year : curYear - _PP_CAL_FALLBACK_YEARS;
   const yearSel = $('pp-cal-picker-year');
   yearSel.innerHTML = '';
-  for (let y = curYear; y >= curYear - 10; y--) {
+  for (let y = curYear; y >= firstYear; y--) {
     const o = document.createElement('option');
     o.value = String(y);
     o.textContent = String(y);
@@ -4889,14 +4908,18 @@ function _ppCalPickerOpen(open) {
     _PP_MONTHS_PL.forEach((name, i) => {
       const m = i + 1;
       // A month that has not happened yet has no P&L to show; offering it would
-      // spend a fetch to render an empty grid.
+      // spend a fetch to render an empty grid. The same is true at the other end
+      // for a month before the wallet held anything.
       if (y === curYear && m > curMonth) return;
+      if (first && y === first.year && m < first.month) return;
       const o = document.createElement('option');
       o.value = String(m);
       o.textContent = name;
       monthSel.appendChild(o);
     });
-    monthSel.value = String(Math.min(keep, y === curYear ? curMonth : 12));
+    const lo = first && y === first.year ? first.month : 1;
+    const hi = y === curYear ? curMonth : 12;
+    monthSel.value = String(Math.min(Math.max(keep, lo), hi));
   };
   yearSel.onchange = fillMonths;
   monthSel.value = String(_ppCalMonth);
@@ -5024,6 +5047,9 @@ async function fetchPortfolioCalendar() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     _ppCalData = data;
+    // Carried on every response, so switching wallets re-dates the picker without
+    // a request of its own (the endpoint caches the whole payload for 300 s).
+    _ppCalInception = data.inception || null;
     _renderPortfolioCalendar(data);
   } catch (e) {
     $('pp-cal-grid').innerHTML = `<div class="empty">Błąd ładowania kalendarza.</div>`;

@@ -704,6 +704,56 @@ def get_portfolio_calendar_data(
     ]
 
 
+def get_portfolio_inception(portfolio_id: str | None, user_id: str) -> date | None:
+    """Return the day a wallet began: its first *share-affecting* operation, or —
+    for a wallet that has none — the day it was created.
+
+    Same definition as the ``inception`` CTE inside get_portfolio_calendar_data and
+    get_portfolio_history, deliberately: three variants of "when did this start"
+    would drift, and the calendar's left edge and the picker's lower bound have to
+    agree about which months exist at all.
+
+    Deliberately not the first operation of *any* kind — on every real wallet that
+    is a deposit, and a deposit day holds nothing but cash.
+
+    ``portfolio_id=None`` spans all of the user's wallets (the "Wszystkie" view), so
+    the answer is the earliest inception among them.  Returns None when the user has
+    neither operations nor wallets.  Raises BigQueryError on failure.
+
+    The wallet's own ``created_at`` is only the fallback, never the bound: the broker
+    import backfills operations far older than the wallet row, so a wallet created
+    last month legitimately holds years of history.
+    """
+    client = _get_client()
+    ops_ref = _table_ref(client, _USER_BROKER_OPERATIONS_TABLE_NAME)
+    pfs_ref = _table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)
+    portfolio_filter = "AND portfolio_id = @portfolio_id" if portfolio_id is not None else ""
+
+    query = f"""
+        SELECT COALESCE(
+          (SELECT MIN(DATE(occurred_at, 'Europe/Warsaw'))
+           FROM `{ops_ref}`
+           WHERE user_id = @user_id {portfolio_filter}
+             AND ticker IS NOT NULL
+             AND op_type IN ('buy', 'sell')),
+          (SELECT MIN(DATE(created_at, 'Europe/Warsaw'))
+           FROM `{pfs_ref}`
+           WHERE user_id = @user_id {portfolio_filter})
+        ) AS first_day
+    """
+    params = [bigquery.ScalarQueryParameter("user_id", "STRING", user_id)]
+    if portfolio_id is not None:
+        params.append(bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id))
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
+    try:
+        rows = list(client.query(query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_portfolio_inception failed: {exc}") from exc
+    # An aggregate always returns one row; the value inside it is NULL when there is
+    # nothing to date, so the emptiness test has to be on the value, not the list.
+    return rows[0].first_day if rows else None
+
+
 def get_portfolio_history(
     portfolio_id: str | None,
     user_id: str,

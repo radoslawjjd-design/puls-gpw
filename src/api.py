@@ -70,6 +70,7 @@ from db.bigquery import (
     list_user_portfolio_positions,
     get_portfolio_calendar_data,
     get_portfolio_history,
+    get_portfolio_inception,
     list_user_portfolios,
     list_watchlist_by_sentiment,
     list_watchlist_tickers,
@@ -255,6 +256,11 @@ class TreemapPosition(BaseModel):
 
 _TREEMAP_WALLETS = ("main", "ikze")
 
+# PUL-115: how far back GET /api/portfolio/calendar will look. A guard against a
+# hand-edited URL asking for the year 1200, not a claim about how old a wallet
+# can be — the picker's own floor is the wallet's inception.
+_CALENDAR_MAX_YEARS_BACK = 20
+
 
 class PortfolioCalendarDay(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -274,6 +280,9 @@ class PortfolioCalendarResponse(BaseModel):
     year: int
     month: int
     days: list[PortfolioCalendarDay]
+    # PUL-115: the day this wallet began (ISO), so the month/year picker can offer
+    # the months that exist instead of a flat ten years. None when unknown.
+    inception: str | None = None
 
 
 class PortfolioHistoryPoint(BaseModel):
@@ -1226,8 +1235,15 @@ def create_app() -> FastAPI:
         current_year = date.today().year
         if not (1 <= month <= 12):
             raise HTTPException(status_code=422, detail="month must be 1–12")
-        if not (current_year - 5 <= year <= current_year + 1):
-            raise HTTPException(status_code=422, detail=f"year must be in [{current_year - 5}, {current_year + 1}]")
+        # PUL-115: the floor used to be five years, which rejected half of what the
+        # picker offered — the user chose 2019 and got "Błąd ładowania kalendarza".
+        # A wallet's imported history reaches back as far as the broker's export
+        # does, so the bound is a sanity guard, not a statement about the data.
+        if not (current_year - _CALENDAR_MAX_YEARS_BACK <= year <= current_year + 1):
+            raise HTTPException(
+                status_code=422,
+                detail=f"year must be in [{current_year - _CALENDAR_MAX_YEARS_BACK}, {current_year + 1}]",
+            )
         cache_key = f"calendar:{user_id}:{portfolio_id}:{year}:{month}"
         cached = _perf_get(cache_key, ttl=300)
         if cached is not None:
@@ -1246,8 +1262,17 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/calendar: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
+        # The picker's lower bound. A failure here must not cost the user the
+        # calendar itself — without it the picker just falls back to its old range.
+        try:
+            inception = get_portfolio_inception(None if all_mode else portfolio_id, user_id)
+        except BigQueryError as exc:
+            logger.warning("inception lookup failed for portfolio=%s, picker falls back: %s", portfolio_id, exc)
+            inception = None
         cal = compute_calendar_pnl(rows, year, month)
-        result = PortfolioCalendarResponse(**cal).model_dump()
+        result = PortfolioCalendarResponse(
+            **cal, inception=inception.isoformat() if inception else None
+        ).model_dump()
         _perf_set(cache_key, result)
         return result
 

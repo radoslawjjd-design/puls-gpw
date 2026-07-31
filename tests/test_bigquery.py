@@ -31,6 +31,7 @@ from db.bigquery import (
     list_announcements_for_watchlist,
     list_announcements_user,
     get_latest_company_stats_fetched_at,
+    get_portfolio_inception,
     list_companies_with_hop_info,
     merge_company_daily_stats,
     list_distinct_companies,
@@ -1397,6 +1398,61 @@ def test_get_latest_company_stats_fetched_at_raises_on_bq_failure():
     with patch("db.bigquery._get_client", return_value=client):
         with pytest.raises(BigQueryError, match="get_latest_company_stats_fetched_at failed"):
             get_latest_company_stats_fetched_at(date(2026, 6, 27))
+
+
+# ── get_portfolio_inception (PUL-115) ────────────────────────────────────────
+
+def test_get_portfolio_inception_dates_a_wallet_by_its_first_share_affecting_day():
+    """The picker's floor. A deposit is not a beginning — every real wallet starts
+    with one, and a deposit day holds nothing but cash, so the bound would land a
+    month or more before anything was owned."""
+    with patch(
+        "db.bigquery._get_client",
+        return_value=_mock_bq_client_with_rows([{"first_day": date(2023, 4, 17)}]),
+    ) as mock_get:
+        result = get_portfolio_inception("port-1", "user-1")
+
+    assert result == date(2023, 4, 17)
+    query_str = mock_get.return_value.query.call_args[0][0]
+    assert "op_type IN ('buy', 'sell')" in query_str
+    # The wallet's own creation date is the fallback arm, never the first choice:
+    # the broker import backfills operations older than the wallet row.
+    assert "created_at" in query_str
+    assert "AND portfolio_id = @portfolio_id" in query_str
+
+
+def test_get_portfolio_inception_spans_every_wallet_when_unscoped():
+    """"Wszystkie" has no wallet of its own, so the bound is the earliest of them all."""
+    with patch(
+        "db.bigquery._get_client",
+        return_value=_mock_bq_client_with_rows([{"first_day": date(2021, 1, 4)}]),
+    ) as mock_get:
+        result = get_portfolio_inception(None, "user-1")
+
+    assert result == date(2021, 1, 4)
+    assert "portfolio_id = @portfolio_id" not in mock_get.return_value.query.call_args[0][0]
+
+
+def test_get_portfolio_inception_returns_none_for_a_null_aggregate():
+    """An aggregate always yields a row, so a user with neither operations nor
+    wallets shows up as a NULL value, not an empty result set."""
+    with patch(
+        "db.bigquery._get_client",
+        return_value=_mock_bq_client_with_rows([{"first_day": None}]),
+    ):
+        assert get_portfolio_inception("port-1", "user-1") is None
+
+
+def test_get_portfolio_inception_raises_on_bq_failure():
+    from src.exceptions import BigQueryError
+
+    client = MagicMock()
+    client.project = "test-project"
+    client.query.side_effect = Exception("bq down")
+
+    with patch("db.bigquery._get_client", return_value=client):
+        with pytest.raises(BigQueryError, match="get_portfolio_inception failed"):
+            get_portfolio_inception("port-1", "user-1")
 
 
 def test_list_companies_with_hop_info_raises_bigquery_error_on_failure():
