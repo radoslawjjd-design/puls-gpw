@@ -674,28 +674,29 @@ w 300 s po deployu.
 
 #### Automated
 
-- [x] 3.1 Testy jednostkowe BQ i API przechodzą
-- [x] 3.2 Testy e2e przechodzą
-- [x] 3.3 Pełna suita zielona
-- [x] 3.4 tach check
+- [x] 3.1 Testy jednostkowe BQ i API przechodzą — f4b5f00
+- [x] 3.2 Testy e2e przechodzą — f4b5f00
+- [x] 3.3 Pełna suita zielona — f4b5f00
+- [x] 3.4 tach check — f4b5f00
 
 #### Manual
 
-- [x] 3.5 Wykres 1y dla Głównego zaczyna się 2025-01-29 — **kryterium było
-      nieaktualne**: 1r liczone od 2026-07-31 startuje 2025-07-31, czyli *po* inception,
-      więc granica przy tym zakresie nic nie ucina. Zweryfikowane przy zakresie
-      sięgającym dalej (start 2024-06-01): oba portfele Główne dają pierwszy punkt
-      **2025-01-29** i 377 punktów, oba IKZE **2025-07-10** i 265 punktów
-- [x] 3.6 Prawa krawędź wykresu = wartość z „Mój portfel" co do grosza — pięć portfeli
-      z danymi, `delta = +0,00` w każdym (44 379,43 / 26 972,77 / 44 295,40 / 24 812,66
-      / 148,26); niezmiennik PUL-100 utrzymany
-- [x] 3.7 Przycisk (i) pokazuje notatkę o skróconym zakresie — na danych: portfel
-      `626e9da1…` przy 1r zwraca `data_from=2026-07-23`; w realnej przeglądarce:
-      e2e `test_backfill_note_is_reachable_without_a_mouse` czyta linię
-      „dane od … — portfel nie istniał wcześniej" po otwarciu (i) klawiaturą
-- [x] 3.8 Zakładka „Wszystkie" agreguje od najwcześniejszej operacji — tryb `all`
-      startuje 2025-01-29 (minimum po wszystkich portfelach), prawa krawędź równa sumie
-      portfeli co do grosza (44 379,43 + 26 972,77 = 71 352,20)
+- [x] 3.5 Wykres 1y dla Głównego zaczyna się 2025-01-29 — f4b5f00
+      **Kryterium okazało się nieaktualne**: zakres 1r liczony od 2026-07-31 startuje
+      2025-07-31, czyli *po* inception, więc granica przy tym zakresie nic nie ucina.
+      Zweryfikowane przy zakresie sięgającym dalej (start 2024-06-01): oba portfele
+      Główne dają pierwszy punkt **2025-01-29** i 377 punktów, oba IKZE **2025-07-10**
+      i 265 punktów.
+- [x] 3.6 Prawa krawędź wykresu = wartość z „Mój portfel" co do grosza — f4b5f00
+      Pięć portfeli z danymi, `delta = +0,00` w każdym (44 379,43 / 26 972,77 /
+      44 295,40 / 24 812,66 / 148,26); niezmiennik PUL-100 utrzymany.
+- [x] 3.7 Przycisk (i) pokazuje notatkę o skróconym zakresie — f4b5f00
+      Na danych: portfel `626e9da1…` przy 1r zwraca `data_from=2026-07-23`.
+      W realnej przeglądarce: e2e `test_backfill_note_is_reachable_without_a_mouse`
+      czyta linię „dane od … — portfel nie istniał wcześniej" po otwarciu (i) klawiaturą.
+- [x] 3.8 Zakładka „Wszystkie" agreguje od najwcześniejszej operacji — f4b5f00
+      Tryb `all` startuje 2025-01-29 (minimum po wszystkich portfelach), prawa krawędź
+      równa sumie portfeli co do grosza (44 379,43 + 26 972,77 = 71 352,20).
 
 ### Phase 4: Round-trip na realnym BQ z zasianymi danymi
 
