@@ -2699,11 +2699,16 @@ function injectAdminOnlyChrome(r) {
 }
 
 function _openTreemapPopup(cellEl) {
-  $('tc-popup-ticker').textContent = cellEl.dataset.ticker;
+  $('tc-popup-ticker').textContent = cellEl.dataset.label || cellEl.dataset.ticker;
   $('tc-popup-daily').textContent = cellEl.dataset.daily;
   $('tc-popup-total').textContent = cellEl.dataset.total;
   $('tc-popup-since').textContent = cellEl.dataset.since;
-  $('tc-popup-goto').dataset.ticker = cellEl.dataset.ticker;
+  // Cash is not listed anywhere, so the announcements jump would search for a
+  // ticker no exchange carries. The positions table drops its link for the same
+  // reason (`.pp-ticker-link` is omitted for the cash row).
+  const goto = $('tc-popup-goto');
+  goto.dataset.ticker = cellEl.dataset.ticker;
+  goto.style.display = cellEl.dataset.ticker === _PP_CASH_TICKER ? 'none' : '';
   $('treemap-popup-backdrop').classList.add('tc-popup-open');
 }
 
@@ -3660,11 +3665,14 @@ function _sparklineSvg(hist) {
   return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" aria-hidden="true"><polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="1.5"/></svg>';
 }
 
-// The reserved cash ticker is storage detail. "_CASH" in the ticker column would
-// read as a broken import, so the row is labelled the way the user thinks of it.
+// The reserved cash ticker is storage detail. "_CASH" on screen would read as a
+// broken import, so anything user-facing goes through this label instead. Every
+// view that shows a ticker has to use it — the table, the treemap cell, the
+// treemap popup — while `data-ticker` keeps carrying the real identity that
+// lookups need.
 const _PP_CASH_TICKER = '_CASH';
 function _ppTickerLabel(ticker) {
-  return ticker === _PP_CASH_TICKER ? 'PLN' : ticker;
+  return ticker === _PP_CASH_TICKER ? 'Gotówka' : ticker;
 }
 
 function _renderPortfolioTable(positions) {
@@ -5386,11 +5394,15 @@ function renderTreemap(data, container) {
     }
 
     const style = 'left:' + cell.x + 'px;top:' + cell.y + 'px;width:' + cell.width + 'px;height:' + cell.height + 'px' + bgStyle;
-    const tooltip = item.ticker + '\n' + dailyText + '\n' + shareText + '\n' + sincePurchaseText;
-    const attrs = 'data-ticker="' + esc(item.ticker) + '" data-daily="' + esc(dailyText) + '" '
+    // Two names on purpose, as in the positions table: `data-ticker` is the identity
+    // the announcements lookup needs, `label` is the only thing that gets rendered.
+    const label = _ppTickerLabel(item.ticker);
+    const tooltip = label + '\n' + dailyText + '\n' + shareText + '\n' + sincePurchaseText;
+    const attrs = 'data-ticker="' + esc(item.ticker) + '" data-label="' + esc(label) + '" '
+      + 'data-daily="' + esc(dailyText) + '" '
       + 'data-total="' + esc(shareText) + '" data-since="' + esc(sincePurchaseText) + '" title="' + esc(tooltip) + '"';
     return '<div class="treemap-cell ' + cls + '" style="' + style + '" ' + attrs + '>'
-      + '<span class="tc-ticker" style="font-size:' + tickerFs.toFixed(0) + 'px">' + esc(item.ticker) + '</span>' + pctHtml + '</div>';
+      + '<span class="tc-ticker" style="font-size:' + tickerFs.toFixed(0) + 'px">' + esc(label) + '</span>' + pctHtml + '</div>';
   }).join('');
 }
 

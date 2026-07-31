@@ -82,6 +82,65 @@ def test_treemap_cell_popup_opens_on_click(page: Page, live_server_url: str):
     expect(page.locator("#tc-popup-total")).to_contain_text("Total:")
 
 
+_CASH_TREEMAP_FIXTURE = """() => {
+    _renderPortfolioTreemap({
+      as_of: '2026-07-30',
+      stats_fetched_at: '2026-07-30T15:31:16+00:00',
+      portfolios: [{
+        portfolio_id: 'p1', portfolio_type: 'glowny', portfolio_name: null,
+        positions: [
+          { ticker: 'PKO', position_value_pln: 5000.0, portfolio_share_pct: 70.0,
+            daily_change_pln: 25.0, daily_change_pct: 0.5,
+            since_purchase_pln: 300.0, since_purchase_pct: 6.4 },
+          { ticker: '_CASH', position_value_pln: 2160.11, portfolio_share_pct: 30.0,
+            daily_change_pln: 0.0, daily_change_pct: 0.0,
+            since_purchase_pln: 0.0, since_purchase_pct: 0.0 },
+        ],
+      }],
+    });
+}"""
+
+
+def test_the_cash_cell_is_not_labelled_with_its_storage_ticker(
+    page: Page, live_server_url: str
+):
+    """Risk: `_CASH` is a storage sentinel. The positions table already routes it
+    through `_ppTickerLabel`; the treemap used to interpolate `item.ticker` raw,
+    so the same balance read as a broken import in one view and as cash in the
+    other."""
+    _login(page, live_server_url)
+    _open_portfolio_positions(page)
+    _open_treemap_tab(page)
+    # The tab click fires its own treemap fetch. Without waiting for it to render,
+    # it resolves after the fixture below and silently replaces it.
+    expect(page.locator("#pp-treemap-wallets .treemap-cell", has_text="PKO")).to_be_visible()
+    page.evaluate(_CASH_TREEMAP_FIXTURE)
+
+    wallets = page.locator("#pp-treemap-wallets")
+    expect(wallets.locator(".treemap-cell", has_text="Gotówka")).to_be_visible()
+    expect(wallets).not_to_contain_text("_CASH")
+    # The identity has to survive for the announcements lookup — only the label changed.
+    expect(wallets.locator('.treemap-cell[data-ticker="_CASH"]')).to_have_count(1)
+
+
+def test_the_cash_popup_offers_no_jump_to_a_ticker_no_exchange_lists(
+    page: Page, live_server_url: str
+):
+    """Risk: the popup's "go to announcements" button would search for `_CASH`.
+    The positions table drops its link for the cash row for the same reason."""
+    _login(page, live_server_url)
+    _open_portfolio_positions(page)
+    _open_treemap_tab(page)
+    expect(page.locator("#pp-treemap-wallets .treemap-cell", has_text="PKO")).to_be_visible()
+    page.evaluate(_CASH_TREEMAP_FIXTURE)
+
+    page.locator('#pp-treemap-wallets .treemap-cell[data-ticker="_CASH"]').click()
+
+    expect(page.locator("#treemap-popup-backdrop")).to_be_visible()
+    expect(page.locator("#tc-popup-ticker")).to_have_text("Gotówka")
+    expect(page.locator("#tc-popup-goto")).to_be_hidden()
+
+
 def test_portfolio_positions_url_deeplink(page: Page, live_server_url: str):
     """Risk: ?view=portfolio-positions in the URL must restore the portfolio view after login."""
     page.goto(f"{live_server_url}/?view=portfolio-positions")
