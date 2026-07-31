@@ -108,6 +108,10 @@ def test_backfill_note_is_reachable_without_a_mouse(page: Page, live_server_url:
     # The excluded branch is the worst case — a holding we couldn't price at all — so
     # it is exactly the message that must not rot untested.
     expect(active.get_by_text(re.compile(r"AAS.*pominięty w wycenie"))).to_be_visible()
+    # PUL-103: the range the wallet could not fill. This is the only disclosure the
+    # chart itself cannot hint at — the X axis is index-based, so a two-month series
+    # inside a 1r range stretches to the full width and looks like a full year.
+    expect(active.get_by_text(re.compile(r"dane od .* portfel nie istniał wcześniej"))).to_be_visible()
 
     # A chart with nothing to disclose must not grow a dangling affordance.
     expect(

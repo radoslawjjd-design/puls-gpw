@@ -676,8 +676,8 @@ def get_portfolio_history(
     value/P&L across every portfolio (the "Wszystkie" view).
 
     One row per trading day in [start_date, CURRENT_DATE()], ascending by date, with keys:
-    snapshot_date (date), value_pln (float), pnl_pln (float).  value_pln is the current share
-    counts valued at each day's close; pnl_pln = value_pln − Σ(shares × avg_buy_price).
+    snapshot_date (date), value_pln (float), pnl_pln (float).  value_pln is the shares held
+    *that day* valued at that day's close; pnl_pln = value_pln − Σ(shares × avg_buy_price).
 
     Prices are filled in **both** directions.  Forward (LOCF, PUL-79 F1): each held ticker
     carries its last known close across trading days, so a missing daily close no longer
@@ -694,14 +694,39 @@ def get_portfolio_history(
     P&L would carry a permanent phantom loss equal to its purchase cost.  The surviving gate
     (``covered > 0``) fires only when *nothing* in the portfolio is priced.
 
-    Accepted approximations, both of the same class:  positions store no purchase dates, so
-    "value on day X" uses *today's* share counts against day-X close (PUL-79); and
-    backward-filling contributes a constant ``shares × (first_px − avg_buy_price)`` to every
-    pre-debut day, so a holder who bought above the debut price sees a flat phantom loss
-    across that leg (PUL-100).  The alternative — dropping the position before its debut —
-    reintroduces the step this fill exists to remove.
+    Holdings are time-aware (PUL-103).  The share count on each day is a **backward
+    correction over the current snapshot** — ``today_shares − Σ(±volume of operations
+    later than that day)`` — exactly as get_portfolio_calendar_data computes it; the
+    long comments on the shared CTEs live there.  Until PUL-103 this query crossed the
+    spine with the *current* positions, so a lot bought last month contributed its full
+    weight to every day of last year, and a wallet reported a curve for dates it did
+    not exist.  The series is now bounded at ``GREATEST(start_date, inception)``.
 
-    Returns ``{"series": [...], "notes": [...], "excluded": [...]}``:
+    Three corrections act on the same rows and are deliberately kept disjoint:
+    ``shares_on_day`` decides *whether* a ticker is held, LOCF/BOCF decides *at what
+    price*, and ``covered > 0`` decides whether anything at all could be priced.  The
+    dust threshold is what keeps them apart — a zero-share row surviving into the fill
+    would carry a non-NULL px_ff, so COUNTIF would stop measuring "nothing could be
+    priced" and start measuring "the universe was empty", and ``notes`` would announce
+    the debut of a ticker nobody held in this window.
+
+    A day before inception is dropped by the **bound**, never by the gate: the bound is
+    evidence that the wallet did not exist, the gate is evidence that the data failed.
+
+    Accepted approximations.  The share counts are no longer among them, but the cost
+    basis still is: ``avg_buy_price`` is one time-blind weighted average, so P&L now has
+    correct weights on a basis that does not move (FIFO-as-of-date needs Python, not a
+    SQL window — measured 284.28 weighted against 297.90 FIFO on SNT).  A ticker whose
+    position row no longer exists — sold to zero, its row deleted at import — has no
+    stored basis at all, so its buys' weighted unit price stands in; that keeps
+    ``pnl = value − basis`` true instead of letting the ticker's whole value read as
+    profit.  And backward-filling still contributes a constant
+    ``shares × (first_px − avg_buy_price)`` to every pre-debut day of a *residual*
+    ticker, so a holder who bought above the debut price sees a flat phantom loss across
+    that leg (PUL-100).  BOCF's reach narrows sharply here: a ticker with operations
+    holds zero shares before its first buy, so the backward fill multiplies by nothing.
+
+    Returns ``{"series": [...], "notes": [...], "excluded": [...], "data_from": ...}``:
 
     * ``series`` — one entry per trading day in [start_date, CURRENT_DATE()], ascending, with
       keys snapshot_date (date), value_pln (float), pnl_pln (float).
@@ -710,6 +735,9 @@ def get_portfolio_history(
       ``listed_from`` is the first date **we have data for**, which is not necessarily a
       listing date — a ticker whose history starts when the scraper did looks identical here.
     * ``excluded`` — tickers with no price anywhere in the window, left out of the valuation.
+    * ``data_from`` — the day the series actually starts when inception falls inside the
+      requested range, else None.  The chart's X axis is index-based, so two months of
+      history inside a 1y range is visually indistinguishable from a full year.
 
     Metadata is carried by the same query (a second round trip would double a ~1.6 s
     user-facing latency) and the join is written meta-first, so the lists still reach the
@@ -721,14 +749,73 @@ def get_portfolio_history(
     cds_ref = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
     etf_ref = _table_ref(client, _ETF_QUOTES_TABLE_NAME)
     pos_ref = _table_ref(client, _USER_PORTFOLIO_POSITIONS_TABLE_NAME)
+    ops_ref = _table_ref(client, _USER_BROKER_OPERATIONS_TABLE_NAME)
+    pfs_ref = _table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)
     portfolio_filter = "AND portfolio_id = @portfolio_id" if portfolio_id is not None else ""
 
     query = f"""
         WITH
           positions AS (
-            SELECT ticker, shares, avg_buy_price
+            SELECT portfolio_id, ticker, shares, avg_buy_price
             FROM `{pos_ref}`
             WHERE user_id = @user_id {portfolio_filter}
+          ),
+          ops_daily AS (
+            SELECT
+              portfolio_id, ticker,
+              DATE(occurred_at, 'Europe/Warsaw') AS op_date,
+              SUM(CASE WHEN op_type = 'buy'  THEN volume
+                       WHEN op_type = 'sell' THEN -volume
+                       ELSE 0 END) AS signed_volume
+            FROM `{ops_ref}`
+            WHERE user_id = @user_id {portfolio_filter}
+              AND ticker IS NOT NULL
+              AND op_type IN ('buy', 'sell')
+            GROUP BY portfolio_id, ticker, op_date
+          ),
+          ops_totals AS (
+            SELECT portfolio_id, ticker, SUM(signed_volume) AS total_signed
+            FROM ops_daily
+            GROUP BY portfolio_id, ticker
+          ),
+          ops_basis AS (
+            -- Stand-in cost basis for a ticker with no position row left (sold to zero;
+            -- the import deletes the row).  Without it such a ticker adds value to the
+            -- historical days it was held while adding no basis, and the curve shows a
+            -- phantom profit that unwinds on the sale date.  Same class of number as
+            -- avg_buy_price — a time-blind weighted average — so it changes nothing
+            -- about the approximation, only about which tickers have one.
+            SELECT portfolio_id, ticker,
+                   SAFE_DIVIDE(SUM(volume * unit_price), SUM(volume)) AS avg_op_price
+            FROM `{ops_ref}`
+            WHERE user_id = @user_id {portfolio_filter}
+              AND ticker IS NOT NULL AND op_type = 'buy'
+              AND unit_price IS NOT NULL AND volume > 0
+            GROUP BY portfolio_id, ticker
+          ),
+          inception AS (
+            -- The first share-affecting operation, or — for a wallet that has none —
+            -- the day the wallet was created.  See get_portfolio_calendar_data for why
+            -- it is not the first operation of any kind.
+            SELECT COALESCE(
+              (SELECT MIN(op_date) FROM ops_daily),
+              (SELECT MIN(DATE(created_at, 'Europe/Warsaw')) FROM `{pfs_ref}`
+               WHERE user_id = @user_id {portfolio_filter})
+            ) AS first_day
+          ),
+          holders AS (
+            SELECT
+              COALESCE(p.portfolio_id, t.portfolio_id) AS portfolio_id,
+              COALESCE(p.ticker, t.ticker)             AS ticker,
+              COALESCE(p.shares, 0)                    AS today_shares,
+              COALESCE(t.total_signed, 0)              AS total_signed,
+              COALESCE(p.avg_buy_price, b.avg_op_price) AS avg_price
+            FROM positions p
+            FULL OUTER JOIN ops_totals t
+              ON t.portfolio_id = p.portfolio_id AND t.ticker = p.ticker
+            LEFT JOIN ops_basis b
+              ON  b.portfolio_id = COALESCE(p.portfolio_id, t.portfolio_id)
+              AND b.ticker       = COALESCE(p.ticker, t.ticker)
           ),
           spine AS (
             SELECT DISTINCT snapshot_date
@@ -759,15 +846,70 @@ def get_portfolio_history(
             FROM px_with_cash
             QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker, snapshot_date ORDER BY src) = 1
           ),
-          coverage AS (
+          filled AS (
+            -- The price fill is computed per ticker over the WHOLE spine, independently
+            -- of how many shares were held.  It has to be: the 400-day pre-roll exists
+            -- to give LOCF a predecessor, and if the grid were filtered to days the
+            -- ticker was actually held, the day it was bought would have no predecessor
+            -- left and would fall through to BOCF — a *later* price standing in for an
+            -- earlier one, which is the opposite of what the forward fill is for.
             SELECT
-              p.ticker,
+              s.snapshot_date, u.ticker,
+              COALESCE(
+                LAST_VALUE(d.px IGNORE NULLS) OVER (
+                  PARTITION BY u.ticker ORDER BY s.snapshot_date
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ),
+                FIRST_VALUE(d.px IGNORE NULLS) OVER (
+                  PARTITION BY u.ticker ORDER BY s.snapshot_date
+                  ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+                )
+              ) AS px_ff
+            FROM spine s
+            CROSS JOIN (SELECT DISTINCT ticker FROM holders) u
+            LEFT JOIN px_dedup d ON d.ticker = u.ticker AND d.snapshot_date = s.snapshot_date
+          ),
+          held AS (
+            -- shares(day) = today − (everything ever − everything up to and including
+            -- that day), matched by RANGE because an operation day need not be a
+            -- trading day.  Restricted to the requested window: the pre-roll days are
+            -- only ever needed by the price fill above.
+            SELECT snapshot_date, ticker, avg_price, shares_on_day
+            FROM (
+              SELECT
+                s.snapshot_date,
+                h.ticker,
+                h.avg_price,
+                h.today_shares - (h.total_signed - COALESCE(SUM(o.signed_volume), 0))
+                  AS shares_on_day
+              FROM spine s
+              CROSS JOIN holders h
+              LEFT JOIN ops_daily o
+                ON  o.portfolio_id = h.portfolio_id
+                AND o.ticker       = h.ticker
+                AND o.op_date     <= s.snapshot_date
+              WHERE s.snapshot_date BETWEEN @start_date AND CURRENT_DATE()
+              GROUP BY s.snapshot_date, h.portfolio_id, h.ticker, h.avg_price,
+                       h.today_shares, h.total_signed
+            )
+            -- Strictly positive, never ABS(): float volumes leave ~1e-13 behind on a
+            -- fully sold lot, and a genuinely negative reconstruction (buys on record
+            -- with no position row, which deleting a position by hand leaves behind)
+            -- would subtract from the day's value and paint a large red loss.
+            WHERE shares_on_day > 1e-9
+          ),
+          coverage AS (
+            -- Over the tickers actually held in this window, not over today's position
+            -- list: a note about a debut nobody was exposed to is noise, and a ticker
+            -- held only outside the window has no business in `excluded` either.
+            SELECT
+              u.ticker,
               MIN(d.snapshot_date) AS first_px_date,
               ARRAY_AGG(d.px IGNORE NULLS ORDER BY d.snapshot_date LIMIT 1)[SAFE_OFFSET(0)]
                 AS first_px
-            FROM positions p
-            LEFT JOIN px_dedup d ON d.ticker = p.ticker
-            GROUP BY p.ticker
+            FROM (SELECT DISTINCT ticker FROM held) u
+            LEFT JOIN px_dedup d ON d.ticker = u.ticker
+            GROUP BY u.ticker
           ),
           meta AS (
             SELECT
@@ -775,40 +917,30 @@ def get_portfolio_history(
                 SELECT AS STRUCT ticker, first_px_date, first_px
                 FROM coverage WHERE first_px_date > @start_date
               ) AS notes,
-              ARRAY(SELECT ticker FROM coverage WHERE first_px_date IS NULL) AS excluded
+              ARRAY(SELECT ticker FROM coverage WHERE first_px_date IS NULL) AS excluded,
+              (SELECT IF(first_day > @start_date, first_day, NULL) FROM inception)
+                AS data_from
           ),
-          grid AS (
-            SELECT s.snapshot_date, p.ticker, p.shares, p.avg_buy_price, d.px
-            FROM spine s
-            CROSS JOIN positions p
-            LEFT JOIN px_dedup d ON d.ticker = p.ticker AND d.snapshot_date = s.snapshot_date
-          ),
-          filled AS (
-            SELECT
-              snapshot_date, ticker, shares, avg_buy_price,
-              COALESCE(
-                LAST_VALUE(px IGNORE NULLS) OVER (
-                  PARTITION BY ticker ORDER BY snapshot_date
-                  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                ),
-                FIRST_VALUE(px IGNORE NULLS) OVER (
-                  PARTITION BY ticker ORDER BY snapshot_date
-                  ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
-                )
-              ) AS px_ff
-            FROM grid
+          valued AS (
+            SELECT h.snapshot_date, h.shares_on_day, h.avg_price, f.px_ff
+            FROM held h
+            LEFT JOIN filled f
+              ON f.ticker = h.ticker AND f.snapshot_date = h.snapshot_date
           ),
           daily AS (
             SELECT
               snapshot_date,
-              SUM(IF(px_ff IS NOT NULL, shares * px_ff, 0)) AS value_pln,
-              SUM(IF(px_ff IS NOT NULL, shares * (px_ff - avg_buy_price), 0)) AS pnl_pln,
+              SUM(IF(px_ff IS NOT NULL, shares_on_day * px_ff, 0)) AS value_pln,
+              SUM(IF(px_ff IS NOT NULL, shares_on_day * (px_ff - avg_price), 0)) AS pnl_pln,
               COUNTIF(px_ff IS NOT NULL) AS covered
-            FROM filled
-            WHERE snapshot_date BETWEEN @start_date AND CURRENT_DATE()
+            FROM valued
+            -- GREATEST(@start_date, inception): `held` is already clamped to the range,
+            -- so this is the inception half.  COALESCE keeps a wallet whose inception
+            -- cannot be determined reporting rather than blank.
+            WHERE snapshot_date >= COALESCE((SELECT first_day FROM inception), @start_date)
             GROUP BY snapshot_date
           )
-        SELECT d.snapshot_date, d.value_pln, d.pnl_pln, m.notes, m.excluded
+        SELECT d.snapshot_date, d.value_pln, d.pnl_pln, m.notes, m.excluded, m.data_from
         FROM meta m
         LEFT JOIN daily d ON d.covered > 0
         ORDER BY d.snapshot_date
@@ -846,7 +978,8 @@ def get_portfolio_history(
         for note in (first.notes or [])
     ] if first else []
     excluded = list(first.excluded or []) if first else []
-    return {"series": series, "notes": notes, "excluded": excluded}
+    data_from = first.data_from if first else None
+    return {"series": series, "notes": notes, "excluded": excluded, "data_from": data_from}
 
 
 _WATCHLIST_TABLE_NAME = "watchlist"

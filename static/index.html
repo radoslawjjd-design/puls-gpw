@@ -5154,6 +5154,12 @@ function _ppFmtDatePl(ds) { const p = String(ds).split('-'); return p[2] + '.' +
 // scraper did is not a debut at all.
 function _ppHistNoteLines(data) {
   const lines = [];
+  // PUL-103: the X axis is index-based, so a series shortened by the wallet's inception
+  // fills the whole width and reads as a full range. Say it out loud, and say it about
+  // the PORTFOLIO — this is not a listing date.
+  if (data && data.data_from) {
+    lines.push('dane od ' + _ppFmtDatePl(data.data_from) + ' — portfel nie istniał wcześniej');
+  }
   for (const n of (data && data.notes) || []) {
     lines.push(n.ticker + ' — brak notowań przed ' + _ppFmtDatePl(n.listed_from) +
       '; wcześniejsze dni wycenione kursem ' +
