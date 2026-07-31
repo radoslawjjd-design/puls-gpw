@@ -68,20 +68,34 @@ def test_a_sale_without_a_recorded_purchase_is_disclosed(page: Page, live_server
 
 
 def test_year_switch_refetches_without_leaving_the_tab(page: Page, live_server_url: str):
-    """The year pills reuse .pp-view-tab, which the mode handler also binds — the
-    trap the dividends and range pills both had to dodge."""
+    """The selector shares its header with the view tabs, whose handler also binds
+    here — the trap the dividends and range controls both had to dodge."""
     _login_and_open(page, live_server_url)
     _open_realized(page)
 
     with page.expect_response(re.compile(r"/api/portfolio/realized.*year=2026")):
-        page.locator('#pp-real-years .pp-view-tab[data-year="2026"]').click()
+        page.get_by_label("Rok sprzedaży").select_option("2026")
 
     expect(page.locator("#pp-realized-wrap")).to_be_visible()
-    expect(page.locator('#pp-real-years .pp-view-tab[data-year="2026"]')).to_have_class(
-        re.compile(r"active")
-    )
+    expect(page.get_by_label("Rok sprzedaży")).to_have_value("2026")
     # 2026 holds only the PKO sale; CDR's unmatched 2025 sale must drop out.
     expect(page.locator("#pp-real-note")).to_be_hidden()
+
+
+def test_the_year_selector_survives_its_own_refetch(page: Page, live_server_url: str):
+    """Risk (PUL-117): picking a year rebuilds the selector from the new response.
+    If the rebuild forgets the choice, the control snaps back to "Wszystkie" while
+    the numbers below it still show one year — the two disagree and the user can't
+    tell which is true."""
+    _login_and_open(page, live_server_url)
+    _open_realized(page)
+
+    with page.expect_response(re.compile(r"/api/portfolio/realized.*year=2026")):
+        page.get_by_label("Rok sprzedaży").select_option("2026")
+
+    # Same locator, re-resolved after the re-render — a stale handle would pass here.
+    expect(page.locator("#pp-real-years select")).to_have_value("2026")
+    expect(page.locator("#pp-real-years select")).to_have_count(1)
 
 
 def test_switching_away_hides_the_realized_panel(page: Page, live_server_url: str):

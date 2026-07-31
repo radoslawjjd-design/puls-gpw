@@ -1,5 +1,6 @@
 """E2E tests — dividends tab (PUL-95 Phase 5)."""
 import re
+from datetime import date
 
 from playwright.sync_api import Page, expect
 
@@ -47,17 +48,41 @@ def test_dividends_tiles_show_gross_tax_and_net_separately(page: Page, live_serv
 
 
 def test_year_switch_refetches_without_leaving_the_tab(page: Page, live_server_url: str):
-    """Risk: the year pills reuse .pp-view-tab, which the mode handler also binds."""
+    """Risk: the selector sits next to the view tabs, whose handler also binds this
+    header — picking a year must refetch dividends, not switch the whole view."""
     _login_and_open(page, live_server_url)
     _open_dividends(page)
 
     with page.expect_response(re.compile(r"/api/portfolio/dividends.*year=2025")):
-        page.locator('#pp-div-years .pp-view-tab[data-year="2025"]').click()
+        page.get_by_label("Rok wypłat dywidend").select_option("2025")
 
     expect(page.locator("#pp-dividends-wrap")).to_be_visible()
-    expect(page.locator('#pp-div-years .pp-view-tab[data-year="2025"]')).to_have_class(
-        re.compile(r"active")
-    )
+    expect(page.get_by_label("Rok wypłat dywidend")).to_have_value("2025")
+
+
+def test_the_year_selector_offers_every_year_the_wallet_existed(
+    page: Page, live_server_url: str
+):
+    """Risk (PUL-117): one pill per year is unusable at twenty years, and a list built
+    only from years that paid out cannot answer "did I get anything in 2023?" — the
+    year simply isn't there. The dropdown spans inception → today, defaulting to all.
+
+    Fixture: conftest._FAKE_INCEPTION is two years back, dividends in 2025 and 2026.
+    """
+    _login_and_open(page, live_server_url)
+    _open_dividends(page)
+
+    select = page.get_by_label("Rok wypłat dywidend")
+    expect(select).to_have_value("")  # "Wszystkie" — every year, by default
+    expect(page.locator("#pp-div-years select")).to_have_count(1)
+    expect(page.locator("#pp-div-years button")).to_have_count(0)
+
+    today = date.today()
+    years = select.locator("option").all_inner_texts()
+    assert years[0] == "Wszystkie"
+    # Newest first, one per year, down to the wallet's first — including the year
+    # in between that paid nothing.
+    assert years[1:] == [str(y) for y in range(today.year, today.year - 3, -1)]
 
 
 def test_switching_away_hides_the_dividends_panel(page: Page, live_server_url: str):

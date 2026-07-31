@@ -2252,6 +2252,47 @@ def test_dividends_endpoint_validates_year_before_building_a_cache_key(user_clie
     assert not [k for k in m._PERF_CACHE if k.startswith("dividends:")]
 
 
+def test_dividends_and_realized_carry_the_wallet_inception(user_client):
+    """PUL-117: `years` lists only the years that paid or sold something, so a
+    selector built from it alone cannot offer 2023 to a user asking whether 2023
+    brought anything in. Inception is what turns the list into a range."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_dividend_summary", return_value={"years": [2026], "by_ticker": []}),
+        patch("src.api.get_portfolio_inception", return_value=date(2021, 6, 1)) as mock_inc,
+    ):
+        r = user_client.get(f"/api/portfolio/dividends?portfolio_id={_WALLET_ID}")
+    assert r.status_code == 200
+    assert r.json()["inception"] == "2021-06-01"
+    assert mock_inc.call_args[0][0] == _WALLET_ID
+
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_broker_trades", return_value=[]),
+        patch("src.api.get_portfolio_inception", return_value=date(2021, 6, 1)),
+    ):
+        r = user_client.get(f"/api/portfolio/realized?portfolio_id={_WALLET_ID}")
+    assert r.status_code == 200
+    assert r.json()["inception"] == "2021-06-01"
+
+
+def test_dividends_survive_a_failed_inception_lookup(user_client):
+    """The payouts are the view; the selector's lower bound is a convenience. Losing
+    the bound must not cost the user the numbers — the selector falls back on its own."""
+    from src.exceptions import BigQueryError
+
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_dividend_summary", return_value={"years": [2026], "by_ticker": []}),
+        patch("src.api.get_portfolio_inception", side_effect=BigQueryError("bq down")),
+    ):
+        r = user_client.get(f"/api/portfolio/dividends?portfolio_id={_WALLET_ID}&year=2026")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["inception"] is None
+    assert body["years"] == [2026]
+
+
 def test_perf_invalidate_clears_history_the_all_sentinel_and_dividends():
     """The import lands on the default tab; a stale history or positions cache shows the old wallet."""
     import src.api as m

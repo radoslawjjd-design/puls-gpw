@@ -56,6 +56,42 @@ def test_treemap_renders_cells_for_priced_positions(page: Page, live_server_url:
     expect(wallets.locator(".treemap-cell", has_text="CDR")).not_to_be_attached()
 
 
+def test_the_wallet_name_is_legible_in_both_themes(page: Page, live_server_url: str):
+    """Risk (PUL-117): the heading is `color: var(--brand)` — navy — and dark mode
+    repaints the card it sits on to near-black without redefining --brand, so the
+    wallet name went navy-on-navy.
+
+    Asserted by luminance rather than by colour, so the test survives a palette
+    change and would equally catch the mirror failure in the light theme.
+    """
+    _login(page, live_server_url)
+    _open_portfolio_positions(page)
+    _open_treemap_tab(page)
+
+    heading = page.locator("#pp-treemap-wallets .treemap-wallet h3").first
+    expect(heading).to_be_visible()
+
+    for theme in ("light", "dark"):
+        page.evaluate("t => { localStorage.setItem('faro_theme', t); _applyTheme(t); }", theme)
+        ratio = page.evaluate(
+            """
+            () => {
+              const lum = s => {
+                const [r, g, b] = s.match(/[\\d.]+/g).slice(0, 3).map(Number).map(v => {
+                  const c = v / 255;
+                  return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+                });
+                return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+              };
+              const h = document.querySelector('#pp-treemap-wallets .treemap-wallet h3');
+              const card = h.closest('.treemap-wallet');
+              return Math.abs(lum(getComputedStyle(card).backgroundColor)
+                              - lum(getComputedStyle(h).color));
+            }"""
+        )
+        assert ratio > 0.15, f"wallet name barely separates from its card in {theme}: {ratio}"
+
+
 def test_no_price_notice_shows_unpriceable_tickers(page: Page, live_server_url: str):
     """Risk: CDR (current_price=None) must appear in the no-price notice after treemap loads."""
     _login(page, live_server_url)
