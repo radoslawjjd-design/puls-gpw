@@ -739,8 +739,11 @@
     display: inline-block;
   }
   #pp-add-toggle-btn:hover { background: var(--brand-dark); }
-  #pp-export-csv-btn { padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc; border-radius:var(--radius-sm); cursor:pointer; font-size:.9rem; font-weight:600; }
-  #pp-export-csv-btn:hover { background: var(--brand-tint); }
+  #pp-export-csv-btn, #pp-cal-export-btn { padding:.55rem 1.15rem; background:#fff; color:var(--brand); border:1px solid #cdd4dc; border-radius:var(--radius-sm); cursor:pointer; font-size:.9rem; font-weight:600; }
+  #pp-export-csv-btn:hover, #pp-cal-export-btn:hover { background: var(--brand-tint); }
+  /* PUL-104: the calendar's own export sits under the grid, on the same baseline
+     as the legend it follows. */
+  #pp-cal-actions { display: flex; justify-content: flex-end; margin: .25rem 0 1rem; }
   #pp-form {
     display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
     background: #fff; padding: .9rem 1rem; border-radius: var(--radius-md);
@@ -1174,7 +1177,7 @@ html[data-theme="dark"] .login-box button.auth-tab.active { background:#1d2b3c; 
 html[data-theme="dark"] .login-box button.auth-alt-link { background:none; color:#9fc1e0; }
 html[data-theme="dark"] .auth-error { background:rgba(179,38,30,.15); border-color:rgba(179,38,30,.4); }
 html[data-theme="dark"] .auth-ok { background:rgba(46,125,50,.15); border-color:rgba(46,125,50,.4); }
-html[data-theme="dark"] #pp-export-csv-btn { background:#141f2b; border-color:#2b3a4d; color:#9fc1e0; }
+html[data-theme="dark"] #pp-export-csv-btn, html[data-theme="dark"] #pp-cal-export-btn { background:#141f2b; border-color:#2b3a4d; color:#9fc1e0; }
 html[data-theme="dark"] #pp-view-tabs, html[data-theme="dark"] .pp-view-tabs-inline { background:#0d1520; border-color:#243141; }
 html[data-theme="dark"] .pp-view-tab:hover:not(.active) { color:#c9dcee; }
 html[data-theme="dark"] .pp-view-tab.active { color:#f3d9a4; }
@@ -1930,7 +1933,7 @@ $('theme-toggle-btn').addEventListener('click', () => {
   _applyTheme(t);
   closeProfileMenu();
 });
-$('btn-export-csv').addEventListener('click', () => _exportAnnouncementsCsv(_annData, 'ogloszenia.csv'));
+$('btn-export-csv').addEventListener('click', () => _exportAnnouncementsCsv(_annData, _csvFilename('ogloszenia', _csvToday())));
 
 $('nav-announcements-btn').addEventListener('click', () => _navigateToView('announcements'));
 $('nav-my-wallet-btn').addEventListener('click', () => _navigateToView('my-wallet'));
@@ -2893,7 +2896,7 @@ function _buildMyWalletViewContent(view) {
     fetchMyWalletAnnouncements();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
-  $('wl-btn-export').addEventListener('click', () => _exportAnnouncementsCsv(_wlData, 'obserwowane.csv'));
+  $('wl-btn-export').addEventListener('click', () => _exportAnnouncementsCsv(_wlData, _csvFilename('obserwowane', _csvToday())));
 }
 
 function _showMyWalletViewDom() {
@@ -3667,6 +3670,15 @@ let _ppDivReqSeq = 0;
 const _PORTFOLIO_TYPE_LABELS = {
   glowny: 'Główny', ikze: 'IKZE', ike: 'IKE', ppk: 'PPK', ppe: 'PPE', inny: 'Inny'
 };
+// The wallet's on-screen name: the type label for every preset type, the
+// user-given name only for `inny`. The tab, the treemap heading and the CSV
+// filename all have to say the same word, so they all come through here.
+function _ppWalletLabel(p) {
+  if (!p) return '';
+  return p.portfolio_type === 'inny'
+    ? (p.portfolio_name || 'Inny')
+    : (_PORTFOLIO_TYPE_LABELS[p.portfolio_type] || p.portfolio_type);
+}
 // PUL-90: sentinel wallet id for the "Wszystkie" (all-portfolios) aggregate view —
 // first + default tab, read-only. Truthy, so it passes the `=== null` fetch guards.
 const _ALL_PORTFOLIOS = 'all';
@@ -3919,9 +3931,7 @@ function _renderPortfolioTabs(portfolios) {
   tabs.appendChild(allBtn);
 
   portfolios.forEach((p) => {
-    const label = p.portfolio_type === 'inny'
-      ? (p.portfolio_name || 'Inny')
-      : (_PORTFOLIO_TYPE_LABELS[p.portfolio_type] || p.portfolio_type);
+    const label = _ppWalletLabel(p);
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'pp-portfolio-tab' + (p.portfolio_id === _activePortfolioId ? ' active' : '');
@@ -4497,6 +4507,9 @@ function _buildPortfolioPositionsViewContent(view) {
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-neutral"></span>weekend / święto GPW</span>
         <span class="pp-cal-legend-item"><span class="pp-cal-legend-swatch pp-cal-swatch-white"></span>brak danych</span>
       </div>
+      <div id="pp-cal-actions">
+        <button type="button" id="pp-cal-export-btn" title="Eksportuj wyświetlany miesiąc do CSV">Eksport CSV</button>
+      </div>
       <div id="pp-history-section">
         <div id="pp-history-header-row">
           <div id="pp-history-controls">
@@ -4738,6 +4751,7 @@ function _buildPortfolioPositionsViewContent(view) {
     $('pp-add-toggle-btn').style.display = 'none';
   });
   $('pp-export-csv-btn').addEventListener('click', _exportPortfolioCsv);
+  $('pp-cal-export-btn').addEventListener('click', _exportCalendarCsv);
 
   // broker-import modal events (PUL-95)
   $('pp-import-btn').addEventListener('click', () => {
@@ -5519,9 +5533,7 @@ function _renderPortfolioTreemap(data) {
 
   // First pass: append all wallet divs so flex layout stabilizes before reading clientWidth
   for (const portfolio of data.portfolios) {
-    const label = portfolio.portfolio_type === 'inny'
-      ? (portfolio.portfolio_name || 'Inny')
-      : (_PORTFOLIO_TYPE_LABELS[portfolio.portfolio_type] || portfolio.portfolio_type);
+    const label = _ppWalletLabel(portfolio);
     const containerId = `pp-treemap-${portfolio.portfolio_id}`;
     const walletDiv = document.createElement('div');
     walletDiv.className = 'treemap-wallet';
@@ -5655,6 +5667,49 @@ function renderTreemap(data, container) {
 
 // ── CSV export (client-side, aktualnie załadowane wiersze) ──────────────
 function _csvNum(v) { return v == null || v === '' ? '' : String(v).replace('.', ','); }
+// Money is rounded at the file boundary, exactly as on screen — a raw float
+// lands in a spreadsheet as 10149,999999999998 and reads as a data error.
+function _csvMoney(v) { return v == null || v === '' ? '' : _csvNum(Number(v).toFixed(2)); }
+
+// PUL-104: filenames used to be three hardcoded constants, so exporting two
+// wallets — or the same wallet twice — produced portfel.csv, portfel (1).csv,
+// and a download folder in which nothing could be told apart a week later. The
+// rule lives here, in one place, and every export goes through it.
+const _CSV_NAME_MAX = 40;
+function _csvSlug(name) {
+  // NFD splits ą/ć/ę/ń/ó/ś/ź/ż into a base letter plus a combining mark, which
+  // the next replace drops; ł has no decomposition of its own, hence the
+  // explicit pair. Folding matters because a UTF-8 filename does not reliably
+  // survive being mailed or unzipped on another machine.
+  const folded = String(name == null ? '' : name)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l').replace(/Ł/g, 'L');
+  const safe = folded
+    .replace(/[\\/:*?"<>|]/g, ' ')   // illegal on Windows, awkward everywhere else
+    .replace(/[\x00-\x1f]/g, ' ')
+    .trim().replace(/\s+/g, '_')
+    .slice(0, _CSV_NAME_MAX)
+    .replace(/^_+|_+$/g, '');
+  return safe;
+}
+// `scope` may be several parts; each is sanitised on its own, then joined. A
+// wallet named only with emoji sanitises to nothing — it must not produce
+// "_2026-07-30.csv", so an empty part falls back rather than disappearing.
+function _csvFilename(scope, period) {
+  const parts = (Array.isArray(scope) ? scope : [scope]).map(s => _csvSlug(s) || 'portfel');
+  return parts.join('_') + '_' + period + '.csv';
+}
+function _csvToday() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+    + '-' + String(d.getDate()).padStart(2, '0');
+}
+// The active wallet's name for a filename. "Wszystkie" has no wallet of its own,
+// so it names itself.
+function _ppExportWalletName() {
+  if (_ppIsAllMode()) return 'Wszystkie';
+  return _ppWalletLabel(_ppPortfolios.find(w => w.portfolio_id === _activePortfolioId));
+}
 function _downloadCsv(filename, rows) {
   const cell = v => { v = v == null ? '' : String(v); return /[";\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   const csv = '\uFEFF' + rows.map(r => r.map(cell).join(';')).join('\r\n');
@@ -5685,7 +5740,40 @@ function _exportPortfolioCsv() {
     p.ticker, p.company_name || '', _csvNum(p.shares), _csvNum(p.avg_buy_price),
     _csvNum(p.current_price), _csvNum(p.daily_change_pct), _csvNum(p.pnl_pln), _csvNum(p.pnl_pct)
   ]));
-  _downloadCsv('portfel.csv', out);
+  _downloadCsv(_csvFilename(_ppExportWalletName(), _csvToday()), out);
+}
+
+// PUL-104: the calendar carries the daily P&L and was the one view with no way
+// to get it out of the browser. Everything it needs is already in _ppCalData —
+// the export is the displayed month for the selected wallet, no extra request.
+const _PP_CAL_STATE_LABELS = {
+  data: 'sesja', partial: 'sesja (brak wycen)', no_data: 'brak danych',
+  weekend: 'weekend', holiday: 'święto GPW', future: 'dzień przyszły'
+};
+function _exportCalendarCsv() {
+  const days = _ppCalData && _ppCalData.days;
+  if (!days || !days.length) { alert('Brak danych do eksportu.'); return; }
+  const out = [['Data', 'Stan dnia', 'Zysk/strata dnia (PLN)', 'Wartość portfela (PLN)',
+    'Narastająco od początku miesiąca (PLN)', 'Wycenione pozycje', 'Pozycji w portfelu']];
+  days.forEach(d => {
+    // Only a session day carries numbers; the backend already sends null for
+    // every other state, and null must stay an EMPTY cell. A zero in a
+    // spreadsheet reads as a real flat session — the exact thing PUL-103 took
+    // out of the calendar, and a saved file outlives a rendered grid.
+    out.push([
+      d.date,
+      _PP_CAL_STATE_LABELS[d.state] || d.state,
+      _csvMoney(d.pnl_abs),
+      _csvMoney(d.portfolio_value),
+      _csvMoney(d.mtd_diff),
+      d.total_positions ? d.prices_found : '',
+      d.total_positions || ''
+    ]);
+  });
+  // The month in the file, not the day it was downloaded: "Glowny_kalendarz_2026-07"
+  // says what is inside, "..._2026-07-30" does not.
+  const period = _ppCalData.year + '-' + String(_ppCalData.month).padStart(2, '0');
+  _downloadCsv(_csvFilename([_ppExportWalletName(), 'kalendarz'], period), out);
 }
 
 // ── render ─────────────────────────────────────────────────────────────
