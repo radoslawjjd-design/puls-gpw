@@ -1,10 +1,10 @@
 ---
 change_id: calendar-holdings-as-of-date
 title: Compute calendar and value-history from holdings as of each day, not today's shares
-status: impl_reviewed
+status: archived
 created: 2026-07-30
 updated: 2026-07-31
-archived_at: null
+archived_at: 2026-07-31T18:52:00Z
 tracking:
   linear: PUL-103
   github: 211
