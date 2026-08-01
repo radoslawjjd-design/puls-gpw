@@ -439,30 +439,30 @@ like any other deploy. Reverting that commit restores Cloud Run's default.
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_brokers_xlsx_reader.py`
-- [x] 1.2 The pre-existing non-zip test still passes
-- [x] 1.3 The layering test still passes
-- [x] 1.4 Full suite passes: `uv run pytest`
-- [x] 1.5 Linting passes: `uv run ruff check src tests`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_brokers_xlsx_reader.py` — 57cd653
+- [x] 1.2 The pre-existing non-zip test still passes — 57cd653
+- [x] 1.3 The layering test still passes — 57cd653
+- [x] 1.4 Full suite passes: `uv run pytest` — 57cd653
+- [x] 1.5 Linting passes: `uv run ruff check src tests` — 57cd653
 
 #### Manual
 
-- [x] 1.6 Baseline peak RSS recorded against a `sharedStrings.xml` bomb BEFORE writing code
-- [x] 1.7 After the change the same file is rejected and peak RSS stays flat
-- [x] 1.8 A real XTB export still imports unchanged
+- [x] 1.6 Baseline peak RSS recorded against a `sharedStrings.xml` bomb BEFORE writing code — 57cd653
+- [x] 1.7 After the change the same file is rejected and peak RSS stays flat — 57cd653
+- [x] 1.8 A real XTB export still imports unchanged — 57cd653
 
 ### Phase 2: Read only the sheets the parser consumes
 
 #### Automated
 
-- [ ] 2.1 All five pre-existing `read_sheets(...)` call sites still pass unmodified
-- [ ] 2.2 Broker tests pass
-- [ ] 2.3 Full suite passes: `uv run pytest`
-- [ ] 2.4 Linting passes: `uv run ruff check src tests`
+- [x] 2.1 All five pre-existing `read_sheets(...)` call sites still pass unmodified
+- [x] 2.2 Broker tests pass
+- [x] 2.3 Full suite passes: `uv run pytest`
+- [x] 2.4 Linting passes: `uv run ruff check src tests`
 
 #### Manual
 
-- [ ] 2.5 A real XTB export produces the same positions, dividends and cash balance
+- [x] 2.5 A real XTB export produces the same positions, dividends and cash balance
 
 ### Phase 3: API layer — status mapping and check ordering
 

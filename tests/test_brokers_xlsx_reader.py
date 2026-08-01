@@ -17,7 +17,8 @@ _SHARED_STRINGS_CT = (
 
 def _workbook_bytes(*, preamble_rows: int = 4, header: list | None = None,
                     data: list[list] | None = None, broken_dimension: bool = False,
-                    shared_strings_bytes: int = 0) -> bytes:
+                    shared_strings_bytes: int = 0,
+                    extra_sheets: dict[str, list[list]] | None = None) -> bytes:
     """Build an XTB-shaped workbook in memory.
 
     The real exports must never be committed (they carry account numbers), so
@@ -43,6 +44,10 @@ def _workbook_bytes(*, preamble_rows: int = 4, header: list | None = None,
         # XTB declares "A1:A1" regardless of content. openpyxl's read-only mode
         # trusts that declaration and yields a single row unless it is reset.
         ws.calculate_dimension = lambda **kwargs: "A1:A1"
+    for title, rows in (extra_sheets or {}).items():
+        extra = wb.create_sheet(title)
+        for row in rows:
+            extra.append(row)
     buffer = io.BytesIO()
     wb.save(buffer)
     if not shared_strings_bytes:
@@ -156,3 +161,19 @@ def test_iteration_stops_once_the_cell_budget_is_spent(monkeypatch):
 
     with pytest.raises(BrokerFileTooLargeError):
         read_sheets(_workbook_bytes(data=data))
+
+
+def test_a_sheet_no_parser_asks_for_is_never_read(monkeypatch):
+    # A real export carries several sheets; the XTB parser indexes exactly one.
+    # Reading the rest cost memory on every honest import and handed an attacker
+    # somewhere to hide a payload. Spending the cell budget is the observable
+    # proof: with the budget too small for the second sheet, the read still
+    # succeeds — because that sheet is never touched.
+    monkeypatch.setattr(xlsx_reader, "_MAX_CELLS", 200)
+    data = [["Dividend", "KRU.PL", "Kruk", None, 722.0, "1", "", "My Trades"]]
+    bulky = [[f"cell {i}-{j}" for j in range(8)] for i in range(100)]
+
+    sheets = read_sheets(_workbook_bytes(data=data, extra_sheets={"Open Positions": bulky}))
+
+    assert list(sheets) == ["Cash Operations"]
+    assert sheets["Cash Operations"][0]["Ticker"] == "KRU.PL"

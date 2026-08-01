@@ -43,6 +43,11 @@ _MAX_CELLS = 200_000
 def read_sheets(data: bytes) -> dict[str, list[dict]]:
     """Read a workbook into ``{sheet name: [row dict, ...]}``.
 
+    Only sheets listed in ``_REQUIRED_COLUMNS`` are read; anything else in the
+    file is ignored, so a caller asking for a sheet that is absent from the
+    result cannot tell "not in the file" from "not one we read" — and does not
+    need to, since a parser only ever asks for sheets it declared.
+
     Rows are keyed by column header. A sheet missing an expected column raises
     ``BrokerParseError`` naming that column rather than guessing.
     """
@@ -56,7 +61,17 @@ def read_sheets(data: bytes) -> dict[str, list[dict]]:
 
     budget = _CellBudget(_MAX_CELLS)
     try:
-        return {sheet.title: _read_one(sheet, budget) for sheet in workbook.worksheets}
+        # Only the sheets a parser declares columns for. A real export carries
+        # several; the XTB parser indexes exactly one. Reading the rest cost
+        # memory on every honest import and gave a payload somewhere to hide.
+        # This deliberately couples "what we read" to "what we validate" — if a
+        # broker ever needs a sheet with no required columns, that is the moment
+        # to split the two, not before.
+        return {
+            sheet.title: _read_one(sheet, budget)
+            for sheet in workbook.worksheets
+            if sheet.title in _REQUIRED_COLUMNS
+        }
     finally:
         workbook.close()
 
@@ -119,11 +134,10 @@ def _read_one(sheet, budget: _CellBudget) -> list[dict]:
     for row in sheet.iter_rows(values_only=True):
         budget.spend(len(row))
         rows.append(row)
-    required = _REQUIRED_COLUMNS.get(sheet.title)
+    # Guaranteed present: read_sheets only hands over sheets it looked up here.
+    required = _REQUIRED_COLUMNS[sheet.title]
     header_index = _find_header(rows, required)
     if header_index is None:
-        if required is None:
-            return []
         missing = _missing_columns(rows, required)
         raise BrokerParseError(
             f"arkusz '{sheet.title}' nie ma oczekiwanych kolumn: {', '.join(missing)}"
@@ -138,9 +152,7 @@ def _read_one(sheet, budget: _CellBudget) -> list[dict]:
     return out
 
 
-def _find_header(rows: list[tuple], required: tuple[str, ...] | None) -> int | None:
-    if required is None:
-        return None
+def _find_header(rows: list[tuple], required: tuple[str, ...]) -> int | None:
     wanted = set(required)
     for index, row in enumerate(rows[:_MAX_HEADER_SCAN]):
         labels = {str(cell).strip() for cell in row if cell is not None}

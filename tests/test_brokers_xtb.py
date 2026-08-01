@@ -337,7 +337,7 @@ _GOLDEN_ROWS = [
 ]
 
 
-def _golden_workbook() -> bytes:
+def _golden_workbook(*, extra_sheet: str | None = None) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Cash Operations"
@@ -348,6 +348,11 @@ def _golden_workbook() -> bytes:
     ws.append(_GOLDEN_HEADER)
     for row in _GOLDEN_ROWS:
         ws.append(row)
+    if extra_sheet is not None:
+        # Real exports carry more than one sheet; the parser indexes none of them.
+        other = wb.create_sheet(extra_sheet)
+        other.append(["Symbol", "Volume", "Open price"])
+        other.append(["CBF", 100, 12.5])
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
@@ -449,6 +454,25 @@ def test_buys_are_ordered_by_time_not_by_input_order():
 
     # The day-2 lot at 100 is the oldest and must be the one consumed.
     assert positions[0].avg_buy_price == pytest.approx(200.0)
+
+
+# ── size ceiling (PUL-105) ────────────────────────────────────────────────────
+
+
+def test_skipping_unread_sheets_changes_nothing_the_parser_produces():
+    # The reader stopped materialising sheets no parser declares columns for.
+    # That is a memory change, so it has to be observationally invisible: the
+    # same export with an extra sheet must yield the same positions, dividends
+    # and cash as without it.
+    plain = parse_xtb_export(_golden_workbook())
+    with_extra = parse_xtb_export(_golden_workbook(extra_sheet="Open Positions"))
+
+    assert [(p.ticker, p.shares) for p in with_extra.positions] == [
+        (p.ticker, p.shares) for p in plain.positions
+    ]
+    assert with_extra.closed_tickers == plain.closed_tickers
+    assert len(with_extra.dividends) == len(plain.dividends)
+    assert with_extra.cash_pln == plain.cash_pln
 
 
 # ── free cash (PUL-95 Phase 8) ────────────────────────────────────────────────
