@@ -482,7 +482,7 @@ like any other deploy. Reverting that commit restores Cloud Run's default.
 
 #### Automated
 
-- [x] 4.1 Workflow file parses
+- [x] 4.1 Workflow file parses — fbfb448
 
 #### Manual
 
