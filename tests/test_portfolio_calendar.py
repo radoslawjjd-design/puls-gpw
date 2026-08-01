@@ -335,3 +335,28 @@ def test_a_day_that_traded_gives_no_closure_reason():
     assert days["2026-06-03"]["state"] == "data"
     assert days["2026-06-03"]["reason"] is None
     assert days["2026-06-06"]["reason"] == "Weekend — giełda nie prowadzi sesji"
+
+
+# ── injected clock (PUL-121) ─────────────────────────────────────────────────
+
+def test_today_can_be_pinned_so_the_future_boundary_is_not_the_wall_clock():
+    """The e2e fixture needs days that are inside the rendered month AND already
+    past. On the first of a month no such day exists, so the boundary has to be
+    injectable — otherwise the suite is uncollectable for the first days of every
+    month, which is exactly what happened."""
+    rows = [_make_row(date(2026, 6, 3), 10000.0, 150.0)]
+
+    result = compute_calendar_pnl(rows, 2026, 6, today=date(2026, 6, 4))
+    days = {d["date"]: d for d in result["days"]}
+
+    assert days["2026-06-03"]["state"] == "data"
+    assert days["2026-06-04"]["state"] != "future"
+    assert days["2026-06-05"]["state"] == "future"
+
+
+def test_omitting_today_still_uses_the_real_clock():
+    """The parameter is a seam for tests, not a behaviour change: a month long
+    past has no future days whatever the wall clock says."""
+    result = compute_calendar_pnl([], 2020, 6)
+
+    assert not any(d["state"] == "future" for d in result["days"])

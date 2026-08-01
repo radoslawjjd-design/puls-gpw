@@ -12,6 +12,8 @@ from firebase_admin import auth as firebase_admin_auth  # type: ignore[import-un
 
 from src.api import create_app
 from src.auth import InvalidCredentialsError
+from src.portfolio_calendar import compute_calendar_pnl
+from tests.e2e._dates import first_weekdays_of_month
 
 
 _ADMIN_KEY = "e2e-admin-key"
@@ -326,23 +328,7 @@ _FAKE_PORTFOLIO_POSITIONS = [
 ]
 
 
-def _first_weekdays_of_month(n: int) -> list[date]:
-    """Return the first n weekday dates in the current month that are not in the future."""
-    import calendar as _cal
-    today = date.today()
-    y, m = today.year, today.month
-    _, last = _cal.monthrange(y, m)
-    days = []
-    for d in range(1, last + 1):
-        dt = date(y, m, d)
-        if dt.weekday() < 5 and dt <= today:
-            days.append(dt)
-            if len(days) >= n:
-                break
-    return days
-
-
-_cal_weekdays = _first_weekdays_of_month(3)
+_cal_weekdays = first_weekdays_of_month(3)
 _FAKE_CALENDAR_ROWS = [
     {"snapshot_date": _cal_weekdays[0], "portfolio_value": 10300.0,
      "daily_change_pln": 300.0, "prices_found": 2, "total_positions": 2},
@@ -357,6 +343,18 @@ def _fake_get_portfolio_calendar_data(portfolio_id, user_id, year, month):
     if portfolio_id == _FAKE_PORTFOLIO_ID:
         return _FAKE_CALENDAR_ROWS
     return []
+
+
+# The fixture days have to be inside the rendered month AND already past, or the
+# calendar greys them out as 'future' and every amount assertion sees a blank
+# cell. On the first of a month no such day exists, which is what made this
+# suite uncollectable (PUL-121). Pinning the calendar's notion of today to the
+# last of the fixture days satisfies both, on every calendar date.
+_CAL_TODAY = _cal_weekdays[-1]
+
+
+def _fake_compute_calendar_pnl(rows, year, month, today=None):
+    return compute_calendar_pnl(rows, year, month, today=today or _CAL_TODAY)
 
 
 # PUL-115: the wallet's first share-affecting day, which bounds the month/year
@@ -701,6 +699,10 @@ def live_server_url():
         patch(
             "src.api.get_portfolio_calendar_data",
             side_effect=_fake_get_portfolio_calendar_data,
+        ),
+        patch(
+            "src.api.compute_calendar_pnl",
+            side_effect=_fake_compute_calendar_pnl,
         ),
         patch(
             "src.api.get_portfolio_inception",

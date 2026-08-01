@@ -94,6 +94,7 @@ def compute_calendar_pnl(
     rows: list[dict],
     year: int,
     month: int,
+    today: date | None = None,
 ) -> dict:
     """Build a full monthly calendar from BQ rows returned by get_portfolio_calendar_data().
 
@@ -108,6 +109,11 @@ def compute_calendar_pnl(
       'partial'    — trading day in rows but prices_found == 0; pnl_abs is None — white
       'future'     — date is strictly after today (UTC) — white
 
+    ``today`` defaults to the real UTC date and exists so a caller can pin it.
+    The e2e suite needs that: its fixture days must be both inside the rendered
+    month and already past, and on the first of a month no such day exists — an
+    unsatisfiable pair that made the whole suite uncollectable (PUL-121).
+
     Gray in UI: weekend + holiday only.
     White in UI: everything else without a green/red value.
 
@@ -115,7 +121,7 @@ def compute_calendar_pnl(
     for 'weekend' and 'holiday'; None for every state that had a session or could
     have had one.
     """
-    today = datetime.now(tz=timezone.utc).date()
+    today = today or datetime.now(tz=timezone.utc).date()
     _, last_day = calendar.monthrange(year, month)
 
     rows_by_date: dict[date, dict] = {r["snapshot_date"]: r for r in rows}
