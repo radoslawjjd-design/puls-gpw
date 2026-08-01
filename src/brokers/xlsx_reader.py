@@ -39,6 +39,12 @@ _MAX_UNCOMPRESSED_BYTES = 8 * 1024 * 1024
 # real export.
 _MAX_CELLS = 200_000
 
+# Parts the archive may declare. The byte ceiling below is blind to entry COUNT:
+# ~97k zero-length entries fit inside the 5 MB upload gate and cost ~47 MiB of
+# ZipInfo objects while summing to zero bytes. A real .xlsx has well under a
+# hundred parts.
+_MAX_ZIP_ENTRIES = 256
+
 
 def read_sheets(data: bytes) -> dict[str, list[dict]]:
     """Read a workbook into ``{sheet name: [row dict, ...]}``.
@@ -90,7 +96,8 @@ class _CellBudget:
         self.remaining -= cells
         if self.remaining < 0:
             raise BrokerFileTooLargeError(
-                f"plik zawiera wiecej niz {_MAX_CELLS} komorek do wczytania"
+                f"plik zawiera ponad {_MAX_CELLS - self.remaining} komorek do wczytania, "
+                f"limit to {_MAX_CELLS}"
             )
 
 
@@ -104,16 +111,23 @@ def _reject_oversized(data: bytes) -> None:
     """
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            total = sum(item.file_size for item in archive.infolist())
-    except zipfile.BadZipFile as exc:
-        # Opening the archive first moves this failure ahead of load_workbook,
+            entries = archive.infolist()
+            if len(entries) > _MAX_ZIP_ENTRIES:
+                raise BrokerFileTooLargeError(
+                    f"plik zawiera {len(entries)} czesci, limit to {_MAX_ZIP_ENTRIES}"
+                )
+            total = sum(item.file_size for item in entries)
+    except (zipfile.BadZipFile, NotImplementedError) as exc:
+        # Opening the archive first moves these failures ahead of load_workbook,
         # so the message it used to produce has to be produced here instead.
+        # NotImplementedError is not hypothetical: ZipFile raises it for an
+        # extract_version above 63, which is one byte of the central directory.
         raise BrokerParseError(f"nie udalo sie odczytac pliku xlsx: {exc}") from exc
 
     if total > _MAX_UNCOMPRESSED_BYTES:
         megabytes = _MAX_UNCOMPRESSED_BYTES // (1024 * 1024)
         raise BrokerFileTooLargeError(
-            f"plik po rozpakowaniu zajmuje {total / 1024 / 1024:.0f} MB, "
+            f"plik po rozpakowaniu zajmuje {total / 1024 / 1024:.1f} MB, "
             f"limit to {megabytes} MB"
         )
 
@@ -132,7 +146,12 @@ def _read_one(sheet, budget: _CellBudget) -> list[dict]:
     # materialised and then judged.
     rows: list[tuple] = []
     for row in sheet.iter_rows(values_only=True):
-        budget.spend(len(row))
+        # max(..., 1): openpyxl fills gaps in row numbering with empty tuples,
+        # and after reset_dimensions() those are length zero. Charging only for
+        # cells lets a single `<row r="20000000">` — four kilobytes of file —
+        # materialise twenty million list entries for free, spending nothing.
+        # Charging for the row itself binds their count to the same budget.
+        budget.spend(max(len(row), 1))
         rows.append(row)
     # Guaranteed present: read_sheets only hands over sheets it looked up here.
     required = _REQUIRED_COLUMNS[sheet.title]
@@ -144,8 +163,12 @@ def _read_one(sheet, budget: _CellBudget) -> list[dict]:
         )
 
     header = [str(cell).strip() if cell is not None else "" for cell in rows[header_index]]
+    # Dropped in place rather than sliced: a slice would hold a second near-full
+    # copy of the workbook alive, doubling peak memory at exactly the moment the
+    # budget has just declared this file acceptable.
+    del rows[:header_index + 1]
     out: list[dict] = []
-    for row in rows[header_index + 1:]:
+    for row in rows:
         if row is None or all(cell is None or cell == "" for cell in row):
             continue
         out.append({name: value for name, value in zip(header, row) if name})

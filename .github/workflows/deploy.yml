@@ -83,9 +83,13 @@ jobs:
           # --concurrency was never passed, so the service ran at Cloud Run's
           # default of 80 requests per instance — a default, not a decision. The
           # broker import can hold ~50 MiB at once even with the reader's own
-          # ceiling (PUL-105), and 80 x that does not fit in 512Mi. At 8 the
-          # worst case is ~400 MiB, and 8 x max-instances=2 is still far above
-          # this application's real traffic.
+          # ceiling (PUL-105), and 80 x that does not fit in 512Mi.
+          #
+          # Measured idle footprint (interpreter + app) is ~85-100 MB, leaving
+          # ~412 MiB for requests, so 4 x ~50 MiB keeps a real margin where 8
+          # would have consumed the instance. max-instances rises to 4 in step,
+          # holding total capacity at 16 — unchanged from 8 x 2 — and costing
+          # nothing extra at rest, since min-instances stays 0.
           gcloud run deploy puls-gpw-api \
             --image="${{ env.IMAGE }}:${{ github.sha }}" \
             --command=uv --args="run,--no-dev,python,api_main.py" \
@@ -99,6 +103,6 @@ jobs:
             --cpu=1 \
             --memory=512Mi \
             --min-instances=0 \
-            --max-instances=2 \
-            --concurrency=8 \
+            --max-instances=4 \
+            --concurrency=4 \
             --timeout=60

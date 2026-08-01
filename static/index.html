@@ -4361,11 +4361,11 @@ async function _importIntoNewWallet(portfolioId, errDiv) {
     if (!r.ok) {
       // The wallet was created and stays. Say so plainly rather than implying
       // the whole operation rolled back — it did not.
-      errDiv.textContent = r.status === 413
-        ? 'Portfel utworzono, ale plik jest za duży. Wyeksportuj krótszy zakres '
-          + 'dat i spróbuj przycisku „Import z pliku”.'
-        : 'Portfel utworzono, ale nie udało się wczytać pliku. '
-          + 'Zamknij okno i spróbuj przycisku „Import z pliku”.';
+      errDiv.textContent = 'Portfel utworzono, ale '
+        + (r.status === 413
+            ? _IMPORT_TOO_LARGE_MSG.charAt(0).toLowerCase() + _IMPORT_TOO_LARGE_MSG.slice(1)
+            : 'nie udało się wczytać pliku.')
+        + ' Zamknij okno i spróbuj przycisku „Import z pliku”.';
       errDiv.style.display = 'block';
       _portfoliosFetched = false;
       await fetchUserPortfolios();

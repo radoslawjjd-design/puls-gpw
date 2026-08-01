@@ -55,6 +55,36 @@ def _workbook_bytes(*, preamble_rows: int = 4, header: list | None = None,
     return _with_shared_strings(buffer.getvalue(), shared_strings_bytes)
 
 
+def _sparse_workbook_bytes(last_row: int) -> bytes:
+    """A workbook whose sheet declares one row far down an otherwise empty sheet.
+
+    openpyxl's writer cannot emit a sparse ``r=``, so the sheet part is written
+    by hand. Every index between the header and ``last_row`` is a gap openpyxl
+    fills with an empty tuple — which is the whole point of the fixture.
+    """
+    cells = "".join(
+        f'<c r="{chr(65 + i)}1" t="inlineStr"><is><t>{name}</t></is></c>'
+        for i, name in enumerate(_HEADER)
+    )
+    sheet = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<dimension ref="A1:A1"/><sheetData>'
+        f'<row r="1">{cells}</row>'
+        f'<row r="{last_row}"><c r="A{last_row}" t="inlineStr"><is><t>x</t></is></c></row>'
+        "</sheetData></worksheet>"
+    ).encode()
+
+    source = zipfile.ZipFile(io.BytesIO(_workbook_bytes()))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            body = sheet if item.filename == "xl/worksheets/sheet1.xml" else source.read(item.filename)
+            target.writestr(item.filename, body)
+    source.close()
+    return out.getvalue()
+
+
 def _with_shared_strings(workbook: bytes, approx_bytes: int) -> bytes:
     entry = "<si><t>" + ("x" * 96) + "</t></si>"
     count = max(1, approx_bytes // len(entry))
@@ -143,7 +173,7 @@ def test_a_workbook_that_decompresses_past_the_ceiling_is_refused():
     with pytest.raises(BrokerFileTooLargeError) as excinfo:
         read_sheets(payload)
 
-    assert "8" in str(excinfo.value)
+    assert "limit to 8 MB" in str(excinfo.value)
 
 
 def test_iteration_stops_once_the_cell_budget_is_spent(monkeypatch):
@@ -161,6 +191,54 @@ def test_iteration_stops_once_the_cell_budget_is_spent(monkeypatch):
 
     with pytest.raises(BrokerFileTooLargeError):
         read_sheets(_workbook_bytes(data=data))
+
+
+def test_an_archive_with_absurdly_many_parts_is_refused():
+    # Impl-review F3. The byte ceiling is blind to entry count: zero-length
+    # entries sum to nothing while each one still costs a ZipInfo object.
+    base = _workbook_bytes()
+    out = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(base)) as source,
+        zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target,
+    ):
+        for item in source.infolist():
+            target.writestr(item.filename, source.read(item.filename))
+        for i in range(300):
+            target.writestr(f"xl/pad{i}.bin", b"")
+
+    with pytest.raises(BrokerFileTooLargeError) as excinfo:
+        read_sheets(out.getvalue())
+
+    assert "czesci" in str(excinfo.value)
+
+
+def test_an_archive_declaring_an_impossible_extract_version_is_a_parse_error():
+    # Impl-review F2. Opening the zip ahead of load_workbook moved this failure
+    # earlier: ZipFile raises NotImplementedError (not BadZipFile) for an
+    # extract_version above 63 — one byte of the central directory. Before the
+    # fix it escaped read_sheets entirely and the endpoint answered 500.
+    raw = bytearray(_workbook_bytes())
+    marker = raw.index(b"PK\x01\x02")
+    raw[marker + 6:marker + 8] = (99).to_bytes(2, "little")
+
+    with pytest.raises(BrokerParseError) as excinfo:
+        read_sheets(bytes(raw))
+
+    assert "nie udalo sie odczytac pliku xlsx" in str(excinfo.value)
+
+
+def test_a_sheet_that_declares_one_row_far_down_is_refused():
+    # Impl-review F1. Gaps in row numbering come back as EMPTY tuples once
+    # reset_dimensions() has cleared max_column, so a budget that charges per
+    # cell charges nothing for them — while the list of rows grows all the same.
+    # The row number is attacker-supplied and unbounded, so four kilobytes of
+    # file bought 305 MB of heap and still parsed "successfully".
+    # Deliberately not monkeypatched: this must hold at the real ceiling.
+    payload = _sparse_workbook_bytes(20_000_000)
+
+    with pytest.raises(BrokerFileTooLargeError):
+        read_sheets(payload)
 
 
 def test_a_sheet_no_parser_asks_for_is_never_read(monkeypatch):

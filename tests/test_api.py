@@ -2286,13 +2286,16 @@ def test_a_file_that_decompresses_too_far_is_413_not_422(user_client):
     merge_pos.assert_not_called()
 
 
-def test_an_upload_over_the_body_limit_is_refused_before_any_wallet_lookup(user_client):
-    """The pre-existing 5 MB gate shipped in PUL-95 without a single test. This
-    pins it before phase 3 moves where it runs, and pins that it fires ahead of
-    the first BigQuery call — the patch below asserts it is never reached."""
+def test_an_upload_over_the_body_limit_is_refused_before_its_body_is_read(user_client):
+    """The 5 MB gate shipped in PUL-95 with no test, and it measured len(data) —
+    after await file.read() had already made the copy it existed to prevent.
+
+    Impl-review F4: asserting only the 413 pinned nothing, because the old gate
+    inside _resolve_import produced the same status. Patching _resolve_import is
+    what distinguishes the two: reaching it at all means the body was read."""
     import os
 
-    with patch("src.api.list_user_portfolios") as wallets:
+    with patch("src.api._resolve_import") as resolve:
         r = user_client.post(
             "/api/portfolio/import/preview",
             data=_import_form(),
@@ -2300,7 +2303,7 @@ def test_an_upload_over_the_body_limit_is_refused_before_any_wallet_lookup(user_
         )
 
     assert r.status_code == 413
-    wallets.assert_not_called()
+    resolve.assert_not_called()
 
 
 def test_dividends_endpoint_validates_year_before_building_a_cache_key(user_client):
