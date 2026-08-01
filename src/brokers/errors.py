@@ -19,3 +19,12 @@ class BrokerParseError(BrokerImportError):
     Raised instead of guessing. A broker export the user cannot edit is worth
     rejecting loudly — a silently misread row becomes a wrong position.
     """
+
+
+class BrokerFileTooLargeError(BrokerImportError):
+    """The file would cost more memory to read than the service can spare.
+
+    Its own class rather than a ``BrokerParseError`` because the file may be
+    perfectly well-formed: the objection is to its size after decompression, not
+    its shape. The API layer maps this to 413 while its siblings map to 422.
+    """

@@ -6,7 +6,12 @@ adding one entry to ``_REGISTRY`` — nothing else in the app needs to change.
 
 from collections.abc import Callable
 
-from src.brokers.errors import BrokerImportError, BrokerParseError, UnknownBrokerError
+from src.brokers.errors import (
+    BrokerFileTooLargeError,
+    BrokerImportError,
+    BrokerParseError,
+    UnknownBrokerError,
+)
 from src.brokers.xtb import BrokerImport, parse_xtb_export
 
 # id -> (human label, parser). The id is what the client sends; the label is what
@@ -30,6 +35,7 @@ def get_parser(broker_id: str) -> Callable[[bytes], BrokerImport]:
 
 
 __all__ = [
+    "BrokerFileTooLargeError",
     "BrokerImport",
     "BrokerImportError",
     "BrokerParseError",

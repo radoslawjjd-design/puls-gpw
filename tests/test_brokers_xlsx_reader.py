@@ -1,20 +1,35 @@
 import io
+import zipfile
 
 import pytest
 from openpyxl import Workbook
 
-from src.brokers.errors import BrokerParseError
+from src.brokers import xlsx_reader
+from src.brokers.errors import BrokerFileTooLargeError, BrokerParseError
 from src.brokers.xlsx_reader import read_sheets
 
 _HEADER = ["Type", "Ticker", "Instrument", "Time", "Amount", "ID", "Comment", "Product"]
 
+_SHARED_STRINGS_CT = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"
+)
+
 
 def _workbook_bytes(*, preamble_rows: int = 4, header: list | None = None,
-                    data: list[list] | None = None, broken_dimension: bool = False) -> bytes:
+                    data: list[list] | None = None, broken_dimension: bool = False,
+                    shared_strings_bytes: int = 0) -> bytes:
     """Build an XTB-shaped workbook in memory.
 
     The real exports must never be committed (they carry account numbers), so
     every fixture is synthesized to the same shape instead.
+
+    ``shared_strings_bytes`` injects a shared-string table of roughly that many
+    decompressed bytes. openpyxl writes inline strings and emits no such part on
+    its own, so it is grafted in along with its manifest entry — which is how
+    openpyxl finds it (``reader/excel.py``, ``read_strings``). The worksheet
+    never references those strings: the point is that they are loaded eagerly by
+    ``load_workbook`` regardless, so nothing inside the row iteration can see
+    them coming.
     """
     wb = Workbook()
     ws = wb.active
@@ -30,7 +45,35 @@ def _workbook_bytes(*, preamble_rows: int = 4, header: list | None = None,
         ws.calculate_dimension = lambda **kwargs: "A1:A1"
     buffer = io.BytesIO()
     wb.save(buffer)
-    return buffer.getvalue()
+    if not shared_strings_bytes:
+        return buffer.getvalue()
+    return _with_shared_strings(buffer.getvalue(), shared_strings_bytes)
+
+
+def _with_shared_strings(workbook: bytes, approx_bytes: int) -> bytes:
+    entry = "<si><t>" + ("x" * 96) + "</t></si>"
+    count = max(1, approx_bytes // len(entry))
+    payload = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        f'count="{count}" uniqueCount="{count}">' + entry * count + "</sst>"
+    ).encode()
+
+    source = zipfile.ZipFile(io.BytesIO(workbook))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            body = source.read(item.filename)
+            if item.filename == "[Content_Types].xml":
+                body = body.decode().replace(
+                    "</Types>",
+                    f'<Override PartName="/xl/sharedStrings.xml" '
+                    f'ContentType="{_SHARED_STRINGS_CT}"/></Types>',
+                ).encode()
+            target.writestr(item.filename, body)
+        target.writestr("xl/sharedStrings.xml", payload)
+    source.close()
+    return out.getvalue()
 
 
 def test_rows_are_keyed_by_header_never_by_position():
@@ -80,3 +123,36 @@ def test_all_rows_are_read_even_when_the_file_declares_a_1x1_dimension():
 def test_a_file_that_is_not_a_workbook_raises_a_parse_error():
     with pytest.raises(BrokerParseError):
         read_sheets(b"this is not a spreadsheet")
+
+
+# ── size ceiling (PUL-105) ──────────────────────────────────────────────
+
+
+def test_a_workbook_that_decompresses_past_the_ceiling_is_refused():
+    # A megabyte of upload expanding to tens of megabytes of shared strings sits
+    # comfortably under the 5 MB gate on the compressed body. openpyxl loads that
+    # table in full inside load_workbook, before a single row is iterated, so the
+    # only place this can be stopped is before the workbook is opened at all.
+    payload = _workbook_bytes(shared_strings_bytes=16 * 1024 * 1024)
+
+    with pytest.raises(BrokerFileTooLargeError) as excinfo:
+        read_sheets(payload)
+
+    assert "8" in str(excinfo.value)
+
+
+def test_iteration_stops_once_the_cell_budget_is_spent(monkeypatch):
+    # The byte ceiling bounds the input; this bounds what iterating it turns the
+    # input into, where a cell costs far more as a Python object than as XML.
+    # The budget is patched down rather than fabricating a 200k-cell fixture:
+    # what is under test is that iteration aborts when the budget runs out, not
+    # the value of the constant. Actual memory behaviour is verified manually —
+    # see Phase 1 of the plan, and lessons.md on the limits of mocked tests.
+    monkeypatch.setattr(xlsx_reader, "_MAX_CELLS", 40)
+    data = [
+        ["Dividend", "KRU.PL", "Kruk", None, float(n), str(n), "", "My Trades"]
+        for n in range(1, 11)
+    ]
+
+    with pytest.raises(BrokerFileTooLargeError):
+        read_sheets(_workbook_bytes(data=data))
