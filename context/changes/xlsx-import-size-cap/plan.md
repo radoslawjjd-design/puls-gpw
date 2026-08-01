@@ -468,21 +468,21 @@ like any other deploy. Reverting that commit restores Cloud Run's default.
 
 #### Automated
 
-- [x] 3.1 API tests pass: `uv run pytest tests/test_api.py -k import`
-- [x] 3.2 Full suite passes: `uv run pytest`
-- [x] 3.3 Linting passes: `uv run ruff check src tests`
+- [x] 3.1 API tests pass: `uv run pytest tests/test_api.py -k import` — a1cdb76
+- [x] 3.2 Full suite passes: `uv run pytest` — a1cdb76
+- [x] 3.3 Linting passes: `uv run ruff check src tests` — a1cdb76
 
 #### Manual
 
-- [x] 3.4 An oversized upload returns 413, not 422, against the running app
-- [x] 3.5 The UI reports a size problem, not a broker mismatch, for an oversized file
-- [x] 3.6 A normal import through the UI still previews and commits correctly
+- [x] 3.4 An oversized upload returns 413, not 422, against the running app — a1cdb76
+- [x] 3.5 The UI reports a size problem, not a broker mismatch, for an oversized file — a1cdb76
+- [x] 3.6 A normal import through the UI still previews and commits correctly — a1cdb76
 
 ### Phase 4: Bound the aggregate, not just the request
 
 #### Automated
 
-- [ ] 4.1 Workflow file parses
+- [x] 4.1 Workflow file parses
 
 #### Manual
 
