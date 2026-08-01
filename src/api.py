@@ -81,7 +81,7 @@ from db.bigquery import (
 )
 from src.auth import refresh_session_if_stale, session_payload_from_request
 from src.auth import router as auth_router
-from src.brokers import BrokerImportError, get_parser
+from src.brokers import BrokerFileTooLargeError, BrokerImportError, get_parser
 from src.brokers.xtb import normalize_ticker
 from src.portfolio_calendar import compute_calendar_pnl
 from src.portfolio_realized import compute_realized_pnl
@@ -368,6 +368,20 @@ class ImportPreviewResponse(BaseModel):
 _IMPORT_MAX_BYTES = 5 * 1024 * 1024
 
 
+def _reject_oversized_upload(file: UploadFile) -> None:
+    """Refuse an over-limit upload before its body is copied into memory.
+
+    Starlette fills ``size`` while spooling the multipart part, so this reads it
+    without touching the body — unlike the ``len(data)`` guard in
+    ``_resolve_import``, which can only run once the copy already exists. It is a
+    partial win by construction: the part has still been spooled to the
+    instance's tmpfs by the time any application code runs. ``size`` is
+    ``int | None``, so the later guard stays as the backstop.
+    """
+    if file.size is not None and file.size > _IMPORT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Plik przekracza 5 MB")
+
+
 def _resolve_import(user_id: str, portfolio_id: str, broker: str, data: bytes):
     """Parse an upload and resolve it against what the wallet holds today.
 
@@ -396,6 +410,11 @@ def _resolve_import(user_id: str, portfolio_id: str, broker: str, data: bytes):
 
     try:
         parsed = get_parser(broker)(data)
+    except BrokerFileTooLargeError as exc:
+        # MUST precede the BrokerImportError clause below, which is its base class
+        # and would otherwise swallow it into a 422. The upload is refused either
+        # way, so nothing but the status code would reveal the mistake.
+        raise HTTPException(status_code=413, detail=str(exc))
     except BrokerImportError as exc:
         # Structural failure only: unreadable file, unknown broker, missing sheet.
         raise HTTPException(status_code=422, detail=str(exc))
@@ -1356,6 +1375,7 @@ def create_app() -> FastAPI:
         broker's file, and rejecting the whole upload over one instrument would
         leave them with no way in at all.
         """
+        _reject_oversized_upload(file)
         preview, _, _, _ = _resolve_import(user_id, portfolio_id, broker, await file.read())
         return preview.model_dump()
 
@@ -1367,6 +1387,7 @@ def create_app() -> FastAPI:
         role: Role = Depends(_get_role),
         user_id: str = Depends(_get_user_id),
     ):
+        _reject_oversized_upload(file)
         preview, positions, closed, parsed = _resolve_import(
             user_id, portfolio_id, broker, await file.read()
         )

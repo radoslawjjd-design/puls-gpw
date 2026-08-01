@@ -455,28 +455,28 @@ like any other deploy. Reverting that commit restores Cloud Run's default.
 
 #### Automated
 
-- [x] 2.1 All five pre-existing `read_sheets(...)` call sites still pass unmodified
-- [x] 2.2 Broker tests pass
-- [x] 2.3 Full suite passes: `uv run pytest`
-- [x] 2.4 Linting passes: `uv run ruff check src tests`
+- [x] 2.1 All five pre-existing `read_sheets(...)` call sites still pass unmodified — aa64fd2
+- [x] 2.2 Broker tests pass — aa64fd2
+- [x] 2.3 Full suite passes: `uv run pytest` — aa64fd2
+- [x] 2.4 Linting passes: `uv run ruff check src tests` — aa64fd2
 
 #### Manual
 
-- [x] 2.5 A real XTB export produces the same positions, dividends and cash balance
+- [x] 2.5 A real XTB export produces the same positions, dividends and cash balance — aa64fd2
 
 ### Phase 3: API layer — status mapping and check ordering
 
 #### Automated
 
-- [ ] 3.1 API tests pass: `uv run pytest tests/test_api.py -k import`
-- [ ] 3.2 Full suite passes: `uv run pytest`
-- [ ] 3.3 Linting passes: `uv run ruff check src tests`
+- [x] 3.1 API tests pass: `uv run pytest tests/test_api.py -k import`
+- [x] 3.2 Full suite passes: `uv run pytest`
+- [x] 3.3 Linting passes: `uv run ruff check src tests`
 
 #### Manual
 
-- [ ] 3.4 An oversized upload returns 413, not 422, against the running app
-- [ ] 3.5 The UI reports a size problem, not a broker mismatch, for an oversized file
-- [ ] 3.6 A normal import through the UI still previews and commits correctly
+- [x] 3.4 An oversized upload returns 413, not 422, against the running app
+- [x] 3.5 The UI reports a size problem, not a broker mismatch, for an oversized file
+- [x] 3.6 A normal import through the UI still previews and commits correctly
 
 ### Phase 4: Bound the aggregate, not just the request
 

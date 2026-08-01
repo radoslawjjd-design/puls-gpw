@@ -2149,6 +2149,27 @@ def _held(*tickers):
     return [{"ticker": t, "company_name": t, "shares": 1.0, "avg_buy_price": 1.0} for t in tickers]
 
 
+def _oversized_xlsx() -> bytes:
+    """A workbook whose parts decompress past the reader's ceiling.
+
+    The payload is plain padding rather than a crafted shared-string bomb: what
+    these tests pin is the status code the reader's refusal turns into, not the
+    shape of file that provokes it — tests/test_brokers_xlsx_reader.py owns that.
+    """
+    import io
+    import zipfile
+
+    out = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(_xtb_bytes(_IMPORT_ROWS))) as source,
+        zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target,
+    ):
+        for item in source.infolist():
+            target.writestr(item.filename, source.read(item.filename))
+        target.writestr("xl/padding.bin", b"\0" * (9 * 1024 * 1024))
+    return out.getvalue()
+
+
 def test_import_preview_writes_nothing(user_client):
     """A preview is a dry run — no write primitive may fire on this path."""
     with (
@@ -2239,6 +2260,47 @@ def test_import_commit_rejects_the_all_sentinel(user_client):
     assert r.status_code == 422
     merge_ops.assert_not_called()
     merge_pos.assert_not_called()
+
+
+# ── size ceiling (PUL-105) ────────────────────────────────────────────────────
+
+
+def test_a_file_that_decompresses_too_far_is_413_not_422(user_client):
+    """BrokerFileTooLargeError subclasses BrokerImportError, which the generic
+    handler maps to 422. Its own `except` has to come first or the size refusal
+    is silently reported as a malformed file — with this endpoint still refusing
+    the upload either way, so nothing but the status code reveals the mistake."""
+    with (
+        patch("src.api.list_user_portfolios", return_value=[{"portfolio_id": _WALLET_ID}]),
+        patch("src.api.merge_user_broker_operations") as merge_ops,
+        patch("src.api.merge_user_portfolio_positions_bulk") as merge_pos,
+    ):
+        r = user_client.post(
+            "/api/portfolio/import/commit",
+            data=_import_form(),
+            files={"file": ("export.xlsx", _oversized_xlsx(), _XLSX_MIME)},
+        )
+
+    assert r.status_code == 413
+    merge_ops.assert_not_called()
+    merge_pos.assert_not_called()
+
+
+def test_an_upload_over_the_body_limit_is_refused_before_any_wallet_lookup(user_client):
+    """The pre-existing 5 MB gate shipped in PUL-95 without a single test. This
+    pins it before phase 3 moves where it runs, and pins that it fires ahead of
+    the first BigQuery call — the patch below asserts it is never reached."""
+    import os
+
+    with patch("src.api.list_user_portfolios") as wallets:
+        r = user_client.post(
+            "/api/portfolio/import/preview",
+            data=_import_form(),
+            files={"file": ("export.xlsx", os.urandom(5 * 1024 * 1024 + 1), _XLSX_MIME)},
+        )
+
+    assert r.status_code == 413
+    wallets.assert_not_called()
 
 
 def test_dividends_endpoint_validates_year_before_building_a_cache_key(user_client):
