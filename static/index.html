@@ -4160,6 +4160,12 @@ function _ppImportError(msg) {
   el.style.display = 'block';
 }
 
+// A 413 means the file was refused on size, not on shape. The catch-all messages
+// below tell the user to check which broker the file came from, which for an
+// oversized file is simply untrue and sends them looking in the wrong place.
+const _IMPORT_TOO_LARGE_MSG =
+  'Plik jest za duży. Wyeksportuj krótszy zakres dat i spróbuj ponownie.';
+
 // The file object itself is resent on commit: a preview token cached in one
 // process would be unknown to the other Cloud Run instance.
 function _ppImportFormData() {
@@ -4239,6 +4245,7 @@ async function _ppSubmitImportPreview() {
       method: 'POST', headers: { 'X-API-Key': apiKey }, body: fd,
     });
     if (r.status === 401) { doLogout(); return; }
+    if (r.status === 413) { _ppImportError(_IMPORT_TOO_LARGE_MSG); return; }
     if (!r.ok) { _ppImportError('Nie udało się odczytać pliku. Sprawdź, czy to eksport z wybranego domu maklerskiego.'); return; }
     const data = await r.json();
     _renderImportPreview(data);
@@ -4260,6 +4267,7 @@ async function _ppSubmitImportCommit() {
       method: 'POST', headers: { 'X-API-Key': apiKey }, body: fd,
     });
     if (r.status === 401) { doLogout(); return; }
+    if (r.status === 413) { _ppImportError(_IMPORT_TOO_LARGE_MSG); return; }
     if (!r.ok) { _ppImportError('Zapis nie powiódł się. Portfel pozostał bez zmian.'); return; }
     const data = await r.json();
     _closeImportModal();
@@ -4353,8 +4361,11 @@ async function _importIntoNewWallet(portfolioId, errDiv) {
     if (!r.ok) {
       // The wallet was created and stays. Say so plainly rather than implying
       // the whole operation rolled back — it did not.
-      errDiv.textContent = 'Portfel utworzono, ale nie udało się wczytać pliku. '
-                         + 'Zamknij okno i spróbuj przycisku „Import z pliku”.';
+      errDiv.textContent = 'Portfel utworzono, ale '
+        + (r.status === 413
+            ? _IMPORT_TOO_LARGE_MSG.charAt(0).toLowerCase() + _IMPORT_TOO_LARGE_MSG.slice(1)
+            : 'nie udało się wczytać pliku.')
+        + ' Zamknij okno i spróbuj przycisku „Import z pliku”.';
       errDiv.style.display = 'block';
       _portfoliosFetched = false;
       await fetchUserPortfolios();
