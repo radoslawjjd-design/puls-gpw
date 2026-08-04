@@ -87,5 +87,6 @@ ledger event, which is what lets them share an engine without sharing a contract
 ## Success Criteria (Summary)
 
 - `uv run pytest --tb=short` green, with no existing assertion edited.
-- `git grep -n "_consume_oldest\|_Lot"` matches only the ledger and its tests.
-- Re-running the production FIFO audit still reports `delta=+0.00` on both wallets.
+- `_consume_oldest` / `_Lot` survive nowhere outside the ledger and its tests.
+- Both consumers diff clean against the Phase 1 baseline artefacts, and re-running the
+  production FIFO audit still reports `delta=+0.00` on both wallets.
