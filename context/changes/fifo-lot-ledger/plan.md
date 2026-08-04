@@ -390,11 +390,11 @@ revert.
 
 #### Automated
 
-- [x] 1.1 New ledger tests pass
-- [x] 1.2 Nothing else regressed (full suite)
-- [x] 1.3 Linting passes
-- [x] 1.4 The module imports nothing outside the standard library
-- [x] 1.5 Baseline artefacts exist and are non-empty
+- [x] 1.1 New ledger tests pass — 77050aa
+- [x] 1.2 Nothing else regressed (full suite) — 77050aa
+- [x] 1.3 Linting passes — 77050aa
+- [x] 1.4 The module imports nothing outside the standard library — 77050aa
+- [x] 1.5 Baseline artefacts exist and are non-empty — 77050aa
 
 #### Manual
 
@@ -404,15 +404,15 @@ revert.
 
 #### Automated
 
-- [ ] 2.1 Realized suite passes with no assertion edited
-- [ ] 2.2 Endpoint suite passes
-- [ ] 2.3 Full suite passes
-- [ ] 2.4 Linting passes
-- [ ] 2.5 No lot consumption left in portfolio_realized.py
+- [x] 2.1 Realized suite passes with no assertion edited
+- [x] 2.2 Endpoint suite passes
+- [x] 2.3 Full suite passes
+- [x] 2.4 Linting passes
+- [x] 2.5 No lot consumption left in portfolio_realized.py
 
 #### Manual
 
-- [ ] 2.6 compute_realized_pnl diffs clean against baseline/realized.json
+- [x] 2.6 compute_realized_pnl diffs clean against baseline/realized.json
 - [ ] 2.7 Realized endpoint shows unchanged figures plus plausible days-held
 
 ### Phase 3: XTB position reconstruction on the ledger

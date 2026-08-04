@@ -226,3 +226,88 @@ def test_no_trades_at_all_still_returns_a_usable_shape():
         "total_pnl": 0, "total_proceeds": 0, "total_cost": 0,
         "by_ticker": [], "all_years": [], "unmatched_tickers": [],
     }
+
+
+# --- characterization: what a sale reports vs what its lots could price -------
+# These pin the distinction the FIFO lot ledger has to preserve. Proceeds and
+# volume describe what left the account; cost describes only what could be
+# priced. Deriving the first two from the matched lots understates both on every
+# partially covered sale — silently, because nothing else in this file looks.
+
+
+def test_a_partially_covered_sale_still_reports_its_whole_volume_and_proceeds():
+    """Four shares priced, ten sold. All ten left the account and all ten were
+    paid for; only four have a basis. Reporting four would invent a smaller sale."""
+    ops = [
+        _buy("BAC", datetime(2025, 3, 1), 4, 10.0),
+        _sell("BAC", datetime(2025, 5, 1), 10, 25.0),
+    ]
+    result = compute_realized_pnl(ops)
+    entry = result["by_ticker"][0]
+    assert entry["shares_sold"] == pytest.approx(10.0)
+    assert entry["proceeds"] == pytest.approx(250.0)
+    assert entry["cost"] == pytest.approx(40.0)
+    assert entry["pnl"] == pytest.approx(210.0)
+    assert result["unmatched_tickers"] == ["BAC"]
+
+
+def test_one_sale_spanning_three_lots_counts_as_one_sale():
+    """`sales` counts sales, not lot matches. Counting matches would report
+    three for a single order that happened to eat three tranches."""
+    ops = [
+        _buy("PAS", datetime(2025, 1, 1), 4, 100.0),
+        _buy("PAS", datetime(2025, 2, 1), 4, 200.0),
+        _buy("PAS", datetime(2025, 3, 1), 4, 300.0),
+        _sell("PAS", datetime(2025, 4, 1), 10, 250.0),
+    ]
+    entry = compute_realized_pnl(ops)["by_ticker"][0]
+    assert entry["sales"] == 1
+    assert entry["shares_sold"] == pytest.approx(10.0)
+    assert entry["cost"] == pytest.approx(4 * 100.0 + 4 * 200.0 + 2 * 300.0)
+
+
+def test_the_year_of_an_unpriced_sale_is_still_offerable():
+    """`all_years` comes from sales, not from matched lots — a year whose only
+    sale had no recorded purchase must still appear in the selector."""
+    ops = [_sell("LPP", datetime(2023, 4, 1), 2, 14000.0)]
+    assert compute_realized_pnl(ops)["all_years"] == [2023]
+
+
+# --- how long the sold shares were held (PUL-114) -----------------------------
+
+
+def test_days_held_comes_from_the_oldest_lot_the_sale_consumed():
+    """PUL-114 verification criterion: the same ordering the basis uses. A sale
+    eating into a second tranche is still anchored to the first."""
+    ops = [
+        _buy("KRU", datetime(2025, 1, 10), 10, 300.0),   # held 243 days
+        _buy("KRU", datetime(2025, 6, 10), 10, 400.0),   # held  92 days
+        _sell("KRU", datetime(2025, 9, 10), 15, 500.0),  # takes 10 + 5
+    ]
+    entry = compute_realized_pnl(ops)["by_ticker"][0]
+    assert entry["days_held_max"] == 243, "the oldest lot, not the newest"
+    # (10 x 243 + 5 x 92) / 15
+    assert entry["days_held_weighted"] == pytest.approx(192.666, abs=0.01)
+    assert 92 < entry["days_held_weighted"] < 243
+
+
+def test_a_sale_with_no_recorded_purchase_reports_no_holding_period():
+    """No acquisition date exists, so there is no answer. Reporting zero days
+    would be a fabricated number rather than a missing one."""
+    ops = [_sell("S2B", datetime(2025, 4, 1), 4, 25.0)]
+    entry = compute_realized_pnl(ops)["by_ticker"][0]
+    assert entry["days_held_weighted"] is None
+    assert entry["days_held_max"] is None
+    assert compute_realized_pnl(ops)["unmatched_tickers"] == ["S2B"]
+
+
+def test_a_partially_covered_sale_reports_the_holding_period_of_what_it_could_price():
+    """The uncovered shares contribute to neither figure — they have no
+    acquisition date — but the four that do must not be silently dropped too."""
+    ops = [
+        _buy("BAC", datetime(2025, 3, 1), 4, 10.0),
+        _sell("BAC", datetime(2025, 5, 1), 10, 25.0),   # 61 days on 4 shares
+    ]
+    entry = compute_realized_pnl(ops)["by_ticker"][0]
+    assert entry["days_held_max"] == 61
+    assert entry["days_held_weighted"] == pytest.approx(61.0)
