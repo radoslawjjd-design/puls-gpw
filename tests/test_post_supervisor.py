@@ -147,3 +147,26 @@ def test_domain_like_text_does_not_affect_approved():
     result = validate_post(_post(*tweets), _TICKERS, expected_tweets=5)
     assert result.approved is True
     assert result.warnings != []
+
+
+# ── PUL-102: a cashtag that is not a ticker ──────────────────────────────────
+
+def test_a_cashtag_that_is_not_a_ticker_is_rejected():
+    """The 2026-07-30 thread published `$Zabka` and nothing stopped it. Every
+    deterministic repair in the generator is anchored on an ALL-CAPS regex — the
+    right constraint, so `(2025)` is left alone, and exactly why a brand-name
+    cashtag slipped through untouched. The supervisor is the last gate before X,
+    so it is where the shape has to be asserted."""
+    tweets = list(_VALID_TWEETS)
+    tweets[1] = tweets[1].replace("($PKO)", "($Zabka)")
+    result = validate_post(_post(*tweets), ["Zabka", "XTB", "PZU"], expected_tweets=5)
+
+    assert result.approved is False
+    assert any("Zabka" in issue for issue in result.issues)
+
+
+def test_a_valid_thread_is_not_flagged_for_its_cashtags():
+    """Guard against the check firing on the shape it is meant to allow."""
+    result = validate_post(_post(*_VALID_TWEETS), _TICKERS, expected_tweets=5)
+    assert result.approved is True
+    assert result.issues == []

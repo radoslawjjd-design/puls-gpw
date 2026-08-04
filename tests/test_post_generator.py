@@ -330,6 +330,22 @@ def test_generate_post_injects_single_cashtag_for_first_company():
     assert 'cashtag_spolki: "$PKO"' in call_contents
 
 
+def test_a_malformed_top_ticker_produces_a_thread_with_no_cashtag():
+    """PUL-102: the 2026-07-30 thread went out as `$Zabka` because the stored
+    ticker was a brand name and every deterministic repair here is anchored on an
+    ALL-CAPS regex — correct, so that `(2025)` is left alone, and therefore blind
+    to a ticker that is not one. A missing cashtag costs reach; a wrong one is a
+    public error, so the prompt asks for no cashtag at all."""
+    broken = [{**_ANNOUNCEMENTS[0], "ticker": "Żabka"}, *_ANNOUNCEMENTS[1:]]
+    payload = json.dumps({"tweets": _SIX_TWEETS}, ensure_ascii=False)
+    with patch("src.post_generator.get_client", return_value=_mock_client(payload)) as mock_get:
+        generate_post(broken)
+
+    call_contents = mock_get.return_value.models.generate_content.call_args[1]["contents"]
+    assert "cashtag_spolki" not in call_contents, "a malformed ticker must not be asked for"
+    assert "$Żabka" not in call_contents
+
+
 def test_generate_post_normalizes_ticker_spacing_in_returned_tweets():
     raw = json.dumps({"tweets": [
         "🚨 1 ważne ESPI z GPW:\n• Lubawa ($LBW)\nKtóra?",

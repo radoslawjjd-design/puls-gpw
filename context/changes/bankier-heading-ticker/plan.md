@@ -218,27 +218,27 @@ MegaPixel row and its prices per the owner's decision; then re-run the sweep.
 
 #### Automated
 
-- [ ] 1.1 Two-group and status-marker headings yield the real ticker
-- [ ] 1.2 Single-group and hyphenated controls unchanged
-- [ ] 1.3 No qualifying group yields None, never a brand word
-- [ ] 1.4 Full suite green, linting passes
+- [x] 1.1 Two-group and status-marker headings yield the real ticker
+- [x] 1.2 Single-group and hyphenated controls unchanged
+- [x] 1.3 No qualifying group yields None, never a brand word
+- [x] 1.4 Full suite green, linting passes
 
 ### Phase 2: The database refuses a malformed ticker
 
 #### Automated
 
-- [ ] 2.1 Both company writes reject a malformed ticker without querying
-- [ ] 2.2 A valid, including hyphenated, ticker still writes
-- [ ] 2.3 An announcement with a malformed ticker stores ticker=None
-- [ ] 2.4 Full suite green, linting passes
+- [x] 2.1 Both company writes reject a malformed ticker without querying
+- [x] 2.2 A valid, including hyphenated, ticker still writes
+- [x] 2.3 An announcement with a malformed ticker stores ticker=None
+- [x] 2.4 Full suite green, linting passes
 
 ### Phase 3: No cashtag beats a wrong cashtag
 
 #### Automated
 
-- [ ] 3.1 A malformed top ticker omits the cashtag line
-- [ ] 3.2 The supervisor rejects a malformed cashtag
-- [ ] 3.3 Full suite green, linting passes
+- [x] 3.1 A malformed top ticker omits the cashtag line
+- [x] 3.2 The supervisor rejects a malformed cashtag
+- [x] 3.3 Full suite green, linting passes
 
 ### Phase 4: Data repair
 
