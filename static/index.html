@@ -3836,7 +3836,21 @@ function _renderPortfolioTable(positions) {
     const shares = Number(pos.shares.toFixed(4));
     const avgPrice = pos.avg_buy_price.toFixed(2);
     const curPrice = pos.current_price != null ? pos.current_price.toFixed(2) + ' PLN' : '—';
-    const daily = pos.daily_change_pct != null ? pos.daily_change_pct.toFixed(2) + '%' : '—';
+    // PUL-123: mirrors the pnl pair below. Three states, not two — null keeps the
+    // '—' and no class, zero keeps 0.00% and no class; collapsing them would report
+    // "no data" as "no change". The '+' is there so the direction survives without
+    // colour, the way the treemap already labels its cells.
+    let daily = '—';
+    let dailyClass = '';
+    if (pos.daily_change_pct != null) {
+      // Sign and colour follow the *printed* value, not the raw one. A +0.004%
+      // day prints as 0.00%, and tinting that green would leave the cell saying
+      // "flat" and "up" at the same time — two decimals is the resolution we
+      // publish, so it is also the resolution we colour by.
+      const shown = Number(pos.daily_change_pct.toFixed(2));
+      daily = (shown > 0 ? '+' : '') + shown.toFixed(2) + '%';
+      dailyClass = shown > 0 ? 'positive' : shown < 0 ? 'negative' : '';
+    }
     let pnlText = '—';
     let pnlClass = '';
     if (pos.pnl_pln != null) {
@@ -3857,7 +3871,7 @@ function _renderPortfolioTable(positions) {
       <td data-label="Ilość akcji">${shares}</td>
       <td data-label="Śr. cena zakupu">${avgPrice} PLN</td>
       <td data-label="Aktualny kurs">${curPrice}</td>
-      <td data-label="Zmiana dzienna">${daily}</td>
+      <td class="${dailyClass}" data-label="Zmiana dzienna">${daily}</td>
       <td class="${pnlClass}" data-label="Zysk/strata">${pnlText}</td>
       <td data-label="30 dni">${_sparklineSvg(pos.price_history)}</td>
       ${actionsCell}
