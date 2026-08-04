@@ -298,7 +298,11 @@ def test_dividend_summary_sql_joins_meta_first_and_keeps_timestamp_precision():
     assert "LEFT JOIN" in sql
     assert sql.index("meta") < sql.index("LEFT JOIN")
     # The year is derived for grouping; the stored timestamp is not truncated.
-    assert "EXTRACT(YEAR FROM occurred_at)" in sql
+    # PUL-120: derived in Europe/Warsaw, not UTC. `occurred_at` is a true UTC
+    # instant, so a payout credited just after midnight Warsaw time would
+    # otherwise be filed under the previous day — and once a year, the previous
+    # year. Asserting the timezone, not just the EXTRACT, is the point.
+    assert "EXTRACT(YEAR FROM occurred_at AT TIME ZONE 'Europe/Warsaw')" in sql
     assert "TIMESTAMP_TRUNC" not in sql
     # Gross and tax are summed from separate op_types, never paired up.
     assert "dividend" in sql and "withholding_tax" in sql

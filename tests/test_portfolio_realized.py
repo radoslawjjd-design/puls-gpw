@@ -5,7 +5,7 @@ here, because this is the first figure in the app the user could check against
 their own tax return.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -120,6 +120,32 @@ def test_year_filters_the_result_but_fifo_still_walks_the_whole_history():
     assert entry["pnl"] == pytest.approx(200.0)
     # Both years remain offerable even though only one was asked for.
     assert result["all_years"] == [2025, 2024]
+
+
+def test_a_sale_late_on_a_warsaw_evening_belongs_to_the_warsaw_period():
+    """PUL-120: `occurred_at` stores a true UTC instant — the hour distribution of
+    the real history is 7-15 UTC, the GPW session in CEST. Reading `.year` off it
+    attributes an event by the UTC calendar, so a sale at 00:30 on New Year's Day
+    in Warsaw would be filed under the year that had just ended."""
+    ops = [
+        _buy("PKN", datetime(2025, 1, 1, tzinfo=timezone.utc), 10, 50.0),
+        # 23:30 UTC on 31 Dec is 00:30 on 1 Jan in Warsaw (CET, UTC+1).
+        _sell("PKN", datetime(2025, 12, 31, 23, 30, tzinfo=timezone.utc), 10, 60.0),
+    ]
+    assert compute_realized_pnl(ops)["all_years"] == [2026]
+    assert compute_realized_pnl(ops, year=2026)["by_ticker"], "the sale belongs to 2026"
+    assert not compute_realized_pnl(ops, year=2025)["by_ticker"]
+
+
+def test_a_naive_timestamp_is_read_as_utc_not_as_the_runner_s_clock():
+    """Everything in production arrives tz-aware out of BigQuery, but a naive
+    datetime must not silently pick up whatever timezone the machine is set to —
+    that would make the same input produce different periods on different hosts."""
+    ops = [
+        _buy("PKN", datetime(2025, 1, 1), 10, 50.0),
+        _sell("PKN", datetime(2025, 6, 15, 12, 0), 10, 60.0),
+    ]
+    assert compute_realized_pnl(ops)["all_years"] == [2025]
 
 
 def test_results_are_ordered_best_first_and_totals_add_up():

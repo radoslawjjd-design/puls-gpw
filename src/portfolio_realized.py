@@ -9,8 +9,30 @@ cost. Adding them into one number would hide which of the two a portfolio is
 actually living on.
 """
 
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
 OP_BUY = "buy"
 OP_SELL = "sell"
+
+# PUL-120: `occurred_at` is a true UTC instant — the hour distribution of the real
+# history is 7-15 UTC, which is the GPW session read in CEST. Periods are what the
+# user saw on their statement, so they are Warsaw periods, not UTC ones. At year
+# granularity the two disagree on one evening a year; at month granularity, twelve.
+_WARSAW = ZoneInfo("Europe/Warsaw")
+
+
+def _local(when: datetime) -> datetime:
+    """The Warsaw-local view of a stored instant.
+
+    A naive value is read as UTC rather than as the machine's clock: production
+    always supplies tz-aware rows out of BigQuery, and letting a naive one inherit
+    the host timezone would make the same input land in different periods on
+    different machines.
+    """
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when.astimezone(_WARSAW)
 
 # Fractional shares are everywhere in these exports, so a lot that is fully
 # consumed can land a hair above zero rather than exactly on it.
@@ -88,7 +110,7 @@ def compute_realized_pnl(operations: list[dict], year: int | None = None) -> dic
             lot[0] -= take
             remaining -= take
 
-        sold_year = op["occurred_at"].year
+        sold_year = _local(op["occurred_at"]).year
         all_years.add(sold_year)
         if year is not None and sold_year != year:
             continue

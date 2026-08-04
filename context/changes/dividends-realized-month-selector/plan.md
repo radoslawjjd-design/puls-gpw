@@ -295,10 +295,10 @@ both `year` and `month` for the dividends e2e assertions to mean anything.
 
 #### Automated
 
-- [ ] 1.1 Sale at 23:30 UTC on 31 December lands in the following year
-- [ ] 1.2 Existing realized tests pass unchanged
-- [ ] 1.3 Full suite green
-- [ ] 1.4 Linting passes
+- [x] 1.1 Sale at 23:30 UTC on 31 December lands in the following year
+- [x] 1.2 Existing realized tests pass unchanged
+- [x] 1.3 Full suite green
+- [x] 1.4 Linting passes
 
 ### Phase 2: Month reaches the data layer
 

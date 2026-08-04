@@ -3885,13 +3885,18 @@ def get_dividend_summary(
     (`FROM meta LEFT JOIN data`). Written the other way round the selector goes
     empty as soon as the chosen year has no payouts, stranding the user on a
     year they then cannot leave — the PUL-100 lesson.
+
+    Periods are extracted in `Europe/Warsaw`, not UTC. `occurred_at` stores a
+    true UTC instant (the real history's trades sit at 7-15 UTC, i.e. the GPW
+    session in CEST), so a payout credited just after midnight Warsaw time falls
+    in the previous UTC day — and, once a year, the previous UTC year (PUL-120).
     """
     client = _get_client()
     table = _table_ref(client, _USER_BROKER_OPERATIONS_TABLE_NAME)
     query = f"""
         WITH scoped AS (
             SELECT
-                EXTRACT(YEAR FROM occurred_at) AS year,
+                EXTRACT(YEAR FROM occurred_at AT TIME ZONE 'Europe/Warsaw') AS year,
                 ticker,
                 op_type,
                 amount_pln
