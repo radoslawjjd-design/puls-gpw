@@ -1,10 +1,10 @@
 ---
 change_id: bankier-heading-ticker
 title: Take the ticker from the ticker-shaped group of a bankier heading, and guard the write paths
-status: impl_reviewed
+status: archived
 created: 2026-08-04
 updated: 2026-08-04
-archived_at: null
+archived_at: 2026-08-04
 tracking:
   linear: PUL-102
   github: 210
