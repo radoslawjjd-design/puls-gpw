@@ -304,10 +304,10 @@ both `year` and `month` for the dividends e2e assertions to mean anything.
 
 #### Automated
 
-- [ ] 2.1 Month filter equals year-filter-then-pick-that-month (FIFO integrity)
-- [ ] 2.2 Month with no year matches that month across every year
-- [ ] 2.3 Lots bought outside the month still price the sale
-- [ ] 2.4 Full suite green, linting passes
+- [x] 2.1 Month filter equals year-filter-then-pick-that-month (FIFO integrity)
+- [x] 2.2 Month with no year matches that month across every year
+- [x] 2.3 Lots bought outside the month still price the sale
+- [x] 2.4 Full suite green, linting passes
 
 ### Phase 3: Endpoints accept and cache the month
 
