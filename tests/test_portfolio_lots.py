@@ -5,11 +5,35 @@ behind every lot consumption in the codebase, so the cases below are deliberatel
 the ones the two implementations it replaces disagreed on.
 """
 
+import ast
+import pathlib
 from datetime import datetime
 
 import pytest
 
 from src.portfolio_lots import LotEvent, build_ledger
+
+
+def test_the_ledger_imports_nothing_but_the_standard_library():
+    """`src/brokers` now depends on this module, and
+    tests/test_brokers_xtb.py::test_parser_package_imports_no_data_or_web_layer
+    only inspects the parser package's *direct* imports. Without this guard the
+    parser's purity — what lets the golden dataset run with no infrastructure —
+    could be broken one hop away, from a file that test never opens."""
+    forbidden = ("db", "fastapi", "google", "starlette", "pydantic")
+    path = pathlib.Path(__file__).resolve().parents[1] / "src" / "portfolio_lots.py"
+
+    offenders = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = [node.module or ""]
+        else:
+            continue
+        offenders += [n for n in names if n.split(".")[0] in forbidden]
+
+    assert offenders == []
 
 
 def _buy(ticker, when, volume, price, name=None):

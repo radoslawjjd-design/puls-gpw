@@ -103,10 +103,13 @@ def compute_realized_pnl(
         and op.get("occurred_at") is not None
     )
 
-    # Sales are walked in chronological order across every ticker, not
-    # ticker-by-ticker, so that two tickers finishing on the same result keep the
-    # order the old single-pass loop gave them — `by_ticker`'s sort is stable, so
-    # insertion order is what breaks a tie.
+    # Sales are walked chronologically across every ticker rather than
+    # ticker-by-ticker. `by_ticker`'s final sort is stable, so the order entries
+    # are created in is what breaks a tie between two tickers on the same result
+    # — walking one ticker to completion before starting the next would make that
+    # tiebreak alphabetical-ish instead of chronological. Sales at the identical
+    # instant on *different* tickers resolve by first appearance in the history,
+    # which is deterministic but not the input list's order.
     sales = sorted(
         ((ticker, sale) for ticker, ledger in ledgers.items() for sale in ledger.sales),
         key=lambda pair: pair[1].sold_at,
