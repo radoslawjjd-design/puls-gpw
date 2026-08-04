@@ -322,10 +322,10 @@ both `year` and `month` for the dividends e2e assertions to mean anything.
 
 #### Automated
 
-- [ ] 4.1 Choosing a month refetches in place and the request carries it
-- [ ] 4.2 An empty month keeps both selectors usable
-- [ ] 4.3 Year `Wszystkie` + a month issues month without year
-- [ ] 4.4 Full suite green, linting passes
+- [x] 4.1 Choosing a month refetches in place and the request carries it
+- [x] 4.2 An empty month keeps both selectors usable
+- [x] 4.3 Year `Wszystkie` + a month issues month without year
+- [x] 4.4 Full suite green, linting passes
 
 #### Manual
 

@@ -85,6 +85,79 @@ def test_the_year_selector_offers_every_year_the_wallet_existed(
     assert years[1:] == [str(y) for y in range(today.year, today.year - 3, -1)]
 
 
+# ── PUL-120: the month selector ──────────────────────────────────────────────
+#
+# Fixture: KRU paid in June 2025 and June 2026, PKO in September 2026. January
+# has nothing, which is the case the empty-period assertions lean on.
+
+
+def test_month_switch_refetches_without_leaving_the_tab(page: Page, live_server_url: str):
+    """Same risk the year selector carries: this header is adjacent to the view
+    tabs, whose handler also binds here — picking a month must refetch dividends
+    rather than switch the whole view."""
+    _login_and_open(page, live_server_url)
+    _open_dividends(page)
+
+    with page.expect_response(re.compile(r"/api/portfolio/dividends.*month=9")):
+        page.get_by_label("Miesiąc wypłat").select_option("9")
+
+    expect(page.locator("#pp-dividends-wrap")).to_be_visible()
+    expect(page.get_by_label("Miesiąc wypłat")).to_have_value("9")
+    # September paid PKO and nothing else.
+    expect(page.locator("#pp-div-by-ticker")).to_contain_text("PKO")
+    expect(page.locator("#pp-div-by-ticker")).not_to_contain_text("KRU")
+
+
+def test_a_month_without_a_year_spans_every_year(page: Page, live_server_url: str):
+    """Both selectors accept 'Wszystkie' independently, so "every June on record"
+    is reachable. The request must carry the month and no year."""
+    _login_and_open(page, live_server_url)
+    _open_dividends(page)
+
+    with page.expect_response(re.compile(r"/api/portfolio/dividends")) as caught:
+        page.get_by_label("Miesiąc wypłat").select_option("6")
+
+    url = caught.value.url
+    assert "month=6" in url, url
+    assert "year=" not in url, f"year should be absent while 'Wszystkie' is selected: {url}"
+    expect(page.locator("#pp-div-by-ticker")).to_contain_text("KRU")
+
+
+def test_an_empty_month_still_lets_the_user_leave_it(page: Page, live_server_url: str):
+    """The PUL-100 lesson at month granularity, where empty periods are routine
+    rather than rare: a selector rebuilt from the filtered rows would lose its
+    options exactly when the user needs them to escape."""
+    _login_and_open(page, live_server_url)
+    _open_dividends(page)
+
+    with page.expect_response(re.compile(r"/api/portfolio/dividends.*month=1")):
+        page.get_by_label("Miesiąc wypłat").select_option("1")
+
+    expect(page.locator("#pp-div-by-ticker")).to_contain_text("Brak dywidend")
+    # Both selectors survive the empty period with their full option lists.
+    expect(page.get_by_label("Miesiąc wypłat").locator("option")).to_have_count(13)
+    assert page.get_by_label("Rok wypłat dywidend").locator("option").count() > 1
+
+    with page.expect_response(re.compile(r"/api/portfolio/dividends")):
+        page.get_by_label("Miesiąc wypłat").select_option("")
+    expect(page.locator("#pp-div-by-ticker")).to_contain_text("KRU")
+
+
+def test_year_and_month_narrow_together(page: Page, live_server_url: str):
+    """The fourth combination: both selectors set at once."""
+    _login_and_open(page, live_server_url)
+    _open_dividends(page)
+
+    with page.expect_response(re.compile(r"/api/portfolio/dividends.*year=2025")):
+        page.get_by_label("Rok wypłat dywidend").select_option("2025")
+    with page.expect_response(re.compile(r"/api/portfolio/dividends.*month=6")):
+        page.get_by_label("Miesiąc wypłat").select_option("6")
+
+    expect(page.locator("#pp-div-by-ticker")).to_contain_text("KRU")
+    # June 2025 is one payout, not the two June holds across both years.
+    expect(page.locator("#pp-div-tiles")).to_contain_text("1")
+
+
 def test_switching_away_hides_the_dividends_panel(page: Page, live_server_url: str):
     """Risk: a panel missing from the display block stays visible over the next view."""
     _login_and_open(page, live_server_url)
