@@ -43,6 +43,7 @@ from db.bigquery import (
     save_analysis_result,
     save_portfolio_snapshot,
     save_x_post,
+    insert_company_if_absent,
     update_parsed_content,
     update_x_post_publish_result,
     upsert_company,
@@ -1061,6 +1062,59 @@ def test_upsert_company_sends_merge_with_all_fields():
     assert params["name"] == "Echo Investment SA"
     assert params["hop_url"] == "https://example.com/profile"
     assert params["isin"] == "PLECHPS00019"
+
+
+# ── PUL-102: the write boundary refuses a value that is not a ticker ─────────
+#
+# The parser fix stops today's source. This stops the next one: bankier changed
+# its markup once and will again, and there is more than one upstream page. A
+# brand word that reaches `companies` splits a company's identity in two and
+# silently re-routes its prices to the gap-filler.
+
+
+@pytest.mark.parametrize("bad", ["Żabka", "przejęty", "zab", "ZAB!", "", "  "])
+def test_upsert_company_refuses_a_ticker_that_is_not_one(bad, caplog):
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        upsert_company(bad, "Some Company SA", "https://example.com", "PL0000000001")
+
+    client.query.assert_not_called()
+    assert any("ticker" in r.message.lower() for r in caplog.records)
+
+
+@pytest.mark.parametrize("bad", ["Żabka", "przejęty"])
+def test_insert_company_if_absent_refuses_a_ticker_that_is_not_one(bad):
+    """The riskier of the two writes: it is called with partial data on the
+    announcement path, which is how the bare `Żabka` row came to exist."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        insert_company_if_absent(bad, "Some Company SA", None, None)
+
+    client.query.assert_not_called()
+
+
+@pytest.mark.parametrize("good", ["ZAB", "CREOTECH-PDA", "CRQUANTUM-PDA", "11B"])
+def test_a_real_ticker_still_writes(good):
+    """The -PDA symbols are a separate, unrelated quirk. Rejecting them here would
+    turn this guard into an outage of its own."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        upsert_company(good, "Some Company SA", "https://example.com", None)
+
+    client.query.assert_called_once()
+
+
+def test_a_malformed_announcement_ticker_is_stored_as_null():
+    """The announcement itself is worth keeping — losing a filing costs more than
+    losing its ticker, and a null ticker is a state the schema and UI already
+    handle. That is how `Żabka` reached four announcement rows."""
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client()) as mock_get:
+        client = mock_get.return_value
+        update_parsed_content("ann-1", "treść", "Żabka", "Zabka Group SA")
+
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["ticker"] is None
+    assert params["company"] == "Zabka Group SA", "the company name was never the broken part"
 
 
 def test_list_tickers_missing_from_companies_returns_pairs():

@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass, field
 
 from src.post_generator import GeneratedPost, _DOMAIN_TLD_RE
+from src.tickers import is_valid_ticker
 
 # Phrases that constitute implicit or explicit investment recommendations (MAR/MiFID risk).
 _INVESTMENT_ADVICE_PATTERNS = [
@@ -21,6 +22,11 @@ _INVESTMENT_ADVICE_PATTERNS = [
 ]
 
 _ADVICE_RE = re.compile("|".join(_INVESTMENT_ADVICE_PATTERNS), re.IGNORECASE)
+
+# Deliberately case- and diacritic-blind: it has to CATCH `$Zabka`, which is why
+# it cannot borrow the generator's ALL-CAPS `_PAREN_TICKER_RE`. `\w` under the
+# default unicode flag covers the Polish letters that are the tell.
+_CASHTAG_RE = re.compile(r"\$(\w[\w-]*)")
 
 
 @dataclass
@@ -77,6 +83,15 @@ def validate_post(
     match = _ADVICE_RE.search(full_text)
     if match:
         issues.append(f"investment advice detected: \"{match.group(0)}\"")
+
+    # PUL-102: a cashtag has to be a ticker. `$Zabka` went out on 2026-07-30
+    # because a brand name was stored as the company's ticker, and every
+    # deterministic repair in the generator is anchored on an ALL-CAPS regex —
+    # the right constraint, so that `(2025)` is left alone, and precisely why it
+    # could not see this. The supervisor is the last gate before X.
+    for cashtag in _CASHTAG_RE.findall(full_text):
+        if not is_valid_ticker(cashtag):
+            issues.append(f"malformed cashtag: \"${cashtag}\"")
 
     # Safety net: flags domain-like text that survived into a GeneratedPost regardless of
     # which code path constructed it. Non-blocking — this defect class has no alternate

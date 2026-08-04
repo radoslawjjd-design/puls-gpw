@@ -11,6 +11,7 @@ import google.genai as genai
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from src.gemini_client import get_client, GEMINI_MODEL
+from src.tickers import is_valid_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -427,12 +428,26 @@ def generate_post(
 
     # The thread's single cashtag goes to the highest-score company. enriched preserves
     # fetch_top_n_for_window's score-DESC order, so [0] is the top (tie → first listed).
+    #
+    # PUL-102: when that ticker is not ticker-shaped, ask for no cashtag at all.
+    # A brand name reached this line once and went out as `$Zabka` — every
+    # deterministic repair below is anchored on _PAREN_TICKER_RE, which requires
+    # ALL CAPS so that `(2025)` is left alone, and is therefore blind to exactly
+    # this. A missing cashtag costs reach; a wrong one is a public error.
     cashtag_ticker = enriched[0]["ticker"]
+    cashtag_line = ""
+    if is_valid_ticker(cashtag_ticker):
+        cashtag_line = f"cashtag_spolki: \"${cashtag_ticker}\"\n"
+    else:
+        logger.warning(
+            "post_generator: top ticker %r is not ticker-shaped — publishing without a cashtag",
+            cashtag_ticker,
+        )
 
     user_message = (
         f"fraza_hooka: \"{hook_phrase}\"\n"
         f"fraza_closing: \"{closing_q}\"\n"
-        f"cashtag_spolki: \"${cashtag_ticker}\"\n\n"
+        f"{cashtag_line}\n"
         f"Dane: {json.dumps(enriched, ensure_ascii=False)}\n\n"
         f"Wygeneruj wątek: DOKŁADNIE {expected_tweets} tweetów "
         f"(1 hook + {n_companies} spółek + 1 closing)."

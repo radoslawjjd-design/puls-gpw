@@ -2,8 +2,15 @@ source_roots = ["."]
 exclude = [".venv", "oldProjectData", "__pycache__"]
 
 # Desired architecture: db has no upward dependencies.
-# KNOWN VIOLATION: db.bigquery imports BigQueryError from src.exceptions.
-# Fix: move BigQueryError to db/exceptions.py (future change).
+# KNOWN VIOLATION: db.bigquery imports BigQueryError from src.exceptions,
+# select_top_companies from src.post_selection, and is_valid_ticker from
+# src.tickers.
+# The last one is deliberate (PUL-102): the ticker-shape guard has to sit AT the
+# write boundary, or a future upstream markup change bypasses it the way bankier's
+# did. src/tickers.py is import-free, so it is the cheapest possible version of
+# this violation.
+# Fix: move BigQueryError to db/exceptions.py and the pure helpers to a shared
+# leaf package (future change).
 
 [[modules]]
 path = "main"

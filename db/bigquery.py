@@ -40,6 +40,7 @@ from google.cloud.exceptions import NotFound  # noqa: E402
 
 from src.exceptions import BigQueryError  # noqa: E402
 from src.post_selection import select_top_companies  # noqa: E402
+from src.tickers import is_valid_ticker  # noqa: E402
 
 _DATASET = os.environ.get("BIGQUERY_DATASET", "espi_ebi")
 _TABLE_NAME = "announcements"
@@ -1929,7 +1930,15 @@ def upsert_company(
     Last-write-wins on conflict: both write paths (parser hop, seed script) parse
     the same bankier profile page format, so neither produces a partial row worth
     protecting against overwrite. Raises BigQueryError if the MERGE fails.
+
+    A ticker that is not ticker-shaped is dropped with a warning rather than
+    written (PUL-102). Bankier changed its heading markup once and will again, and
+    it is not the only upstream page — a brand word reaching this table splits a
+    company's identity in two and silently re-routes its prices to the gap-filler.
     """
+    if not is_valid_ticker(ticker):
+        logger.warning("upsert_company: refusing malformed ticker %r (name=%r)", ticker, name)
+        return
     client = _get_client()
     query = f"""
         MERGE `{_table_ref(client, _COMPANIES_TABLE_NAME)}` T
@@ -1971,7 +1980,16 @@ def insert_company_if_absent(
     because it will not overwrite an existing populated name/isin. Use
     upsert_company() when you have a fresh profile-page fetch and want full
     last-write-wins semantics. Raises BigQueryError if the MERGE fails.
+
+    Same shape guard as upsert_company (PUL-102), and this is the riskier of the
+    two: it is called with partial data on the announcement path, which is how the
+    bare `Żabka` row came to exist alongside the real `ZAB` one.
     """
+    if not is_valid_ticker(ticker):
+        logger.warning(
+            "insert_company_if_absent: refusing malformed ticker %r (name=%r)", ticker, name
+        )
+        return
     client = _get_client()
     query = f"""
         MERGE `{_table_ref(client, _COMPANIES_TABLE_NAME)}` T
@@ -2060,7 +2078,21 @@ def update_parsed_content(
 
     parsed_content=None is valid (parse failed gracefully).
     Raises BigQueryError if the UPDATE fails or matches 0 rows.
+
+    A malformed ticker is stored as NULL rather than rejecting the whole update
+    (PUL-102). This is defence in depth, not the primary control: the pipeline
+    already refuses to store an announcement it cannot resolve a ticker for
+    (`main.py`, "no ticker resolved"), and the extractor now yields None instead
+    of a brand word, so that skip is what handles a broken heading. This guard
+    exists for any other caller, present or future. The company name is kept —
+    it was never the broken part.
     """
+    if ticker is not None and not is_valid_ticker(ticker):
+        logger.warning(
+            "update_parsed_content: dropping malformed ticker %r on announcement %s",
+            ticker, announcement_id,
+        )
+        ticker = None
     client = _get_client()
     query = f"""
         UPDATE `{_table_ref(client)}`
