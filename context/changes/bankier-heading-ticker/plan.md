@@ -252,6 +252,6 @@ MegaPixel row and its prices per the owner's decision; then re-run the sweep.
 
 #### Manual
 
-- [ ] 4.1 Owner runs `data-repair.sql`
-- [ ] 4.2 Sweep returns only the two `-PDA` rows
+- [x] 4.1 Ran 2026-08-04 with the owner's explicit authorisation, step by step
+- [x] 4.2 Sweep returns only the two `-PDA` rows
 - [ ] 4.3 Next stats run prices `ZAB` officially, no `Żabka` reappears
