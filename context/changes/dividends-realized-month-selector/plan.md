@@ -313,10 +313,10 @@ both `year` and `month` for the dividends e2e assertions to mean anything.
 
 #### Automated
 
-- [ ] 3.1 `month=abc` and `month=13` return 422 and leave no cache entry
-- [ ] 3.2 Two requests differing only in month return different payloads
-- [ ] 3.3 Invalidation still clears the longer keys
-- [ ] 3.4 Full suite green, linting passes
+- [x] 3.1 `month=abc` and `month=13` return 422 and leave no cache entry
+- [x] 3.2 Two requests differing only in month return different payloads
+- [x] 3.3 Invalidation still clears the longer keys
+- [x] 3.4 Full suite green, linting passes
 
 ### Phase 4: The month selector
 

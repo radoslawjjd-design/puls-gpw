@@ -2317,6 +2317,58 @@ def test_dividends_endpoint_validates_year_before_building_a_cache_key(user_clie
     assert not [k for k in m._PERF_CACHE if k.startswith("dividends:")]
 
 
+@pytest.mark.parametrize("bad", ["abc", "13", "0", "-1", ""])
+@pytest.mark.parametrize("view", ["dividends", "realized"])
+def test_month_is_range_checked_before_it_reaches_a_cache_key(user_client, view, bad):
+    """PUL-120: same reason the year is validated first — an unchecked value goes
+    straight into the key, so every distinct string carves out its own entry. A
+    month additionally has to be in 1-12; `isdigit()` alone would admit 13."""
+    import src.api as m
+
+    m._PERF_CACHE.clear()
+    target = "get_dividend_summary" if view == "dividends" else "list_broker_trades"
+    with patch(f"src.api.{target}") as backend:
+        r = user_client.get(
+            f"/api/portfolio/{view}?portfolio_id={_WALLET_ID}&month={bad}"
+        )
+    # An empty month means "Wszystkie", exactly as an empty year does.
+    if bad == "":
+        assert r.status_code != 422
+        return
+    assert r.status_code == 422
+    backend.assert_not_called()
+    assert not [k for k in m._PERF_CACHE if k.startswith(f"{view}:")]
+
+
+@pytest.mark.parametrize("view", ["dividends", "realized"])
+def test_two_months_do_not_share_one_cache_entry(user_client, view):
+    """Without the month in the key a March request is answered from January's
+    entry for 300 seconds — a wrong number that looks exactly like a right one."""
+    import src.api as m
+
+    m._PERF_CACHE.clear()
+    if view == "dividends":
+        backend = patch(
+            "src.api.get_dividend_summary",
+            side_effect=lambda *a, **k: {"years": [2026], "by_ticker": [], "month": k.get("month")},
+        )
+    else:
+        backend = patch("src.api.list_broker_trades", return_value=[])
+
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_inception", return_value=None),
+        backend as called,
+    ):
+        first = user_client.get(f"/api/portfolio/{view}?portfolio_id={_WALLET_ID}&month=1")
+        second = user_client.get(f"/api/portfolio/{view}?portfolio_id={_WALLET_ID}&month=3")
+
+    assert first.status_code == 200 and second.status_code == 200
+    assert called.call_count == 2, "the second month was served from the first month's cache"
+    keys = sorted(k for k in m._PERF_CACHE if k.startswith(f"{view}:"))
+    assert len(keys) == 2, f"months share a cache entry: {keys}"
+
+
 def test_dividends_and_realized_carry_the_wallet_inception(user_client):
     """PUL-117: `years` lists only the years that paid or sold something, so a
     selector built from it alone cannot offer 2023 to a user asking whether 2023

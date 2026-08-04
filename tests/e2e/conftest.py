@@ -515,16 +515,49 @@ def _fake_delete_user_portfolio_positions(user_id, portfolio_id, tickers):
     return len(store) - len(remaining)
 
 
-def _fake_get_dividend_summary(user_id, portfolio_id=None, year=None):
-    # IKZE pays no withholding tax, so a zero-tax ticker has to be in the fixture:
-    # a summary that only ever renders taxed payouts never exercises that branch.
+# One row per payout, so the fake can narrow by period the way the real query does.
+# IKZE pays no withholding tax, so a zero-tax ticker has to be here: a summary that
+# only ever renders taxed payouts never exercises that branch. Two years and three
+# distinct months, so year, month, and the two together each have something to
+# select — and month 1 has nothing, which is the empty-period case.
+_FAKE_DIVIDEND_PAYOUTS = [
+    {"ticker": "KRU", "year": 2025, "month": 6, "gross": 361.0, "tax": -68.59},
+    {"ticker": "KRU", "year": 2026, "month": 6, "gross": 361.0, "tax": -68.59},
+    {"ticker": "PKO", "year": 2026, "month": 9, "gross": 50.0, "tax": 0.0},
+]
+
+
+def _fake_get_dividend_summary(user_id, portfolio_id=None, year=None, month=None):
+    """Mirrors the real contract: the period narrows the breakdown, never `years`.
+
+    PUL-100 and PUL-120 both depend on that split — the selector is built from
+    `years`, so deriving it from the filtered rows would empty the control the
+    moment a period has no payouts and strand the user there.
+    """
+    rows = [
+        p for p in _FAKE_DIVIDEND_PAYOUTS
+        if (year is None or p["year"] == year) and (month is None or p["month"] == month)
+    ]
+    by_ticker: dict[str, dict] = {}
+    for p in rows:
+        entry = by_ticker.setdefault(
+            p["ticker"],
+            {"ticker": p["ticker"], "gross": 0.0, "tax": 0.0, "net": 0.0, "payouts": 0},
+        )
+        entry["gross"] += p["gross"]
+        entry["tax"] += p["tax"]
+        entry["net"] = round(entry["gross"] + entry["tax"], 2)
+        entry["payouts"] += 1
+    for entry in by_ticker.values():
+        entry["gross"] = round(entry["gross"], 2)
+        entry["tax"] = round(entry["tax"], 2)
+    gross = round(sum(p["gross"] for p in rows), 2)
+    tax = round(sum(p["tax"] for p in rows), 2)
     return {
-        "years": [2025, 2026],
-        "totals": {"gross": 772.0, "tax": -137.18, "net": 634.82, "count": 3},
-        "by_ticker": [
-            {"ticker": "KRU", "gross": 722.0, "tax": -137.18, "net": 584.82, "payouts": 2},
-            {"ticker": "PKO", "gross": 50.0, "tax": 0.0, "net": 50.0, "payouts": 1},
-        ],
+        # Every year on record, whatever the filter — the meta-first join.
+        "years": sorted({p["year"] for p in _FAKE_DIVIDEND_PAYOUTS}),
+        "totals": {"gross": gross, "tax": tax, "net": round(gross + tax, 2), "count": len(rows)},
+        "by_ticker": sorted(by_ticker.values(), key=lambda e: e["gross"], reverse=True),
     }
 
 

@@ -118,6 +118,21 @@ def _perf_set(key: str, data: Any) -> None:
     _PERF_CACHE[key] = (data, time.time())
 
 
+def _parse_month(month: str | None) -> int | None:
+    """PUL-120: a period selector's month, or None for "Wszystkie".
+
+    Range-checked, not merely `isdigit()`-checked: the value reaches a cache key,
+    and `isdigit()` alone would admit "13" and let it carve out an entry that no
+    real request can ever hit. Shared by both period endpoints so the two cannot
+    drift apart on what they accept.
+    """
+    if month in (None, "", "all"):
+        return None
+    if not month.isdigit() or not 1 <= int(month) <= 12:
+        raise HTTPException(status_code=422, detail="month must be a number from 1 to 12")
+    return int(month)
+
+
 def _perf_invalidate_portfolio(user_id: str, portfolio_id: str) -> None:
     # PUL-95: a write to one wallet also changes what the "Wszystkie" aggregate and
     # the value chart show, so the sentinel variants and the history prefix have to
@@ -1414,6 +1429,7 @@ def create_app() -> FastAPI:
     async def get_portfolio_dividends(
         portfolio_id: str = Query(...),
         year: str | None = Query(None),
+        month: str | None = Query(None),
         role: Role = Depends(_get_role),
         user_id: str = Depends(_get_user_id),
     ):
@@ -1424,7 +1440,13 @@ def create_app() -> FastAPI:
             if not year.isdigit():
                 raise HTTPException(status_code=422, detail="year must be a four-digit year")
             parsed_year = int(year)
-        cache_key = f"dividends:{user_id}:{portfolio_id}:{parsed_year or 'all'}"
+        parsed_month = _parse_month(month)
+        # PUL-120: the month has to be IN the key. Without it a March request is
+        # answered from January's entry for the whole 300 s TTL — a wrong number
+        # that is indistinguishable from a right one.
+        cache_key = (
+            f"dividends:{user_id}:{portfolio_id}:{parsed_year or 'all'}:{parsed_month or 'all'}"
+        )
         cached = _perf_get(cache_key, ttl=300)
         if cached is not None:
             return cached
@@ -1438,7 +1460,9 @@ def create_app() -> FastAPI:
             if not any(w["portfolio_id"] == portfolio_id for w in wallets):
                 raise HTTPException(status_code=404, detail="Wallet not found")
         try:
-            result = get_dividend_summary(user_id, None if all_mode else portfolio_id, parsed_year)
+            result = get_dividend_summary(
+                user_id, None if all_mode else portfolio_id, parsed_year, parsed_month
+            )
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/dividends: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -1455,6 +1479,7 @@ def create_app() -> FastAPI:
     async def get_portfolio_realized(
         portfolio_id: str = Query(...),
         year: str | None = Query(None),
+        month: str | None = Query(None),
         role: Role = Depends(_get_role),
         user_id: str = Depends(_get_user_id),
     ):
@@ -1472,7 +1497,10 @@ def create_app() -> FastAPI:
             if not year.isdigit():
                 raise HTTPException(status_code=422, detail="year must be a four-digit year")
             parsed_year = int(year)
-        cache_key = f"realized:{user_id}:{portfolio_id}:{parsed_year or 'all'}"
+        parsed_month = _parse_month(month)
+        cache_key = (
+            f"realized:{user_id}:{portfolio_id}:{parsed_year or 'all'}:{parsed_month or 'all'}"
+        )
         cached = _perf_get(cache_key, ttl=300)
         if cached is not None:
             return cached
@@ -1490,7 +1518,7 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/realized: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
-        result = compute_realized_pnl(trades, parsed_year)
+        result = compute_realized_pnl(trades, parsed_year, parsed_month)
         result["inception"] = _wallet_inception_iso(
             None if all_mode else portfolio_id, user_id, "realized"
         )
