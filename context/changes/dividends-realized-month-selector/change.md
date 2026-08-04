@@ -1,7 +1,7 @@
 ---
 change_id: dividends-realized-month-selector
 title: Add a month selector alongside the year filter in Dywidendy and Zrealizowane
-status: new
+status: planned
 created: 2026-08-04
 updated: 2026-08-04
 archived_at: null
