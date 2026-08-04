@@ -1,3 +1,5 @@
+import re
+
 from playwright.sync_api import Page, expect
 
 _ADMIN_KEY = "e2e-admin-key"
@@ -78,4 +80,4 @@ def test_api_key_login_reaches_dashboard(page: Page, live_server_url: str):
     _open_api_key_panel(page, live_server_url)
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))

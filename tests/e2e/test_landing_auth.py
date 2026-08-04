@@ -24,7 +24,7 @@ def _login_via_email(page: Page, base_url: str, email: str | None = None) -> Non
     page.locator("#email-login-form").get_by_label("E-mail").fill(email or _unique_email())
     page.locator("#email-login-form").get_by_label("Hasło", exact=True).fill(_GOOD_PASSWORD)
     page.locator("#email-login-form").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
 
 def test_landing_cards_render_without_score_or_sentiment(page: Page, live_server_url: str):
@@ -90,7 +90,7 @@ def test_session_survives_reload_via_boot_probe(page: Page, live_server_url: str
     _login_via_email(page, live_server_url)
     page.reload()
     # Cookie sesji + flaga hasSession → probe /api/auth/me → dashboard bez logowania.
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
     expect(page.locator(".landing-hero")).to_be_hidden()
 
 
@@ -118,7 +118,7 @@ def test_admin_email_login_gets_admin_dashboard_and_survives_reload(
     expect(page.locator("#data-table")).to_have_class(re.compile(r"\badmin-table\b"))
 
     page.reload()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
     expect(page.locator("#role-badge")).to_have_text("Admin")
     expect(page.get_by_role("columnheader", name="Score")).to_be_visible()
 
@@ -139,4 +139,4 @@ def test_api_key_path_still_reaches_dashboard(page: Page, live_server_url: str):
     page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))

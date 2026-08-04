@@ -1,4 +1,5 @@
 import os
+import re
 import threading
 import time
 from contextlib import ExitStack
@@ -56,7 +57,7 @@ def e2e_login_email(page, base_url, email=None):
     form.get_by_label("E-mail").fill(email)
     form.get_by_label("Hasło", exact=True).fill(E2E_PASSWORD)
     form.get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
     return email
 
 
@@ -96,16 +97,16 @@ _FAKE_ADMIN_ROWS = [
         "structured_analysis": None, "analysis_approved": True,
         "analysis_reject_reason": None, "event_type": "ESPI", "analysis_score": 0.8,
     }
-    for i in range(20)
+    for i in range(40)
 ]
 
 # PUL-94: dwa świeże wiersze (badge'owalne przy pre-seedowanym starym progu
 # faro_seen_*) — bump istniejących zamiast append, bo liczba 20 wierszy jest
-# load-bearing (test_refresh liczy tr == 20; mock return_value ignoruje paging,
-# więc „Strona 2" żyje z tych samych 20 wierszy). Odrębne godziny = odrębne
-# klucze per-item (ticker|published_at) dla testu persystencji po kliknięciu.
-# Bez pre-seedu progu badge'y i tak się nie renderują (pierwsza wizyta = próg
-# null), więc pozostałe testy tych dat nie widzą.
+# load-bearing for page 1 (test_refresh counts tr == 20). PUL-77: the corpus is
+# 40 rows and the fake now really paginates, so page 1 still holds exactly 20
+# while a second page exists to move to. 40 at 20-per-page is also the case the
+# old pager got wrong — the last page comes back FULL, so "fewer rows than I
+# asked for" never fires and Next stays enabled onto nothing.
 _FAKE_ADMIN_ROWS[0]["published_at"] = datetime.now(timezone.utc) - timedelta(hours=1)
 _FAKE_ADMIN_ROWS[1]["published_at"] = datetime.now(timezone.utc) - timedelta(hours=2)
 
@@ -131,9 +132,14 @@ _FAKE_X_POSTS_ROWS = [
         "supervisor_attempts": 3, "x_publish_status": "failed",
     },
     # Padding rows so the unfiltered AND the `x_publish_status=skipped` filtered
-    # count both reach the default page_size (20) — without these, the
-    # "Następna" button is permanently disabled (3 rows < 20) and url-routing
-    # pagination tests have nothing to click into a real page 2.
+    # count both EXCEED the default page_size (20) — without these, the
+    # "Następna" button is permanently disabled and url-routing pagination tests
+    # have nothing to click into a real page 2.
+    #
+    # PUL-77: this was 20, i.e. exactly the page size, which is the one count the
+    # old pager got wrong. It left Next enabled on a full final page, so those
+    # tests were clicking through to an EMPTY page 2 and asserting only the URL.
+    # 21 gives page 2 an actual row, so the assertion now stands on something.
     *[
         {
             "x_post_id": f"pad-{i}", "window": "test",
@@ -141,7 +147,7 @@ _FAKE_X_POSTS_ROWS = [
             "posted_at": datetime(2026, 6, 10, 8, 0, 0, tzinfo=timezone.utc),
             "supervisor_attempts": 1, "x_publish_status": "skipped",
         }
-        for i in range(20)
+        for i in range(21)
     ],
 ]
 
@@ -629,6 +635,18 @@ def _fake_assign_orphan_positions_to_portfolio(user_id, portfolio_id):
     pass
 
 
+def _fake_list_announcements_admin(
+    page=1, page_size=20, ticker=None, company=None,
+    event_type=None, from_dt=None, to_dt=None,
+):
+    """Really slices, so the total the header reports is a fact about the corpus
+    rather than about the page (PUL-77). Filters are ignored: no admin E2E test
+    narrows this list, and honouring them here would duplicate SQL semantics for
+    no assertion."""
+    start = (page - 1) * page_size
+    return _FAKE_ADMIN_ROWS[start:start + page_size], len(_FAKE_ADMIN_ROWS)
+
+
 def _fake_list_announcements_for_watchlist(client_id, page=1, page_size=20, from_dt=None, to_dt=None):
     # PUL-77: the listing queries now hand back (rows, total). A plain 2-tuple is
     # all the NamedTuple needs, so the fake stays free of a db import.
@@ -710,7 +728,7 @@ def live_server_url():
         # Tylko login: patch rejestracji wyciekałby do unit-testu limitera
         # (fixture sesyjny żyje do końca pełnego przebiegu pytest).
         patch("src.auth._login_rate_limiter"),
-        patch("src.api.list_announcements_admin", return_value=(_FAKE_ADMIN_ROWS, len(_FAKE_ADMIN_ROWS))),
+        patch("src.api.list_announcements_admin", side_effect=_fake_list_announcements_admin),
         patch("src.api.list_announcements_user", return_value=([], 0)),
         patch("src.api.list_distinct_tickers",            return_value=["CDR", "PKO", "XTB"]),
         patch("src.api.list_distinct_portfolio_tickers",  return_value=["CDR", "ETFBW20TR", "PKO", "XTB"]),

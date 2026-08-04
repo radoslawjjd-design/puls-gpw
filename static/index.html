@@ -3260,6 +3260,36 @@ function _announcementsParams() {
   return params;
 }
 
+// PUL-77: the server now reports how many rows the filters matched, so the pager
+// can stop inferring it.
+//
+// The old tell for "this was the last page" was `data.length < pageSize`, and it
+// is wrong precisely when the total is an exact multiple of the page size: the
+// final page comes back FULL, so the test never fires, Next stays enabled, and
+// the click lands on an empty table. Three lists carried that bug identically.
+function _totalCount(response) {
+  const raw = response.headers.get('X-Total-Count');
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+// `total === null` keeps the old behaviour rather than rendering "Strona 3 z
+// null" — a response without the header is a server we cannot ask, not a server
+// that answered zero.
+function _applyPaging(labelId, prevId, nextId, page, pageSize, rowCount, total) {
+  $(prevId).disabled = page === 1;
+  if (total === null) {
+    $(labelId).textContent = 'Strona ' + page;
+    $(nextId).disabled = rowCount < pageSize;
+    return;
+  }
+  // An empty result is still one page: "Strona 1 z 0" reads as a broken pager.
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  $(labelId).textContent = 'Strona ' + page + ' z ' + pages;
+  $(nextId).disabled = page >= pages;
+}
+
 async function fetchAnnouncements(push = true) {
   $('btn-prev').disabled = true;
   $('btn-next').disabled = true;
@@ -3273,12 +3303,12 @@ async function fetchAnnouncements(push = true) {
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    const total = _totalCount(r);
     const data = await r.json();
     _annData = data;
-    $('page-label').textContent = 'Strona ' + currentPage;
     renderTable(_annData, role);
-    $('btn-prev').disabled = currentPage === 1;
-    $('btn-next').disabled = data.length < Number(pageSize);
+    _applyPaging('page-label', 'btn-prev', 'btn-next',
+                 currentPage, Number(pageSize), data.length, total);
     _writeUrl('announcements', params, push);
   } catch (e) {
     $('table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
@@ -3324,11 +3354,11 @@ async function fetchXPosts(push = true) {
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    const total = _totalCount(r);
     const data = await r.json();
-    $('xp-page-label').textContent = 'Strona ' + xpPage;
     renderXPostsTable(data);
-    btnPrev.disabled = xpPage === 1;
-    btnNext.disabled = data.length < Number(pageSize);
+    _applyPaging('xp-page-label', 'xp-btn-prev', 'xp-btn-next',
+                 xpPage, Number(pageSize), data.length, total);
     _writeUrl('x-history', params, push);
   } catch (e) {
     $('xp-table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
@@ -3363,12 +3393,12 @@ async function fetchMyWalletAnnouncements(push = true) {
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    const total = _totalCount(r);
     const data = await r.json();
     _wlData = data;
-    $('wl-page-label').textContent = 'Strona ' + wlPage;
     renderTable(data, role, 'my-wallet-table-body');
-    btnPrev.disabled = wlPage === 1;
-    btnNext.disabled = data.length < Number(pageSize);
+    _applyPaging('wl-page-label', 'wl-btn-prev', 'wl-btn-next',
+                 wlPage, Number(pageSize), data.length, total);
     _writeUrl('my-wallet', params, push);
   } catch (e) {
     $('my-wallet-table-body').innerHTML = `<tr><td colspan="${(role === 'admin' ? _ADMIN_COLS : _USER_COLS).length}" class="empty">Błąd ładowania danych</td></tr>`;

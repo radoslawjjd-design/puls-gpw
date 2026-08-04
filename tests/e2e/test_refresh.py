@@ -11,7 +11,7 @@ def _login(page: Page, base_url: str) -> None:
     page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
 
 def test_refresh_with_existing_session_keeps_dashboard_functional(page: Page, live_server_url: str):
@@ -20,7 +20,7 @@ def test_refresh_with_existing_session_keeps_dashboard_functional(page: Page, li
 
     _login(page, live_server_url)
     page.get_by_role("button", name=re.compile("Następna")).click()
-    expect(page.locator("#page-label")).to_have_text("Strona 2")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 2(?: |$)"))
     page.get_by_placeholder("Ticker (np. PKO)").fill("PKO")
 
     page.reload()
@@ -36,24 +36,24 @@ def test_refresh_with_existing_session_keeps_dashboard_functional(page: Page, li
     expect(page.get_by_placeholder("Analizy od")).to_have_attribute("type", "datetime-local")
 
     page.get_by_role("button", name=re.compile("Następna")).click()
-    expect(page.locator("#page-label")).to_have_text("Strona 2")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 2(?: |$)"))
 
 
 def test_refresh_preserves_page_and_filters(page: Page, live_server_url: str):
     _login(page, live_server_url)
     page.get_by_role("button", name=re.compile("Następna")).click()
-    expect(page.locator("#page-label")).to_have_text("Strona 2")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 2(?: |$)"))
 
     ticker_input = page.get_by_placeholder("Ticker (np. PKO)")
     ticker_input.fill("PKO")
     ticker_input.evaluate("el => el.blur()")
     expect(page.locator("#ac-ticker")).to_be_hidden()
     page.get_by_role("button", name="Filtruj").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
     page.reload()
 
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
     expect(page.get_by_placeholder("Ticker (np. PKO)")).to_have_value("PKO")
 
 

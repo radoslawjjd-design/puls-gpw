@@ -44,7 +44,8 @@ page past the end. Response bodies are byte-for-byte what they were.
 ## What We're NOT Doing
 
 - No response-body change, no envelope, no `{items, total}` shape.
-- No pagination UI — the Designer adds "Strona 1 z N" after deploy.
+- ~~No pagination UI~~ — added in Phase 3 at the owner's request (2026-08-04),
+  overriding the ticket's split. See that phase for what it changed.
 - No count on non-paginated endpoints.
 
 ---
@@ -108,6 +109,85 @@ headers before returning the unchanged list.
 
 ---
 
+---
+
+## Phase 3: The pager uses the total (added at the owner's request)
+
+### Overview
+
+The ticket assigned the frontend to the Designer. The owner asked for it in the
+same pass, so it lands here.
+
+### The bug this closes
+
+All three pagers inferred the end of the list from `data.length < pageSize`.
+That inference is wrong for exactly one input: a total that is a whole multiple
+of the page size. The final page comes back FULL, the test never fires, "Next"
+stays enabled, and the click lands on an empty table with nothing to say whether
+the data or the app broke.
+
+It was not hypothetical. Two E2E fixtures had been sized to *depend* on it —
+`_FAKE_X_POSTS_ROWS` carried a comment explaining that 20 padding rows were
+needed so "Next" would not be disabled, which is the bug being used as a
+mechanism. Those tests were clicking through to an empty page 2 and asserting
+only the URL.
+
+### Changes Required:
+
+#### 1. Shared pager helper
+
+**File**: `static/index.html`
+
+**Intent**: One `_applyPaging` for all three lists, replacing three copies of the
+same wrong inference. Reads the header via `_totalCount`; a missing header falls
+back to the old behaviour rather than rendering "Strona 3 z null" — no header
+means a server we cannot ask, not a server that answered zero.
+
+**Contract**: `_totalCount(response) -> number | null`;
+`_applyPaging(labelId, prevId, nextId, page, pageSize, rowCount, total)`.
+Pages = `max(1, ceil(total / pageSize))` — an empty list is still one page,
+because "Strona 1 z 0" reads as a broken pager.
+
+#### 2. The three fetches
+
+**File**: `static/index.html`
+
+**Intent**: `fetchAnnouncements`, `fetchXPosts` and `fetchMyWalletAnnouncements`
+read the header and delegate to the helper.
+
+#### 3. Fixtures that encoded the bug
+
+**File**: `tests/e2e/conftest.py`
+
+**Intent**: The admin fake returned every row for every page, so a total was
+meaningless; it now really slices. The corpus goes to 40 (page 1 still holds the
+20 `test_refresh` counts, and a second page exists). The x-posts padding goes
+from 20 to 21 so page 2 holds an actual row instead of nothing.
+
+#### 4. Assertions that pinned the whole label
+
+**File**: `tests/e2e/*.py`
+
+**Intent**: Roughly thirty assertions read `to_have_text("Strona 2")`. They are
+about routing, refresh and login landing on the right page — not about how many
+pages exist. Relaxed to a prefix match so each stays about its own subject;
+`test_pagination.py` owns the arithmetic.
+
+### Success Criteria:
+
+#### Automated Verification:
+
+- The label reads "Strona N z M" on all three lists
+- A full final page disables "Next" — verified by deliberate break
+- Changing the page size recomputes the page count
+- Full suite green, linting passes
+
+#### Manual Verification:
+
+- The three pagers read correctly in the browser and stop at the real end
+
+---
+
 ## Progress
 
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands.
@@ -133,3 +213,16 @@ headers before returning the unchanged list.
 #### Manual
 
 - [ ] 2.5 Header visible in the browser network panel
+
+### Phase 3: The pager uses the total
+
+#### Automated
+
+- [x] 3.1 Label reads "Strona N z M" on all three lists
+- [x] 3.2 A full final page disables Next — confirmed by deliberate break
+- [x] 3.3 Page size change recomputes the page count
+- [x] 3.4 Full suite green (1073), linting passes
+
+#### Manual
+
+- [ ] 3.5 The three pagers read correctly in the browser and stop at the real end
