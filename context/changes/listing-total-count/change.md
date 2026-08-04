@@ -1,7 +1,7 @@
 ---
 change_id: listing-total-count
 title: X-Total-Count header on the three listing endpoints
-status: planned
+status: implemented
 created: 2026-08-04
 updated: 2026-08-04
 archived_at: null

@@ -286,7 +286,7 @@ def test_list_announcements_admin_joins_x_posts_and_exposes_x_post_id():
     }
     with patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([row])) as mock_get:
         client = mock_get.return_value
-        result = list_announcements_admin(page=1, page_size=20)
+        result = list_announcements_admin(page=1, page_size=20).rows
 
     query_str = client.query.call_args[0][0]
     assert "LEFT JOIN" in query_str
@@ -568,9 +568,9 @@ def test_build_filter_clauses_ticker_adds_param():
 
 
 def test_list_announcements_admin_no_filters_selects_all():
-    mock = _mock_bq_client_with_rows([{"announcement_id": "x", "ticker": "PKO"}])
+    mock = _mock_bq_client_with_rows([{"announcement_id": "x", "ticker": "PKO", "total_count": 1}])
     with patch("db.bigquery._get_client", return_value=mock):
-        rows = list_announcements_admin(page=1, page_size=10)
+        rows = list_announcements_admin(page=1, page_size=10).rows
     query_str = mock.query.call_args[0][0]
     assert "ORDER BY a.published_at DESC" in query_str
     assert len(rows) == 1 and rows[0]["ticker"] == "PKO"
@@ -586,9 +586,9 @@ def test_list_announcements_admin_ticker_filter_passes_param():
 
 
 def test_list_announcements_user_only_approved():
-    mock = _mock_bq_client_with_rows([{"ticker": "PKO", "company": "PKO Bank"}])
+    mock = _mock_bq_client_with_rows([{"ticker": "PKO", "company": "PKO Bank", "total_count": 1}])
     with patch("db.bigquery._get_client", return_value=mock):
-        rows = list_announcements_user(page=1, page_size=10)
+        rows = list_announcements_user(page=1, page_size=10).rows
     query_str = mock.query.call_args[0][0]
     assert "analysis_approved = TRUE" in query_str
     assert len(rows) == 1
@@ -610,7 +610,9 @@ def test_list_announcements_admin_offset_math():
     mock = _mock_bq_client_with_rows([])
     with patch("db.bigquery._get_client", return_value=mock):
         list_announcements_admin(page=2, page_size=1)
-    job_config = mock.query.call_args[1]["job_config"]
+    # call_args_list[0], not call_args: an empty page past the first also runs the
+    # fallback COUNT (PUL-77), and that query has no paging parameters to inspect.
+    job_config = mock.query.call_args_list[0][1]["job_config"]
     params_by_name = {p.name: p.value for p in job_config.query_parameters}
     assert params_by_name["page_size"] == 1
     assert params_by_name["offset"] == 1
@@ -621,7 +623,7 @@ def test_list_announcements_user_offset_math():
     mock = _mock_bq_client_with_rows([])
     with patch("db.bigquery._get_client", return_value=mock):
         list_announcements_user(page=3, page_size=20)
-    job_config = mock.query.call_args[1]["job_config"]
+    job_config = mock.query.call_args_list[0][1]["job_config"]
     params_by_name = {p.name: p.value for p in job_config.query_parameters}
     assert params_by_name["page_size"] == 20
     assert params_by_name["offset"] == 40
@@ -632,7 +634,7 @@ def test_list_announcements_user_offset_math():
 def test_list_x_posts_admin_no_filters_selects_all_orders_newest_first():
     mock = _mock_bq_client_with_rows([{"x_post_id": "p1", "window": "ranek"}])
     with patch("db.bigquery._get_client", return_value=mock):
-        rows = list_x_posts_admin(page=1, page_size=10)
+        rows = list_x_posts_admin(page=1, page_size=10).rows
     query_str = mock.query.call_args[0][0]
     assert "ORDER BY posted_at DESC" in query_str
     assert len(rows) == 1 and rows[0]["x_post_id"] == "p1"
@@ -674,7 +676,9 @@ def test_list_x_posts_admin_offset_math():
     mock = _mock_bq_client_with_rows([])
     with patch("db.bigquery._get_client", return_value=mock):
         list_x_posts_admin(page=3, page_size=20)
-    job_config = mock.query.call_args.kwargs["job_config"]
+    # The page query, not the fallback COUNT an empty page past the first
+    # also runs (PUL-77) — that one carries no paging parameters.
+    job_config = mock.query.call_args_list[0].kwargs["job_config"]
     params_by_name = {p.name: p.value for p in job_config.query_parameters}
     assert params_by_name["page_size"] == 20
     assert params_by_name["offset"] == 40
@@ -808,7 +812,7 @@ def test_list_announcements_for_watchlist_includes_bounded_join():
     mock = _mock_bq_client_with_rows([{"company": "PKO Bank", "ticker": "PKO"}])
     with patch("db.bigquery._get_client", return_value=mock) as mock_get:
         client = mock_get.return_value
-        rows = list_announcements_for_watchlist("uid-1", page=1, page_size=10)
+        rows = list_announcements_for_watchlist("uid-1", page=1, page_size=10).rows
 
     query_str = client.query.call_args[0][0]
     job_config = client.query.call_args.kwargs["job_config"]
@@ -827,7 +831,9 @@ def test_list_announcements_for_watchlist_offset_math():
     mock = _mock_bq_client_with_rows([])
     with patch("db.bigquery._get_client", return_value=mock):
         list_announcements_for_watchlist("uid-1", page=3, page_size=20)
-    job_config = mock.query.call_args.kwargs["job_config"]
+    # The page query, not the fallback COUNT an empty page past the first
+    # also runs (PUL-77) — that one carries no paging parameters.
+    job_config = mock.query.call_args_list[0].kwargs["job_config"]
     params_by_name = {p.name: p.value for p in job_config.query_parameters}
     assert params_by_name["page_size"] == 20
     assert params_by_name["offset"] == 40
@@ -2149,3 +2155,71 @@ def test_select_recipients_for_announcement_raises_bigquery_error_on_failure():
     with patch("db.bigquery._get_client", return_value=client):
         with pytest.raises(BigQueryError, match="select_recipients_for_announcement failed"):
             select_recipients_for_announcement("ann-1")
+
+
+# ── PUL-77: the listing queries carry their own total ────────────────────────
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: list_announcements_admin(page=1, page_size=10),
+        lambda: list_announcements_user(page=1, page_size=10),
+        lambda: list_announcements_for_watchlist("uid-1", page=1, page_size=10),
+        lambda: list_x_posts_admin(page=1, page_size=10),
+    ],
+    ids=["admin", "user", "watchlist", "x_posts"],
+)
+def test_every_listing_query_counts_over_the_full_filtered_set(call):
+    """One query, not two: the count rides on the rows the page already fetches.
+    A second COUNT statement would double the scan on every request."""
+    mock = _mock_bq_client_with_rows([{"ticker": "PKO", "total_count": 137}])
+    with patch("db.bigquery._get_client", return_value=mock):
+        page = call()
+
+    assert "COUNT(*) OVER()" in mock.query.call_args[0][0]
+    assert page.total == 137
+    assert len(page.rows) == 1
+    assert "total_count" not in page.rows[0], "the window column is not part of a row"
+
+
+def test_the_total_does_not_depend_on_the_page_size():
+    """The count is taken before LIMIT, which is the whole point of the window."""
+    mock = _mock_bq_client_with_rows([{"ticker": "PKO", "total_count": 137}])
+    with patch("db.bigquery._get_client", return_value=mock):
+        assert list_announcements_user(page=1, page_size=1).total == 137
+
+
+def test_a_page_past_the_end_still_reports_the_real_total():
+    """COUNT(*) OVER() rides on the rows, so an empty page carries no count.
+    Reporting 0 there would read as 'Strona 5 z 0' — visibly wrong in the one
+    place the number is shown. A fallback COUNT runs only on this rare path."""
+    client = MagicMock()
+    client.project = "test-project"
+
+    page_job = MagicMock()
+    page_job.result.return_value = []
+    count_row = MagicMock()
+    count_row.total = 137
+    count_job = MagicMock()
+    count_job.result.return_value = [count_row]
+    client.query.side_effect = [page_job, count_job]
+
+    with patch("db.bigquery._get_client", return_value=client):
+        page = list_announcements_user(page=99, page_size=20)
+
+    assert page.rows == []
+    assert page.total == 137
+    assert client.query.call_count == 2
+    assert "COUNT(*) AS total" in client.query.call_args_list[1][0][0]
+
+
+def test_an_empty_first_page_costs_no_second_query():
+    """Nothing matched the filters. The total is 0 by construction, and paying
+    for a COUNT to learn that would be the cost this design set out to avoid."""
+    mock = _mock_bq_client_with_rows([])
+    with patch("db.bigquery._get_client", return_value=mock):
+        page = list_announcements_user(page=1, page_size=20)
+
+    assert page.rows == [] and page.total == 0
+    assert mock.query.call_count == 1

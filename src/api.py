@@ -118,6 +118,21 @@ def _perf_set(key: str, data: Any) -> None:
     _PERF_CACHE[key] = (data, time.time())
 
 
+def _set_total_count(response: Response, total: int) -> None:
+    """Publish a listing's total as a header, leaving the body a plain array.
+
+    PUL-77. The body stays exactly what it was — no envelope, no `{items, total}` —
+    which is what makes adding this a no-op for every existing client.
+
+    `Access-Control-Expose-Headers` is inert today: there is no CORSMiddleware and
+    the UI is served from this same app. It is sent anyway, because the day the UI
+    moves origin its absence makes the header unreadable in the browser with no
+    error to point at.
+    """
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+
+
 def _parse_month(month: str | None) -> int | None:
     """PUL-120: a period selector's month, or None for "Wszystkie".
 
@@ -757,6 +772,7 @@ def create_app() -> FastAPI:
     @app.get("/announcements")
     async def announcements(
         request: Request,
+        response: Response,
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
         ticker: str | None = None,
@@ -770,10 +786,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=422, detail="'limit' is removed; use 'page' and 'page_size'")
         try:
             if role == "admin":
-                rows = list_announcements_admin(
+                rows, total = list_announcements_admin(
                     page=page, page_size=page_size, ticker=ticker, company=company,
                     event_type=event_type, from_dt=from_dt, to_dt=to_dt,
                 )
+                _set_total_count(response, total)
                 return [
                     AnnouncementAdmin(
                         **{**r, "structured_analysis": _parse_structured_analysis(r.get("structured_analysis"))}
@@ -781,10 +798,11 @@ def create_app() -> FastAPI:
                     for r in rows
                 ]
             else:
-                rows = list_announcements_user(
+                rows, total = list_announcements_user(
                     page=page, page_size=page_size, ticker=ticker, company=company,
                     event_type=event_type, from_dt=from_dt, to_dt=to_dt,
                 )
+                _set_total_count(response, total)
                 result = []
                 for r in rows:
                     structured_analysis = _parse_structured_analysis(r.get("structured_analysis"))
@@ -903,6 +921,7 @@ def create_app() -> FastAPI:
 
     @app.get("/announcements/my-wallet")
     async def announcements_my_wallet(
+        response: Response,
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
         from_dt: datetime | None = Query(None, alias="from"),
@@ -911,9 +930,10 @@ def create_app() -> FastAPI:
         user_id: str = Depends(_get_user_id),
     ):
         try:
-            rows = list_announcements_for_watchlist(
+            rows, total = list_announcements_for_watchlist(
                 user_id, page=page, page_size=page_size, from_dt=from_dt, to_dt=to_dt,
             )
+            _set_total_count(response, total)
             if role == "admin":
                 return [
                     AnnouncementAdmin(
@@ -984,6 +1004,7 @@ def create_app() -> FastAPI:
 
     @app.get("/admin/x-posts")
     async def admin_x_posts(
+        response: Response,
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
         window: str | None = None,
@@ -994,11 +1015,12 @@ def create_app() -> FastAPI:
         role: Role = Depends(_require_admin),
     ):
         try:
-            rows = list_x_posts_admin(
+            rows, total = list_x_posts_admin(
                 page=page, page_size=page_size, window=window,
                 x_publish_status=x_publish_status, post_text=post_text,
                 from_dt=from_dt, to_dt=to_dt,
             )
+            _set_total_count(response, total)
             return [XPostAdmin(**r).model_dump() for r in rows]
         except BigQueryError as exc:
             logger.error("BQ error in /admin/x-posts: %s", exc)

@@ -116,19 +116,19 @@ headers before returning the unchanged list.
 
 #### Automated
 
-- [ ] 1.1 Every listing query carries `COUNT(*) OVER()`
-- [ ] 1.2 The total is independent of page_size
-- [ ] 1.3 A page past the end reports the true total, not 0
-- [ ] 1.4 Full suite green, linting passes
+- [x] 1.1 Every listing query carries `COUNT(*) OVER()`
+- [x] 1.2 The total is independent of page_size
+- [x] 1.3 A page past the end reports the true total, not 0
+- [x] 1.4 Full suite green, linting passes
 
 ### Phase 2: The endpoints send the header
 
 #### Automated
 
-- [ ] 2.1 All three endpoints send a correct `X-Total-Count`
-- [ ] 2.2 `Access-Control-Expose-Headers` names it
-- [ ] 2.3 Response bodies unchanged
-- [ ] 2.4 Full suite green, linting passes
+- [x] 2.1 All three endpoints send a correct `X-Total-Count`
+- [x] 2.2 `Access-Control-Expose-Headers` names it
+- [x] 2.3 Response bodies unchanged
+- [x] 2.4 Full suite green, linting passes
 
 #### Manual
 
