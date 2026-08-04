@@ -82,8 +82,16 @@ they accept. Pure — no imports — so importing it from `db` costs the layerin
 nothing beyond the direction itself.
 
 **Contract**: `is_valid_ticker(value: str | None) -> bool`, true for
-`^[A-Z0-9][A-Z0-9-]{0,9}$`. The hyphen is deliberate: `CREOTECH-PDA` is a real
+`^[A-Z0-9][A-Z0-9-]{0,15}$`. The hyphen is deliberate: `CREOTECH-PDA` is a real
 bankier symbol and rejecting it would break a working path.
+
+> **Amended during implementation.** This originally read `{0,9}`, copied from the
+> ticket. The hyphenated test case failed against it: `CREOTECH-PDA` is 12
+> characters and `CRQUANTUM-PDA` is 13, so the ticket's own suggested pattern
+> would have rejected both real symbols along with the junk. Length was never the
+> discriminator — case and character set are, and `Żabka` / `przejęty` fail on
+> lowercase at any bound. Widened to 16, which is headroom over the longest value
+> in the table rather than a meaningful limit.
 
 #### 2. Extractor
 

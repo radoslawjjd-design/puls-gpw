@@ -2080,9 +2080,12 @@ def update_parsed_content(
     Raises BigQueryError if the UPDATE fails or matches 0 rows.
 
     A malformed ticker is stored as NULL rather than rejecting the whole update
-    (PUL-102): losing the filing would cost more than losing its ticker, and a
-    null ticker is a state the schema and the UI already handle. The company name
-    is kept — it was never the broken part of the heading.
+    (PUL-102). This is defence in depth, not the primary control: the pipeline
+    already refuses to store an announcement it cannot resolve a ticker for
+    (`main.py`, "no ticker resolved"), and the extractor now yields None instead
+    of a brand word, so that skip is what handles a broken heading. This guard
+    exists for any other caller, present or future. The company name is kept —
+    it was never the broken part.
     """
     if ticker is not None and not is_valid_ticker(ticker):
         logger.warning(
