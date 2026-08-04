@@ -630,9 +630,11 @@ def _fake_assign_orphan_positions_to_portfolio(user_id, portfolio_id):
 
 
 def _fake_list_announcements_for_watchlist(client_id, page=1, page_size=20, from_dt=None, to_dt=None):
+    # PUL-77: the listing queries now hand back (rows, total). A plain 2-tuple is
+    # all the NamedTuple needs, so the fake stays free of a db import.
     if "PKO" in _watchlist_store.get(client_id, []):
-        return [_FAKE_WATCHLIST_ANNOUNCEMENT]
-    return []
+        return [_FAKE_WATCHLIST_ANNOUNCEMENT], 1
+    return [], 0
 
 
 def _fake_summarize_watchlist_sentiment(user_id, days=7):
@@ -683,7 +685,9 @@ def _fake_list_x_posts_admin(
         rows = [r for r in rows if r["posted_at"] <= to_dt]
     rows = sorted(rows, key=lambda r: r["posted_at"], reverse=True)
     start = (page - 1) * page_size
-    return rows[start:start + page_size]
+    # The total is counted after the filters and before the slice — the same
+    # boundary the real COUNT(*) OVER() sits at (PUL-77).
+    return rows[start:start + page_size], len(rows)
 
 
 @pytest.fixture(autouse=True)
@@ -706,8 +710,8 @@ def live_server_url():
         # Tylko login: patch rejestracji wyciekałby do unit-testu limitera
         # (fixture sesyjny żyje do końca pełnego przebiegu pytest).
         patch("src.auth._login_rate_limiter"),
-        patch("src.api.list_announcements_admin", return_value=_FAKE_ADMIN_ROWS),
-        patch("src.api.list_announcements_user", return_value=[]),
+        patch("src.api.list_announcements_admin", return_value=(_FAKE_ADMIN_ROWS, len(_FAKE_ADMIN_ROWS))),
+        patch("src.api.list_announcements_user", return_value=([], 0)),
         patch("src.api.list_distinct_tickers",            return_value=["CDR", "PKO", "XTB"]),
         patch("src.api.list_distinct_portfolio_tickers",  return_value=["CDR", "ETFBW20TR", "PKO", "XTB"]),
         patch("src.api.list_etf_instruments_for_autocomplete", return_value=_FAKE_ETF_INSTRUMENTS),

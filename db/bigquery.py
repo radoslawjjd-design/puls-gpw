@@ -27,6 +27,7 @@ import threading
 import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -2266,6 +2267,47 @@ def _build_filter_clauses(
     return where, params
 
 
+class ListingPage(NamedTuple):
+    """One page of a listing plus how many rows the filters matched in total.
+
+    A NamedTuple so it unpacks like a plain tuple — a test or a fake can return
+    `([...], 7)` without importing anything from here (PUL-77).
+    """
+
+    rows: list[dict]
+    total: int
+
+
+def _listing_total(
+    client,
+    rows: list,
+    offset: int,
+    count_query: str,
+    count_params: list,
+    label: str,
+) -> int:
+    """The total behind a page, from the window where possible.
+
+    `COUNT(*) OVER()` travels on the returned rows, so it costs nothing extra —
+    but a page past the end of the result set returns no rows and therefore no
+    count. Answering 0 there would read as "Strona 5 z 0", wrong in the one place
+    the number is displayed. The fallback COUNT runs only on that path, so the
+    second scan the design avoids is never paid on a normal request.
+    """
+    if rows:
+        return int(rows[0].total_count)
+    if offset == 0:
+        # Nothing matched at all — the total is 0 by construction, and paying for
+        # a COUNT to learn that is exactly the cost this avoids.
+        return 0
+    job_config = bigquery.QueryJobConfig(query_parameters=count_params)
+    try:
+        result = list(client.query(count_query, job_config=job_config).result())
+    except Exception as exc:
+        raise BigQueryError(f"{label} total count failed: {exc}") from exc
+    return int(result[0].total) if result else 0
+
+
 def list_announcements_admin(
     page: int = 1,
     page_size: int = 20,
@@ -2274,7 +2316,7 @@ def list_announcements_admin(
     event_type: str | None = None,
     from_dt: datetime | None = None,
     to_dt: datetime | None = None,
-) -> list[dict]:
+) -> ListingPage:
     if page < 1:
         raise ValueError(f"page must be >= 1, got {page}")
     client = _get_client()
@@ -2292,6 +2334,14 @@ def list_announcements_admin(
     # announcements) still surface; COALESCE falls back to the deprecated announcements
     # columns for rows posted before the cutover. Filter columns from _build_filter_clauses
     # are announcements-only and have no x_posts namesake, so they stay unambiguous.
+    # One fragment, two uses: the page query and the rare fallback COUNT read the
+    # same FROM/JOIN/WHERE, so the filter cannot exist in two drifting copies.
+    body = f"""
+        FROM `{_table_ref(client)}` AS a
+        LEFT JOIN `{_table_ref(client, _X_POSTS_TABLE_NAME)}` AS x
+            ON a.x_post_id = x.x_post_id
+        {where}
+    """
     query = f"""
         SELECT
             a.announcement_id, a.url, a.published_at, a.title, a.company, a.ticker,
@@ -2300,11 +2350,9 @@ def list_announcements_admin(
             a.analyzed_at,
             COALESCE(x.supervisor_attempts, a.supervisor_attempts) AS supervisor_attempts,
             a.parsed_content, a.priority, a.structured_analysis, a.analysis_approved,
-            a.analysis_reject_reason, a.event_type, a.analysis_score, a.x_post_id
-        FROM `{_table_ref(client)}` AS a
-        LEFT JOIN `{_table_ref(client, _X_POSTS_TABLE_NAME)}` AS x
-            ON a.x_post_id = x.x_post_id
-        {where}
+            a.analysis_reject_reason, a.event_type, a.analysis_score, a.x_post_id,
+            COUNT(*) OVER() AS total_count
+        {body}
         ORDER BY a.published_at DESC
         LIMIT @page_size OFFSET @offset
     """
@@ -2320,7 +2368,12 @@ def list_announcements_admin(
     except Exception as exc:
         raise BigQueryError(f"list_announcements_admin failed: {exc}") from exc
     logger.debug("BQ list_announcements_admin: %.0fms", (time.time() - _t) * 1000)
-    return [
+    total = _listing_total(
+        client, rows, offset,
+        f"SELECT COUNT(*) AS total {body}", list(filter_params),
+        "list_announcements_admin",
+    )
+    return ListingPage([
         {
             "announcement_id": row.announcement_id,
             "url": row.url,
@@ -2342,7 +2395,7 @@ def list_announcements_admin(
             "analysis_score": row.analysis_score,
         }
         for row in rows
-    ]
+    ], total)
 
 
 def _build_x_posts_filter_clauses(
@@ -2382,7 +2435,7 @@ def list_x_posts_admin(
     post_text: str | None = None,
     from_dt: datetime | None = None,
     to_dt: datetime | None = None,
-) -> list[dict]:
+) -> ListingPage:
     if page < 1:
         raise ValueError(f"page must be >= 1, got {page}")
     client = _get_client()
@@ -2394,12 +2447,16 @@ def list_x_posts_admin(
         from_dt=from_dt,
         to_dt=to_dt,
     )
+    body = f"""
+        FROM `{_table_ref(client, _X_POSTS_TABLE_NAME)}`
+        {where}
+    """
     query = f"""
         SELECT
             x_post_id, `window`, post_text, tweet_ids, posted_at,
-            supervisor_attempts, x_publish_status
-        FROM `{_table_ref(client, _X_POSTS_TABLE_NAME)}`
-        {where}
+            supervisor_attempts, x_publish_status,
+            COUNT(*) OVER() AS total_count
+        {body}
         ORDER BY posted_at DESC
         LIMIT @page_size OFFSET @offset
     """
@@ -2414,7 +2471,12 @@ def list_x_posts_admin(
         rows = list(client.query(query, job_config=job_config).result())
     except Exception as exc:
         raise BigQueryError(f"list_x_posts_admin failed: {exc}") from exc
-    return [
+    total = _listing_total(
+        client, rows, offset,
+        f"SELECT COUNT(*) AS total {body}", list(filter_params),
+        "list_x_posts_admin",
+    )
+    return ListingPage([
         {
             "x_post_id": row.x_post_id,
             "window": row.window,
@@ -2425,7 +2487,7 @@ def list_x_posts_admin(
             "x_publish_status": row.x_publish_status,
         }
         for row in rows
-    ]
+    ], total)
 
 
 def list_announcements_user(
@@ -2436,7 +2498,7 @@ def list_announcements_user(
     event_type: str | None = None,
     from_dt: datetime | None = None,
     to_dt: datetime | None = None,
-) -> list[dict]:
+) -> ListingPage:
     if page < 1:
         raise ValueError(f"page must be >= 1, got {page}")
     client = _get_client()
@@ -2450,12 +2512,16 @@ def list_announcements_user(
         from_dt=from_dt,
         to_dt=to_dt,
     )
+    body = f"""
+        FROM `{_table_ref(client)}`
+        {where}
+    """
     query = f"""
         SELECT
             company, ticker, event_type, structured_analysis,
-            published_at
-        FROM `{_table_ref(client)}`
-        {where}
+            published_at,
+            COUNT(*) OVER() AS total_count
+        {body}
         ORDER BY published_at DESC
         LIMIT @page_size OFFSET @offset
     """
@@ -2471,7 +2537,12 @@ def list_announcements_user(
     except Exception as exc:
         raise BigQueryError(f"list_announcements_user failed: {exc}") from exc
     logger.debug("BQ list_announcements_user: %.0fms", (time.time() - _t) * 1000)
-    return [
+    total = _listing_total(
+        client, rows, offset,
+        f"SELECT COUNT(*) AS total {body}", list(filter_params),
+        "list_announcements_user",
+    )
+    return ListingPage([
         {
             "company": row.company,
             "ticker": row.ticker,
@@ -2480,7 +2551,7 @@ def list_announcements_user(
             "published_at": row.published_at,
         }
         for row in rows
-    ]
+    ], total)
 
 
 def list_announcements_for_watchlist(
@@ -2489,7 +2560,7 @@ def list_announcements_for_watchlist(
     page_size: int = 20,
     from_dt: datetime | None = None,
     to_dt: datetime | None = None,
-) -> list[dict]:
+) -> ListingPage:
     """Return approved announcements for tickers in `user_id`'s watchlist.
 
     Column set of `list_announcements_user` plus `analysis_score` — the API
@@ -2507,16 +2578,20 @@ def list_announcements_for_watchlist(
         from_dt=from_dt,
         to_dt=to_dt,
     )
-    query = f"""
-        SELECT
-            a.company, a.ticker, a.event_type, a.structured_analysis,
-            a.published_at, a.analysis_score
+    body = f"""
         FROM `{_table_ref(client)}` AS a
         INNER JOIN (
             SELECT ticker FROM `{_table_ref(client, _WATCHLIST_TABLE_NAME)}`
             WHERE user_id = @user_id LIMIT 200
         ) AS w ON a.ticker = w.ticker
         {where}
+    """
+    query = f"""
+        SELECT
+            a.company, a.ticker, a.event_type, a.structured_analysis,
+            a.published_at, a.analysis_score,
+            COUNT(*) OVER() AS total_count
+        {body}
         ORDER BY a.published_at DESC
         LIMIT @page_size OFFSET @offset
     """
@@ -2533,7 +2608,14 @@ def list_announcements_for_watchlist(
     except Exception as exc:
         raise BigQueryError(f"list_announcements_for_watchlist failed: {exc}") from exc
     logger.debug("BQ list_announcements_for_watchlist: %.0fms", (time.time() - _t) * 1000)
-    return [
+    # The count query needs @user_id too — the watchlist join reads it.
+    total = _listing_total(
+        client, rows, offset,
+        f"SELECT COUNT(*) AS total {body}",
+        [bigquery.ScalarQueryParameter("user_id", "STRING", user_id), *filter_params],
+        "list_announcements_for_watchlist",
+    )
+    return ListingPage([
         {
             "company": row.company,
             "ticker": row.ticker,
@@ -2543,7 +2625,7 @@ def list_announcements_for_watchlist(
             "analysis_score": row.analysis_score,
         }
         for row in rows
-    ]
+    ], total)
 
 
 # ── watchlist sentiment (PUL-87) ──────────────────────────────────────────────
