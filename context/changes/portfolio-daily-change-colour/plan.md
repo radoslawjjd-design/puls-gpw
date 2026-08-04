@@ -185,9 +185,9 @@ text for the sign/`—`/`0.00%` distinction.
 
 #### Automated
 
-- [ ] 1.1 New e2e test fails before the change and passes after it
-- [ ] 1.2 Full suite green: `uv run pytest --tb=short`
-- [ ] 1.3 Linting passes: `uv run ruff check`
+- [x] 1.1 New e2e test fails before the change and passes after it — 807ac10
+- [x] 1.2 Full suite green: `uv run pytest --tb=short` — 1009 passed — 807ac10
+- [x] 1.3 Linting passes: `uv run ruff check` — 807ac10
 
 #### Manual
 
