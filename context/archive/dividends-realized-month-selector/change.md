@@ -1,10 +1,10 @@
 ---
 change_id: dividends-realized-month-selector
 title: Add a month selector alongside the year filter in Dywidendy and Zrealizowane
-status: impl_reviewed
+status: archived
 created: 2026-08-04
 updated: 2026-08-04
-archived_at: null
+archived_at: 2026-08-04
 tracking:
   linear: PUL-120
   github: 239

@@ -1,10 +1,10 @@
 ---
 change_id: portfolio-daily-change-colour
 title: Colour the daily-change column in the portfolio table and mobile cards
-status: impl_reviewed
+status: archived
 created: 2026-08-04
 updated: 2026-08-04
-archived_at: null
+archived_at: 2026-08-04
 tracking:
   linear: PUL-123
   github: null
