@@ -325,6 +325,21 @@ _FAKE_PORTFOLIO_POSITIONS = [
         "daily_change_pct": None, "price_as_of": None,
         # no price_history → '—' fallback
     },
+    # PUL-123: the daily-change cell has four states and the fixture only covered
+    # two of them. These add the down day and the flat day — flat is deliberately
+    # priced, so it cannot be mistaken for CDR's "no price data at all".
+    {
+        "ticker": "PGE", "company_name": "PGE", "shares": 50.0,
+        "avg_buy_price": 8.0, "current_price": 7.6,
+        "daily_change_pct": -2.4, "price_as_of": "2026-06-27",
+        "price_history": [8.0, 7.8, 7.6],
+    },
+    {
+        "ticker": "LPP", "company_name": "LPP", "shares": 1.0,
+        "avg_buy_price": 15000.0, "current_price": 15000.0,
+        "daily_change_pct": 0.0, "price_as_of": "2026-06-27",
+        "price_history": [15000.0, 15000.0, 15000.0],
+    },
 ]
 
 
