@@ -1,6 +1,7 @@
 import ast
 import io
 import pathlib
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
@@ -154,6 +155,21 @@ def test_pl_suffix_is_stripped_from_the_ticker():
 
     assert positions[0].ticker == "TOA"
     assert closed == ["PZU"]
+
+
+def test_company_name_survives_a_first_row_that_carries_none():
+    """Deliberate behaviour change (PUL-114). The old setdefault locked in None
+    whenever the earliest row for a ticker happened to carry no instrument name,
+    so that ticker lost its company name for good. The shared lot ledger keeps
+    looking until it finds one."""
+    first = _buy("DIG", 5, 60.0, day=2)
+    later = _buy("DIG", 5, 70.0, day=3)
+    positions, _ = reconstruct_positions([
+        replace(first, instrument_name=None),
+        replace(later, instrument_name="Digitree Group SA"),
+    ])
+
+    assert positions[0].company_name == "Digitree Group SA"
 
 
 def test_withholding_tax_and_interest_tax_are_not_the_same_type():

@@ -398,33 +398,33 @@ revert.
 
 #### Manual
 
-- [ ] 1.6 Public shape can carry part 2's as-of-date query without restructuring
+- [x] 1.6 Public shape can carry part 2's as-of-date query without restructuring — 77050aa (build_ledger already walks events chronologically, so a per-ticker snapshot list appends inside the existing loop; Sale.sold_at and OpenLot.occurred_at are already dated)
 
 ### Phase 2: Realized P&L on the ledger, plus days held
 
 #### Automated
 
-- [x] 2.1 Realized suite passes with no assertion edited
-- [x] 2.2 Endpoint suite passes
-- [x] 2.3 Full suite passes
-- [x] 2.4 Linting passes
-- [x] 2.5 No lot consumption left in portfolio_realized.py
+- [x] 2.1 Realized suite passes with no assertion edited — 6f3f6b0
+- [x] 2.2 Endpoint suite passes — 6f3f6b0
+- [x] 2.3 Full suite passes — 6f3f6b0
+- [x] 2.4 Linting passes — 6f3f6b0
+- [x] 2.5 No lot consumption left in portfolio_realized.py — 6f3f6b0
 
 #### Manual
 
-- [x] 2.6 compute_realized_pnl diffs clean against baseline/realized.json
+- [x] 2.6 compute_realized_pnl diffs clean against baseline/realized.json — 6f3f6b0
 - [ ] 2.7 Realized endpoint shows unchanged figures plus plausible days-held
 
 ### Phase 3: XTB position reconstruction on the ledger
 
 #### Automated
 
-- [ ] 3.1 XTB suite passes
-- [ ] 3.2 Full suite passes
-- [ ] 3.3 Linting passes
-- [ ] 3.4 No lot machinery left outside the ledger
+- [x] 3.1 XTB suite passes
+- [x] 3.2 Full suite passes
+- [x] 3.3 Linting passes
+- [x] 3.4 No lot machinery left outside the ledger
 
 #### Manual
 
-- [ ] 3.5 Production FIFO audit still reports delta=+0.00 on both wallets
-- [ ] 3.6 reconstruct_positions over production history diffs clean against baseline/positions.json
+- [x] 3.5 Production FIFO audit still reports delta=+0.00 on both wallets
+- [x] 3.6 reconstruct_positions over production history diffs clean against baseline/positions.json

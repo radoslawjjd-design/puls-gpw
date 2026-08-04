@@ -11,6 +11,7 @@ from datetime import datetime
 
 from src.brokers.errors import BrokerParseError
 from src.brokers.xlsx_reader import read_sheets
+from src.portfolio_lots import DUST, LotEvent, build_ledger
 
 # Normalized operation types. The broker's own label is kept alongside in
 # `raw_type`, so a future parser can map a different vocabulary onto the same
@@ -62,11 +63,6 @@ class BrokerImport:
     # "you have no cash".
     cash_pln: float | None = None
 
-
-@dataclass(frozen=True)
-class _Lot:
-    shares: float
-    unit_price: float
 
 # XTB writes one row per *fill*, not per order. In "OPEN BUY 9/11 @ 188.40" the
 # 9 is what this row filled and the 11 is the whole order; a single order shows
@@ -186,11 +182,6 @@ def normalize_ticker(ticker: str) -> str:
     return ticker[: -len(".PL")] if ticker.endswith(".PL") else ticker
 
 
-# Volumes are floats (fractional shares are everywhere in these exports), so a
-# lot that is fully consumed can land a hair above zero instead of exactly on it.
-_DUST = 1e-9
-
-
 def reconstruct_positions(
     operations: list[Operation],
 ) -> tuple[list[Position], list[str]]:
@@ -205,41 +196,43 @@ def reconstruct_positions(
     load-bearing: `_merge_positions_by_ticker` averages positions again by cost
     in "Wszystkie" mode, and P/L is computed elsewhere as
     ``(price - avg_buy_price) * shares``.
-    """
-    lots: dict[str, list[_Lot]] = {}
-    names: dict[str, str | None] = {}
-    seen: list[str] = []
 
-    trades = [op for op in operations if op.op_type in (OP_BUY, OP_SELL) and op.ticker]
-    # Rows are not guaranteed chronological in the export, and FIFO is only
-    # meaningful against real time order.
-    for op in sorted(trades, key=lambda o: o.occurred_at):
-        ticker = normalize_ticker(op.ticker or "")
-        if ticker not in lots:
-            lots[ticker] = []
-            seen.append(ticker)
-        names.setdefault(ticker, op.instrument_name)
-        volume = float(op.volume or 0.0)
-        if op.op_type == OP_BUY:
-            lots[ticker].append(_Lot(shares=volume, unit_price=float(op.unit_price or 0.0)))
-        else:
-            _consume_oldest(lots[ticker], volume)
+    The lot walk lives in ``src.portfolio_lots`` (PUL-114). Only the broker-facing
+    part stays here: `.PL` stripping belongs to the export's vocabulary, not to
+    the ledger, which takes tickers exactly as given because rows already stored
+    in `user_broker_operations` are normalized at write time.
+
+    One behaviour change came with the move. `company_name` is now the first
+    *non-None* instrument name for the ticker rather than the first value seen —
+    the old `setdefault` locked in `None` whenever the earliest row happened to
+    carry no name, losing that ticker's company name permanently.
+    """
+    ledgers = build_ledger(
+        LotEvent(
+            ticker=normalize_ticker(op.ticker or ""),
+            op_type=op.op_type,
+            occurred_at=op.occurred_at,
+            volume=float(op.volume or 0.0),
+            unit_price=float(op.unit_price or 0.0),
+            instrument_name=op.instrument_name,
+        )
+        for op in operations
+        if op.op_type in (OP_BUY, OP_SELL) and op.ticker
+    )
 
     positions: list[Position] = []
     closed: list[str] = []
-    for ticker in seen:
-        remaining = [lot for lot in lots[ticker] if lot.shares > _DUST]
-        shares = sum(lot.shares for lot in remaining)
-        if shares <= _DUST:
+    for ticker, ledger in ledgers.items():
+        shares = ledger.open_shares
+        if shares <= DUST:
             closed.append(ticker)
             continue
-        cost = sum(lot.shares * lot.unit_price for lot in remaining)
         positions.append(
             Position(
                 ticker=ticker,
                 shares=shares,
-                avg_buy_price=cost / shares,
-                company_name=names.get(ticker),
+                avg_buy_price=ledger.open_cost / shares,
+                company_name=ledger.instrument_name,
             )
         )
     return positions, closed
@@ -293,17 +286,3 @@ def parse_xtb_export(data: bytes) -> BrokerImport:
         warnings=warnings,
         cash_pln=extract_cash_balance(rows),
     )
-
-
-def _consume_oldest(lots: list[_Lot], volume: float) -> None:
-    """Remove ``volume`` shares from the front of the lot queue, in place."""
-    remaining = volume
-    for index, lot in enumerate(lots):
-        if remaining <= _DUST:
-            break
-        if lot.shares <= remaining + _DUST:
-            remaining -= lot.shares
-            lots[index] = _Lot(shares=0.0, unit_price=lot.unit_price)
-        else:
-            lots[index] = _Lot(shares=lot.shares - remaining, unit_price=lot.unit_price)
-            remaining = 0.0
