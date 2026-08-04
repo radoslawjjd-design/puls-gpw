@@ -486,5 +486,5 @@ like any other deploy. Reverting that commit restores Cloud Run's default.
 
 #### Manual
 
-- [ ] 4.2 `gcloud run services describe puls-gpw-api` reports the new concurrency after merge
-- [ ] 4.3 `/health` responds and normal browsing is not throttled
+- [x] 4.2 `gcloud run services describe puls-gpw-api` reports the new concurrency after merge — 1b4a63a
+- [x] 4.3 `/health` responds and normal browsing is not throttled — 1b4a63a

@@ -1,10 +1,10 @@
 ---
 change_id: xlsx-import-size-cap
 title: Cap the decompressed size of an uploaded broker .xlsx while streaming
-status: impl_reviewed
+status: archived
 created: 2026-08-01
-updated: 2026-08-02
-archived_at: null
+updated: 2026-08-03
+archived_at: 2026-08-03T18:47:23Z
 tracking:
   linear: PUL-105
   github: 213
