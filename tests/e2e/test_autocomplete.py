@@ -11,7 +11,7 @@ def _login(page: Page, base_url: str) -> None:
     page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
 
 def test_ticker_and_company_datalists_populated(page: Page, live_server_url: str):

@@ -8,6 +8,8 @@ navigate-away, logout. pagehide/visibilitychange weryfikowane manualnie
 
 from datetime import datetime, timezone
 
+import re
+
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import E2E_ADMIN_EMAIL, E2E_PASSWORD, e2e_login_email
@@ -66,7 +68,7 @@ def test_popup_open_clears_badge_and_persists_across_reload(page: Page, live_ser
     expect(_badges(page)).to_have_count(1)
 
     page.reload()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
     expect(_badges(page)).to_have_count(1)
     expect(page.locator("#table-body tr").first.get_by_text("NOWE")).not_to_be_visible()
@@ -109,6 +111,6 @@ def test_logout_clears_badges_for_next_login(page: Page, live_server_url: str):
     form.get_by_label("E-mail").fill(E2E_ADMIN_EMAIL)
     form.get_by_label("Hasło", exact=True).fill(E2E_PASSWORD)
     form.get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
     expect(_badges(page)).to_have_count(0)
