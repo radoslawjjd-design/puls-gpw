@@ -2421,7 +2421,12 @@ def test_perf_invalidate_clears_history_the_all_sentinel_and_dividends():
         f"calendar:{_CLIENT_ID}:all:2026-7",
         f"history:{_CLIENT_ID}:{_WALLET_ID}:1y",
         f"history:{_CLIENT_ID}:all:1y",
-        f"dividends:{_CLIENT_ID}:{_WALLET_ID}:2026",
+        # Current key shape, month included (PUL-120). Seeding the pre-month
+        # literal would still pass on the prefix scan while proving nothing about
+        # the keys the endpoints actually write today.
+        f"dividends:{_CLIENT_ID}:{_WALLET_ID}:2026:3",
+        f"dividends:{_CLIENT_ID}:{_WALLET_ID}:all:all",
+        f"realized:{_CLIENT_ID}:{_WALLET_ID}:2026:3",
         f"treemap:{_CLIENT_ID}",
     ]
     for key in keys:
@@ -2447,7 +2452,8 @@ def test_deleting_a_wallet_clears_the_caches_that_still_show_it(user_client):
         f"positions:{_CLIENT_ID}:all",
         f"calendar:{_CLIENT_ID}:all:2026-7",
         f"history:{_CLIENT_ID}:all:1y",
-        f"dividends:{_CLIENT_ID}:all:2026",
+        f"dividends:{_CLIENT_ID}:all:2026:3",
+        f"realized:{_CLIENT_ID}:all:all:all",
         f"treemap:{_CLIENT_ID}",
     ]
     for key in keys:
