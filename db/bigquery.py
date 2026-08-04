@@ -3873,7 +3873,10 @@ def list_broker_trades(user_id: str, portfolio_id: str | None = None) -> list[di
 
 
 def get_dividend_summary(
-    user_id: str, portfolio_id: str | None = None, year: int | None = None
+    user_id: str,
+    portfolio_id: str | None = None,
+    year: int | None = None,
+    month: int | None = None,
 ) -> dict:
     """Cash-dividend totals, per-company breakdown, and the list of years.
 
@@ -3881,17 +3884,27 @@ def get_dividend_summary(
     year. Gross and tax are summed from two distinct op_types and never paired
     up row by row — on the real exports that pairing fails in 24 cases.
 
+    `year` and `month` are independent: a month with no year means that month in
+    every year on record. Both are WHERE terms in `data` and never GROUP BY keys
+    — grouping by a period splits one holding into a row per period.
+
     The year list rides along on the SAME query, built meta-first
     (`FROM meta LEFT JOIN data`). Written the other way round the selector goes
     empty as soon as the chosen year has no payouts, stranding the user on a
     year they then cannot leave — the PUL-100 lesson.
+
+    Periods are extracted in `Europe/Warsaw`, not UTC. `occurred_at` stores a
+    true UTC instant (the real history's trades sit at 7-15 UTC, i.e. the GPW
+    session in CEST), so a payout credited just after midnight Warsaw time falls
+    in the previous UTC day — and, once a year, the previous UTC year (PUL-120).
     """
     client = _get_client()
     table = _table_ref(client, _USER_BROKER_OPERATIONS_TABLE_NAME)
     query = f"""
         WITH scoped AS (
             SELECT
-                EXTRACT(YEAR FROM occurred_at) AS year,
+                EXTRACT(YEAR FROM occurred_at AT TIME ZONE 'Europe/Warsaw') AS year,
+                EXTRACT(MONTH FROM occurred_at AT TIME ZONE 'Europe/Warsaw') AS month,
                 ticker,
                 op_type,
                 amount_pln
@@ -3915,6 +3928,7 @@ def get_dividend_summary(
                 COUNTIF(op_type = 'dividend') AS payouts
             FROM scoped
             WHERE (@year IS NULL OR year = @year)
+              AND (@month IS NULL OR month = @month)
             GROUP BY ticker
         )
         SELECT meta.all_years, data.ticker, data.gross, data.tax, data.payouts
@@ -3927,6 +3941,7 @@ def get_dividend_summary(
             bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
             bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id),
             bigquery.ScalarQueryParameter("year", "INT64", year),
+            bigquery.ScalarQueryParameter("month", "INT64", month),
         ]
     )
     try:

@@ -967,7 +967,11 @@
   /* The Zrealizowane panel is the Dywidendy panel with different numbers in it,
      so it shares every rule rather than cloning them under new names. */
   #pp-div-header-row, #pp-real-header-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
-  #pp-div-title, #pp-real-title { margin:0; font-size:1.05rem; font-weight:600; color:var(--brand-dark); }
+  /* margin-right:auto, not space-between's default distribution: with a second
+     selector in the row, space-between would spread the title and the two
+     dropdowns evenly and leave the period controls floating apart. The auto
+     margin absorbs the slack so they stay a pair. */
+  #pp-div-title, #pp-real-title { margin:0 auto 0 0; font-size:1.05rem; font-weight:600; color:var(--brand-dark); }
   /* A dropdown, not a pill per year: a wallet twenty years old would otherwise
      put twenty buttons across the header and wrap them onto the content. */
   .pp-year-select {
@@ -3706,11 +3710,15 @@ function _ppCalInceptionParts() {
 }
 // PUL-95 dividends: null year = every year. Switching year or wallet fires a new
 // fetch, so this needs the same out-of-order guard the history slots use.
+// PUL-120: null month = every month, independent of the year — both may be null,
+// either may be set alone.
 let _ppRealData = null;
 let _ppRealYear = null;
+let _ppRealMonth = null;
 let _ppRealReqSeq = 0;
 let _ppDivData = null;
 let _ppDivYear = null;
+let _ppDivMonth = null;
 let _ppDivReqSeq = 0;
 const _PORTFOLIO_TYPE_LABELS = {
   glowny: 'Główny', ikze: 'IKZE', ike: 'IKE', ppk: 'PPK', ppe: 'PPE', inny: 'Inny'
@@ -4625,6 +4633,7 @@ function _buildPortfolioPositionsViewContent(view) {
              so the totals must not read as the complete picture. -->
         <h3 id="pp-div-title">Dywidendy gotówkowe</h3>
         <div id="pp-div-years"></div>
+        <div id="pp-div-months"></div>
       </div>
       <div id="pp-div-tiles"></div>
       <div id="pp-div-by-ticker"></div>
@@ -4633,6 +4642,7 @@ function _buildPortfolioPositionsViewContent(view) {
       <div id="pp-real-header-row">
         <h3 id="pp-real-title">Zrealizowany zysk i strata</h3>
         <div id="pp-real-years"></div>
+        <div id="pp-real-months"></div>
       </div>
       <div id="pp-real-tiles"></div>
       <div id="pp-real-note" class="pp-import-hint" style="display:none"></div>
@@ -4761,6 +4771,26 @@ function _buildPortfolioPositionsViewContent(view) {
     const year = sel.value === '' ? null : Number(sel.value);
     if (year === _ppDivYear) return;
     _ppDivYear = year;
+    fetchPortfolioDividends();
+  });
+
+  // Month selectors — delegated for the same reason as the year ones: the
+  // <select> inside is rebuilt from every response.
+  $('pp-real-months').addEventListener('change', e => {
+    const sel = e.target.closest('select');
+    if (!sel) return;
+    const month = sel.value === '' ? null : Number(sel.value);
+    if (month === _ppRealMonth) return;
+    _ppRealMonth = month;
+    fetchPortfolioRealized();
+  });
+
+  $('pp-div-months').addEventListener('change', e => {
+    const sel = e.target.closest('select');
+    if (!sel) return;
+    const month = sel.value === '' ? null : Number(sel.value);
+    if (month === _ppDivMonth) return;
+    _ppDivMonth = month;
     fetchPortfolioDividends();
   });
 
@@ -5376,6 +5406,23 @@ function _renderYearSelect(boxId, years, inception, selected, label) {
   box.innerHTML = `<select class="pp-year-select" aria-label="${esc(label)}">${opts.join('')}</select>`;
 }
 
+// PUL-120: a month beside the year, and independent of it — "Wszystkie" in either
+// one. All twelve are always offered, for the same reason the year list spans the
+// quiet years: an empty month is an answer, not a missing option. Disabling the
+// control while the year is "Wszystkie" would make "every June on record" —
+// a coherent question — unaskable, and a control that only sometimes works reads
+// worse than an unusual answer.
+function _renderMonthSelect(boxId, selected, label) {
+  const box = $(boxId);
+  if (!box) return;
+  const opts = ['<option value="">Wszystkie</option>'];
+  _PP_MONTHS_PL.forEach((name, i) => {
+    const m = i + 1;
+    opts.push(`<option value="${m}"${selected === m ? ' selected' : ''}>${name}</option>`);
+  });
+  box.innerHTML = `<select class="pp-year-select" aria-label="${esc(label)}">${opts.join('')}</select>`;
+}
+
 function _renderPortfolioRealized(data) {
   const zl = n => Number(n || 0).toLocaleString('pl-PL',
     { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł';
@@ -5424,6 +5471,7 @@ function _renderPortfolioRealized(data) {
 
   _renderYearSelect('pp-real-years', (data && data.all_years) || [],
                     data && data.inception, _ppRealYear, 'Rok sprzedaży');
+  _renderMonthSelect('pp-real-months', _ppRealMonth, 'Miesiąc sprzedaży');
 }
 
 async function fetchPortfolioRealized() {
@@ -5439,6 +5487,7 @@ async function fetchPortfolioRealized() {
   try {
     let url = `/api/portfolio/realized?portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
     if (_ppRealYear !== null) url += `&year=${encodeURIComponent(_ppRealYear)}`;
+    if (_ppRealMonth !== null) url += `&month=${encodeURIComponent(_ppRealMonth)}`;
     const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
     if (stale()) return;
     if (r.status === 401) { doLogout(); return; }
@@ -5467,6 +5516,7 @@ async function fetchPortfolioDividends() {
   try {
     let url = `/api/portfolio/dividends?portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
     if (_ppDivYear !== null) url += `&year=${encodeURIComponent(_ppDivYear)}`;
+    if (_ppDivMonth !== null) url += `&month=${encodeURIComponent(_ppDivMonth)}`;
     const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
     if (stale()) return;
     if (r.status === 401) { doLogout(); return; }
@@ -5516,6 +5566,7 @@ function _renderPortfolioDividends(data) {
   // user on an empty tab with no way back.
   _renderYearSelect('pp-div-years', (data && data.years) || [],
                     data && data.inception, _ppDivYear, 'Rok wypłat dywidend');
+  _renderMonthSelect('pp-div-months', _ppDivMonth, 'Miesiąc wypłat');
 }
 
 // Rok jest konieczny: zakresy 1r/3m potrafią przekroczyć granicę roku,

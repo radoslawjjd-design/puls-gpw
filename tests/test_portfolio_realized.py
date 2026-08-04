@@ -5,7 +5,7 @@ here, because this is the first figure in the app the user could check against
 their own tax return.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -120,6 +120,89 @@ def test_year_filters_the_result_but_fifo_still_walks_the_whole_history():
     assert entry["pnl"] == pytest.approx(200.0)
     # Both years remain offerable even though only one was asked for.
     assert result["all_years"] == [2025, 2024]
+
+
+def test_month_filters_the_result_but_fifo_still_walks_the_whole_history():
+    """PUL-120, the same trap as the year filter one level finer: a month filter
+    applied to the operations instead of the results would strip the buy that
+    priced these shares, and the sale would report its whole proceeds as profit."""
+    ops = [
+        _buy("PKN", datetime(2024, 1, 1), 20, 50.0),
+        _sell("PKN", datetime(2025, 3, 1), 10, 60.0),   # +100, out of scope
+        _sell("PKN", datetime(2025, 6, 1), 10, 70.0),   # +200, in scope
+    ]
+    entry = compute_realized_pnl(ops, year=2025, month=6)["by_ticker"][0]
+    assert entry["sales"] == 1
+    assert entry["cost"] == pytest.approx(500.0), "the March sale must still consume its lot"
+    assert entry["pnl"] == pytest.approx(200.0)
+
+
+def test_a_month_filter_narrows_a_year_to_exactly_that_month():
+    """The month result has to agree with the year result restricted by hand —
+    that equivalence is what proves the filter changed the scope and nothing else."""
+    ops = [
+        _buy("PKN", datetime(2025, 1, 1), 30, 50.0),
+        _sell("PKN", datetime(2025, 6, 1), 10, 70.0),
+        _sell("PKN", datetime(2025, 9, 1), 10, 80.0),
+    ]
+    june = compute_realized_pnl(ops, year=2025, month=6)["by_ticker"][0]
+    assert june["sales"] == 1
+    assert june["proceeds"] == pytest.approx(700.0)
+    assert june["cost"] == pytest.approx(500.0)
+
+
+def test_a_month_without_a_year_spans_that_month_in_every_year():
+    """Both selectors accept 'Wszystkie' independently, so "every June on record"
+    is a question the user can ask — and the answer sums both Junes, not one."""
+    ops = [
+        _buy("PKN", datetime(2024, 1, 1), 40, 50.0),
+        _sell("PKN", datetime(2024, 6, 1), 10, 60.0),
+        _sell("PKN", datetime(2025, 6, 1), 10, 70.0),
+        _sell("PKN", datetime(2025, 9, 1), 10, 80.0),
+    ]
+    entry = compute_realized_pnl(ops, month=6)["by_ticker"][0]
+    assert entry["sales"] == 2
+    assert entry["proceeds"] == pytest.approx(600.0 + 700.0)
+    assert entry["cost"] == pytest.approx(1000.0)
+
+
+def test_a_month_with_no_sales_returns_an_empty_but_usable_shape():
+    """An empty month is an answer, not an error — and the year list has to
+    survive it, or the selector empties and strands the user on that month."""
+    ops = [
+        _buy("PKN", datetime(2025, 1, 1), 10, 50.0),
+        _sell("PKN", datetime(2025, 6, 1), 10, 60.0),
+    ]
+    result = compute_realized_pnl(ops, month=2)
+    assert result["by_ticker"] == []
+    assert result["total_pnl"] == pytest.approx(0.0)
+    assert result["all_years"] == [2025]
+
+
+def test_a_sale_late_on_a_warsaw_evening_belongs_to_the_warsaw_period():
+    """PUL-120: `occurred_at` stores a true UTC instant — the hour distribution of
+    the real history is 7-15 UTC, the GPW session in CEST. Reading `.year` off it
+    attributes an event by the UTC calendar, so a sale at 00:30 on New Year's Day
+    in Warsaw would be filed under the year that had just ended."""
+    ops = [
+        _buy("PKN", datetime(2025, 1, 1, tzinfo=timezone.utc), 10, 50.0),
+        # 23:30 UTC on 31 Dec is 00:30 on 1 Jan in Warsaw (CET, UTC+1).
+        _sell("PKN", datetime(2025, 12, 31, 23, 30, tzinfo=timezone.utc), 10, 60.0),
+    ]
+    assert compute_realized_pnl(ops)["all_years"] == [2026]
+    assert compute_realized_pnl(ops, year=2026)["by_ticker"], "the sale belongs to 2026"
+    assert not compute_realized_pnl(ops, year=2025)["by_ticker"]
+
+
+def test_a_naive_timestamp_is_read_as_utc_not_as_the_runner_s_clock():
+    """Everything in production arrives tz-aware out of BigQuery, but a naive
+    datetime must not silently pick up whatever timezone the machine is set to —
+    that would make the same input produce different periods on different hosts."""
+    ops = [
+        _buy("PKN", datetime(2025, 1, 1), 10, 50.0),
+        _sell("PKN", datetime(2025, 6, 15, 12, 0), 10, 60.0),
+    ]
+    assert compute_realized_pnl(ops)["all_years"] == [2025]
 
 
 def test_results_are_ordered_best_first_and_totals_add_up():
