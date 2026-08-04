@@ -163,13 +163,22 @@ def test_archive_paces_consecutive_fetches():
     """A 0.4 s cadence was measured to trigger ConnectionReset — pacing is required."""
     import src.gpw_archive as archive
 
+    # The module NAME is replaced, not an attribute on the shared `time` module.
+    # `patch("src.gpw_archive.time.monotonic", side_effect=[...])` reaches into
+    # stdlib `time` itself, so every other thread alive in the session — the
+    # uvicorn server the E2E fixture leaves running, above all — draws from that
+    # four-value list too and exhausts it. That made this test fail only when the
+    # suite ran in the wrong order, which is the worst kind of red.
+    fake_time = MagicMock()
+    fake_time.monotonic.side_effect = [100.0, 100.0, 100.2, 100.2]
+    sleep = fake_time.sleep
+
     with patch("src.gpw_archive.get", return_value=_response(_SESSION_PAGE)):
-        with patch("src.gpw_archive.time.sleep") as sleep:
-            with patch("src.gpw_archive.time.monotonic", side_effect=[100.0, 100.0, 100.2, 100.2]):
-                archive._last_fetch_at = 0.0
-                fetch_archive_session(date(2026, 7, 24))
-                sleep.assert_not_called()
-                fetch_archive_session(date(2026, 7, 23))
+        with patch("src.gpw_archive.time", fake_time):
+            archive._last_fetch_at = 0.0
+            fetch_archive_session(date(2026, 7, 24))
+            sleep.assert_not_called()
+            fetch_archive_session(date(2026, 7, 23))
 
     slept = sleep.call_args[0][0]
     assert slept == pytest.approx(archive._MIN_FETCH_INTERVAL_S - 0.2, abs=1e-6)

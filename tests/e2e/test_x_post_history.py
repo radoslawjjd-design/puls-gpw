@@ -12,7 +12,7 @@ def _login(page: Page, base_url: str, key: str = _ADMIN_KEY) -> None:
     page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(key)
     page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
 
 def _open_x_history(page: Page) -> None:
@@ -54,7 +54,7 @@ def test_paging_to_page_2_changes_url(page: Page, live_server_url: str):
     _open_x_history(page)
 
     page.get_by_role("button", name=re.compile("Następna")).click()
-    expect(page.locator("#xp-page-label")).to_have_text("Strona 2")
+    expect(page.locator("#xp-page-label")).to_have_text(re.compile(r"^Strona 2(?: |$)"))
     expect(page).to_have_url(re.compile(r"view=x-history&page=2"))
 
 

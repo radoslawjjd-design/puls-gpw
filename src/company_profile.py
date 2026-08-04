@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 
 from src.exceptions import ScraperError
 from src.http_client import get
+from src.tickers import is_valid_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +39,34 @@ def fetch_company_profile(profile_url: str) -> CompanyProfile | None:
 
 
 def _extract_heading(soup: BeautifulSoup) -> tuple[str | None, str | None]:
+    """Split a bankier heading into (ticker, company name).
+
+    PUL-102: a heading can carry more than one parenthesised group —
+    `Zabka Group SA (Żabka) (ZAB)`, `MegaPixel Studio SA (przejęty) (MPS)` — and
+    the exchange abbreviation is the last of them, not the first. Taking the first
+    made `Żabka` the company's identity across three tables and put `$Zabka` on X.
+
+    The company name is unaffected: it is the text before the FIRST paren, which
+    was already right in every observed case.
+
+    When no group has the shape of a ticker, the ticker is None. A missing ticker
+    is a gap the pipeline already handles; a brand word in its place is silent
+    corruption, which is the whole of this bug.
+    """
     heading = soup.select_one("span.a-heading__suffix.-blue.-with-dot")
     if not heading:
         return None, None
     raw = heading.get_text(strip=True)
-    m = re.search(r"\(([^)]+)\)", raw)
-    if not m:
+    groups = list(re.finditer(r"\(([^)]+)\)", raw))
+    if not groups:
         return None, None
-    ticker = m.group(1).strip()
-    company = raw[: m.start()].strip() or None
-    return ticker, company
+    company = raw[: groups[0].start()].strip() or None
+    for match in reversed(groups):
+        candidate = match.group(1).strip()
+        if is_valid_ticker(candidate):
+            return candidate, company
+    logger.warning("company_profile: no ticker-shaped group in heading %r", raw)
+    return None, company
 
 
 def _extract_isin(soup: BeautifulSoup) -> str | None:

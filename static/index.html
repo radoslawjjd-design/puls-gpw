@@ -967,7 +967,11 @@
   /* The Zrealizowane panel is the Dywidendy panel with different numbers in it,
      so it shares every rule rather than cloning them under new names. */
   #pp-div-header-row, #pp-real-header-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
-  #pp-div-title, #pp-real-title { margin:0; font-size:1.05rem; font-weight:600; color:var(--brand-dark); }
+  /* margin-right:auto, not space-between's default distribution: with a second
+     selector in the row, space-between would spread the title and the two
+     dropdowns evenly and leave the period controls floating apart. The auto
+     margin absorbs the slack so they stay a pair. */
+  #pp-div-title, #pp-real-title { margin:0 auto 0 0; font-size:1.05rem; font-weight:600; color:var(--brand-dark); }
   /* A dropdown, not a pill per year: a wallet twenty years old would otherwise
      put twenty buttons across the header and wrap them onto the content. */
   .pp-year-select {
@@ -3256,6 +3260,36 @@ function _announcementsParams() {
   return params;
 }
 
+// PUL-77: the server now reports how many rows the filters matched, so the pager
+// can stop inferring it.
+//
+// The old tell for "this was the last page" was `data.length < pageSize`, and it
+// is wrong precisely when the total is an exact multiple of the page size: the
+// final page comes back FULL, so the test never fires, Next stays enabled, and
+// the click lands on an empty table. Three lists carried that bug identically.
+function _totalCount(response) {
+  const raw = response.headers.get('X-Total-Count');
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+// `total === null` keeps the old behaviour rather than rendering "Strona 3 z
+// null" — a response without the header is a server we cannot ask, not a server
+// that answered zero.
+function _applyPaging(labelId, prevId, nextId, page, pageSize, rowCount, total) {
+  $(prevId).disabled = page === 1;
+  if (total === null) {
+    $(labelId).textContent = 'Strona ' + page;
+    $(nextId).disabled = rowCount < pageSize;
+    return;
+  }
+  // An empty result is still one page: "Strona 1 z 0" reads as a broken pager.
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  $(labelId).textContent = 'Strona ' + page + ' z ' + pages;
+  $(nextId).disabled = page >= pages;
+}
+
 async function fetchAnnouncements(push = true) {
   $('btn-prev').disabled = true;
   $('btn-next').disabled = true;
@@ -3269,12 +3303,12 @@ async function fetchAnnouncements(push = true) {
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    const total = _totalCount(r);
     const data = await r.json();
     _annData = data;
-    $('page-label').textContent = 'Strona ' + currentPage;
     renderTable(_annData, role);
-    $('btn-prev').disabled = currentPage === 1;
-    $('btn-next').disabled = data.length < Number(pageSize);
+    _applyPaging('page-label', 'btn-prev', 'btn-next',
+                 currentPage, Number(pageSize), data.length, total);
     _writeUrl('announcements', params, push);
   } catch (e) {
     $('table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
@@ -3320,11 +3354,11 @@ async function fetchXPosts(push = true) {
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    const total = _totalCount(r);
     const data = await r.json();
-    $('xp-page-label').textContent = 'Strona ' + xpPage;
     renderXPostsTable(data);
-    btnPrev.disabled = xpPage === 1;
-    btnNext.disabled = data.length < Number(pageSize);
+    _applyPaging('xp-page-label', 'xp-btn-prev', 'xp-btn-next',
+                 xpPage, Number(pageSize), data.length, total);
     _writeUrl('x-history', params, push);
   } catch (e) {
     $('xp-table-body').innerHTML = `<tr><td colspan="7" class="empty">Błąd ładowania danych</td></tr>`;
@@ -3359,12 +3393,12 @@ async function fetchMyWalletAnnouncements(push = true) {
     });
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    const total = _totalCount(r);
     const data = await r.json();
     _wlData = data;
-    $('wl-page-label').textContent = 'Strona ' + wlPage;
     renderTable(data, role, 'my-wallet-table-body');
-    btnPrev.disabled = wlPage === 1;
-    btnNext.disabled = data.length < Number(pageSize);
+    _applyPaging('wl-page-label', 'wl-btn-prev', 'wl-btn-next',
+                 wlPage, Number(pageSize), data.length, total);
     _writeUrl('my-wallet', params, push);
   } catch (e) {
     $('my-wallet-table-body').innerHTML = `<tr><td colspan="${(role === 'admin' ? _ADMIN_COLS : _USER_COLS).length}" class="empty">Błąd ładowania danych</td></tr>`;
@@ -3706,11 +3740,15 @@ function _ppCalInceptionParts() {
 }
 // PUL-95 dividends: null year = every year. Switching year or wallet fires a new
 // fetch, so this needs the same out-of-order guard the history slots use.
+// PUL-120: null month = every month, independent of the year — both may be null,
+// either may be set alone.
 let _ppRealData = null;
 let _ppRealYear = null;
+let _ppRealMonth = null;
 let _ppRealReqSeq = 0;
 let _ppDivData = null;
 let _ppDivYear = null;
+let _ppDivMonth = null;
 let _ppDivReqSeq = 0;
 const _PORTFOLIO_TYPE_LABELS = {
   glowny: 'Główny', ikze: 'IKZE', ike: 'IKE', ppk: 'PPK', ppe: 'PPE', inny: 'Inny'
@@ -3836,7 +3874,21 @@ function _renderPortfolioTable(positions) {
     const shares = Number(pos.shares.toFixed(4));
     const avgPrice = pos.avg_buy_price.toFixed(2);
     const curPrice = pos.current_price != null ? pos.current_price.toFixed(2) + ' PLN' : '—';
-    const daily = pos.daily_change_pct != null ? pos.daily_change_pct.toFixed(2) + '%' : '—';
+    // PUL-123: mirrors the pnl pair below. Three states, not two — null keeps the
+    // '—' and no class, zero keeps 0.00% and no class; collapsing them would report
+    // "no data" as "no change". The '+' is there so the direction survives without
+    // colour, the way the treemap already labels its cells.
+    let daily = '—';
+    let dailyClass = '';
+    if (pos.daily_change_pct != null) {
+      // Sign and colour follow the *printed* value, not the raw one. A +0.004%
+      // day prints as 0.00%, and tinting that green would leave the cell saying
+      // "flat" and "up" at the same time — two decimals is the resolution we
+      // publish, so it is also the resolution we colour by.
+      const shown = Number(pos.daily_change_pct.toFixed(2));
+      daily = (shown > 0 ? '+' : '') + shown.toFixed(2) + '%';
+      dailyClass = shown > 0 ? 'positive' : shown < 0 ? 'negative' : '';
+    }
     let pnlText = '—';
     let pnlClass = '';
     if (pos.pnl_pln != null) {
@@ -3857,7 +3909,7 @@ function _renderPortfolioTable(positions) {
       <td data-label="Ilość akcji">${shares}</td>
       <td data-label="Śr. cena zakupu">${avgPrice} PLN</td>
       <td data-label="Aktualny kurs">${curPrice}</td>
-      <td data-label="Zmiana dzienna">${daily}</td>
+      <td class="${dailyClass}" data-label="Zmiana dzienna">${daily}</td>
       <td class="${pnlClass}" data-label="Zysk/strata">${pnlText}</td>
       <td data-label="30 dni">${_sparklineSvg(pos.price_history)}</td>
       ${actionsCell}
@@ -4611,6 +4663,7 @@ function _buildPortfolioPositionsViewContent(view) {
              so the totals must not read as the complete picture. -->
         <h3 id="pp-div-title">Dywidendy gotówkowe</h3>
         <div id="pp-div-years"></div>
+        <div id="pp-div-months"></div>
       </div>
       <div id="pp-div-tiles"></div>
       <div id="pp-div-by-ticker"></div>
@@ -4619,6 +4672,7 @@ function _buildPortfolioPositionsViewContent(view) {
       <div id="pp-real-header-row">
         <h3 id="pp-real-title">Zrealizowany zysk i strata</h3>
         <div id="pp-real-years"></div>
+        <div id="pp-real-months"></div>
       </div>
       <div id="pp-real-tiles"></div>
       <div id="pp-real-note" class="pp-import-hint" style="display:none"></div>
@@ -4747,6 +4801,26 @@ function _buildPortfolioPositionsViewContent(view) {
     const year = sel.value === '' ? null : Number(sel.value);
     if (year === _ppDivYear) return;
     _ppDivYear = year;
+    fetchPortfolioDividends();
+  });
+
+  // Month selectors — delegated for the same reason as the year ones: the
+  // <select> inside is rebuilt from every response.
+  $('pp-real-months').addEventListener('change', e => {
+    const sel = e.target.closest('select');
+    if (!sel) return;
+    const month = sel.value === '' ? null : Number(sel.value);
+    if (month === _ppRealMonth) return;
+    _ppRealMonth = month;
+    fetchPortfolioRealized();
+  });
+
+  $('pp-div-months').addEventListener('change', e => {
+    const sel = e.target.closest('select');
+    if (!sel) return;
+    const month = sel.value === '' ? null : Number(sel.value);
+    if (month === _ppDivMonth) return;
+    _ppDivMonth = month;
     fetchPortfolioDividends();
   });
 
@@ -5362,6 +5436,23 @@ function _renderYearSelect(boxId, years, inception, selected, label) {
   box.innerHTML = `<select class="pp-year-select" aria-label="${esc(label)}">${opts.join('')}</select>`;
 }
 
+// PUL-120: a month beside the year, and independent of it — "Wszystkie" in either
+// one. All twelve are always offered, for the same reason the year list spans the
+// quiet years: an empty month is an answer, not a missing option. Disabling the
+// control while the year is "Wszystkie" would make "every June on record" —
+// a coherent question — unaskable, and a control that only sometimes works reads
+// worse than an unusual answer.
+function _renderMonthSelect(boxId, selected, label) {
+  const box = $(boxId);
+  if (!box) return;
+  const opts = ['<option value="">Wszystkie</option>'];
+  _PP_MONTHS_PL.forEach((name, i) => {
+    const m = i + 1;
+    opts.push(`<option value="${m}"${selected === m ? ' selected' : ''}>${name}</option>`);
+  });
+  box.innerHTML = `<select class="pp-year-select" aria-label="${esc(label)}">${opts.join('')}</select>`;
+}
+
 function _renderPortfolioRealized(data) {
   const zl = n => Number(n || 0).toLocaleString('pl-PL',
     { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł';
@@ -5410,6 +5501,7 @@ function _renderPortfolioRealized(data) {
 
   _renderYearSelect('pp-real-years', (data && data.all_years) || [],
                     data && data.inception, _ppRealYear, 'Rok sprzedaży');
+  _renderMonthSelect('pp-real-months', _ppRealMonth, 'Miesiąc sprzedaży');
 }
 
 async function fetchPortfolioRealized() {
@@ -5425,6 +5517,7 @@ async function fetchPortfolioRealized() {
   try {
     let url = `/api/portfolio/realized?portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
     if (_ppRealYear !== null) url += `&year=${encodeURIComponent(_ppRealYear)}`;
+    if (_ppRealMonth !== null) url += `&month=${encodeURIComponent(_ppRealMonth)}`;
     const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
     if (stale()) return;
     if (r.status === 401) { doLogout(); return; }
@@ -5453,6 +5546,7 @@ async function fetchPortfolioDividends() {
   try {
     let url = `/api/portfolio/dividends?portfolio_id=${encodeURIComponent(_activePortfolioId)}`;
     if (_ppDivYear !== null) url += `&year=${encodeURIComponent(_ppDivYear)}`;
+    if (_ppDivMonth !== null) url += `&month=${encodeURIComponent(_ppDivMonth)}`;
     const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
     if (stale()) return;
     if (r.status === 401) { doLogout(); return; }
@@ -5502,6 +5596,7 @@ function _renderPortfolioDividends(data) {
   // user on an empty tab with no way back.
   _renderYearSelect('pp-div-years', (data && data.years) || [],
                     data && data.inception, _ppDivYear, 'Rok wypłat dywidend');
+  _renderMonthSelect('pp-div-months', _ppDivMonth, 'Miesiąc wypłat');
 }
 
 // Rok jest konieczny: zakresy 1r/3m potrafią przekroczyć granicę roku,

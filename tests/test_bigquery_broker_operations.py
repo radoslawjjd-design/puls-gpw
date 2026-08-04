@@ -298,10 +298,49 @@ def test_dividend_summary_sql_joins_meta_first_and_keeps_timestamp_precision():
     assert "LEFT JOIN" in sql
     assert sql.index("meta") < sql.index("LEFT JOIN")
     # The year is derived for grouping; the stored timestamp is not truncated.
-    assert "EXTRACT(YEAR FROM occurred_at)" in sql
+    # PUL-120: derived in Europe/Warsaw, not UTC. `occurred_at` is a true UTC
+    # instant, so a payout credited just after midnight Warsaw time would
+    # otherwise be filed under the previous day — and once a year, the previous
+    # year. Asserting the timezone, not just the EXTRACT, is the point.
+    assert "EXTRACT(YEAR FROM occurred_at AT TIME ZONE 'Europe/Warsaw')" in sql
     assert "TIMESTAMP_TRUNC" not in sql
     # Gross and tax are summed from separate op_types, never paired up.
     assert "dividend" in sql and "withholding_tax" in sql
+
+
+def test_dividend_summary_filters_by_month_without_regrouping_the_breakdown():
+    """PUL-120: the month is one more WHERE term, never a GROUP BY key. Grouping
+    by period splits one holding into a row per period and understates each —
+    the reason the `data` CTE groups by ticker alone."""
+    client = _mock_client_for_select([])
+
+    with patch("db.bigquery._get_client", return_value=client):
+        get_dividend_summary("u-1", "pf-1", 2025, 3)
+
+    sql = client.query.call_args[0][0]
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["year"] == 2025
+    assert params["month"] == 3
+    assert "@month IS NULL OR month = @month" in sql
+    assert "GROUP BY ticker" in sql
+    # Warsaw again, and for the same reason: a payout just after midnight local
+    # time otherwise lands in the previous month, twelve times as often as it
+    # landed in the previous year.
+    assert "EXTRACT(MONTH FROM occurred_at AT TIME ZONE 'Europe/Warsaw')" in sql
+    # The meta-first join is what keeps the selector usable on an empty period,
+    # and an empty period is now routine rather than rare.
+    assert sql.index("meta") < sql.index("LEFT JOIN")
+
+
+def test_dividend_summary_with_a_month_and_no_year_spans_every_year():
+    client = _mock_client_for_select([])
+
+    with patch("db.bigquery._get_client", return_value=client):
+        get_dividend_summary("u-1", None, None, 6)
+
+    params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["year"] is None
+    assert params["month"] == 6
 
 
 def test_dividend_summary_across_all_portfolios_passes_no_portfolio_filter():

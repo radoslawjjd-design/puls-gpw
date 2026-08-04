@@ -118,6 +118,36 @@ def _perf_set(key: str, data: Any) -> None:
     _PERF_CACHE[key] = (data, time.time())
 
 
+def _set_total_count(response: Response, total: int) -> None:
+    """Publish a listing's total as a header, leaving the body a plain array.
+
+    PUL-77. The body stays exactly what it was — no envelope, no `{items, total}` —
+    which is what makes adding this a no-op for every existing client.
+
+    `Access-Control-Expose-Headers` is inert today: there is no CORSMiddleware and
+    the UI is served from this same app. It is sent anyway, because the day the UI
+    moves origin its absence makes the header unreadable in the browser with no
+    error to point at.
+    """
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+
+
+def _parse_month(month: str | None) -> int | None:
+    """PUL-120: a period selector's month, or None for "Wszystkie".
+
+    Range-checked, not merely `isdigit()`-checked: the value reaches a cache key,
+    and `isdigit()` alone would admit "13" and let it carve out an entry that no
+    real request can ever hit. Shared by both period endpoints so the two cannot
+    drift apart on what they accept.
+    """
+    if month in (None, "", "all"):
+        return None
+    if not month.isdigit() or not 1 <= int(month) <= 12:
+        raise HTTPException(status_code=422, detail="month must be a number from 1 to 12")
+    return int(month)
+
+
 def _perf_invalidate_portfolio(user_id: str, portfolio_id: str) -> None:
     # PUL-95: a write to one wallet also changes what the "Wszystkie" aggregate and
     # the value chart show, so the sentinel variants and the history prefix have to
@@ -742,6 +772,7 @@ def create_app() -> FastAPI:
     @app.get("/announcements")
     async def announcements(
         request: Request,
+        response: Response,
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
         ticker: str | None = None,
@@ -755,10 +786,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=422, detail="'limit' is removed; use 'page' and 'page_size'")
         try:
             if role == "admin":
-                rows = list_announcements_admin(
+                rows, total = list_announcements_admin(
                     page=page, page_size=page_size, ticker=ticker, company=company,
                     event_type=event_type, from_dt=from_dt, to_dt=to_dt,
                 )
+                _set_total_count(response, total)
                 return [
                     AnnouncementAdmin(
                         **{**r, "structured_analysis": _parse_structured_analysis(r.get("structured_analysis"))}
@@ -766,10 +798,11 @@ def create_app() -> FastAPI:
                     for r in rows
                 ]
             else:
-                rows = list_announcements_user(
+                rows, total = list_announcements_user(
                     page=page, page_size=page_size, ticker=ticker, company=company,
                     event_type=event_type, from_dt=from_dt, to_dt=to_dt,
                 )
+                _set_total_count(response, total)
                 result = []
                 for r in rows:
                     structured_analysis = _parse_structured_analysis(r.get("structured_analysis"))
@@ -888,6 +921,7 @@ def create_app() -> FastAPI:
 
     @app.get("/announcements/my-wallet")
     async def announcements_my_wallet(
+        response: Response,
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
         from_dt: datetime | None = Query(None, alias="from"),
@@ -896,9 +930,10 @@ def create_app() -> FastAPI:
         user_id: str = Depends(_get_user_id),
     ):
         try:
-            rows = list_announcements_for_watchlist(
+            rows, total = list_announcements_for_watchlist(
                 user_id, page=page, page_size=page_size, from_dt=from_dt, to_dt=to_dt,
             )
+            _set_total_count(response, total)
             if role == "admin":
                 return [
                     AnnouncementAdmin(
@@ -969,6 +1004,7 @@ def create_app() -> FastAPI:
 
     @app.get("/admin/x-posts")
     async def admin_x_posts(
+        response: Response,
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
         window: str | None = None,
@@ -979,11 +1015,12 @@ def create_app() -> FastAPI:
         role: Role = Depends(_require_admin),
     ):
         try:
-            rows = list_x_posts_admin(
+            rows, total = list_x_posts_admin(
                 page=page, page_size=page_size, window=window,
                 x_publish_status=x_publish_status, post_text=post_text,
                 from_dt=from_dt, to_dt=to_dt,
             )
+            _set_total_count(response, total)
             return [XPostAdmin(**r).model_dump() for r in rows]
         except BigQueryError as exc:
             logger.error("BQ error in /admin/x-posts: %s", exc)
@@ -1414,6 +1451,7 @@ def create_app() -> FastAPI:
     async def get_portfolio_dividends(
         portfolio_id: str = Query(...),
         year: str | None = Query(None),
+        month: str | None = Query(None),
         role: Role = Depends(_get_role),
         user_id: str = Depends(_get_user_id),
     ):
@@ -1424,7 +1462,13 @@ def create_app() -> FastAPI:
             if not year.isdigit():
                 raise HTTPException(status_code=422, detail="year must be a four-digit year")
             parsed_year = int(year)
-        cache_key = f"dividends:{user_id}:{portfolio_id}:{parsed_year or 'all'}"
+        parsed_month = _parse_month(month)
+        # PUL-120: the month has to be IN the key. Without it a March request is
+        # answered from January's entry for the whole 300 s TTL — a wrong number
+        # that is indistinguishable from a right one.
+        cache_key = (
+            f"dividends:{user_id}:{portfolio_id}:{parsed_year or 'all'}:{parsed_month or 'all'}"
+        )
         cached = _perf_get(cache_key, ttl=300)
         if cached is not None:
             return cached
@@ -1438,7 +1482,9 @@ def create_app() -> FastAPI:
             if not any(w["portfolio_id"] == portfolio_id for w in wallets):
                 raise HTTPException(status_code=404, detail="Wallet not found")
         try:
-            result = get_dividend_summary(user_id, None if all_mode else portfolio_id, parsed_year)
+            result = get_dividend_summary(
+                user_id, None if all_mode else portfolio_id, parsed_year, parsed_month
+            )
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/dividends: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
@@ -1455,6 +1501,7 @@ def create_app() -> FastAPI:
     async def get_portfolio_realized(
         portfolio_id: str = Query(...),
         year: str | None = Query(None),
+        month: str | None = Query(None),
         role: Role = Depends(_get_role),
         user_id: str = Depends(_get_user_id),
     ):
@@ -1472,7 +1519,10 @@ def create_app() -> FastAPI:
             if not year.isdigit():
                 raise HTTPException(status_code=422, detail="year must be a four-digit year")
             parsed_year = int(year)
-        cache_key = f"realized:{user_id}:{portfolio_id}:{parsed_year or 'all'}"
+        parsed_month = _parse_month(month)
+        cache_key = (
+            f"realized:{user_id}:{portfolio_id}:{parsed_year or 'all'}:{parsed_month or 'all'}"
+        )
         cached = _perf_get(cache_key, ttl=300)
         if cached is not None:
             return cached
@@ -1490,7 +1540,7 @@ def create_app() -> FastAPI:
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/realized: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc))
-        result = compute_realized_pnl(trades, parsed_year)
+        result = compute_realized_pnl(trades, parsed_year, parsed_month)
         result["inception"] = _wallet_inception_iso(
             None if all_mode else portfolio_id, user_id, "realized"
         )

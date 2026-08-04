@@ -1,3 +1,5 @@
+import re
+
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import (
@@ -23,7 +25,7 @@ def _login_same_document_as_user(page: Page) -> None:
     form.get_by_label("E-mail").fill(e2e_unique_email())
     form.get_by_label("Hasło", exact=True).fill(E2E_PASSWORD)
     form.get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
 
 def _open_my_wallet_with_pko(page: Page) -> None:

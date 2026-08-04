@@ -9,8 +9,30 @@ cost. Adding them into one number would hide which of the two a portfolio is
 actually living on.
 """
 
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
 OP_BUY = "buy"
 OP_SELL = "sell"
+
+# PUL-120: `occurred_at` is a true UTC instant — the hour distribution of the real
+# history is 7-15 UTC, which is the GPW session read in CEST. Periods are what the
+# user saw on their statement, so they are Warsaw periods, not UTC ones. At year
+# granularity the two disagree on one evening a year; at month granularity, twelve.
+_WARSAW = ZoneInfo("Europe/Warsaw")
+
+
+def _local(when: datetime) -> datetime:
+    """The Warsaw-local view of a stored instant.
+
+    A naive value is read as UTC rather than as the machine's clock: production
+    always supplies tz-aware rows out of BigQuery, and letting a naive one inherit
+    the host timezone would make the same input land in different periods on
+    different machines.
+    """
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when.astimezone(_WARSAW)
 
 # Fractional shares are everywhere in these exports, so a lot that is fully
 # consumed can land a hair above zero rather than exactly on it.
@@ -29,17 +51,22 @@ def _sort_key(op: dict):
     return (op.get("occurred_at"), 0 if op.get("op_type") == OP_BUY else 1)
 
 
-def compute_realized_pnl(operations: list[dict], year: int | None = None) -> dict:
+def compute_realized_pnl(
+    operations: list[dict], year: int | None = None, month: int | None = None
+) -> dict:
     """Match sells against buys FIFO and total what each ticker actually returned.
 
     Input rows need ``ticker``, ``op_type``, ``occurred_at``, ``volume`` and
     ``unit_price``; anything else is ignored. ``instrument_name`` supplies the
     display name when present.
 
-    ``year`` narrows the *result*, never the *input*: FIFO always walks the whole
-    history, and only then are sales outside the year dropped. Filtering the rows
-    up front would strip the buys that priced the remaining shares and every
-    later sale would report a phantom profit at zero cost.
+    ``year`` and ``month`` narrow the *result*, never the *input*: FIFO always
+    walks the whole history, and only then are sales outside the period dropped.
+    Filtering the rows up front would strip the buys that priced the remaining
+    shares and every later sale would report a phantom profit at zero cost.
+
+    The two are independent. ``month`` without ``year`` means that month in every
+    year on record — a coherent question the selectors let the user ask.
 
     Returns ``{"total_pnl", "total_proceeds", "total_cost", "by_ticker",
     "all_years", "unmatched_tickers"}`` with one ``by_ticker`` entry per ticker
@@ -88,9 +115,11 @@ def compute_realized_pnl(operations: list[dict], year: int | None = None) -> dic
             lot[0] -= take
             remaining -= take
 
-        sold_year = op["occurred_at"].year
-        all_years.add(sold_year)
-        if year is not None and sold_year != year:
+        sold_at = _local(op["occurred_at"])
+        all_years.add(sold_at.year)
+        if year is not None and sold_at.year != year:
+            continue
+        if month is not None and sold_at.month != month:
             continue
         if remaining > _DUST:
             unmatched.add(ticker)

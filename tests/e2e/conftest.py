@@ -1,4 +1,5 @@
 import os
+import re
 import threading
 import time
 from contextlib import ExitStack
@@ -56,7 +57,7 @@ def e2e_login_email(page, base_url, email=None):
     form.get_by_label("E-mail").fill(email)
     form.get_by_label("Hasło", exact=True).fill(E2E_PASSWORD)
     form.get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
     return email
 
 
@@ -96,16 +97,16 @@ _FAKE_ADMIN_ROWS = [
         "structured_analysis": None, "analysis_approved": True,
         "analysis_reject_reason": None, "event_type": "ESPI", "analysis_score": 0.8,
     }
-    for i in range(20)
+    for i in range(40)
 ]
 
 # PUL-94: dwa świeże wiersze (badge'owalne przy pre-seedowanym starym progu
 # faro_seen_*) — bump istniejących zamiast append, bo liczba 20 wierszy jest
-# load-bearing (test_refresh liczy tr == 20; mock return_value ignoruje paging,
-# więc „Strona 2" żyje z tych samych 20 wierszy). Odrębne godziny = odrębne
-# klucze per-item (ticker|published_at) dla testu persystencji po kliknięciu.
-# Bez pre-seedu progu badge'y i tak się nie renderują (pierwsza wizyta = próg
-# null), więc pozostałe testy tych dat nie widzą.
+# load-bearing for page 1 (test_refresh counts tr == 20). PUL-77: the corpus is
+# 40 rows and the fake now really paginates, so page 1 still holds exactly 20
+# while a second page exists to move to. 40 at 20-per-page is also the case the
+# old pager got wrong — the last page comes back FULL, so "fewer rows than I
+# asked for" never fires and Next stays enabled onto nothing.
 _FAKE_ADMIN_ROWS[0]["published_at"] = datetime.now(timezone.utc) - timedelta(hours=1)
 _FAKE_ADMIN_ROWS[1]["published_at"] = datetime.now(timezone.utc) - timedelta(hours=2)
 
@@ -131,9 +132,14 @@ _FAKE_X_POSTS_ROWS = [
         "supervisor_attempts": 3, "x_publish_status": "failed",
     },
     # Padding rows so the unfiltered AND the `x_publish_status=skipped` filtered
-    # count both reach the default page_size (20) — without these, the
-    # "Następna" button is permanently disabled (3 rows < 20) and url-routing
-    # pagination tests have nothing to click into a real page 2.
+    # count both EXCEED the default page_size (20) — without these, the
+    # "Następna" button is permanently disabled and url-routing pagination tests
+    # have nothing to click into a real page 2.
+    #
+    # PUL-77: this was 20, i.e. exactly the page size, which is the one count the
+    # old pager got wrong. It left Next enabled on a full final page, so those
+    # tests were clicking through to an EMPTY page 2 and asserting only the URL.
+    # 21 gives page 2 an actual row, so the assertion now stands on something.
     *[
         {
             "x_post_id": f"pad-{i}", "window": "test",
@@ -141,7 +147,7 @@ _FAKE_X_POSTS_ROWS = [
             "posted_at": datetime(2026, 6, 10, 8, 0, 0, tzinfo=timezone.utc),
             "supervisor_attempts": 1, "x_publish_status": "skipped",
         }
-        for i in range(20)
+        for i in range(21)
     ],
 ]
 
@@ -325,6 +331,30 @@ _FAKE_PORTFOLIO_POSITIONS = [
         "daily_change_pct": None, "price_as_of": None,
         # no price_history → '—' fallback
     },
+    # PUL-123: the daily-change cell has four states and the fixture only covered
+    # two of them. These add the down day and the flat day — flat is deliberately
+    # priced, so it cannot be mistaken for CDR's "no price data at all".
+    {
+        "ticker": "PGE", "company_name": "PGE", "shares": 50.0,
+        "avg_buy_price": 8.0, "current_price": 7.6,
+        "daily_change_pct": -2.4, "price_as_of": "2026-06-27",
+        "price_history": [8.0, 7.8, 7.6],
+    },
+    {
+        "ticker": "LPP", "company_name": "LPP", "shares": 1.0,
+        "avg_buy_price": 15000.0, "current_price": 15000.0,
+        "daily_change_pct": 0.0, "price_as_of": "2026-06-27",
+        "price_history": [15000.0, 15000.0, 15000.0],
+    },
+    # A move smaller than the two decimals the cell prints. The number is not
+    # zero, but everything the user can see says it is — so the colour has to
+    # agree with the text rather than with the hidden precision.
+    {
+        "ticker": "OPL", "company_name": "Orange Polska", "shares": 20.0,
+        "avg_buy_price": 9.0, "current_price": 9.5,
+        "daily_change_pct": 0.004, "price_as_of": "2026-06-27",
+        "price_history": [9.4, 9.45, 9.5],
+    },
 ]
 
 
@@ -491,16 +521,49 @@ def _fake_delete_user_portfolio_positions(user_id, portfolio_id, tickers):
     return len(store) - len(remaining)
 
 
-def _fake_get_dividend_summary(user_id, portfolio_id=None, year=None):
-    # IKZE pays no withholding tax, so a zero-tax ticker has to be in the fixture:
-    # a summary that only ever renders taxed payouts never exercises that branch.
+# One row per payout, so the fake can narrow by period the way the real query does.
+# IKZE pays no withholding tax, so a zero-tax ticker has to be here: a summary that
+# only ever renders taxed payouts never exercises that branch. Two years and three
+# distinct months, so year, month, and the two together each have something to
+# select — and month 1 has nothing, which is the empty-period case.
+_FAKE_DIVIDEND_PAYOUTS = [
+    {"ticker": "KRU", "year": 2025, "month": 6, "gross": 361.0, "tax": -68.59},
+    {"ticker": "KRU", "year": 2026, "month": 6, "gross": 361.0, "tax": -68.59},
+    {"ticker": "PKO", "year": 2026, "month": 9, "gross": 50.0, "tax": 0.0},
+]
+
+
+def _fake_get_dividend_summary(user_id, portfolio_id=None, year=None, month=None):
+    """Mirrors the real contract: the period narrows the breakdown, never `years`.
+
+    PUL-100 and PUL-120 both depend on that split — the selector is built from
+    `years`, so deriving it from the filtered rows would empty the control the
+    moment a period has no payouts and strand the user there.
+    """
+    rows = [
+        p for p in _FAKE_DIVIDEND_PAYOUTS
+        if (year is None or p["year"] == year) and (month is None or p["month"] == month)
+    ]
+    by_ticker: dict[str, dict] = {}
+    for p in rows:
+        entry = by_ticker.setdefault(
+            p["ticker"],
+            {"ticker": p["ticker"], "gross": 0.0, "tax": 0.0, "net": 0.0, "payouts": 0},
+        )
+        entry["gross"] += p["gross"]
+        entry["tax"] += p["tax"]
+        entry["net"] = round(entry["gross"] + entry["tax"], 2)
+        entry["payouts"] += 1
+    for entry in by_ticker.values():
+        entry["gross"] = round(entry["gross"], 2)
+        entry["tax"] = round(entry["tax"], 2)
+    gross = round(sum(p["gross"] for p in rows), 2)
+    tax = round(sum(p["tax"] for p in rows), 2)
     return {
-        "years": [2025, 2026],
-        "totals": {"gross": 772.0, "tax": -137.18, "net": 634.82, "count": 3},
-        "by_ticker": [
-            {"ticker": "KRU", "gross": 722.0, "tax": -137.18, "net": 584.82, "payouts": 2},
-            {"ticker": "PKO", "gross": 50.0, "tax": 0.0, "net": 50.0, "payouts": 1},
-        ],
+        # Every year on record, whatever the filter — the meta-first join.
+        "years": sorted({p["year"] for p in _FAKE_DIVIDEND_PAYOUTS}),
+        "totals": {"gross": gross, "tax": tax, "net": round(gross + tax, 2), "count": len(rows)},
+        "by_ticker": sorted(by_ticker.values(), key=lambda e: e["gross"], reverse=True),
     }
 
 
@@ -572,10 +635,24 @@ def _fake_assign_orphan_positions_to_portfolio(user_id, portfolio_id):
     pass
 
 
+def _fake_list_announcements_admin(
+    page=1, page_size=20, ticker=None, company=None,
+    event_type=None, from_dt=None, to_dt=None,
+):
+    """Really slices, so the total the header reports is a fact about the corpus
+    rather than about the page (PUL-77). Filters are ignored: no admin E2E test
+    narrows this list, and honouring them here would duplicate SQL semantics for
+    no assertion."""
+    start = (page - 1) * page_size
+    return _FAKE_ADMIN_ROWS[start:start + page_size], len(_FAKE_ADMIN_ROWS)
+
+
 def _fake_list_announcements_for_watchlist(client_id, page=1, page_size=20, from_dt=None, to_dt=None):
+    # PUL-77: the listing queries now hand back (rows, total). A plain 2-tuple is
+    # all the NamedTuple needs, so the fake stays free of a db import.
     if "PKO" in _watchlist_store.get(client_id, []):
-        return [_FAKE_WATCHLIST_ANNOUNCEMENT]
-    return []
+        return [_FAKE_WATCHLIST_ANNOUNCEMENT], 1
+    return [], 0
 
 
 def _fake_summarize_watchlist_sentiment(user_id, days=7):
@@ -626,7 +703,9 @@ def _fake_list_x_posts_admin(
         rows = [r for r in rows if r["posted_at"] <= to_dt]
     rows = sorted(rows, key=lambda r: r["posted_at"], reverse=True)
     start = (page - 1) * page_size
-    return rows[start:start + page_size]
+    # The total is counted after the filters and before the slice — the same
+    # boundary the real COUNT(*) OVER() sits at (PUL-77).
+    return rows[start:start + page_size], len(rows)
 
 
 @pytest.fixture(autouse=True)
@@ -649,8 +728,8 @@ def live_server_url():
         # Tylko login: patch rejestracji wyciekałby do unit-testu limitera
         # (fixture sesyjny żyje do końca pełnego przebiegu pytest).
         patch("src.auth._login_rate_limiter"),
-        patch("src.api.list_announcements_admin", return_value=_FAKE_ADMIN_ROWS),
-        patch("src.api.list_announcements_user", return_value=[]),
+        patch("src.api.list_announcements_admin", side_effect=_fake_list_announcements_admin),
+        patch("src.api.list_announcements_user", return_value=([], 0)),
         patch("src.api.list_distinct_tickers",            return_value=["CDR", "PKO", "XTB"]),
         patch("src.api.list_distinct_portfolio_tickers",  return_value=["CDR", "ETFBW20TR", "PKO", "XTB"]),
         patch("src.api.list_etf_instruments_for_autocomplete", return_value=_FAKE_ETF_INSTRUMENTS),

@@ -13,7 +13,7 @@ def _login(page: Page, base_url: str) -> None:
     page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
 
 def _open_x_history(page: Page) -> None:
@@ -91,16 +91,16 @@ def test_refresh_on_x_history_page_2_with_filter_restores_view_page_and_filter(
 
     page.get_by_role("combobox", name="Status").select_option("skipped")
     page.get_by_role("button", name="Filtruj").click()
-    expect(page.locator("#xp-page-label")).to_have_text("Strona 1")
+    expect(page.locator("#xp-page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
     page.get_by_role("button", name=re.compile("Następna")).click()
-    expect(page.locator("#xp-page-label")).to_have_text("Strona 2")
+    expect(page.locator("#xp-page-label")).to_have_text(re.compile(r"^Strona 2(?: |$)"))
     expect(page).to_have_url(re.compile(r"page=2"))
 
     page.reload()
 
     expect(page.locator("#x-history-view")).to_be_visible()
-    expect(page.locator("#xp-page-label")).to_have_text("Strona 2")
+    expect(page.locator("#xp-page-label")).to_have_text(re.compile(r"^Strona 2(?: |$)"))
     expect(page.get_by_role("combobox", name="Status")).to_have_value("skipped")
     expect(page).to_have_url(re.compile(r"view=x-history"))
     expect(page).to_have_url(re.compile(r"x_publish_status=skipped"))
@@ -113,7 +113,7 @@ def test_old_format_bookmark_resolves_to_announcements_page_2(page: Page, live_s
     page.goto(f"{live_server_url}?page=2&page_size=50")
 
     expect(page.locator("#announcements-view")).to_be_visible()
-    expect(page.locator("#page-label")).to_have_text("Strona 2")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 2(?: |$)"))
     expect(page.get_by_role("combobox", name="Rozmiar strony")).to_have_value("50")
 
 
@@ -178,16 +178,16 @@ def test_jwt_admin_x_history_page_2_survives_reload(page: Page, live_server_url:
     e2e_login_email(page, live_server_url, email=E2E_ADMIN_EMAIL)
 
     _open_x_history(page)
-    expect(page.locator("#xp-page-label")).to_have_text("Strona 1")
+    expect(page.locator("#xp-page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
     page.get_by_role("button", name=re.compile("Następna")).click()
-    expect(page.locator("#xp-page-label")).to_have_text("Strona 2")
+    expect(page.locator("#xp-page-label")).to_have_text(re.compile(r"^Strona 2(?: |$)"))
     expect(page).to_have_url(re.compile(r"page=2"))
 
     page.reload()
 
     expect(page.locator("#x-history-view")).to_be_visible()
-    expect(page.locator("#xp-page-label")).to_have_text("Strona 2")
+    expect(page.locator("#xp-page-label")).to_have_text(re.compile(r"^Strona 2(?: |$)"))
     expect(page).to_have_url(re.compile(r"view=x-history"))
 
 

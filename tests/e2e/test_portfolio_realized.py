@@ -98,6 +98,60 @@ def test_the_year_selector_survives_its_own_refetch(page: Page, live_server_url:
     expect(page.locator("#pp-real-years select")).to_have_count(1)
 
 
+# ── PUL-120: the month selector ──────────────────────────────────────────────
+
+
+def test_month_switch_refetches_and_keeps_the_fifo_basis(page: Page, live_server_url: str):
+    """The trap this ticket is really about, asserted through the browser: the
+    PKO sale is in February 2026 and both its lots were bought in 2025. Filtering
+    the operations by month instead of the results would leave the sale with no
+    lots to match and report its whole 5 000 as profit. The cost must stay 4 000."""
+    _login_and_open(page, live_server_url)
+    _open_realized(page)
+
+    with page.expect_response(re.compile(r"/api/portfolio/realized.*month=2")):
+        page.get_by_label("Miesiąc sprzedaży").select_option("2")
+
+    expect(page.locator("#pp-realized-wrap")).to_be_visible()
+    row = page.locator("#pp-real-by-ticker tr", has_text="PKO")
+    expect(row).to_contain_text(re.compile(r"4\s?000,00 zł"))
+    expect(row).to_contain_text(re.compile(r"\+1\s?000,00 zł"))
+    # June's unmatched CDR sale is out of scope, so its disclosure goes with it.
+    expect(page.locator("#pp-real-note")).to_be_hidden()
+
+
+def test_an_empty_month_leaves_both_realized_selectors_usable(
+    page: Page, live_server_url: str
+):
+    """Nothing sold in January. The empty state must not take the controls with it."""
+    _login_and_open(page, live_server_url)
+    _open_realized(page)
+
+    with page.expect_response(re.compile(r"/api/portfolio/realized.*month=1")):
+        page.get_by_label("Miesiąc sprzedaży").select_option("1")
+
+    expect(page.locator("#pp-real-by-ticker")).to_contain_text("Brak sprzedanych pozycji")
+    expect(page.get_by_label("Miesiąc sprzedaży").locator("option")).to_have_count(13)
+    assert page.get_by_label("Rok sprzedaży").locator("option").count() > 1
+
+    with page.expect_response(re.compile(r"/api/portfolio/realized")):
+        page.get_by_label("Miesiąc sprzedaży").select_option("")
+    expect(page.locator("#pp-real-by-ticker")).to_contain_text("PKO")
+
+
+def test_the_month_selector_survives_its_own_refetch(page: Page, live_server_url: str):
+    """Same rebuild risk as the year selector: the control is redrawn from every
+    response, and forgetting the choice makes it disagree with the numbers below."""
+    _login_and_open(page, live_server_url)
+    _open_realized(page)
+
+    with page.expect_response(re.compile(r"/api/portfolio/realized.*month=2")):
+        page.get_by_label("Miesiąc sprzedaży").select_option("2")
+
+    expect(page.locator("#pp-real-months select")).to_have_value("2")
+    expect(page.locator("#pp-real-months select")).to_have_count(1)
+
+
 def test_switching_away_hides_the_realized_panel(page: Page, live_server_url: str):
     """A panel missing from the display block stays visible over the next view."""
     _login_and_open(page, live_server_url)

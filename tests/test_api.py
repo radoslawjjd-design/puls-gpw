@@ -58,7 +58,7 @@ def test_announcements_admin_returns_list(api_client):
                   "priority": None, "structured_analysis": '{"summary_pl": "test", "sentiment": "pozytywny"}',
                   "analysis_approved": True, "analysis_reject_reason": None,
                   "event_type": "ESPI", "analysis_score": 0.9}]
-    with patch("src.api.list_announcements_admin", return_value=mock_rows):
+    with patch("src.api.list_announcements_admin", return_value=(mock_rows, len(mock_rows))):
         r = api_client.get("/announcements", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
     data = r.json()
@@ -73,7 +73,7 @@ def test_announcements_user_parses_structured_analysis(api_client):
     mock_rows = [{"company": "PKO", "ticker": "PKO", "event_type": "ESPI",
                   "structured_analysis": '{"summary_pl": "test", "sentiment": "pozytywny"}',
                   "analysis_score": 0.8, "published_at": "2024-01-01T00:00:00"}]
-    with patch("src.api.list_announcements_user", return_value=mock_rows):
+    with patch("src.api.list_announcements_user", return_value=(mock_rows, len(mock_rows))):
         r = api_client.get("/announcements", headers={"X-API-Key": _USER_KEY})
     assert r.status_code == 200
     data = r.json()
@@ -97,7 +97,7 @@ def test_announcements_user_returns_subset_fields(api_client):
     mock_rows = [{"company": "PKO", "ticker": "PKO", "event_type": "ESPI",
                   "structured_analysis": None,
                   "published_at": "2024-01-01T00:00:00"}]
-    with patch("src.api.list_announcements_user", return_value=mock_rows):
+    with patch("src.api.list_announcements_user", return_value=(mock_rows, len(mock_rows))):
         r = api_client.get("/announcements", headers={"X-API-Key": _USER_KEY})
     assert r.status_code == 200
     data = r.json()
@@ -119,7 +119,7 @@ def test_announcements_bq_error_returns_500(api_client):
 
 
 def test_announcements_filter_ticker_passed_to_bq(api_client):
-    with patch("src.api.list_announcements_admin", return_value=[]) as mock_fn:
+    with patch("src.api.list_announcements_admin", return_value=([], 0)) as mock_fn:
         api_client.get("/announcements?ticker=CDR", headers={"X-API-Key": _ADMIN_KEY})
     mock_fn.assert_called_once()
     assert mock_fn.call_args.kwargs.get("ticker") == "CDR"
@@ -129,7 +129,7 @@ def test_admin_x_posts_admin_returns_list(api_client):
     mock_rows = [{"x_post_id": "p1", "window": "ranek", "post_text": "t1\n\nt2",
                   "tweet_ids": "1,2", "posted_at": "2026-06-19T06:00:00",
                   "supervisor_attempts": 1, "x_publish_status": "published"}]
-    with patch("src.api.list_x_posts_admin", return_value=mock_rows):
+    with patch("src.api.list_x_posts_admin", return_value=(mock_rows, len(mock_rows))):
         r = api_client.get("/admin/x-posts", headers={"X-API-Key": _ADMIN_KEY})
     assert r.status_code == 200
     data = r.json()
@@ -154,7 +154,7 @@ def test_admin_x_posts_bq_error_returns_500(api_client):
 
 
 def test_admin_x_posts_filters_passed_to_bq(api_client):
-    with patch("src.api.list_x_posts_admin", return_value=[]) as mock_fn:
+    with patch("src.api.list_x_posts_admin", return_value=([], 0)) as mock_fn:
         api_client.get(
             "/admin/x-posts?window=ranek&x_publish_status=published&post_text=PASSUS"
             "&from=2026-06-01T00:00:00&to=2026-06-19T00:00:00",
@@ -201,7 +201,7 @@ def test_delete_bq_error_returns_500(api_client):
 
 
 def test_announcements_page_and_page_size_passed_to_bq(api_client):
-    with patch("src.api.list_announcements_admin", return_value=[]) as mock_fn:
+    with patch("src.api.list_announcements_admin", return_value=([], 0)) as mock_fn:
         api_client.get("/announcements?page=2&page_size=50", headers={"X-API-Key": _ADMIN_KEY})
     mock_fn.assert_called_once()
     assert mock_fn.call_args.kwargs.get("page") == 2
@@ -530,7 +530,7 @@ def test_announcements_my_wallet_api_key_only_returns_401(api_client):
 def test_announcements_my_wallet_returns_filtered_announcements(user_client):
     mock_rows = [{"company": "PKO", "ticker": "PKO", "event_type": "ESPI",
                   "structured_analysis": None, "published_at": "2024-01-01T00:00:00"}]
-    with patch("src.api.list_announcements_for_watchlist", return_value=mock_rows) as mock_fn:
+    with patch("src.api.list_announcements_for_watchlist", return_value=(mock_rows, len(mock_rows))) as mock_fn:
         r = user_client.get(
             "/announcements/my-wallet",
         )
@@ -560,7 +560,7 @@ _MY_WALLET_ROW_WITH_ANALYSIS = {
 def test_announcements_my_wallet_admin_gets_sentiment_and_score(admin_client):
     with patch(
         "src.api.list_announcements_for_watchlist",
-        return_value=[dict(_MY_WALLET_ROW_WITH_ANALYSIS)],
+        return_value=([dict(_MY_WALLET_ROW_WITH_ANALYSIS)], 1),
     ):
         r = admin_client.get("/announcements/my-wallet")
     assert r.status_code == 200
@@ -572,7 +572,7 @@ def test_announcements_my_wallet_admin_gets_sentiment_and_score(admin_client):
 def test_announcements_my_wallet_user_never_gets_sentiment_or_score(user_client):
     with patch(
         "src.api.list_announcements_for_watchlist",
-        return_value=[dict(_MY_WALLET_ROW_WITH_ANALYSIS)],
+        return_value=([dict(_MY_WALLET_ROW_WITH_ANALYSIS)], 1),
     ):
         r = user_client.get(
             "/announcements/my-wallet",
@@ -2317,6 +2317,58 @@ def test_dividends_endpoint_validates_year_before_building_a_cache_key(user_clie
     assert not [k for k in m._PERF_CACHE if k.startswith("dividends:")]
 
 
+@pytest.mark.parametrize("bad", ["abc", "13", "0", "-1", ""])
+@pytest.mark.parametrize("view", ["dividends", "realized"])
+def test_month_is_range_checked_before_it_reaches_a_cache_key(user_client, view, bad):
+    """PUL-120: same reason the year is validated first — an unchecked value goes
+    straight into the key, so every distinct string carves out its own entry. A
+    month additionally has to be in 1-12; `isdigit()` alone would admit 13."""
+    import src.api as m
+
+    m._PERF_CACHE.clear()
+    target = "get_dividend_summary" if view == "dividends" else "list_broker_trades"
+    with patch(f"src.api.{target}") as backend:
+        r = user_client.get(
+            f"/api/portfolio/{view}?portfolio_id={_WALLET_ID}&month={bad}"
+        )
+    # An empty month means "Wszystkie", exactly as an empty year does.
+    if bad == "":
+        assert r.status_code != 422
+        return
+    assert r.status_code == 422
+    backend.assert_not_called()
+    assert not [k for k in m._PERF_CACHE if k.startswith(f"{view}:")]
+
+
+@pytest.mark.parametrize("view", ["dividends", "realized"])
+def test_two_months_do_not_share_one_cache_entry(user_client, view):
+    """Without the month in the key a March request is answered from January's
+    entry for 300 seconds — a wrong number that looks exactly like a right one."""
+    import src.api as m
+
+    m._PERF_CACHE.clear()
+    if view == "dividends":
+        backend = patch(
+            "src.api.get_dividend_summary",
+            side_effect=lambda *a, **k: {"years": [2026], "by_ticker": [], "month": k.get("month")},
+        )
+    else:
+        backend = patch("src.api.list_broker_trades", return_value=[])
+
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.get_portfolio_inception", return_value=None),
+        backend as called,
+    ):
+        first = user_client.get(f"/api/portfolio/{view}?portfolio_id={_WALLET_ID}&month=1")
+        second = user_client.get(f"/api/portfolio/{view}?portfolio_id={_WALLET_ID}&month=3")
+
+    assert first.status_code == 200 and second.status_code == 200
+    assert called.call_count == 2, "the second month was served from the first month's cache"
+    keys = sorted(k for k in m._PERF_CACHE if k.startswith(f"{view}:"))
+    assert len(keys) == 2, f"months share a cache entry: {keys}"
+
+
 def test_dividends_and_realized_carry_the_wallet_inception(user_client):
     """PUL-117: `years` lists only the years that paid or sold something, so a
     selector built from it alone cannot offer 2023 to a user asking whether 2023
@@ -2369,7 +2421,12 @@ def test_perf_invalidate_clears_history_the_all_sentinel_and_dividends():
         f"calendar:{_CLIENT_ID}:all:2026-7",
         f"history:{_CLIENT_ID}:{_WALLET_ID}:1y",
         f"history:{_CLIENT_ID}:all:1y",
-        f"dividends:{_CLIENT_ID}:{_WALLET_ID}:2026",
+        # Current key shape, month included (PUL-120). Seeding the pre-month
+        # literal would still pass on the prefix scan while proving nothing about
+        # the keys the endpoints actually write today.
+        f"dividends:{_CLIENT_ID}:{_WALLET_ID}:2026:3",
+        f"dividends:{_CLIENT_ID}:{_WALLET_ID}:all:all",
+        f"realized:{_CLIENT_ID}:{_WALLET_ID}:2026:3",
         f"treemap:{_CLIENT_ID}",
     ]
     for key in keys:
@@ -2395,7 +2452,8 @@ def test_deleting_a_wallet_clears_the_caches_that_still_show_it(user_client):
         f"positions:{_CLIENT_ID}:all",
         f"calendar:{_CLIENT_ID}:all:2026-7",
         f"history:{_CLIENT_ID}:all:1y",
-        f"dividends:{_CLIENT_ID}:all:2026",
+        f"dividends:{_CLIENT_ID}:all:2026:3",
+        f"realized:{_CLIENT_ID}:all:all:all",
         f"treemap:{_CLIENT_ID}",
     ]
     for key in keys:
@@ -2457,3 +2515,82 @@ def test_a_positive_cash_balance_carries_the_amount_at_par():
 
     assert row["shares"] == 3283.11
     assert row["avg_buy_price"] == 1.0
+
+
+# ── PUL-77: X-Total-Count on the listing endpoints ───────────────────────────
+
+
+def test_announcements_admin_reports_the_total_in_a_header(api_client):
+    rows = [{"announcement_id": "a1", "url": "u", "published_at": "2024-01-01T00:00:00",
+             "title": "t", "company": "PKO", "ticker": "PKO", "post_text": None,
+             "posted_at": None, "x_post_id": None, "analyzed_at": None,
+             "supervisor_attempts": None, "parsed_content": None, "priority": None,
+             "structured_analysis": None, "analysis_approved": True,
+             "analysis_reject_reason": None, "event_type": "ESPI", "analysis_score": 0.9}]
+    with patch("src.api.list_announcements_admin", return_value=(rows, 137)):
+        r = api_client.get("/announcements", headers={"X-API-Key": _ADMIN_KEY})
+
+    assert r.status_code == 200
+    assert r.headers["X-Total-Count"] == "137"
+    assert r.headers["Access-Control-Expose-Headers"] == "X-Total-Count"
+    # The body is still a plain array — that is what makes this a zero-regression
+    # change, and a header nobody reads is cheaper than an envelope everyone must.
+    assert isinstance(r.json(), list) and len(r.json()) == 1
+
+
+def test_announcements_user_reports_the_total_in_a_header(api_client):
+    rows = [{"company": "PKO", "ticker": "PKO", "event_type": "ESPI",
+             "structured_analysis": None, "analysis_score": 0.8,
+             "published_at": "2024-01-01T00:00:00"}]
+    with patch("src.api.list_announcements_user", return_value=(rows, 42)):
+        r = api_client.get("/announcements", headers={"X-API-Key": _USER_KEY})
+
+    assert r.status_code == 200
+    assert r.headers["X-Total-Count"] == "42"
+
+
+def test_the_total_is_the_same_on_every_page(api_client):
+    """The count is taken before LIMIT, so paging must not move it. A count that
+    tracked the page would make "Strona 2 z 20" read "Strona 2 z 20" on page 1
+    and "z 20" again only by luck."""
+    rows = [{"company": "PKO", "ticker": "PKO", "event_type": "ESPI",
+             "structured_analysis": None, "analysis_score": 0.8,
+             "published_at": "2024-01-01T00:00:00"}]
+    with patch("src.api.list_announcements_user", return_value=(rows, 42)):
+        first = api_client.get("/announcements?page=1", headers={"X-API-Key": _USER_KEY})
+        second = api_client.get("/announcements?page=2", headers={"X-API-Key": _USER_KEY})
+
+    assert first.headers["X-Total-Count"] == second.headers["X-Total-Count"] == "42"
+
+
+def test_my_wallet_reports_the_total_in_a_header(user_client):
+    rows = [{"company": "PKO", "ticker": "PKO", "event_type": "ESPI",
+             "structured_analysis": None, "analysis_score": 0.8,
+             "published_at": "2024-01-01T00:00:00"}]
+    with patch("src.api.list_announcements_for_watchlist", return_value=(rows, 7)):
+        r = user_client.get("/announcements/my-wallet")
+
+    assert r.status_code == 200
+    assert r.headers["X-Total-Count"] == "7"
+    assert r.headers["Access-Control-Expose-Headers"] == "X-Total-Count"
+
+
+def test_admin_x_posts_reports_the_total_in_a_header(api_client):
+    rows = [{"x_post_id": "p1", "window": "ranek", "post_text": "t", "tweet_ids": "1,2",
+             "posted_at": "2024-01-01T00:00:00", "supervisor_attempts": 1,
+             "x_publish_status": "published"}]
+    with patch("src.api.list_x_posts_admin", return_value=(rows, 3)):
+        r = api_client.get("/admin/x-posts", headers={"X-API-Key": _ADMIN_KEY})
+
+    assert r.status_code == 200
+    assert r.headers["X-Total-Count"] == "3"
+
+
+def test_an_empty_listing_reports_zero_not_a_missing_header(api_client):
+    """A missing header and a zero mean different things to a client. Nothing
+    matched is an answer; no header at all looks like the feature is broken."""
+    with patch("src.api.list_announcements_user", return_value=([], 0)):
+        r = api_client.get("/announcements", headers={"X-API-Key": _USER_KEY})
+
+    assert r.status_code == 200
+    assert r.headers["X-Total-Count"] == "0"

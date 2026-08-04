@@ -102,7 +102,7 @@ def test_settings_entry_hidden_for_api_key_session(page: Page, live_server_url: 
     page.get_by_role("button", name="Mam klucz API").click()
     page.get_by_label("Klucz API").fill(_ADMIN_KEY)
     page.locator("#api-key-panel").get_by_role("button", name="Zaloguj się").click()
-    expect(page.locator("#page-label")).to_have_text("Strona 1")
+    expect(page.locator("#page-label")).to_have_text(re.compile(r"^Strona 1(?: |$)"))
 
     page.locator("#profile-menu-btn").click()
     expect(page.get_by_role("menuitem", name="Wyloguj")).to_be_visible()  # menu is open
