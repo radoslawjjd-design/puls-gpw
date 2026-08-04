@@ -419,12 +419,12 @@ revert.
 
 #### Automated
 
-- [x] 3.1 XTB suite passes
-- [x] 3.2 Full suite passes
-- [x] 3.3 Linting passes
-- [x] 3.4 No lot machinery left outside the ledger
+- [x] 3.1 XTB suite passes — 1805bf7
+- [x] 3.2 Full suite passes — 1805bf7
+- [x] 3.3 Linting passes — 1805bf7
+- [x] 3.4 No lot machinery left outside the ledger — 1805bf7
 
 #### Manual
 
-- [x] 3.5 Production FIFO audit still reports delta=+0.00 on both wallets
-- [x] 3.6 reconstruct_positions over production history diffs clean against baseline/positions.json
+- [x] 3.5 Production FIFO audit still reports delta=+0.00 on both wallets — 1805bf7
+- [x] 3.6 reconstruct_positions over production history diffs clean against baseline/positions.json — 1805bf7
