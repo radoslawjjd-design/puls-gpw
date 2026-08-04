@@ -119,6 +119,22 @@ def test_daily_change_shows_its_direction_in_text_and_colour(
     assert flat == unknown, f"zero {flat} and unknown {unknown} should share the default colour"
 
 
+def test_a_move_too_small_to_print_is_not_coloured_as_a_gain(
+    page: Page, live_server_url: str
+):
+    """Two decimals is the cell's resolution, so it is also the contract. A
+    +0.004% day prints as 0.00% — colouring it green would leave the cell
+    claiming "flat" and "up" at once."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    expect(page.locator("#pp-tbody")).to_contain_text("OPL")
+
+    expect(_daily_cell(page, "OPL")).to_have_text("0.00%")
+    assert _rgb(page, "OPL") == _rgb(page, "LPP"), (
+        "a move that prints as 0.00% must look the same as a true flat day"
+    )
+
+
 def test_daily_change_colour_survives_dark_mode_and_a_phone(
     page: Page, live_server_url: str
 ):

@@ -340,6 +340,15 @@ _FAKE_PORTFOLIO_POSITIONS = [
         "daily_change_pct": 0.0, "price_as_of": "2026-06-27",
         "price_history": [15000.0, 15000.0, 15000.0],
     },
+    # A move smaller than the two decimals the cell prints. The number is not
+    # zero, but everything the user can see says it is — so the colour has to
+    # agree with the text rather than with the hidden precision.
+    {
+        "ticker": "OPL", "company_name": "Orange Polska", "shares": 20.0,
+        "avg_buy_price": 9.0, "current_price": 9.5,
+        "daily_change_pct": 0.004, "price_as_of": "2026-06-27",
+        "price_history": [9.4, 9.45, 9.5],
+    },
 ]
 
 

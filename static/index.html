@@ -3843,8 +3843,13 @@ function _renderPortfolioTable(positions) {
     let daily = '—';
     let dailyClass = '';
     if (pos.daily_change_pct != null) {
-      daily = (pos.daily_change_pct > 0 ? '+' : '') + pos.daily_change_pct.toFixed(2) + '%';
-      dailyClass = pos.daily_change_pct > 0 ? 'positive' : pos.daily_change_pct < 0 ? 'negative' : '';
+      // Sign and colour follow the *printed* value, not the raw one. A +0.004%
+      // day prints as 0.00%, and tinting that green would leave the cell saying
+      // "flat" and "up" at the same time — two decimals is the resolution we
+      // publish, so it is also the resolution we colour by.
+      const shown = Number(pos.daily_change_pct.toFixed(2));
+      daily = (shown > 0 ? '+' : '') + shown.toFixed(2) + '%';
+      dailyClass = shown > 0 ? 'positive' : shown < 0 ? 'negative' : '';
     }
     let pnlText = '—';
     let pnlClass = '';

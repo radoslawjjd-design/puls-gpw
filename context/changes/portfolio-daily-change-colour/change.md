@@ -1,7 +1,7 @@
 ---
 change_id: portfolio-daily-change-colour
 title: Colour the daily-change column in the portfolio table and mobile cards
-status: planned
+status: impl_reviewed
 created: 2026-08-04
 updated: 2026-08-04
 archived_at: null
