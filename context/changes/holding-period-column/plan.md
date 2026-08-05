@@ -165,9 +165,9 @@ boundaries.
 
 #### Automated
 
-- [x] 1.1 New e2e tests pass
-- [x] 1.2 Full suite green (1114)
-- [x] 1.3 Lint clean
+- [x] 1.1 New e2e tests pass — 7cc9163
+- [x] 1.2 Full suite green (1114) — 7cc9163
+- [x] 1.3 Lint clean — 7cc9163
 
 #### Manual
 
