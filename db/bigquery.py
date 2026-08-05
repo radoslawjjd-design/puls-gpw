@@ -40,7 +40,12 @@ from google.cloud import bigquery  # noqa: E402
 from google.cloud.exceptions import NotFound  # noqa: E402
 
 from src.exceptions import BigQueryError  # noqa: E402
-from src.portfolio_lots import LotEvent, StoredPosition, basis_segments  # noqa: E402
+from src.portfolio_lots import (  # noqa: E402
+    LotEvent,
+    StoredPosition,
+    basis_segments,
+    first_open_lot_dates,
+)
 from src.post_selection import select_top_companies  # noqa: E402
 from src.tickers import is_valid_ticker  # noqa: E402
 
@@ -1490,7 +1495,10 @@ _PRICE_HISTORY_SCAN_DAYS = 90  # scan floor — generous margin over 30 sessions
 
 
 def list_user_portfolio_positions(
-    user_id: str, portfolio_id: str | None = None, include_history: bool = False
+    user_id: str,
+    portfolio_id: str | None = None,
+    include_history: bool = False,
+    include_first_buy_date: bool = False,
 ) -> list[dict]:
     """Return positions for user_id joined with the latest available close price.
 
@@ -1509,7 +1517,18 @@ def list_user_portfolio_positions(
     last 30 trading-session close prices (PLN, ascending by date), unioned across
     company_daily_stats and etf_quotes so ETFs are covered too; None when the ticker
     has no rows. The treemap path leaves include_history=False so it never pays the
-    ARRAY_AGG cost. Raises BigQueryError on query failure.
+    ARRAY_AGG cost.
+
+    When include_first_buy_date=True, each row also carries first_buy_date: date |
+    None — when the shares held *now* were acquired (PUL-114/PUL-123). This is the
+    oldest **open** FIFO lot, deliberately not MIN(buy date): three of thirteen live
+    production tickers differ, by 424, 332 and 249 days, because they were sold to
+    zero and bought again, and MIN would report a holding period whose shares the
+    owner no longer has. Off by default and opt-in for the same reason
+    include_history is: it costs one extra query, and neither the treemap nor the
+    import-resolution path has any use for it.
+
+    Raises BigQueryError on query failure.
     """
     client = _get_client()
     _t = time.time()
@@ -1612,7 +1631,33 @@ def list_user_portfolio_positions(
     except Exception as exc:
         raise BigQueryError(f"list_user_portfolio_positions failed: {exc}") from exc
     logger.debug("BQ list_user_portfolio_positions: %.0fms", (time.time() - _t) * 1000)
-    return [dict(row) for row in rows]
+    out = [dict(row) for row in rows]
+    if include_first_buy_date:
+        acquired = _first_open_lot_dates(user_id, portfolio_id)
+        for row in out:
+            row["first_buy_date"] = acquired.get(
+                (row.get("portfolio_id") or "", row.get("ticker"))
+            )
+    return out
+
+
+def _first_open_lot_dates(user_id: str, portfolio_id: str | None) -> dict:
+    """When the shares held now were acquired, per (wallet, ticker).
+
+    The arithmetic is `src.portfolio_lots.first_open_lot_dates`, which is pure and
+    unit-tested; this only fetches and adapts. A ticker with nothing open is absent
+    rather than dated — there is no holding period for shares nobody holds.
+    """
+    events_by_wallet: dict[str, list[LotEvent]] = {}
+    for row in list_broker_trades(user_id, portfolio_id):
+        events_by_wallet.setdefault(row.get("portfolio_id") or "", []).append(LotEvent(
+            ticker=row["ticker"],
+            op_type=row["op_type"],
+            occurred_at=row["occurred_at"],
+            volume=float(row.get("volume") or 0.0),
+            unit_price=float(row.get("unit_price") or 0.0),
+        ))
+    return first_open_lot_dates(events_by_wallet)
 
 
 # Reserved ticker for uninvested cash (PUL-95 Phase 8). Kept as an ordinary

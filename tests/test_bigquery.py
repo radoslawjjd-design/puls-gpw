@@ -1760,6 +1760,24 @@ def test_get_portfolio_calendar_data_raises_bigquery_error_on_failure():
             get_portfolio_calendar_data("port-123", "user-abc", 2026, 6)
 
 
+def test_positions_pay_for_the_acquisition_date_only_when_they_ask_for_it():
+    """Two callers have no use for it — the treemap (src/api.py:1260, deliberately
+    on today's basis) and import resolution (src/api.py:454, which wants tickers).
+    Both take the default, and the default must cost them nothing: the date needs a
+    whole extra scan of the operations table to compute."""
+    from db.bigquery import list_user_portfolio_positions
+
+    with (
+        patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])),
+        patch("db.bigquery.list_broker_trades", return_value=[]) as trades,
+    ):
+        list_user_portfolio_positions("user-1", "port-1")
+        assert trades.call_count == 0, "the default must not touch the operations table"
+
+        list_user_portfolio_positions("user-1", "port-1", include_first_buy_date=True)
+        assert trades.call_count == 1
+
+
 @pytest.fixture
 def stub_basis_segments():
     """Stub the two fetches `get_portfolio_history` gained with the dated basis.

@@ -424,28 +424,28 @@ rollback is `git revert` — the next request recomputes from operations.
 
 #### Automated
 
-- [x] 2.1 Full suite green; changed assertions named in baseline-report.md
-- [x] 2.2 Lint clean
-- [x] 2.3 The ops_basis CTE is gone
+- [x] 2.1 Full suite green; changed assertions named in baseline-report.md — 5a7a795
+- [x] 2.2 Lint clean — 5a7a795
+- [x] 2.3 The ops_basis CTE is gone — 5a7a795
 
 #### Manual
 
-- [x] 2.4 Right edge matches the baseline to the grosz on every wallet
-- [x] 2.5 Historical days move in the predicted direction and magnitude
-- [x] 2.6 The four re-bought tickers show a stepping basis
-- [x] 2.7 baseline-report.md written to the change folder
+- [x] 2.4 Right edge matches the baseline to the grosz on every wallet — 5a7a795
+- [x] 2.5 Historical days move in the predicted direction and magnitude — 5a7a795
+- [x] 2.6 The four re-bought tickers show a stepping basis — 5a7a795
+- [x] 2.7 baseline-report.md written to the change folder — 5a7a795
 - [ ] 2.8 Pre-change endpoint latency recorded
 
 ### Phase 3: first_buy_date on the positions read path
 
 #### Automated
 
-- [ ] 3.1 New API contract test passes
-- [ ] 3.2 Full suite green
-- [ ] 3.3 Lint clean
+- [x] 3.1 New API contract test passes
+- [x] 3.2 Full suite green
+- [x] 3.3 Lint clean
 
 #### Manual
 
-- [ ] 3.4 Positions endpoint returns first_buy_date for held tickers
-- [ ] 3.5 CBF, SNT and XTB report the re-buy date
-- [ ] 3.6 Treemap and import-resolution paths issue no extra query
+- [x] 3.4 Positions endpoint returns first_buy_date for held tickers
+- [x] 3.5 CBF, SNT and XTB report the re-buy date
+- [x] 3.6 Treemap and import-resolution paths issue no extra query
