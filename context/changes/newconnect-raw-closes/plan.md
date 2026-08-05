@@ -53,16 +53,28 @@ A pure parser for the `o=1111111` download, with no network and no BigQuery.
 
 ### Changes required
 
-- `src/stooq_raw.py` (new) — `parse_raw_csv(text) -> list[RawQuote]`.
-  - Header is `Data,Otwarcie,Najwyzszy,Najnizszy,Zamkniecie,Wolumen,LOP`; the file is
-    UTF-8 with BOM.
-  - Closes carry float round-trip noise (`3.139996958116`). Round to 2 decimals — the
-    research verified all 574 BAC rows resolve cleanly.
-  - **Reject an adjusted file.** A fractional volume means the `o=` parameter did not
-    take effect; raise rather than write adjusted data a second time.
-  - Reject stooq's error/limit page, mirroring the guard already in
-    `backfill_historical_closes.py:240`.
-- `tests/test_stooq_raw.py` (new) — parser tests including both rejection paths.
+Reuse, do not duplicate: `scripts/backfill_historical_closes.py:126` already parses this
+exact format, and `:237` already classifies stooq's error/limit/challenge pages. Phase 1
+adds only what is genuinely new — deciding whether a file is adjusted.
+
+- `src/stooq_raw.py` (new) — the adjustment check and close normalisation.
+  - `normalise_close(value)` — the raw download carries float round-trip noise
+    (`3.139996958116`); round to 2 decimals.
+  - `is_adjusted(candidate, bulk)` — **the guard, and it must not use a tick heuristic.**
+    Measured: an adjusted per-symbol download has *integer* volumes too (6 708 vs 6 486
+    for BAC on 2025-08-29 — the same 1.0342 factor, rounded to whole shares), so the
+    fractional-volume signature is specific to `d_pl_txt` and cannot discriminate here.
+    A tick-based test is equally unsafe: RTS 11 ticks reach 0.001 on low-priced names,
+    which is what invalidated the first detector in this ticket.
+
+    Instead compare against a known-adjusted reference. `d_pl_txt` *is* that reference,
+    and its fractional volumes mark exactly which of its rows are adjusted. On those
+    dates, if the candidate matches the bulk value it is adjusted too — reject. The raw
+    series differs there by the adjustment factor.
+  - Refuse a candidate with no overlapping known-adjusted dates rather than guessing:
+    an unverifiable file must not be written.
+- `tests/test_stooq_raw.py` (new) — covering accept, reject-because-adjusted, and
+  refuse-because-unverifiable, with fixtures built from the measured BAC values.
 
 ### Success criteria
 
@@ -153,10 +165,10 @@ the decision taken for PUL-114's curve correction in this batch.
 
 ### Phase 1: Raw stooq CSV reader
 #### Automated
-- [ ] 1.1 `uv run pytest tests/test_stooq_raw.py`
-- [ ] 1.2 `uv run ruff check src/stooq_raw.py tests/test_stooq_raw.py`
+- [x] 1.1 `uv run pytest tests/test_stooq_raw.py`
+- [x] 1.2 `uv run ruff check src/stooq_raw.py tests/test_stooq_raw.py`
 #### Manual
-- [ ] 1.3 Parsing `bac_d.csv` yields 574 rows, all closes tick-aligned
+- [x] 1.3 Parsing `bac_d.csv` yields 574 rows, all closes tick-aligned
 
 ### Phase 2: Correction pass for NewConnect
 #### Automated
