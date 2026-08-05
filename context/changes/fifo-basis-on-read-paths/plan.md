@@ -440,12 +440,12 @@ rollback is `git revert` — the next request recomputes from operations.
 
 #### Automated
 
-- [x] 3.1 New API contract test passes
-- [x] 3.2 Full suite green
-- [x] 3.3 Lint clean
+- [x] 3.1 New API contract test passes — 3989758
+- [x] 3.2 Full suite green — 3989758
+- [x] 3.3 Lint clean — 3989758
 
 #### Manual
 
-- [x] 3.4 Positions endpoint returns first_buy_date for held tickers
-- [x] 3.5 CBF, SNT and XTB report the re-buy date
-- [x] 3.6 Treemap and import-resolution paths issue no extra query
+- [x] 3.4 Positions endpoint returns first_buy_date for held tickers — 3989758
+- [x] 3.5 CBF, SNT and XTB report the re-buy date — 3989758
+- [x] 3.6 Treemap and import-resolution paths issue no extra query — 3989758

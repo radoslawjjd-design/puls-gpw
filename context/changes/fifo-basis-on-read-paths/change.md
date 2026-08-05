@@ -1,7 +1,7 @@
 ---
 change_id: fifo-basis-on-read-paths
 title: Swap the read paths onto the dated lot ledger and retire ops_basis
-status: plan_reviewed
+status: implemented
 created: 2026-08-05
 updated: 2026-08-05
 archived_at: null
