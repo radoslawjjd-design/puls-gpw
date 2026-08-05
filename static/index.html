@@ -3834,6 +3834,56 @@ function _updatePortfolioSummary(positions) {
   summary.style.display = '';
 }
 
+// ── Holding period (PUL-123 part 2) ─────────────────────────────────────────
+// PUL-114 supplies the numbers: first_buy_date is the oldest still-OPEN FIFO lot,
+// so a ticker sold to zero and re-bought dates from the re-buy, not from a
+// purchase whose shares are long gone. Nothing here does lot arithmetic.
+
+// Polish needs three forms and the ticket's data spans both branches — live
+// positions run from 15 days to 424. 2-4 take the "few" form, except in the teens.
+function _plPlural(n, one, few, many) {
+  const abs = Math.abs(n) % 100;
+  if (n === 1) return one;
+  if (abs >= 12 && abs <= 14) return many;
+  return (abs % 10 >= 2 && abs % 10 <= 4) ? few : many;
+}
+
+// Whole days between an ISO date and today, or null when there is no date.
+// A hand-entered position has no operations and therefore no acquisition date;
+// the caller renders absence, never zero (PUL-123 names this explicitly).
+function _daysSince(iso) {
+  if (!iso) return null;
+  const then = new Date(iso + 'T00:00:00');
+  if (isNaN(then.getTime())) return null;
+  const now = new Date();
+  const days = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - then) / 86400000);
+  return days >= 0 ? days : null;
+}
+
+// Below 90 days the exact count is what the reader wants; above it, "424 dni"
+// stops meaning anything and years+months does the arithmetic for them.
+function _holdingText(days) {
+  if (days == null || days < 0) return null;
+  if (days < 90) return days + ' ' + _plPlural(days, 'dzień', 'dni', 'dni');
+  const months = Math.floor(days / 30.4375);
+  const y = Math.floor(months / 12), m = months % 12;
+  if (!y) return m + ' mies.';
+  const years = y + ' ' + _plPlural(y, 'rok', 'lata', 'lat');
+  return m ? years + ' ' + m + ' mies.' : years;
+}
+
+// The Zrealizowane cell. The volume-weighted figure answers "how long did I hold
+// this"; the oldest consumed lot is what PUL-123's acceptance criterion asks about,
+// so it rides in the title — but only when it differs, or the hover repeats the
+// cell and teaches the reader to ignore it.
+function _heldCell(row) {
+  const text = _holdingText(row.days_held_weighted == null ? null : Math.round(row.days_held_weighted));
+  if (!text) return '<td data-label="Okres posiadania">—</td>';
+  const max = row.days_held_max == null ? null : _holdingText(Math.round(row.days_held_max));
+  const title = (max && max !== text) ? ` title="Najstarszy lot: ${esc(max)}"` : '';
+  return `<td data-label="Okres posiadania"${title}>${esc(text)}</td>`;
+}
+
 function _sparklineSvg(hist) {
   if (!Array.isArray(hist) || hist.length < 2) return '\u2014';
   const w = 96, h = 28, min = Math.min(...hist), max = Math.max(...hist);
@@ -3908,6 +3958,7 @@ function _renderPortfolioTable(positions) {
       <td>${company}</td>
       <td data-label="Ilość akcji">${shares}</td>
       <td data-label="Śr. cena zakupu">${avgPrice} PLN</td>
+      <td data-label="Okres posiadania">${_holdingText(_daysSince(pos.first_buy_date)) || '—'}</td>
       <td data-label="Aktualny kurs">${curPrice}</td>
       <td class="${dailyClass}" data-label="Zmiana dzienna">${daily}</td>
       <td class="${pnlClass}" data-label="Zysk/strata">${pnlText}</td>
@@ -4568,6 +4619,9 @@ function _buildPortfolioPositionsViewContent(view) {
           <thead id="pp-thead">
             <tr>
               <th class="th-sortable" data-key="ticker">Ticker</th><th class="th-sortable" data-key="company_name">Spółka</th><th class="th-sortable" data-key="shares">Ilość akcji</th><th class="th-sortable" data-key="avg_buy_price">Śr. cena zakupu</th>
+              <!-- Sorted by data-key, i.e. the raw ISO date: the cell renders in two
+                   different formats, so sorting its text would be meaningless. -->
+              <th class="th-sortable" data-key="first_buy_date">Okres posiadania</th>
               <th class="th-sortable" data-key="current_price">Aktualny kurs</th><th class="th-sortable" data-key="daily_change_pct">Zmiana dzienna</th><th class="th-sortable" data-key="pnl_pln">Zysk/strata</th><th>30 dni</th><th></th>
             </tr>
           </thead>
@@ -5486,13 +5540,14 @@ function _renderPortfolioRealized(data) {
   }
 
   $('pp-real-by-ticker').innerHTML = rows.length
-    ? `<table><thead><tr><th>Ticker</th><th>Spółka</th><th>Sprzedano</th>` +
+    ? `<table><thead><tr><th>Ticker</th><th>Spółka</th><th>Sprzedano</th><th>Okres posiadania</th>` +
       `<th>Przychód</th><th>Koszt</th><th>Wynik</th><th>Zwrot</th></tr></thead><tbody>` +
       // data-label feeds the mobile card layout's ::before — seven columns become
       // seven labelled rows rather than three that need a swipe to reach (PUL-108).
       rows.map(r => `<tr><td data-label="Ticker">${esc(r.ticker || '')}</td>` +
         `<td data-label="Spółka">${esc(r.company_name || '')}</td>` +
         `<td data-label="Sprzedano">${esc(Number(r.shares_sold || 0).toLocaleString('pl-PL', { maximumFractionDigits: 4 }))}</td>` +
+        _heldCell(r) +
         `<td data-label="Przychód">${esc(zl(r.proceeds))}</td><td data-label="Koszt">${esc(zl(r.cost))}</td>` +
         `<td data-label="Wynik" class="${cls(r.pnl)}">${esc(sign(r.pnl) + zl(r.pnl))}</td>` +
         `<td data-label="Zwrot" class="${cls(r.pnl)}">${esc(pct(r.pnl_pct))}</td></tr>`).join('') +
@@ -6005,9 +6060,13 @@ function _exportAnnouncementsCsv(rows, filename) {
 }
 function _exportPortfolioCsv() {
   if (!_ppPositions.length) { alert('Brak pozycji do eksportu.'); return; }
-  const out = [['Ticker', 'Spółka', 'Ilość akcji', 'Śr. cena zakupu', 'Aktualny kurs', 'Zmiana dzienna %', 'Zysk/strata PLN', 'Zysk/strata %']];
+  const out = [['Ticker', 'Spółka', 'Ilość akcji', 'Śr. cena zakupu', 'Okres posiadania',
+                'Aktualny kurs', 'Zmiana dzienna %', 'Zysk/strata PLN', 'Zysk/strata %']];
   _ppPositions.forEach(p => out.push([
     p.ticker, p.company_name || '', _csvNum(p.shares), _csvNum(p.avg_buy_price),
+    // Same position and same text as the table — an export that reorders or
+    // omits a visible column is the surprise, not the one that mirrors it.
+    _holdingText(_daysSince(p.first_buy_date)) || '',
     _csvNum(p.current_price), _csvNum(p.daily_change_pct), _csvNum(p.pnl_pln), _csvNum(p.pnl_pct)
   ]));
   _downloadCsv(_csvFilename(_ppExportWalletName(), _csvToday()), out);

@@ -70,8 +70,16 @@ function so the two views cannot drift apart.
 `_holdingText(days)` returning `null` for `null`/negative input, `N dni` below 90, else
 years and months (`1 rok 2 mies.`, `3 mies.`, `2 lata`); and `_daysSince(isoDate)`
 returning whole days or `null`. Polish plural rules for `dzień` and `rok`; `mies.` is
-invariant. Months are computed from the date parts, not by dividing days by 30 — a
-position bought on the 31st must not read as one month old on the 30th of the next.
+invariant.
+
+**Correction to this plan, made while implementing.** It originally required months to
+be derived from the date parts rather than from a day count. That is impossible for
+Zrealizowane: PUL-114 supplies `days_held_weighted` as a *number of days* — a volume
+weighted average across several lots — and there is no single date to take parts from.
+Insisting on it would have forced the two views apart, so a position and a sale of the
+same age would read differently. `_holdingText` therefore takes days in both views and
+converts with the mean month length (365.25/12). The boundary error is under a day on a
+figure whose unit is months.
 
 #### 2. Positions table
 
@@ -157,14 +165,23 @@ boundaries.
 
 #### Automated
 
-- [ ] 1.1 New e2e tests pass
-- [ ] 1.2 Full suite green
-- [ ] 1.3 Lint clean
+- [x] 1.1 New e2e tests pass
+- [x] 1.2 Full suite green (1114)
+- [x] 1.3 Lint clean
 
 #### Manual
 
-- [ ] 1.4 A long-held position reads years and months in the browser
-- [ ] 1.5 A hand-entered position reads an em dash, not 0 dni
-- [ ] 1.6 The column sorts chronologically
-- [ ] 1.7 The mobile card layout shows the new row at 375 px
-- [ ] 1.8 The CSV export carries the column in the right place
+- [x] 1.4 A long-held position reads years and months in the browser (automated —
+      test_holding_period_switches_units_instead_of_printing_raw_days asserts the
+      rendered text in Chromium)
+- [x] 1.5 A hand-entered position reads an em dash, not 0 dni (automated —
+      test_a_position_with_no_acquisition_date_shows_no_holding_period, which also
+      asserts the cell contains no digit at all)
+- [x] 1.6 The column sorts chronologically (automated —
+      test_holding_period_sorts_by_date_not_by_the_text_it_prints, both directions)
+- [x] 1.7 The mobile card layout shows the new row at 375 px (automated — the card
+      layout labels cells *positionally*, so an inserted column either inherits the
+      mechanism or silently loses its label; part 1 assumed this rather than checking)
+- [x] 1.8 The CSV export carries the column in the right place (automated — position
+      asserted relative to its neighbour, since anything reading by index lands one
+      field off otherwise)
