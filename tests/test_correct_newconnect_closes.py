@@ -106,3 +106,38 @@ def test_a_close_that_cannot_be_parsed_does_not_produce_a_row():
     raw = _RAW + [{"date": "2025-08-27", "close": None}]
     rows = cnc.build_correction_rows("BAC", raw, _STORED, _FETCHED_AT)
     assert all(r["kurs_zamkniecia"] is not None for r in rows)
+
+
+# --- the contamination report ------------------------------------------------------
+
+# Fractional volumes mark 2025-08-27..29 as adjusted in the bulk archive.
+_BULK = {
+    "AAA": [
+        {"date": "2025-08-27", "close": 3.20048, "volume": 16393.4296574873},
+        {"date": "2025-08-28", "close": 3.17147, "volume": 8750.5399237903},
+        {"date": "2026-07-20", "close": 3.62, "volume": 3657.0},
+    ]
+}
+
+
+def test_a_ticker_whose_stored_series_still_matches_the_archive_is_reported():
+    stored = {"AAA": {"2025-08-27": 3.2005, "2025-08-28": 3.1715, "2026-07-20": 3.62}}
+    assert cnc.contaminated_tickers(_BULK, stored) == ["AAA"]
+
+
+def test_a_repaired_ticker_drops_off_the_report():
+    # The bulk archive never changes, so asking it alone would keep reporting a ticker
+    # forever. What decides is whether BigQuery still agrees with it.
+    stored = {"AAA": {"2025-08-27": 3.31, "2025-08-28": 3.28, "2026-07-20": 3.62}}
+    assert cnc.contaminated_tickers(_BULK, stored) == []
+
+
+def test_a_ticker_with_nothing_stored_is_not_reported():
+    assert cnc.contaminated_tickers(_BULK, {}) == []
+
+
+def test_a_ticker_stored_only_outside_the_adjusted_span_is_not_guessed_at():
+    # Unverifiable is not the same as clean, but reporting it would be a claim the data
+    # cannot support.
+    stored = {"AAA": {"2026-07-20": 3.62}}
+    assert cnc.contaminated_tickers(_BULK, stored) == []

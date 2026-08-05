@@ -48,7 +48,7 @@ import argparse
 import importlib.util
 import logging
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -70,7 +70,11 @@ from src.stooq_raw import (  # noqa: E402
 )
 
 _ROOT = Path(__file__).parent.parent
-_BULK_DIR = _ROOT / "d_pl_txt" / "data" / "daily" / "pl" / "nc stocks"
+_BULK_ROOT = _ROOT / "d_pl_txt" / "data" / "daily" / "pl"
+# Both trees, not just NewConnect. The defect follows the PUL-92 backfill, not a market:
+# MCR sits in `wse stocks` and is contaminated up to 2025-10-31, months before it enters
+# the GPW archive PUL-98 corrected from — so it was never reachable either.
+_BULK_DIRS = (_BULK_ROOT / "nc stocks", _BULK_ROOT / "wse stocks")
 
 RAW_SOURCE = "stooq_raw"
 
@@ -153,10 +157,13 @@ def ticker_from_filename(path: Path) -> str:
 def load_bulk_reference(ticker: str) -> list[dict]:
     """The known-adjusted series for `ticker`, used only to verify the download."""
     backfill = _load_sibling("backfill_historical_closes")
-    path = _BULK_DIR / f"{ticker.lower()}.txt"
-    if not path.exists():
-        return []
-    return backfill.parse_stooq_ascii(path.read_text(encoding="utf-8", errors="replace"))
+    for bulk_dir in _BULK_DIRS:
+        path = bulk_dir / f"{ticker.lower()}.txt"
+        if path.exists():
+            return backfill.parse_stooq_ascii(
+                path.read_text(encoding="utf-8", errors="replace")
+            )
+    return []
 
 
 def load_candidate(path: Path) -> list[dict]:
@@ -169,24 +176,54 @@ def load_candidate(path: Path) -> list[dict]:
     return backfill.parse_stooq_csv(text)
 
 
-def contaminated_tickers(bulk_dir: Path = _BULK_DIR) -> list[str]:
-    """Tickers whose bulk-archive history carries an adjustment factor.
+def contaminated_tickers(
+    bulk_by_ticker: dict[str, list[dict]],
+    stored_by_ticker: dict[str, dict[str, float]],
+) -> list[str]:
+    """Tickers whose *stored* history still carries the adjustment.
 
-    Fractional volume is the signal: the archive scales volume by the same factor as
-    price, and a fractional share count is impossible. This replaces the tick-precision
-    heuristic used during triage, which undercounts — it flagged 195 of BAC's 208 wrong
-    rows, because rounding an adjusted value to 4 decimals sometimes lands back on a
-    legal tick.
+    Asking the bulk archive alone would be wrong: `d_pl_txt` never changes, so a ticker
+    already repaired would keep being reported. The question is what BigQuery holds, and
+    it is the same question the download guard answers — on the dates the archive marks
+    adjusted (fractional volume, impossible for a share count), does the stored series
+    agree with the archive? If it does, it is still adjusted.
+
+    This replaces the tick-precision heuristic used during triage, which undercounts: it
+    flagged 195 of BAC's 208 wrong rows, because rounding an adjusted value to 4 decimals
+    sometimes lands back on a legal tick.
     """
-    backfill = _load_sibling("backfill_historical_closes")
     out: list[str] = []
-    for path in sorted(bulk_dir.glob("*.txt")):
-        rows = backfill.parse_stooq_ascii(path.read_text(encoding="utf-8", errors="replace"))
-        for row in rows:
-            volume = row.get("volume")
-            if volume is not None and abs(volume - round(volume)) > 1e-9:
-                out.append(path.stem.upper())
-                break
+    for ticker, bulk in sorted(bulk_by_ticker.items()):
+        stored = stored_by_ticker.get(ticker)
+        if not stored:
+            continue
+        rows = [{"date": d, "close": c} for d, c in stored.items()]
+        try:
+            assert_unadjusted(rows, bulk)
+        except AdjustedSeriesError:
+            out.append(ticker)
+        except UnverifiableSeriesError:
+            # Nothing overlaps a known-adjusted date, so there is nothing to report.
+            continue
+    return out
+
+
+def load_bulk_tree() -> dict[str, list[dict]]:
+    """Every bulk series that carries at least one adjusted row, keyed by ticker."""
+    backfill = _load_sibling("backfill_historical_closes")
+    out: dict[str, list[dict]] = {}
+    for bulk_dir in _BULK_DIRS:
+        if not bulk_dir.exists():
+            continue
+        for path in sorted(bulk_dir.glob("*.txt")):
+            rows = backfill.parse_stooq_ascii(
+                path.read_text(encoding="utf-8", errors="replace")
+            )
+            if any(
+                r.get("volume") is not None and abs(r["volume"] - round(r["volume"])) > 1e-9
+                for r in rows
+            ):
+                out[path.stem.upper()] = rows
     return out
 
 
@@ -202,10 +239,47 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.report_contaminated:
-        names = contaminated_tickers()
-        print(f"{len(names)} NewConnect tickers still carry adjusted history:")
-        for name in names:
+        from google.cloud import bigquery as gbq
+
+        from db.bigquery import _COMPANY_DAILY_STATS_TABLE_NAME, _get_client, _table_ref
+
+        bulk_by_ticker = load_bulk_tree()
+        client = _get_client()
+        table = _table_ref(client, _COMPANY_DAILY_STATS_TABLE_NAME)
+        query = f"""
+            SELECT ticker, snapshot_date, kurs_zamkniecia
+            FROM `{table}`
+            WHERE ticker IN UNNEST(@tickers) AND kurs_zamkniecia IS NOT NULL
+        """
+        job_config = gbq.QueryJobConfig(query_parameters=[
+            gbq.ArrayQueryParameter("tickers", "STRING", sorted(bulk_by_ticker)),
+        ])
+        stored_by_ticker: dict[str, dict[str, float]] = {}
+        for row in client.query(query, job_config=job_config).result():
+            stored_by_ticker.setdefault(row.ticker, {})[
+                row.snapshot_date.isoformat()
+            ] = row.kurs_zamkniecia
+
+        names = contaminated_tickers(bulk_by_ticker, stored_by_ticker)
+        # The split is what makes this actionable. PUL-98 ran with --since 2025-01-01,
+        # so most of the deep-history contamination was never in scope; only the
+        # visible-year names can reach a chart today.
+        cut = args.since or (date.today() - timedelta(days=365)).isoformat()
+        recent = {
+            ticker: {d: c for d, c in stored.items() if d >= cut}
+            for ticker, stored in stored_by_ticker.items()
+        }
+        visible = contaminated_tickers(bulk_by_ticker, recent)
+
+        print(f"{len(names)} tickers carry adjusted history somewhere "
+              f"(of {len(bulk_by_ticker)} with an adjusted bulk series).")
+        print(f"{len(visible)} of them are adjusted inside the visible year (since {cut}) "
+              "-- these are the ones a chart can reach today:")
+        for name in visible:
             print(f"  {name}")
+        deeper = [n for n in names if n not in set(visible)]
+        print(f"\n{len(deeper)} more are adjusted only before {cut}, outside the window "
+              "PUL-98 corrected.")
         print("\nRepair one with:")
         print("  1. open https://stooq.pl/q/d/?s=<symbol>&o=1111111 in a browser")
         print("  2. save the CSV via 'Pobierz dane w pliku csv...' into stooq_raw/")

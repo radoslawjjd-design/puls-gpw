@@ -132,7 +132,16 @@ extra, and `?range=1y` is a default rather than a ceiling.
   may live in the repo — unlike the PUL-114 baselines, which held portfolio values and
   had to be rewritten out of history.
 - Run the pass for BAC with `--apply`.
-- Diagnose and fix MCR's name mapping so PUL-98's existing archive path reaches it.
+- ~~Fix MCR's name mapping so PUL-98's archive path reaches it.~~ **Dropped — the premise
+  was wrong.** MCR is not a mapping failure: it is absent from the archive sheet on the
+  dates that are contaminated (checked 2025-08-27, 2025-10-31, 2025-11-14, 2025-12-15 —
+  all absent; present from 2026-01-15). Its adjusted rows end 2025-10-31, entirely before
+  it enters the archive, so PUL-98 could never have reached them and no mapping change
+  would help. MCR needs the same stooq download as BAC, which makes it neither free nor
+  exposed — so it joins the deferred set rather than this phase.
+
+  It also shows the contamination is not a NewConnect phenomenon but a PUL-92-backfill
+  one: MCR sits in `wse stocks`. Phase 4's report must scan both trees.
 - `context/changes/newconnect-raw-closes/repair-report.md` — rows changed per ticker,
   before/after spot checks, the executed commands.
 
@@ -182,23 +191,23 @@ the decision taken for PUL-114's curve correction in this batch.
 
 ### Phase 2: Correction pass for NewConnect
 #### Automated
-- [x] 2.1 `uv run pytest tests/test_correct_newconnect_closes.py`
-- [x] 2.2 `uv run pytest` — full suite green
-- [x] 2.3 `uv run ruff check .`
+- [x] 2.1 `uv run pytest tests/test_correct_newconnect_closes.py` — 20f7b6d
+- [x] 2.2 `uv run pytest` — full suite green — 20f7b6d
+- [x] 2.3 `uv run ruff check .` — 20f7b6d
 #### Manual
-- [x] 2.4 Dry run reports 208 rows to change and writes nothing
+- [x] 2.4 Dry run reports 208 rows to change and writes nothing — 20f7b6d
 
 ### Phase 3: Execute the repair
 #### Automated
-- [ ] 3.1 Post-repair query: zero BAC rows differ from the raw series
-- [ ] 3.2 Before-snapshot exists and round-trips
-- [ ] 3.3 `uv run pytest`
+- [x] 3.1 Post-repair query: zero BAC rows differ from the raw series
+- [x] 3.2 Before-snapshot exists and round-trips
+- [x] 3.3 `uv run pytest`
 #### Manual
-- [ ] 3.4 Portfolio history right-edge unchanged
+- [x] 3.4 Portfolio history right-edge unchanged
 
 ### Phase 4: Contamination report and the on-demand path
 #### Automated
-- [ ] 4.1 `uv run pytest`
-- [ ] 4.2 `uv run ruff check .`
+- [x] 4.1 `uv run pytest`
+- [x] 4.2 `uv run ruff check .`
 #### Manual
-- [ ] 4.3 Report lists 45 tickers, excludes BAC and MCR
+- [x] 4.3 Report covers both bulk trees and excludes BAC
