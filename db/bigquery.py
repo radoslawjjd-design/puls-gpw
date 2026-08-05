@@ -779,6 +779,8 @@ def _basis_segments_for(user_id: str, portfolio_id: str | None) -> list:
     caches for 300 s, so they are paid once per user per five minutes.
     """
     trades = list_broker_trades(user_id, portfolio_id)
+    # Deliberately without include_first_buy_date: that flag makes this call fetch
+    # the operations a second time, and they are already in `trades` above.
     positions = list_user_portfolio_positions(user_id, portfolio_id)
 
     events_by_wallet: dict[str, list[LotEvent]] = {}
