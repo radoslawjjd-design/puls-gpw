@@ -98,7 +98,7 @@ functions test-first with no caller. Nothing in production can move in this phas
 
 #### 1. Pre-change baseline
 
-**File**: `context/changes/fifo-basis-on-read-paths/baseline/history.json`
+**File**: scratchpad (`.../scratchpad/baseline_history.json`) — **not committed**
 
 **Intent**: Run the *current* `get_portfolio_history` SQL against production for each
 real wallet and for all-wallets mode at the widest range, and serialize the series.
@@ -107,7 +107,14 @@ unrecoverable.
 
 **Contract**: One entry per `(user_id, portfolio_id|all)` holding the full
 `snapshot_date / value_pln / pnl_pln` series plus `notes`, `excluded` and `data_from`.
-Committed to the change folder, as part 1's baselines were.
+
+**The artefact stays out of git.** The repository is public, and this file is a full
+year of the owner's portfolio value keyed by Firebase user id. Part 1's baselines were
+committed before this was weighed; from here the rule is that the *evidence* enters the
+repo and the *data* does not. What lands in the change folder is
+`baseline-report.md` — the derived comparison Phase 2 produces (right-edge agreement,
+per-date divergence direction and magnitude), which is what any future reader actually
+needs to check the equivalence claim.
 
 #### 2. The segment builder
 
@@ -132,6 +139,16 @@ basis(D)   = (ledger_cost(D) + residual × avg_buy_price)
 
 A key whose denominator is ≤ `DUST` on a given day emits no segment for that day — the
 caller decides what a basis-less holding means, the builder does not.
+
+**The residual must never be priced at nothing.** A key with no entry in `positions` —
+which is exactly the sold-to-zero case that replaces `ops_basis` — has `today_shares =
+0` and therefore no stored `avg_buy_price`. If its operations do not net to zero (a
+position deleted by hand leaves buys on record; `db/bigquery.py:987-991` guards the same
+shape in SQL), the residual is non-zero with no price attached. In that case the residual
+is folded in at **the ledger's own open-lot basis** — i.e. `basis(D) = ledger_cost(D) /
+ledger_open(D)` — so the shares SQL will still count inherit the price of the shares the
+ledger can explain. Pricing them at zero would render as 100% profit, which is the
+failure this whole design exists to make unreachable.
 
 `first_open_lot_dates(events)` → `{(portfolio_id, ticker): date}` from the *oldest open
 lot*, absent for a key with no open lots. Deliberately not `MIN(buy)`.
@@ -158,7 +175,7 @@ segment rather than a zero-cost one.
 
 #### Automated Verification
 
-- Baseline artefact exists and is non-empty: `test -s context/changes/fifo-basis-on-read-paths/baseline/history.json`
+- Baseline artefact captured and non-empty (scratchpad path, not committed)
 - New unit tests pass: `uv run pytest tests/test_portfolio_lots.py -q`
 - The ledger module is still stdlib-only (the part 1 guard): `uv run pytest tests/test_portfolio_lots.py -k imports -q`
 - Full suite green: `uv run pytest -q`
@@ -170,7 +187,7 @@ segment rather than a zero-cost one.
 
 ---
 
-## Phase 2: History onto the segments, `ops_basis` deleted
+## Phase 2: History onto the segments, ops_basis deleted
 
 ### Overview
 
@@ -215,7 +232,10 @@ it as the basis, and delete the CTE it replaces.
 - **Add** a `dated_basis` CTE resolving the latest segment with `valid_from <=
   snapshot_date` per (portfolio_id, ticker, day), over the in-range spine only.
 - **Project `portfolio_id`** out of `held` (currently grouped away) and join
-  `dated_basis` on it, taking `COALESCE(dated_basis.basis, h.avg_price)`.
+  `dated_basis` on it, taking `COALESCE(dated_basis.basis, h.avg_price)`. **The fallback
+  arm is not dead defensive code**: a position entered by hand carries no operations at
+  all, so it never produces a segment, and `shares_on_day` equals its residual on every
+  day of the range. `h.avg_price` is the only thing that prices it. Do not tidy it away.
 - **Move value, P&L and `covered` onto one predicate** — priced *and* costed:
 
   ```sql
@@ -263,11 +283,12 @@ BOCF/LOCF and right-edge paragraphs.
 - Diffed against Phase 1's baseline on production: the right edge matches to the grosz on every wallet
 - Historical days move in the predicted direction and magnitude (up, worst ≈ +2 143 PLN around 2025-10-14)
 - The four re-bought tickers (CBF, KRU, SNT, XTB) show a basis that steps at the re-buy rather than a flat line
-- Endpoint latency measured before/after on the real service — the added round trip is within the 300 s cache's tolerance
+- `baseline-report.md` written to the change folder, carrying the comparison rather than the data
+- Pre-change endpoint latency recorded (the post-deploy half is a release check, not a phase gate — this branch is not on production until the release branch merges)
 
 ---
 
-## Phase 3: `first_buy_date` on the positions read path
+## Phase 3: first_buy_date on the positions read path
 
 ### Overview
 
@@ -308,21 +329,25 @@ corresponds to a purchase that actually happened.
 
 #### 4. Endpoint contract test
 
-**File**: `tests/e2e/test_portfolio_positions.py` (or the existing positions e2e module)
+**File**: `tests/test_api.py`
 
 **Intent**: Pin the HTTP contract so PUL-123 part 2 renders against a field proven to
 exist and to be spelled correctly.
 
-**Contract**: The positions endpoint returns `first_buy_date`; in "Wszystkie" mode it is
-the earliest open lot across wallets. The `conftest` fake for
-`list_user_portfolio_positions` gains the field — per the project's standing rule that a
-BQ-backed endpoint needs *every* `db.bigquery.*` it touches mocked, not just startup.
+**Contract**: Via FastAPI's `TestClient` — `/api/portfolio/positions` returns
+`first_buy_date`, and in "Wszystkie" mode it is the earliest open lot across wallets.
+
+**Not in `tests/e2e/`.** That suite is Playwright (`tests/e2e/test_portfolio_positions.py:1`
+imports `playwright.sync_api` and drives the DOM), and this change renders nothing — a
+browser test could only assert on a field the UI does not display. `tests/test_api.py` is
+where this codebase already tests HTTP contracts. The browser test belongs to PUL-123
+part 2, where the column actually appears.
 
 ### Success Criteria
 
 #### Automated Verification
 
-- New e2e contract test passes: `uv run pytest tests/e2e -q -k first_buy_date`
+- New API contract test passes: `uv run pytest tests/test_api.py -q -k first_buy_date`
 - Full suite green: `uv run pytest -q`
 - Lint clean: `uv run ruff check .`
 
@@ -381,7 +406,7 @@ rollback is `git revert` — the next request recomputes from operations.
 
 #### Automated
 
-- [ ] 1.1 Baseline artefact exists and is non-empty
+- [ ] 1.1 Baseline artefact captured and non-empty (scratchpad, not committed)
 - [ ] 1.2 New unit tests pass
 - [ ] 1.3 Ledger module is still stdlib-only
 - [ ] 1.4 Full suite green
@@ -404,13 +429,14 @@ rollback is `git revert` — the next request recomputes from operations.
 - [ ] 2.4 Right edge matches the baseline to the grosz on every wallet
 - [ ] 2.5 Historical days move in the predicted direction and magnitude
 - [ ] 2.6 The four re-bought tickers show a stepping basis
-- [ ] 2.7 Endpoint latency measured before/after on the real service
+- [ ] 2.7 baseline-report.md written to the change folder
+- [ ] 2.8 Pre-change endpoint latency recorded
 
 ### Phase 3: first_buy_date on the positions read path
 
 #### Automated
 
-- [ ] 3.1 New e2e contract test passes
+- [ ] 3.1 New API contract test passes
 - [ ] 3.2 Full suite green
 - [ ] 3.3 Lint clean
 

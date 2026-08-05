@@ -37,6 +37,8 @@ which unblocks PUL-123 part 2. Today's reported P&L does not move at all.
 | "Wszystkie" merge rule | Earliest open lot | Corresponds to a purchase that actually happened; a weighted date does not | Plan |
 | UI notice | None | Existing `notes`/`data_from` describe data coverage; a methodology note conflates two caveats | Plan |
 | Adjacent realized bug | Separate ticket | Two corrections in one PR make neither attributable | Plan |
+| Baseline artefact | Kept out of git; only the comparison is committed | The repo is public and the artefact is a year of portfolio value keyed by Firebase user id | Plan review |
+| Contract test home | `tests/test_api.py`, not `tests/e2e/` | The e2e suite is Playwright; this change renders nothing for a browser to assert on | Plan review |
 
 ## Scope
 
