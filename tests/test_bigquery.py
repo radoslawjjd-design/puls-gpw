@@ -1986,6 +1986,71 @@ def test_history_announces_a_range_it_could_not_fill(stub_basis_segments):
     assert result["data_from"] is None
 
 
+def test_history_binds_the_dated_basis_as_a_typed_array_and_joins_it_by_date():
+    """PUL-29's rule, applied to the CTE this change added: mocked BigQuery tests
+    do not verify SQL syntax, so the real round-trip is the manual gate — but a
+    cheap assertion on the query string is what stops a later edit from quietly
+    dropping the join. Reserved-keyword check for the new identifiers
+    (basis_seg, dated_basis, valid_from, basis, rn, usable, basis_gaps): none
+    collide, so none need backticks."""
+    from db.bigquery import get_portfolio_history
+
+    trades = [{
+        "portfolio_id": "port-1", "ticker": "PKO", "op_type": "buy",
+        "occurred_at": datetime(2025, 1, 10, 9, 0), "volume": 10.0,
+        "unit_price": 40.0, "instrument_name": "PKO BP",
+    }]
+    positions = [{"portfolio_id": "port-1", "ticker": "PKO",
+                  "shares": 10.0, "avg_buy_price": 40.0}]
+
+    with (
+        patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get,
+        patch("db.bigquery.list_broker_trades", return_value=trades),
+        patch("db.bigquery.list_user_portfolio_positions", return_value=positions),
+    ):
+        get_portfolio_history("port-1", "user-1", date(2026, 6, 1))
+
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+    assert "JOIN UNNEST(@basis_segments) b ON b.valid_from <= s.snapshot_date" in sql
+    assert "dated_basis AS (" in sql
+    # The step function is resolved by taking the latest segment already in force,
+    # not by materialising a row per ticker per day.
+    assert "ORDER BY b.valid_from DESC" in sql
+    assert "COALESCE(db.basis, h.avg_price) AS basis" in sql
+    # held must project portfolio_id, or two wallets holding the same ticker join
+    # to each other's basis.
+    assert "db.portfolio_id = h.portfolio_id" in sql
+
+    job_config = mock_get.return_value.query.call_args[1]["job_config"]
+    params = {p.name: p for p in job_config.query_parameters}
+    assert "basis_segments" in params
+    assert params["basis_segments"].values, "a wallet with trades must bind segments"
+
+
+def test_history_falls_back_to_a_typed_empty_relation_when_there_are_no_segments():
+    """A wallet holding only hand-entered positions produces no segments, and an
+    empty STRUCT array cannot survive a QueryJobConfig round trip — the item type
+    is lost, so anything reading the config afterwards raises. The query carries
+    an empty typed relation instead and binds no parameter at all."""
+    from db.bigquery import get_portfolio_history
+
+    with (
+        patch("db.bigquery._get_client", return_value=_mock_bq_client_with_rows([])) as mock_get,
+        patch("db.bigquery.list_broker_trades", return_value=[]),
+        patch("db.bigquery.list_user_portfolio_positions", return_value=[]),
+    ):
+        get_portfolio_history("port-1", "user-1", date(2026, 6, 1))
+
+    sql = " ".join(mock_get.return_value.query.call_args[0][0].split())
+    assert "@basis_segments" not in sql
+    assert ("JOIN UNNEST(ARRAY<STRUCT<portfolio_id STRING, ticker STRING, "
+            "valid_from DATE, basis FLOAT64>>[]) b") in sql
+
+    job_config = mock_get.return_value.query.call_args[1]["job_config"]
+    # Reading this at all is the thing that used to raise.
+    assert "basis_segments" not in {p.name for p in job_config.query_parameters}
+
+
 def test_get_portfolio_history_uses_correct_params(stub_basis_segments):
     """start_date is bound as a DATE param alongside user_id/portfolio_id."""
     from db.bigquery import get_portfolio_history

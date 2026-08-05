@@ -86,6 +86,27 @@ only on a day a key's own basis moved; without that rule the same information ta
 1 422 rows, because every ticker re-emits an unchanged basis on every other ticker's
 trading day.
 
+## PUL-29 compliance, stated rather than assumed
+
+`context/foundation/lessons.md` records the rule this change had to meet: **mocked
+BigQuery tests do not verify SQL syntax**, so any change to hand-written SQL owes a real
+round trip *and* a cheap regression assertion on the query string.
+
+The `ai-code-review` gate failed PR #250 on exactly this, and it was right — the round
+trip had been done many times over (everything above is its output) but nothing in the
+repo pinned the new constructs, so a later edit could drop the `dated_basis` join and no
+test would notice.
+
+- **Round trip on real BigQuery** — the whole verification above, run against production
+  rather than against `scripts/test_bq.py`'s scratch table.
+- **Query-string regression** — two tests now pin the `UNNEST(@basis_segments)` join, the
+  `dated_basis` CTE, the `ORDER BY valid_from DESC` that resolves the step function, the
+  `COALESCE` fallback, the `portfolio_id` join condition, and the typed-empty-relation
+  branch taken when a wallet has no segments.
+- **Reserved keywords** — the new identifiers are `basis_seg`, `dated_basis`,
+  `valid_from`, `basis`, `rn`, `usable`, `basis_gaps`. None appears in BigQuery's
+  reserved list, so none needs backticks. Checked, not assumed.
+
 ## Assertions changed, and why
 
 Phase 2 changes behaviour deliberately, so unlike part 1 it could not leave every
