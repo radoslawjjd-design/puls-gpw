@@ -60,7 +60,8 @@ adds only what is genuinely new — deciding whether a file is adjusted.
 - `src/stooq_raw.py` (new) — the adjustment check and close normalisation.
   - `normalise_close(value)` — the raw download carries float round-trip noise
     (`3.139996958116`); round to 2 decimals.
-  - `is_adjusted(candidate, bulk)` — **the guard, and it must not use a tick heuristic.**
+  - `assert_unadjusted(candidate, bulk)` — **the guard, and it must not use a tick
+    heuristic.**
     Measured: an adjusted per-symbol download has *integer* volumes too (6 708 vs 6 486
     for BAC on 2025-08-29 — the same 1.0342 factor, rounded to whole shares), so the
     fractional-volume signature is specific to `d_pl_txt` and cannot discriminate here.
@@ -92,12 +93,16 @@ adds only what is genuinely new — deciding whether a file is adjusted.
 - `scripts/correct_newconnect_closes.py` (new) — sibling to `correct_official_closes.py`,
   reusing `merge_company_daily_stats_close_correction`.
   - Input: a directory of stooq raw CSVs, one per symbol; filename maps to ticker.
-  - Writes `kurs_zamkniecia` (raw), `zmiana_kwotowa` (differenced from raw closes),
-    `source='stooq_raw'`.
-  - **Keeps `zmiana_procentowa` as stored** — measured already correct, and PUL-98's rule
-    forbids deriving it by differencing. Documented deviation: on the ex-dividend day GPW
-    measures against an adjusted reference we do not have for NewConnect, so that single
-    day stays approximate.
+  - Writes `kurs_zamkniecia` (raw), `zmiana_kwotowa`, `source='stooq_raw'`.
+  - **Keeps `zmiana_procentowa` as stored** — measured already correct (248/249 on BAC),
+    because a percentage change is invariant under a constant factor.
+  - **Derives `zmiana_kwotowa` with PUL-98's `derive_zmiana_kwotowa(close, pct)`**, not by
+    differencing consecutive raw closes as first drafted. That helper already encodes the
+    rule this plan would otherwise have rediscovered the hard way: the percentage is
+    measured against the reference price, so close-to-close differencing is wrong across
+    every ex-dividend and split — which is precisely the event this repair is about.
+    Feeding it the raw close and the stored percentage also keeps all three columns
+    mutually consistent instead of mixing a raw price with a derived-from-adjusted delta.
   - Reporting by default; `--apply` required to write, matching PUL-98.
   - Refuses any ticker whose file is absent — no partial-series writes.
 - `tests/test_correct_newconnect_closes.py` (new).
@@ -110,7 +115,12 @@ adds only what is genuinely new — deciding whether a file is adjusted.
 - `uv run ruff check .`
 
 #### Manual verification:
-- Dry run against `bac_d.csv` reports 208 rows to change and writes nothing.
+- Dry run against `bac_d.csv` reports 208 of 250 rows to change within the visible year
+  (`--since 2025-08-05`), matching the figure research reached independently, and 531 of
+  574 across the full series back to 2024-04-16. Writes nothing.
+
+The repair runs over the **full series, not just the visible year**: it costs nothing
+extra, and `?range=1y` is a default rather than a ceiling.
 
 ## Phase 3: Execute the repair
 
@@ -165,18 +175,18 @@ the decision taken for PUL-114's curve correction in this batch.
 
 ### Phase 1: Raw stooq CSV reader
 #### Automated
-- [x] 1.1 `uv run pytest tests/test_stooq_raw.py`
-- [x] 1.2 `uv run ruff check src/stooq_raw.py tests/test_stooq_raw.py`
+- [x] 1.1 `uv run pytest tests/test_stooq_raw.py` — a295f09
+- [x] 1.2 `uv run ruff check src/stooq_raw.py tests/test_stooq_raw.py` — a295f09
 #### Manual
-- [x] 1.3 Parsing `bac_d.csv` yields 574 rows, all closes tick-aligned
+- [x] 1.3 Parsing `bac_d.csv` yields 574 rows, all closes tick-aligned — a295f09
 
 ### Phase 2: Correction pass for NewConnect
 #### Automated
-- [ ] 2.1 `uv run pytest tests/test_correct_newconnect_closes.py`
-- [ ] 2.2 `uv run pytest` — full suite green
-- [ ] 2.3 `uv run ruff check .`
+- [x] 2.1 `uv run pytest tests/test_correct_newconnect_closes.py`
+- [x] 2.2 `uv run pytest` — full suite green
+- [x] 2.3 `uv run ruff check .`
 #### Manual
-- [ ] 2.4 Dry run reports 208 rows to change and writes nothing
+- [x] 2.4 Dry run reports 208 rows to change and writes nothing
 
 ### Phase 3: Execute the repair
 #### Automated
