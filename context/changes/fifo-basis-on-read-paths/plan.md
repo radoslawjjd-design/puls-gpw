@@ -410,11 +410,11 @@ rollback is `git revert` — the next request recomputes from operations.
 
 #### Automated
 
-- [x] 1.1 Baseline artefact captured and non-empty (scratchpad, not committed) — 1836eae
-- [x] 1.2 New unit tests pass — 1836eae
-- [x] 1.3 Ledger module is still stdlib-only — 1836eae
-- [x] 1.4 Full suite green — 1836eae
-- [x] 1.5 Lint clean — 1836eae
+- [x] 1.1 Baseline artefact captured and non-empty (scratchpad, not committed) — f5ffd23
+- [x] 1.2 New unit tests pass — f5ffd23
+- [x] 1.3 Ledger module is still stdlib-only — f5ffd23
+- [x] 1.4 Full suite green — f5ffd23
+- [x] 1.5 Lint clean — f5ffd23
 
 #### Manual
 
@@ -424,28 +424,28 @@ rollback is `git revert` — the next request recomputes from operations.
 
 #### Automated
 
-- [x] 2.1 Full suite green; changed assertions named in baseline-report.md — 5a7a795
-- [x] 2.2 Lint clean — 5a7a795
-- [x] 2.3 The ops_basis CTE is gone — 5a7a795
+- [x] 2.1 Full suite green; changed assertions named in baseline-report.md — ba57297
+- [x] 2.2 Lint clean — ba57297
+- [x] 2.3 The ops_basis CTE is gone — ba57297
 
 #### Manual
 
-- [x] 2.4 Right edge matches the baseline to the grosz on every wallet — 5a7a795
-- [x] 2.5 Historical days move in the predicted direction and magnitude — 5a7a795
-- [x] 2.6 The four re-bought tickers show a stepping basis — 5a7a795
-- [x] 2.7 baseline-report.md written to the change folder — 5a7a795
+- [x] 2.4 Right edge matches the baseline to the grosz on every wallet — ba57297
+- [x] 2.5 Historical days move in the predicted direction and magnitude — ba57297
+- [x] 2.6 The four re-bought tickers show a stepping basis — ba57297
+- [x] 2.7 baseline-report.md written to the change folder — ba57297
 - [ ] 2.8 Pre-change endpoint latency recorded
 
 ### Phase 3: first_buy_date on the positions read path
 
 #### Automated
 
-- [x] 3.1 New API contract test passes — 3989758
-- [x] 3.2 Full suite green — 3989758
-- [x] 3.3 Lint clean — 3989758
+- [x] 3.1 New API contract test passes — 4fcdc86
+- [x] 3.2 Full suite green — 4fcdc86
+- [x] 3.3 Lint clean — 4fcdc86
 
 #### Manual
 
-- [x] 3.4 Positions endpoint returns first_buy_date for held tickers — 3989758
-- [x] 3.5 CBF, SNT and XTB report the re-buy date — 3989758
-- [x] 3.6 Treemap and import-resolution paths issue no extra query — 3989758
+- [x] 3.4 Positions endpoint returns first_buy_date for held tickers — 4fcdc86
+- [x] 3.5 CBF, SNT and XTB report the re-buy date — 4fcdc86
+- [x] 3.6 Treemap and import-resolution paths issue no extra query — 4fcdc86
