@@ -41,6 +41,9 @@ broker_data/
 # stooq bulk historical archive (PUL-92) — ~13k source files, ingest input only
 d_pl_txt/
 
+# stooq per-symbol UNADJUSTED downloads (PUL-96, o=1111111) — ingest input only
+stooq_raw/
+
 # Raw GPW archive pages cached by scripts/correct_official_closes.py (PUL-98)
 .cache/
 export_xtb/
