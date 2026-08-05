@@ -28,9 +28,9 @@ that against whatever stored snapshot it has. That boundary is what keeps "no lo
 found" from collapsing into a zero basis, which would read as 100% profit.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 
 OP_BUY = "buy"
 OP_SELL = "sell"
@@ -215,3 +215,142 @@ def build_ledger(events: Iterable[LotEvent]) -> dict[str, TickerLedger]:
         ]
 
     return ledgers
+
+
+# ── Reading the ledger as of a date (PUL-114 part 2) ─────────────────────────
+#
+# The history chart needs the basis as it stood on each past day, not as it
+# stands now. Everything below turns the ledger into that time series. It is
+# read-only over `build_ledger` — there is deliberately no second FIFO here.
+
+
+@dataclass(frozen=True)
+class StoredPosition:
+    """Today's snapshot for one (wallet, ticker), as the positions table has it.
+
+    `avg_buy_price` is None when no position row exists — the ticker was sold to
+    zero and the import deleted its row. That is a real state, not a missing
+    value, and it is why the field is nullable rather than defaulted to 0.0: a
+    zero basis renders as 100% profit.
+    """
+
+    shares: float
+    avg_buy_price: float | None = None
+
+
+@dataclass(frozen=True)
+class BasisSegment:
+    """Cost basis per share for one (wallet, ticker), holding from `valid_from`
+    until the next segment for the same key — a step function, because the basis
+    only moves on days the owner traded."""
+
+    portfolio_id: str
+    ticker: str
+    valid_from: date
+    basis: float
+
+
+def _event_dates(events: Sequence[LotEvent]) -> list[date]:
+    return sorted({
+        event.occurred_at.date() for event in events
+        if event.op_type in (OP_BUY, OP_SELL) and event.ticker and event.occurred_at
+    })
+
+
+def basis_segments(
+    events_by_wallet: Mapping[str, Sequence[LotEvent]],
+    positions: Mapping[tuple[str, str], StoredPosition],
+) -> list[BasisSegment]:
+    """The cost basis of every (wallet, ticker), as a step function over time.
+
+    Keyed per wallet on purpose. In the "Wszystkie" view both wallets are in
+    scope at once, and a single FIFO stream would let a sale in one wallet
+    consume a lot belonging to the other.
+
+    The basis a caller needs covers **every** share held on the day, but the
+    ledger can only explain the ones it has lots for. The remainder — the
+    residual — is `today_shares - total_signed`, which is constant over time
+    because both terms are. It is priced at the stored `avg_buy_price`, or, when
+    there is no position row to supply one, at the basis of the shares the ledger
+    *can* explain. Never at zero.
+
+    A key the ledger cannot price at all on a given day yields no segment for
+    that day. Deciding what an unpriceable holding means belongs to the caller,
+    exactly as `uncovered` does.
+
+    Only days on which a key's own basis actually moves produce a segment: the
+    walk visits every trading day in the wallet, but a ticker untouched that day
+    would otherwise re-emit an identical basis, several-fold inflating the query
+    parameter and leaving "a segment" meaning nothing in particular.
+    """
+    segments: list[BasisSegment] = []
+    previous: dict[tuple[str, str], float] = {}
+
+    for portfolio_id, events in events_by_wallet.items():
+        totals = {
+            ticker: sum(
+                (lot.volume for lot in ledger.open_lots), 0.0
+            ) - ledger.uncovered
+            for ticker, ledger in build_ledger(events).items()
+        }
+        for day in _event_dates(events):
+            # The ledger as of `day` is the ledger over everything up to it. Any
+            # other formulation means a second FIFO implementation, which is the
+            # thing part 1 existed to remove — and these inputs are ~100 events
+            # over ~90 dates, so replaying is far cheaper than the risk.
+            asof = build_ledger([
+                event for event in events
+                if event.occurred_at and event.occurred_at.date() <= day
+            ])
+            for ticker, ledger in asof.items():
+                stored = positions.get((portfolio_id, ticker))
+                today_shares = stored.shares if stored else 0.0
+                residual = today_shares - totals.get(ticker, 0.0)
+
+                open_shares = ledger.open_shares
+                denominator = open_shares + residual
+                if denominator <= DUST:
+                    continue
+
+                if stored is not None and stored.avg_buy_price is not None:
+                    cost = ledger.open_cost + residual * stored.avg_buy_price
+                elif open_shares > DUST:
+                    # No stored price to charge the residual with, so it inherits
+                    # what the lots cost. Spreading the lot cost over every share
+                    # instead would under-price the position and read as profit.
+                    cost = ledger.open_cost * denominator / open_shares
+                else:
+                    continue
+
+                basis = cost / denominator
+                seen = previous.get((portfolio_id, ticker))
+                if seen is not None and abs(seen - basis) <= DUST:
+                    continue
+                previous[(portfolio_id, ticker)] = basis
+                segments.append(BasisSegment(
+                    portfolio_id=portfolio_id,
+                    ticker=ticker,
+                    valid_from=day,
+                    basis=basis,
+                ))
+
+    return segments
+
+
+def first_open_lot_dates(
+    events_by_wallet: Mapping[str, Sequence[LotEvent]],
+) -> dict[tuple[str, str], date]:
+    """When the shares held *now* were acquired, per (wallet, ticker).
+
+    Deliberately not `MIN(buy date)`. Under FIFO the shares still held are the
+    oldest **open** lot's, so a ticker sold to zero and bought again was acquired
+    at the re-buy — three of thirteen live production tickers differ here, by up
+    to 424 days. A key with nothing open is absent: there is no holding period
+    for shares nobody holds.
+    """
+    return {
+        (portfolio_id, ticker): min(lot.occurred_at for lot in ledger.open_lots).date()
+        for portfolio_id, events in events_by_wallet.items()
+        for ticker, ledger in build_ledger(events).items()
+        if ledger.open_lots
+    }

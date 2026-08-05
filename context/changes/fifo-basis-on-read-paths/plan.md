@@ -406,11 +406,11 @@ rollback is `git revert` — the next request recomputes from operations.
 
 #### Automated
 
-- [ ] 1.1 Baseline artefact captured and non-empty (scratchpad, not committed)
-- [ ] 1.2 New unit tests pass
-- [ ] 1.3 Ledger module is still stdlib-only
-- [ ] 1.4 Full suite green
-- [ ] 1.5 Lint clean
+- [x] 1.1 Baseline artefact captured and non-empty (scratchpad, not committed)
+- [x] 1.2 New unit tests pass
+- [x] 1.3 Ledger module is still stdlib-only
+- [x] 1.4 Full suite green
+- [x] 1.5 Lint clean
 
 #### Manual
 
