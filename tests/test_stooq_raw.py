@@ -36,8 +36,9 @@ _RAW = [
 ]
 
 # Per-symbol download WITHOUT o= — adjusted, and the case the guard exists to catch.
-# Note the volumes are whole numbers here: stooq rounds the scaled volume to shares in
-# this view, which is exactly why a fractional-volume test cannot discriminate.
+# Volumes are whole here on purpose: that is what the HTML view shows, and a maintainer
+# tempted to replace the guard with a fractional-volume test would be reading exactly
+# this. The guard must reject it on the closes alone.
 _ADJUSTED_DOWNLOAD = [
     {"date": "2025-08-27", "close": 3.20048, "volume": 16393.0},
     {"date": "2025-08-28", "close": 3.17147, "volume": 8751.0},

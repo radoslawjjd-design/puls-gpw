@@ -7,19 +7,27 @@ be written as a repair — replacing dividend-adjusted values with the same divi
 adjusted values, now stamped with a `source` that claims otherwise. That is worse than
 leaving the rows alone, because it destroys the evidence that they are wrong.
 
-Two tempting checks do not work, both measured on BAC:
+A tick-compliance check does not work: RTS 11 ticks reach 0.001 on lower-priced names, so
+"too many decimals" flags legitimate quotes. That is what invalidated the first detector
+built for this ticket.
 
-* **Fractional volume.** True of the bulk archive (`d_pl_txt` scales volume by the same
-  factor as price, and a fractional share count is impossible), but *not* of a
-  per-symbol download — that view rounds the scaled volume to whole shares. On
-  2025-08-29 the adjusted download reports 6 708 and the raw one 6 486; both integers.
-* **Tick compliance.** RTS 11 ticks reach 0.001 on lower-priced names, so "too many
-  decimals" flags legitimate quotes. This is what invalidated the first detector built
-  for this ticket.
+A fractional-volume check *would* work on a CSV download — verified on `1at_d.csv`, taken
+without `o=`, which reproduces the bulk archive to the last digit including its impossible
+share counts (103515.07512859 against 103515.07512858787). Beware the HTML view, which
+rounds volume to whole shares for display and makes an adjusted series look clean; that
+display is what a first reading of this problem mistakes for evidence.
 
-What does work is comparing against a series already known to be adjusted. The bulk
-archive is exactly that, and its fractional volumes identify precisely which of its rows
-carry a factor. On those dates a raw download must differ; one that agrees is adjusted.
+This module compares against a known-adjusted reference instead, because it is strictly
+stronger than reading volume:
+
+* it does not depend on stooq's formatting, which differs between the CSV and the page;
+* it says nothing when it knows nothing — a ticker that never had a corporate action has
+  whole volumes in both series, so absence of fractional volume is not evidence of a raw
+  download, and `UnverifiableSeriesError` refuses rather than guesses.
+
+The bulk archive is that reference, and its fractional volumes identify precisely which of
+its rows carry a factor. On those dates a raw download must differ; one that agrees is
+adjusted.
 """
 
 _PRICE_DECIMALS = 2
