@@ -199,15 +199,15 @@ the decision taken for PUL-114's curve correction in this batch.
 
 ### Phase 3: Execute the repair
 #### Automated
-- [x] 3.1 Post-repair query: zero BAC rows differ from the raw series
-- [x] 3.2 Before-snapshot exists and round-trips
-- [x] 3.3 `uv run pytest`
+- [x] 3.1 Post-repair query: zero BAC rows differ from the raw series — 0c3697c
+- [x] 3.2 Before-snapshot exists and round-trips — 0c3697c
+- [x] 3.3 `uv run pytest` — 0c3697c
 #### Manual
-- [x] 3.4 Portfolio history right-edge unchanged
+- [x] 3.4 Portfolio history right-edge unchanged — 0c3697c
 
 ### Phase 4: Contamination report and the on-demand path
 #### Automated
-- [x] 4.1 `uv run pytest`
-- [x] 4.2 `uv run ruff check .`
+- [x] 4.1 `uv run pytest` — 0c3697c
+- [x] 4.2 `uv run ruff check .` — 0c3697c
 #### Manual
-- [x] 4.3 Report covers both bulk trees and excludes BAC
+- [x] 4.3 Report covers both bulk trees and excludes BAC — 0c3697c

@@ -1,7 +1,7 @@
 ---
 change_id: newconnect-raw-closes
 title: Repair NewConnect historical closes from stooq's unadjusted series
-status: preparing
+status: implemented
 created: 2026-08-05
 updated: 2026-08-05
 archived_at: null
