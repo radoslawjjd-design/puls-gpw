@@ -1672,7 +1672,7 @@ def test_calendar_bounds_the_month_at_the_first_share_affecting_operation():
     assert "AND snapshot_date >= COALESCE((SELECT first_day FROM inception)" in sql
 
 
-def test_both_queries_count_the_holdings_their_operations_cannot_explain(caplog):
+def test_both_queries_count_the_holdings_their_operations_cannot_explain(caplog, stub_basis_segments):
     """PUL-103 phase 4.  Absorbing a residual is the correct behaviour — cash, positions
     entered by hand and in-kind distributions carry no operation and must stay flat
     rather than vanish.  But an *unexpected* residual means the reconstruction lost
@@ -1760,6 +1760,21 @@ def test_get_portfolio_calendar_data_raises_bigquery_error_on_failure():
             get_portfolio_calendar_data("port-123", "user-abc", 2026, 6)
 
 
+@pytest.fixture
+def stub_basis_segments():
+    """Stub the two fetches `get_portfolio_history` gained with the dated basis.
+
+    PUL-114 made the history query build its cost basis from the FIFO lot ledger,
+    so the function now reads broker operations and stored positions before it
+    runs. These tests exercise the *query* — its SQL, its parameters, its return
+    envelope — and without this they would silently feed history-shaped mock rows
+    into the ledger. The builder's own behaviour lives in
+    tests/test_portfolio_lots.py, where it needs no infrastructure at all.
+    """
+    with patch("db.bigquery.list_broker_trades", return_value=[]),          patch("db.bigquery.list_user_portfolio_positions", return_value=[]):
+        yield
+
+
 # ── get_portfolio_history (PUL-79 / FARO-5) ──────────────────────────────────
 
 def _hist_row(snapshot_date, value_pln, pnl_pln, notes=None, excluded=None,
@@ -1775,7 +1790,7 @@ def _hist_row(snapshot_date, value_pln, pnl_pln, notes=None, excluded=None,
     }
 
 
-def test_get_portfolio_history_returns_series_and_metadata():
+def test_get_portfolio_history_returns_series_and_metadata(stub_basis_segments):
     """PUL-100: returns {series, notes, excluded}; floats coerced, metadata read once."""
     from db.bigquery import get_portfolio_history
 
@@ -1802,7 +1817,7 @@ def test_get_portfolio_history_returns_series_and_metadata():
     assert result["excluded"] == []
 
 
-def test_get_portfolio_history_reports_excluded_when_nothing_is_priced():
+def test_get_portfolio_history_reports_excluded_when_nothing_is_priced(stub_basis_segments):
     """F1 (plan-review): the degenerate row (NULL date, metadata only) must not become a
     data point — but its excluded list must still reach the caller, or the chart goes
     blank with no explanation."""
@@ -1826,7 +1841,7 @@ def test_get_portfolio_history_returns_empty_envelope_when_no_rows():
     assert result == {"series": [], "notes": [], "excluded": [], "data_from": None}
 
 
-def test_get_portfolio_history_raises_bigquery_error_on_failure():
+def test_get_portfolio_history_raises_bigquery_error_on_failure(stub_basis_segments):
     """Raises BigQueryError when the BQ query throws."""
     from src.exceptions import BigQueryError
     from db.bigquery import get_portfolio_history
@@ -1896,7 +1911,7 @@ def test_history_values_each_day_at_the_shares_held_that_day():
     )
 
 
-def test_history_zero_share_day_neither_pays_nor_counts_towards_coverage():
+def test_history_zero_share_day_neither_pays_nor_counts_towards_coverage(stub_basis_segments):
     """PUL-103 / plan-review F3.  The three corrections must stay disjoint: the holdings
     reconstruction decides *whether* a ticker is held, the price fill decides *at what
     price*, and the ``covered > 0`` gate decides whether anything could be priced at all.
@@ -1919,14 +1934,20 @@ def test_history_zero_share_day_neither_pays_nor_counts_towards_coverage():
     assert "ABS(shares_on_day)" not in sql
     # Coverage and the note universe both read the *filtered* holdings, not the
     # positions table.
-    assert "COUNTIF(px_ff IS NOT NULL) AS covered" in sql
+    # PUL-114 widened the predicate from "priced" to "priced AND costed", and all
+    # three consumers moved together on purpose: a split predicate would let
+    # `covered > 0` admit a day whose value nobody costed, which is the phantom
+    # profit this gate exists to prevent.
+    assert "COUNTIF(usable) AS covered" in sql
+    assert "px_ff IS NOT NULL AND basis IS NOT NULL AS usable" in sql
+    assert "SUM(IF(usable, shares_on_day * px_ff, 0)) AS value_pln" in sql
     assert "FROM (SELECT DISTINCT ticker FROM held)" in sql
     assert "FROM positions p LEFT JOIN px_dedup" not in sql
     # BOCF survives — it is now narrowed to residual tickers, which is the point.
     assert "FIRST_VALUE" in sql and "UNBOUNDED FOLLOWING" in sql
 
 
-def test_history_announces_a_range_it_could_not_fill():
+def test_history_announces_a_range_it_could_not_fill(stub_basis_segments):
     """The X axis is index-based (static/index.html), so two months of history inside a
     1y range looks exactly like a full year.  When the wallet's inception cuts the range
     short, say so — about the DATA, never about a listing (PUL-100 F2)."""
@@ -1947,7 +1968,7 @@ def test_history_announces_a_range_it_could_not_fill():
     assert result["data_from"] is None
 
 
-def test_get_portfolio_history_uses_correct_params():
+def test_get_portfolio_history_uses_correct_params(stub_basis_segments):
     """start_date is bound as a DATE param alongside user_id/portfolio_id."""
     from db.bigquery import get_portfolio_history
 

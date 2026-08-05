@@ -274,9 +274,13 @@ BOCF/LOCF and right-edge paragraphs.
 
 #### Automated Verification
 
-- Full suite green with no existing assertion edited: `uv run pytest -q`
+- Full suite green: `uv run pytest -q`. Phase 2 changes behaviour deliberately, so
+  unlike part 1 it cannot promise an untouched suite — every assertion that changes
+  is named and justified in `baseline-report.md`, and any that changes without a
+  reason recorded there is a finding.
 - Lint clean: `uv run ruff check .`
-- `ops_basis` is gone from the codebase: `! grep -rn "ops_basis" db/ src/`
+- The `ops_basis` CTE is gone: `! grep -rn "avg_op_price" db/ src/` (the name survives
+  only in the comment explaining what replaced it, which is worth keeping)
 
 #### Manual Verification
 
@@ -406,11 +410,11 @@ rollback is `git revert` — the next request recomputes from operations.
 
 #### Automated
 
-- [x] 1.1 Baseline artefact captured and non-empty (scratchpad, not committed)
-- [x] 1.2 New unit tests pass
-- [x] 1.3 Ledger module is still stdlib-only
-- [x] 1.4 Full suite green
-- [x] 1.5 Lint clean
+- [x] 1.1 Baseline artefact captured and non-empty (scratchpad, not committed) — 1836eae
+- [x] 1.2 New unit tests pass — 1836eae
+- [x] 1.3 Ledger module is still stdlib-only — 1836eae
+- [x] 1.4 Full suite green — 1836eae
+- [x] 1.5 Lint clean — 1836eae
 
 #### Manual
 
@@ -420,16 +424,16 @@ rollback is `git revert` — the next request recomputes from operations.
 
 #### Automated
 
-- [ ] 2.1 Full suite green with no existing assertion edited
-- [ ] 2.2 Lint clean
-- [ ] 2.3 ops_basis is gone from the codebase
+- [x] 2.1 Full suite green; changed assertions named in baseline-report.md
+- [x] 2.2 Lint clean
+- [x] 2.3 The ops_basis CTE is gone
 
 #### Manual
 
-- [ ] 2.4 Right edge matches the baseline to the grosz on every wallet
-- [ ] 2.5 Historical days move in the predicted direction and magnitude
-- [ ] 2.6 The four re-bought tickers show a stepping basis
-- [ ] 2.7 baseline-report.md written to the change folder
+- [x] 2.4 Right edge matches the baseline to the grosz on every wallet
+- [x] 2.5 Historical days move in the predicted direction and magnitude
+- [x] 2.6 The four re-bought tickers show a stepping basis
+- [x] 2.7 baseline-report.md written to the change folder
 - [ ] 2.8 Pre-change endpoint latency recorded
 
 ### Phase 3: first_buy_date on the positions read path
