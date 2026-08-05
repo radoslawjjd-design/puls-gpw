@@ -265,3 +265,24 @@ def test_holding_period_survives_the_phone_card_layout(
     expect(cell).to_have_text("2 lata 2 mies.")
     label = cell.evaluate("e => getComputedStyle(e, '::before').content")
     assert "Okres posiadania" in label, f"the card layout dropped the label: {label}"
+
+
+def test_the_holding_period_never_reads_shorter_as_a_position_gets_older(
+    page: Page, live_server_url: str
+):
+    """The unit switches at 90 days, and that is where the formatter can lie. 89
+    days is ~2.9 months, so flooring made the cell read "89 dni" one day and
+    "2 mies." the next — the displayed age going *backwards* while the position
+    aged. Checked against the function itself rather than through a fixture,
+    because pinning a boundary needs day-by-day resolution."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+
+    texts = page.evaluate(
+        "() => [88, 89, 90, 91, 92, 120, 364, 365, 424].map(d => _holdingText(d))"
+    )
+    assert texts[:3] == ["88 dni", "89 dni", "3 mies."], texts
+    # Months must never decrease across the switch, nor within the months branch.
+    months = [int(t.split()[0]) for t in texts[2:6]]
+    assert months == sorted(months), f"the reported age went backwards: {texts}"
+    assert texts[-1] == "1 rok 2 mies.", "424 days is a year and ~1.9 months"

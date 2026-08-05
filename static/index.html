@@ -3854,6 +3854,11 @@ function _plPlural(n, one, few, many) {
 function _daysSince(iso) {
   if (!iso) return null;
   const then = new Date(iso + 'T00:00:00');
+  // Two different things converge on null here, deliberately: no date at all (a
+  // hand-entered position, expected) and a date that will not parse (an upstream
+  // contract break, which the endpoint's date type should make impossible). Both
+  // render as absent. Do not collapse this guard away on the grounds that the
+  // second case "cannot happen" — it is the reason the first one stays honest.
   if (isNaN(then.getTime())) return null;
   const now = new Date();
   const days = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - then) / 86400000);
@@ -3865,7 +3870,11 @@ function _daysSince(iso) {
 function _holdingText(days) {
   if (days == null || days < 0) return null;
   if (days < 90) return days + ' ' + _plPlural(days, 'dzień', 'dni', 'dni');
-  const months = Math.floor(days / 30.4375);
+  // Rounded, not floored, and the boundary is why: 89 days is ~2.9 months, so
+  // flooring made the cell read "89 dni" one day and "2 mies." the next — the
+  // displayed age going backwards as the position got older. Rounding is also
+  // simply closer (424 days is a year and ~1.9 months, not a year and 1).
+  const months = Math.round(days / 30.4375);
   const y = Math.floor(months / 12), m = months % 12;
   if (!y) return m + ' mies.';
   const years = y + ' ' + _plPlural(y, 'rok', 'lata', 'lat');

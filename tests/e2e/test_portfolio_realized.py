@@ -315,7 +315,7 @@ def test_a_sale_spanning_two_lots_keeps_the_oldest_one_within_reach(
     # apart to land in different format branches.
     cell = _held_cell(page, "PGE")
     expect(cell).to_have_text("11 mies.")
-    assert cell.get_attribute("title") == "Najstarszy lot: 1 rok 1 mies."
+    assert cell.get_attribute("title") == "Najstarszy lot: 1 rok 2 mies."
 
 
 def test_a_sale_with_no_recorded_purchase_reports_no_holding_period(
