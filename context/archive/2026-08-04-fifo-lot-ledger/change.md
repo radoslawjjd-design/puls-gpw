@@ -1,10 +1,10 @@
 ---
 change_id: fifo-lot-ledger
 title: Dated FIFO lot ledger as the single engine behind every lot consumption
-status: impl_reviewed
+status: archived
 created: 2026-08-04
-updated: 2026-08-04
-archived_at: null
+updated: 2026-08-06
+archived_at: 2026-08-06T10:40:02Z
 tracking:
   linear: PUL-114
   github: 229

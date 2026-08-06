@@ -1,10 +1,10 @@
 ---
 change_id: holding-period-column
 title: Show how long each position has been held, in the table and in Zrealizowane
-status: impl_reviewed
+status: archived
 created: 2026-08-05
-updated: 2026-08-05
-archived_at: null
+updated: 2026-08-06
+archived_at: 2026-08-06T10:40:02Z
 tracking:
   linear: PUL-123
   github: null
