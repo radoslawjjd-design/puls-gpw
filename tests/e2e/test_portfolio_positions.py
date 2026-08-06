@@ -212,6 +212,29 @@ def test_the_holding_period_is_reported_in_days_at_every_magnitude(
     expect(_held_cell(page, "CDR")).to_have_text("15 dni")
 
 
+def test_the_holding_period_sits_between_the_pnl_and_the_sparkline(
+    page: Page, live_server_url: str
+):
+    """Placement is the owner's call and nothing else pins it — the CSV test only
+    checks the export mirrors the table, so both could drift together and stay
+    self-consistent. Asserted on neighbours rather than an absolute index, so
+    adding an unrelated column at the front does not fail this."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    expect(page.locator("#pp-tbody")).to_contain_text("PKO")
+
+    # text_contents, not inner_texts: the header is uppercased by CSS, and inner_text
+    # returns the rendered form, so matching on it would depend on styling.
+    headers = page.locator("#pp-thead th").all_text_contents()
+    held = headers.index("Okres posiadania")
+    assert headers[held - 1] == "Zysk/strata", headers
+    assert headers[held + 1] == "30 dni", headers
+
+    # The body has to agree with the header, or every cell is under the wrong column.
+    cells = page.locator("#pp-tbody tr", has_text="PKO").locator("td")
+    assert cells.nth(held).get_attribute("data-label") == "Okres posiadania"
+
+
 def test_a_position_with_no_acquisition_date_shows_no_holding_period(
     page: Page, live_server_url: str
 ):
