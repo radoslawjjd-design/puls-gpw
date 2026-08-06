@@ -1,7 +1,7 @@
 ---
 change_id: daily-cost-report
 title: Daily cost report emailed at 09:00 with anomaly flagging
-status: preparing
+status: planned
 created: 2026-08-06
 updated: 2026-08-06
 archived_at: null
