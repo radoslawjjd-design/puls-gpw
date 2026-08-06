@@ -10,4 +10,8 @@ __pycache__/
 *.pyo
 .pytest_cache/
 tests/
-README.md
+# Markdown as a class, not just README.md. deploy.yml skips a build for commits
+# confined to '**.md', and that skip is only sound while no markdown reaches the
+# image — AGENTS.md and CLAUDE.md did, via `COPY . .`. Enforced by
+# tests/test_deploy_workflow_filter.py.
+**/*.md
