@@ -33,6 +33,11 @@ dev = [
     "pytest-playwright>=0.6",
     "ruff>=0.15.18",
     "mypy>=2.1.0",
+    # Read as data, not scraped with a regex: tests/test_deploy_workflow_filter.py
+    # asserts a fact about deploy.yml's trigger, and a regex would keep passing while
+    # the YAML came to mean something else. Dev-only, so `uv sync --no-dev` keeps it
+    # out of the image.
+    "pyyaml>=6.0",
 ]
 
 [tool.pytest.ini_options]
