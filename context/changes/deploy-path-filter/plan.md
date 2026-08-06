@@ -94,9 +94,10 @@ Written first, against the unmodified `deploy.yml`, so it fails for the right re
 - `uv run ruff check .`
 
 #### Manual verification:
-- Replay the last 30 commits on `master` against the filter: every commit that touched only
-  `context/**` or markdown would have been skipped, and no commit touching `src/`, `db/`,
-  `static/`, `tests/` or `.github/` would have been.
+- Replay real `master` history against the filter. Count **pushes**, not commits — one
+  Deploy run is one push, and a merge carrying both docs and code still deploys, correctly.
+  Every push confined to `context/**` or markdown would have been skipped, and no push
+  touching `src/`, `db/`, `static/`, `tests/` or `.github/` would have been.
 - The build still resolves with markdown excluded. `docker build` needs a running daemon,
   which this machine does not have, so the step that could actually break was checked
   directly instead: `pyproject.toml` declares `readme = "README.md"`, so `uv sync --frozen
@@ -112,9 +113,9 @@ Written first, against the unmodified `deploy.yml`, so it fails for the right re
 
 ### Phase 2: Apply the filter
 #### Automated
-- [x] 2.1 `uv run pytest tests/test_deploy_workflow_filter.py` green
-- [x] 2.2 `uv run pytest` — full suite green (1077 passed)
-- [x] 2.3 `uv run ruff check .`
+- [x] 2.1 `uv run pytest tests/test_deploy_workflow_filter.py` green — 6f2e56d
+- [x] 2.2 `uv run pytest` — full suite green (1077 passed) — 6f2e56d
+- [x] 2.3 `uv run ruff check .` — 6f2e56d
 #### Manual
-- [x] 2.4 Last 20 master pushes replayed against the filter — 4 skipped, all correct
-- [x] 2.5 `uv sync --frozen --no-dev` resolves with no markdown present (Dockerfile stage 1)
+- [x] 2.4 Last 20 master pushes replayed against the filter — 4 skipped, all correct — 6f2e56d
+- [x] 2.5 `uv sync --frozen --no-dev` resolves with no markdown present (Dockerfile stage 1) — 6f2e56d

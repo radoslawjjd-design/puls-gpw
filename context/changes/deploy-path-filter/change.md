@@ -1,7 +1,7 @@
 ---
 change_id: deploy-path-filter
 title: Stop rebuilding and redeploying on documentation-only commits
-status: planned
+status: implemented
 created: 2026-08-06
 updated: 2026-08-06
 archived_at: null
