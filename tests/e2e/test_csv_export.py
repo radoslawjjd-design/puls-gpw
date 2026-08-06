@@ -169,6 +169,6 @@ def test_the_positions_export_carries_the_holding_period_where_the_table_shows_i
         f"the column moved relative to the table: {header}"
     )
     pko = next(r for r in rows[1:] if r[0] == "PKO")
-    assert pko[header.index("Okres posiadania")] == "2 lata 2 mies."
+    assert pko[header.index("Okres posiadania")] == "800 dni"
     lpp = next(r for r in rows[1:] if r[0] == "LPP")
     assert lpp[header.index("Okres posiadania")] == "", "no date must export as empty"

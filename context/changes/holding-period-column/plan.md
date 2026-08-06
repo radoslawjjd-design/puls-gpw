@@ -21,7 +21,14 @@ Both numbers are already on the wire — this change adds no arithmetic and no r
 
 ## Desired End State
 
-A position bought 424 days ago reads `1 rok 2 mies.`; one bought 15 days ago reads
+> **Amended 2026-08-06 — the format is now always days.** The owner reversed the unit
+> decision after the change had shipped to a branch. Everything below that names months
+> or years is the *original* plan, kept as the record of what was built; the delivered
+> behaviour is a plain day count at every magnitude. Rationale and the corrected
+> assertions are in `change.md`. Nothing else in this plan changed — the data, the
+> sorting, the CSV column and the absence handling are all unaffected.
+
+A position bought 424 days ago reads `424 dni`; one bought 15 days ago reads
 `15 dni`; a hand-entered one reads `—`. A realized sale reads its volume-weighted
 holding period, with the oldest consumed lot available on hover. The column sorts by
 real date, and the CSV carries it.
@@ -67,10 +74,10 @@ a half-rendered column in front of the manual gate.
 function so the two views cannot drift apart.
 
 **Contract**: Two small functions next to the existing formatting helpers —
-`_holdingText(days)` returning `null` for `null`/negative input, `N dni` below 90, else
-years and months (`1 rok 2 mies.`, `3 mies.`, `2 lata`); and `_daysSince(isoDate)`
-returning whole days or `null`. Polish plural rules for `dzień` and `rok`; `mies.` is
-invariant.
+`_holdingText(days)` returning `null` for `null`/negative input and `N dni` otherwise
+(originally: `N dni` below 90, years and months above — see the amendment at the top);
+and `_daysSince(isoDate)` returning whole days or `null`. Polish plural rules for
+`dzień`.
 
 **Correction to this plan, made while implementing.** It originally required months to
 be derived from the date parts rather than from a day count. That is impossible for

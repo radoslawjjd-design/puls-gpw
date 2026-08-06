@@ -295,7 +295,7 @@ def test_realized_reports_the_holding_period_of_the_shares_it_sold(
     _open_realized(page)
 
     cell = _held_cell(page, "PKO")          # bought 2025-01-10, sold 2026-02-10
-    expect(cell).to_have_text("1 rok 1 mies.")
+    expect(cell).to_have_text("396 dni")
     assert cell.get_attribute("title") is None
 
 
@@ -312,10 +312,10 @@ def test_a_sale_spanning_two_lots_keeps_the_oldest_one_within_reach(
 
     # PGE: 50 bought 2025-01-10 and 50 bought 2025-06-10, all sold 2026-03-10.
     # Weighted 348.5 days against an oldest lot of 424 — deliberately far enough
-    # apart to land in different format branches.
+    # apart that the title cannot be mistaken for a repeat of the cell.
     cell = _held_cell(page, "PGE")
-    expect(cell).to_have_text("11 mies.")
-    assert cell.get_attribute("title") == "Najstarszy lot: 1 rok 2 mies."
+    expect(cell).to_have_text("349 dni")
+    assert cell.get_attribute("title") == "Najstarszy lot: 424 dni"
 
 
 def test_a_sale_with_no_recorded_purchase_reports_no_holding_period(
