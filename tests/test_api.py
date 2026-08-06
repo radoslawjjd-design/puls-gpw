@@ -951,6 +951,67 @@ def test_get_portfolio_positions_without_price_has_null_pnl(user_client):
     assert pos["pnl_pct"] is None
 
 
+def test_positions_endpoint_surfaces_first_buy_date(user_client):
+    """PUL-114 part 2 / PUL-123 part 2. The holding period is rendered by a later
+    ticket, but the field it renders ships here — so the contract is pinned now,
+    while a typo in the key still costs nothing."""
+    row = {**_POSITION_WITH_PRICE, "first_buy_date": date(2026, 7, 17)}
+    with (
+        patch("src.api.list_user_portfolios", return_value=[_WALLET_GLOWNY]),
+        patch("src.api.list_user_portfolio_positions", return_value=[row]) as mock_list,
+    ):
+        r = user_client.get(f"/api/portfolio/positions?portfolio_id={_WALLET_ID}")
+
+    assert r.status_code == 200
+    assert r.json()[0]["first_buy_date"] == "2026-07-17"
+    assert mock_list.call_args.kwargs["include_first_buy_date"] is True, (
+        "the endpoint must opt in, or the field is silently always None"
+    )
+
+
+def test_positions_without_an_acquisition_date_report_null_not_a_missing_key():
+    """A hand-entered position has no operations, so no lot explains it and there
+    is no acquisition date. The key must still be present — the frontend renders
+    a dash, and a missing key would read as a schema change."""
+    from src.api import PortfolioPositionOut
+
+    out = PortfolioPositionOut(**_POSITION_WITH_PRICE, pnl_pln=None, pnl_pct=None).model_dump()
+    assert "first_buy_date" in out
+    assert out["first_buy_date"] is None
+
+
+def test_merging_wallets_keeps_the_earliest_acquisition_date():
+    """'Wszystkie' shows one row per ticker across wallets. The date has no
+    meaningful weighted average, so the earliest open lot wins: it answers 'since
+    when do I hold any of this' and names a real purchase."""
+    from src.api import _merge_positions_by_ticker
+
+    merged = _merge_positions_by_ticker([
+        {"ticker": "KRU", "shares": 10.0, "avg_buy_price": 100.0,
+         "first_buy_date": date(2026, 5, 19)},
+        {"ticker": "KRU", "shares": 5.0, "avg_buy_price": 200.0,
+         "first_buy_date": date(2025, 1, 29)},
+    ])
+
+    assert len(merged) == 1
+    assert merged[0]["first_buy_date"] == date(2025, 1, 29)
+    assert merged[0]["shares"] == pytest.approx(15.0)
+
+
+def test_merging_ignores_wallets_that_have_no_acquisition_date():
+    """A hand-entered leg carries None. It must not win the comparison, nor blank
+    a real date coming from the other wallet."""
+    from src.api import _merge_positions_by_ticker
+
+    merged = _merge_positions_by_ticker([
+        {"ticker": "PZU", "shares": 3.0, "avg_buy_price": 50.0, "first_buy_date": None},
+        {"ticker": "PZU", "shares": 7.0, "avg_buy_price": 60.0,
+         "first_buy_date": date(2026, 2, 2)},
+    ])
+
+    assert merged[0]["first_buy_date"] == date(2026, 2, 2)
+
+
 def test_get_portfolio_positions_surfaces_price_history():
     """price_history from the BQ row must reach the response (model field, not extra-ignored)."""
     from src.api import PortfolioPositionOut
@@ -976,7 +1037,9 @@ def test_get_portfolio_positions_requests_history_from_bq(user_client):
     ):
         r = user_client.get(f"/api/portfolio/positions?portfolio_id={_WALLET_ID}")
     assert r.status_code == 200
-    mock_list.assert_called_once_with(_CLIENT_ID, _WALLET_ID, include_history=True)
+    mock_list.assert_called_once_with(
+        _CLIENT_ID, _WALLET_ID, include_history=True, include_first_buy_date=True
+    )
 
 
 def test_get_portfolio_positions_api_key_only_returns_401(api_client):
@@ -1100,7 +1163,9 @@ def test_get_portfolio_positions_all_mode_merges_and_skips_ownership(user_client
     # P&L recomputed from merged shares/prices: (50 - 55) * 40 = -200
     assert pko["pnl_pln"] == pytest.approx((50.0 - 55.0) * 40.0)
     mock_wallets.assert_not_called()  # ownership check skipped in all-mode
-    mock_list.assert_called_once_with(_CLIENT_ID, None, include_history=True)
+    mock_list.assert_called_once_with(
+        _CLIENT_ID, None, include_history=True, include_first_buy_date=True
+    )
 
 
 def test_get_portfolio_calendar_all_mode_skips_ownership_and_passes_none(user_client):
@@ -1476,7 +1541,9 @@ def test_get_portfolio_positions_scoped_to_portfolio(user_client):
             f"/api/portfolio/positions?portfolio_id={_WALLET_ID}",
         )
     assert r.status_code == 200
-    mock_list.assert_called_once_with(_CLIENT_ID, _WALLET_ID, include_history=True)
+    mock_list.assert_called_once_with(
+        _CLIENT_ID, _WALLET_ID, include_history=True, include_first_buy_date=True
+    )
 
 
 def test_get_portfolio_positions_wrong_portfolio_returns_404(user_client):

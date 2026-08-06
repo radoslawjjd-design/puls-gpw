@@ -1,3 +1,5 @@
+import re
+
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import e2e_login_email
@@ -179,3 +181,136 @@ def test_wszystkie_aggregate_view_is_default_and_read_only(page: Page, live_serv
     tabs.locator(".pp-portfolio-tab", has_text="Główny").click()
     expect(page.locator("#pp-tbody button", has_text="Edytuj").first).to_be_visible()
     expect(page.locator("#pp-add-toggle-btn")).to_be_visible()
+
+
+# ── PUL-123 part 2: how long each position has been held ─────────────────────
+#
+# The data is PUL-114's — `first_buy_date` is the oldest still-OPEN FIFO lot, so
+# a ticker sold to zero and re-bought dates from the re-buy. This suite only
+# checks the rendering, and the case worth the most is the last one: absence must
+# read as absence. "0 dni" would be a lie about a position nobody dated.
+
+_HELD_CELL = 'td[data-label="Okres posiadania"]'
+
+
+def _held_cell(page: Page, ticker: str):
+    return page.locator("#pp-tbody tr", has_text=ticker).locator(_HELD_CELL)
+
+
+def test_the_holding_period_is_reported_in_days_at_every_magnitude(
+    page: Page, live_server_url: str
+):
+    """Days, never months or years — the owner's call. Two positions are then
+    comparable by reading, and the count is exact rather than rounded to a unit
+    that has no fixed length."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    expect(page.locator("#pp-tbody")).to_contain_text("PGE")
+
+    expect(_held_cell(page, "PKO")).to_have_text("800 dni")
+    expect(_held_cell(page, "PGE")).to_have_text("100 dni")
+    expect(_held_cell(page, "CDR")).to_have_text("15 dni")
+
+
+def test_the_holding_period_sits_between_the_pnl_and_the_sparkline(
+    page: Page, live_server_url: str
+):
+    """Placement is the owner's call and nothing else pins it — the CSV test only
+    checks the export mirrors the table, so both could drift together and stay
+    self-consistent. Asserted on neighbours rather than an absolute index, so
+    adding an unrelated column at the front does not fail this."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    expect(page.locator("#pp-tbody")).to_contain_text("PKO")
+
+    # text_contents, not inner_texts: the header is uppercased by CSS, and inner_text
+    # returns the rendered form, so matching on it would depend on styling.
+    headers = page.locator("#pp-thead th").all_text_contents()
+    held = headers.index("Okres posiadania")
+    assert headers[held - 1] == "Zysk/strata", headers
+    assert headers[held + 1] == "30 dni", headers
+
+    # The body has to agree with the header, or every cell is under the wrong column.
+    cells = page.locator("#pp-tbody tr", has_text="PKO").locator("td")
+    assert cells.nth(held).get_attribute("data-label") == "Okres posiadania"
+
+
+def test_a_position_with_no_acquisition_date_shows_no_holding_period(
+    page: Page, live_server_url: str
+):
+    """A hand-entered position has no operations behind it, so there is no date
+    to report. PUL-123 names this explicitly: it must not become "0 dni", which
+    would claim the shares were bought today."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    expect(page.locator("#pp-tbody")).to_contain_text("LPP")
+
+    cell = _held_cell(page, "LPP")
+    expect(cell).to_have_text("—")
+    expect(cell).not_to_have_text(re.compile(r"\d"))
+
+
+def test_holding_period_sorts_by_date_not_by_the_text_it_prints(
+    page: Page, live_server_url: str
+):
+    """One unit did not make text sorting safe — it is lexicographic, so "100
+    dni" would sort above "15 dni". The header sorts on the raw ISO date instead,
+    and the undated position goes last in both directions rather than counting as
+    the oldest."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    expect(page.locator("#pp-tbody")).to_contain_text("PKO")
+
+    header = page.locator('#pp-thead th[data-key="first_buy_date"]')
+    header.click()
+    oldest_first = page.locator("#pp-tbody tr td:first-child").all_inner_texts()
+    assert oldest_first.index("PKO") < oldest_first.index("PGE") < oldest_first.index("CDR")
+
+    header.click()
+    newest_first = page.locator("#pp-tbody tr td:first-child").all_inner_texts()
+    assert newest_first.index("CDR") < newest_first.index("PGE") < newest_first.index("PKO")
+    assert newest_first[-1] == "LPP", "an undated position is not the newest either"
+
+
+def test_holding_period_survives_the_phone_card_layout(
+    page: Page, live_server_url: str
+):
+    """The ≤640px card layout labels cells positionally
+    (`#pp-tbody td:nth-child(n+3):not(:last-child)::before`), not by name — so a
+    column inserted in the middle either inherits the mechanism or silently loses
+    its label. Part 1 got this for free and assumed rather than checked it."""
+    page.set_viewport_size({"width": 375, "height": 812})
+    _login(page, live_server_url)
+    _open_portfolio(page)
+    expect(page.locator("#pp-tbody")).to_contain_text("PKO")
+
+    cell = _held_cell(page, "PKO")
+    expect(cell).to_be_visible()
+    expect(cell).to_have_text("800 dni")
+    label = cell.evaluate("e => getComputedStyle(e, '::before').content")
+    assert "Okres posiadania" in label, f"the card layout dropped the label: {label}"
+
+
+def test_the_holding_period_never_reads_shorter_as_a_position_gets_older(
+    page: Page, live_server_url: str
+):
+    """A unit switch is where this formatter used to lie: 89 days is ~2.9 months,
+    so rounding made the cell read "89 dni" one day and "3 mies." the next — the
+    displayed age going *backwards* while the position aged. Days-only removes
+    the failure by construction, and this pins it there.
+
+    Checked against the function itself rather than through a fixture, because
+    pinning a boundary needs day-by-day resolution. 90 and 424 are in the list on
+    purpose: they are where the old formatter changed units."""
+    _login(page, live_server_url)
+    _open_portfolio(page)
+
+    days = [1, 2, 5, 88, 89, 90, 91, 120, 364, 365, 424, 800, 4000]
+    texts = page.evaluate(f"() => {days}.map(d => _holdingText(d))")
+
+    assert texts[0] == "1 dzień", texts[0]
+    assert texts[2] == "5 dni", texts[2]
+    # No unit may appear other than days, at any magnitude.
+    assert all(t.split(maxsplit=1)[1] in ("dzień", "dni") for t in texts), texts
+    # And the number is the day count itself, so it cannot go backwards.
+    assert [int(t.split()[0]) for t in texts] == days, texts

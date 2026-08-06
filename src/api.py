@@ -616,6 +616,11 @@ class PortfolioPositionOut(BaseModel):
     pnl_pct: float | None = None
     price_as_of: str | None = None
     price_history: list[float] | None = None
+    # When the shares held *now* were acquired — the oldest open FIFO lot, not the
+    # first buy ever (PUL-114). None when no operation explains the position, which
+    # a hand-entered one never does. PUL-123 part 2 renders the holding period from
+    # this; nothing displays it yet.
+    first_buy_date: date | None = None
 
 
 # PUL-90: sentinel portfolio_id selecting the "Wszystkie" (all-portfolios) aggregate
@@ -660,6 +665,10 @@ def _merge_positions_by_ticker(rows: list[dict]) -> list[dict]:
     tie today, but preferring the newest avoids stale data if a source ever diverges.
     company_name takes the first non-null. P&L is left to the caller, recomputed from
     the merged shares / prices.
+
+    first_buy_date takes the **earliest** open lot across the merged wallets — it
+    answers "since when do I hold any of this", and unlike a share-weighted date it
+    names a purchase that actually happened and can be checked by hand.
     """
     merged: dict[str, dict] = {}
     for row in rows:
@@ -668,13 +677,19 @@ def _merge_positions_by_ticker(rows: list[dict]) -> list[dict]:
         avg_buy_price = row.get("avg_buy_price") or 0.0
         acc = merged.get(ticker)
         if acc is None:
-            acc = {"ticker": ticker, "company_name": None, "shares": 0.0, "_cost": 0.0}
+            acc = {"ticker": ticker, "company_name": None, "shares": 0.0, "_cost": 0.0,
+                   "first_buy_date": None}
             acc.update({k: None for k in _POSITION_MARKET_FIELDS})
             merged[ticker] = acc
         acc["shares"] += shares
         acc["_cost"] += shares * avg_buy_price
         if acc["company_name"] is None and row.get("company_name") is not None:
             acc["company_name"] = row.get("company_name")
+        first_buy = row.get("first_buy_date")
+        if first_buy is not None and (
+            acc["first_buy_date"] is None or first_buy < acc["first_buy_date"]
+        ):
+            acc["first_buy_date"] = first_buy
         # Carry the market-data bundle from the row with the freshest price_as_of.
         row_as_of = row.get("price_as_of")
         if row.get("current_price") is not None and (
@@ -1101,7 +1116,8 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=404, detail="Wallet not found")
         try:
             rows = list_user_portfolio_positions(
-                user_id, None if all_mode else portfolio_id, include_history=True
+                user_id, None if all_mode else portfolio_id,
+                include_history=True, include_first_buy_date=True,
             )
         except BigQueryError as exc:
             logger.error("BQ error in GET /api/portfolio/positions: %s", exc)

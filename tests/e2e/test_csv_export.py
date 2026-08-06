@@ -148,3 +148,29 @@ def test_a_wallet_name_illegal_in_a_filename_still_produces_a_saveable_one(
     assert names["illegal"].endswith("_2026-07-30.csv")
     assert not names["emoji"].startswith("_"), names["emoji"]
     assert names["diacritics"] == "Lodz_Cma_2026-07-30.csv"
+
+
+def test_the_positions_export_carries_the_holding_period_where_the_table_shows_it(
+    page: Page, live_server_url: str
+):
+    """PUL-123 part 2. The export is meant to be a faithful copy of the table, so
+    a visible column missing from it is the surprise — and the position matters
+    as much as the presence, because anything reading the file by column index
+    would land one field off."""
+    _login(page, live_server_url)
+    _open_portfolio_glowny(page)
+
+    with page.expect_download() as dl:
+        page.locator("#pp-table-actions").get_by_role("button", name="Eksport CSV").click()
+    rows = _rows_of(dl.value)
+
+    header = rows[0]
+    # In the table the column sits after Zysk/strata and before the 30-day sparkline.
+    # The sparkline has no CSV counterpart, so mirroring the table puts it last here.
+    assert header.index("Okres posiadania") == header.index("Zysk/strata %") + 1, (
+        f"the column moved relative to the table: {header}"
+    )
+    pko = next(r for r in rows[1:] if r[0] == "PKO")
+    assert pko[header.index("Okres posiadania")] == "800 dni"
+    lpp = next(r for r in rows[1:] if r[0] == "LPP")
+    assert lpp[header.index("Okres posiadania")] == "", "no date must export as empty"

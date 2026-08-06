@@ -317,6 +317,14 @@ _FAKE_PORTFOLIOS = [
         "created_at": "2026-01-01T00:00:00+00:00",
     }
 ]
+# PUL-123 part 2: the holding-period cell has four branches — years+months, a
+# months-only span, plain days, and absence. Dates are relative to today so the
+# rendered text stays the same whenever the suite runs; pinning them would make
+# every assertion below rot silently as the clock moved past a format boundary.
+def _held_since(days: int) -> str:
+    return (date.today() - timedelta(days=days)).isoformat()
+
+
 _FAKE_PORTFOLIO_POSITIONS = [
     {
         "ticker": "PKO", "company_name": "PKO BP", "shares": 100.0,
@@ -324,12 +332,14 @@ _FAKE_PORTFOLIO_POSITIONS = [
         "daily_change_pct": 1.5, "price_as_of": "2026-06-27",
         # >=2 ascending points → sparkline <svg> renders
         "price_history": [45.0, 47.5, 50.0],
+        "first_buy_date": _held_since(800),   # → "800 dni"
     },
     {
         "ticker": "CDR", "company_name": "CD Projekt", "shares": 10.0,
         "avg_buy_price": 130.0, "current_price": None,
         "daily_change_pct": None, "price_as_of": None,
         # no price_history → '—' fallback
+        "first_buy_date": _held_since(15),    # → "15 dni"
     },
     # PUL-123: the daily-change cell has four states and the fixture only covered
     # two of them. These add the down day and the flat day — flat is deliberately
@@ -339,12 +349,16 @@ _FAKE_PORTFOLIO_POSITIONS = [
         "avg_buy_price": 8.0, "current_price": 7.6,
         "daily_change_pct": -2.4, "price_as_of": "2026-06-27",
         "price_history": [8.0, 7.8, 7.6],
+        "first_buy_date": _held_since(100),   # → "100 dni"
     },
     {
         "ticker": "LPP", "company_name": "LPP", "shares": 1.0,
         "avg_buy_price": 15000.0, "current_price": 15000.0,
         "daily_change_pct": 0.0, "price_as_of": "2026-06-27",
         "price_history": [15000.0, 15000.0, 15000.0],
+        # Hand-entered: no operations, so no acquisition date. Must render as
+        # absent, never "0 dni" — the thing PUL-123 explicitly warns about.
+        "first_buy_date": None,
     },
     # A move smaller than the two decimals the cell prints. The number is not
     # zero, but everything the user can see says it is — so the colour has to
@@ -354,6 +368,10 @@ _FAKE_PORTFOLIO_POSITIONS = [
         "avg_buy_price": 9.0, "current_price": 9.5,
         "daily_change_pct": 0.004, "price_as_of": "2026-06-27",
         "price_history": [9.4, 9.45, 9.5],
+        # Dated so LPP is the ONLY position without one — the sort test needs the
+        # undated row to be unambiguous, and one deliberate absence reads better
+        # than two accidental ones.
+        "first_buy_date": _held_since(400),   # → "400 dni"
     },
 ]
 
@@ -584,10 +602,23 @@ def _fake_list_broker_trades(user_id, portfolio_id=None):
          "volume": 100.0, "unit_price": 50.0, "instrument_name": "PKO BP"},
         {"ticker": "CDR", "op_type": "sell", "occurred_at": datetime(2025, 6, 1, 9, 0),
          "volume": 5.0, "unit_price": 120.0, "instrument_name": "CD Projekt"},
+        # PUL-123 part 2: a sale spanning two lots of different ages, so the
+        # volume-weighted holding period and the oldest consumed lot DIFFER —
+        # which is the only case where the cell's title says anything the cell
+        # does not. Sold in March: January has to stay empty, a neighbouring test
+        # asserts exactly that.
+        {"ticker": "PGE", "op_type": "buy", "occurred_at": datetime(2025, 1, 10, 9, 0),
+         "volume": 50.0, "unit_price": 8.0, "instrument_name": "PGE"},
+        {"ticker": "PGE", "op_type": "buy", "occurred_at": datetime(2025, 6, 10, 9, 0),
+         "volume": 50.0, "unit_price": 9.0, "instrument_name": "PGE"},
+        {"ticker": "PGE", "op_type": "sell", "occurred_at": datetime(2026, 3, 10, 9, 0),
+         "volume": 100.0, "unit_price": 10.0, "instrument_name": "PGE"},
     ]
 
 
-def _fake_list_user_portfolio_positions(user_id, portfolio_id=None, include_history=False):
+def _fake_list_user_portfolio_positions(
+    user_id, portfolio_id=None, include_history=False, include_first_buy_date=False
+):
     # Lazy-init per-user store from static FAKE data on first access (regardless of
     # branch) so upsert/delete affect the list AND the all-mode (portfolio_id=None)
     # path returns positions on a fresh entry — PUL-90 "Wszystkie" defaults to it.
@@ -607,7 +638,14 @@ def _fake_list_user_portfolio_positions(user_id, portfolio_id=None, include_hist
     # Mirror production: price_history only travels when the caller opts in
     # (the treemap path calls with include_history=False and must stay lean).
     if not include_history:
-        return [{k: v for k, v in r.items() if k != "price_history"} for r in rows]
+        rows = [{k: v for k, v in r.items() if k != "price_history"} for r in rows]
+    # Same contract for the acquisition date (PUL-114): present only when asked
+    # for, and None for a position no operation explains — which every fake
+    # position is, since this store is hand-built rather than imported.
+    if include_first_buy_date:
+        rows = [{**r, "first_buy_date": r.get("first_buy_date")} for r in rows]
+    else:
+        rows = [{k: v for k, v in r.items() if k != "first_buy_date"} for r in rows]
     return rows
 
 

@@ -275,3 +275,56 @@ def test_the_browser_tab_signals_a_request_in_flight(page: Page, live_server_url
     expect(page.locator("#app-favicon-busy")).to_have_count(0)
     assert page.get_attribute("#app-favicon", "href").endswith(".png?v=2")
     expect(page.locator('link[rel~="icon"], link[rel="shortcut icon"]')).to_have_count(3)
+
+
+# ── PUL-123 part 2: how long the sold shares were held ───────────────────────
+
+
+def _held_cell(page: Page, ticker: str):
+    return (page.locator("#pp-real-by-ticker tr", has_text=ticker)
+                .locator('td[data-label="Okres posiadania"]'))
+
+
+def test_realized_reports_the_holding_period_of_the_shares_it_sold(
+    page: Page, live_server_url: str
+):
+    """PKO's sale consumed one lot, so the weighted figure IS that lot's age and
+    the title would only repeat the cell — it is omitted rather than teaching the
+    reader that hovering says nothing."""
+    _login_and_open(page, live_server_url)
+    _open_realized(page)
+
+    cell = _held_cell(page, "PKO")          # bought 2025-01-10, sold 2026-02-10
+    expect(cell).to_have_text("396 dni")
+    assert cell.get_attribute("title") is None
+
+
+def test_a_sale_spanning_two_lots_keeps_the_oldest_one_within_reach(
+    page: Page, live_server_url: str
+):
+    """PUL-114 reports two numbers and PUL-123's acceptance criterion asks about
+    the oldest lot. The cell shows the volume-weighted period — what "how long
+    did I hold this" means when the shares have different ages — and the oldest
+    lot rides in the title, so the criterion stays checkable without the cell
+    overstating the age of the newer shares."""
+    _login_and_open(page, live_server_url)
+    _open_realized(page)
+
+    # PGE: 50 bought 2025-01-10 and 50 bought 2025-06-10, all sold 2026-03-10.
+    # Weighted 348.5 days against an oldest lot of 424 — deliberately far enough
+    # apart that the title cannot be mistaken for a repeat of the cell.
+    cell = _held_cell(page, "PGE")
+    expect(cell).to_have_text("349 dni")
+    assert cell.get_attribute("title") == "Najstarszy lot: 424 dni"
+
+
+def test_a_sale_with_no_recorded_purchase_reports_no_holding_period(
+    page: Page, live_server_url: str
+):
+    """CDR was sold with nothing on record to have bought it. The period is
+    unknowable, and an unknowable number renders as absent."""
+    _login_and_open(page, live_server_url)
+    _open_realized(page)
+    page.get_by_label("Rok sprzedaży").select_option("2025")
+
+    expect(_held_cell(page, "CDR")).to_have_text("—")

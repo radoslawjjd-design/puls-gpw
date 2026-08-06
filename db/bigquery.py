@@ -40,6 +40,12 @@ from google.cloud import bigquery  # noqa: E402
 from google.cloud.exceptions import NotFound  # noqa: E402
 
 from src.exceptions import BigQueryError  # noqa: E402
+from src.portfolio_lots import (  # noqa: E402
+    LotEvent,
+    StoredPosition,
+    basis_segments,
+    first_open_lot_dates,
+)
 from src.post_selection import select_top_companies  # noqa: E402
 from src.tickers import is_valid_ticker  # noqa: E402
 
@@ -756,6 +762,70 @@ def get_portfolio_inception(portfolio_id: str | None, user_id: str) -> date | No
     return rows[0].first_day if rows else None
 
 
+_BASIS_SEGMENT_TYPE = bigquery.StructQueryParameterType(
+    bigquery.ScalarQueryParameterType("STRING",  name="portfolio_id"),
+    bigquery.ScalarQueryParameterType("STRING",  name="ticker"),
+    bigquery.ScalarQueryParameterType("DATE",    name="valid_from"),
+    bigquery.ScalarQueryParameterType("FLOAT64", name="basis"),
+)
+
+
+def _basis_segments_for(user_id: str, portfolio_id: str | None) -> list:
+    """The dated cost basis for `get_portfolio_history`, as ledger segments.
+
+    The arithmetic lives in `src.portfolio_lots`, which is pure and unit-tested;
+    this only fetches and adapts. FIFO as of a date needs a lot ledger, not a SQL
+    window, so the two round trips buy the whole time axis — and the endpoint
+    caches for 300 s, so they are paid once per user per five minutes.
+    """
+    trades = list_broker_trades(user_id, portfolio_id)
+    # Deliberately without include_first_buy_date: that flag makes this call fetch
+    # the operations a second time, and they are already in `trades` above.
+    positions = list_user_portfolio_positions(user_id, portfolio_id)
+
+    events_by_wallet: dict[str, list[LotEvent]] = {}
+    for row in trades:
+        wallet = row.get("portfolio_id") or ""
+        events_by_wallet.setdefault(wallet, []).append(LotEvent(
+            ticker=row["ticker"],
+            op_type=row["op_type"],
+            occurred_at=row["occurred_at"],
+            volume=float(row.get("volume") or 0.0),
+            unit_price=float(row.get("unit_price") or 0.0),
+        ))
+
+    stored = {
+        (row.get("portfolio_id") or "", row["ticker"]): StoredPosition(
+            shares=float(row.get("shares") or 0.0),
+            avg_buy_price=(
+                None if row.get("avg_buy_price") is None
+                else float(row["avg_buy_price"])
+            ),
+        )
+        for row in positions
+        if row.get("ticker")
+    }
+
+    return basis_segments(events_by_wallet, stored)
+
+
+def _basis_segments_param(segments: list) -> bigquery.ArrayQueryParameter:
+    return bigquery.ArrayQueryParameter(
+        "basis_segments",
+        _BASIS_SEGMENT_TYPE,
+        [
+            bigquery.StructQueryParameter(
+                None,
+                bigquery.ScalarQueryParameter("portfolio_id", "STRING",  seg.portfolio_id),
+                bigquery.ScalarQueryParameter("ticker",       "STRING",  seg.ticker),
+                bigquery.ScalarQueryParameter("valid_from",   "DATE",    seg.valid_from),
+                bigquery.ScalarQueryParameter("basis",        "FLOAT64", seg.basis),
+            )
+            for seg in segments
+        ],
+    )
+
+
 def get_portfolio_history(
     portfolio_id: str | None,
     user_id: str,
@@ -805,14 +875,20 @@ def get_portfolio_history(
     A day before inception is dropped by the **bound**, never by the gate: the bound is
     evidence that the wallet did not exist, the gate is evidence that the data failed.
 
-    Accepted approximations.  The share counts are no longer among them, but the cost
-    basis still is: ``avg_buy_price`` is one time-blind weighted average, so P&L now has
-    correct weights on a basis that does not move (FIFO-as-of-date needs Python, not a
-    SQL window — measured 284.28 weighted against 297.90 FIFO on SNT).  A ticker whose
-    position row no longer exists — sold to zero, its row deleted at import — has no
-    stored basis at all, so its buys' weighted unit price stands in; that keeps
-    ``pnl = value − basis`` true instead of letting the ticker's whole value read as
-    profit.  And backward-filling still contributes a constant
+    The cost basis is dated (PUL-114).  It used to be one constant per ticker applied
+    to every historical day, which overstated the portfolio's basis by up to
+    **+2,144.85 PLN (+8.41%)** and was overstated on 69 of 76 operation dates — so the
+    curve systematically understated past P&L.  ``basis_segments`` replays the FIFO lot
+    ledger and hands in a step function; a segment exists only on a day a key's basis
+    moved.  Today's number is unchanged: at the right edge the dated basis equals the
+    stored ``avg_buy_price`` exactly, which is the PUL-100 invariant holding by
+    construction rather than by care.
+
+    ``avg_buy_price`` survives as the declared fallback for shares no lot explains — a
+    position entered by hand has no operations, so it never gets a segment, and its
+    residual is priced at the stored basis on every day.  A holding with no basis from
+    either source is dropped from value *and* P&L rather than counted at zero cost;
+    zero would read as 100% profit.  Backward-filling still contributes a constant
     ``shares × (first_px − avg_buy_price)`` to every pre-debut day of a *residual*
     ticker, so a holder who bought above the debut price sees a flat phantom loss across
     that leg (PUL-100).  BOCF's reach narrows sharply here: a ticker with operations
@@ -845,6 +921,19 @@ def get_portfolio_history(
     pfs_ref = _table_ref(client, _USER_PORTFOLIOS_TABLE_NAME)
     portfolio_filter = "AND portfolio_id = @portfolio_id" if portfolio_id is not None else ""
 
+    segments = _basis_segments_for(user_id, portfolio_id)
+    # A wallet holding only hand-entered positions has no operations and therefore
+    # no segments. Binding an empty STRUCT array is not an option: the type is lost
+    # on the way back out of a QueryJobConfig, so anything that reads the config
+    # afterwards raises. An empty typed relation says the same thing in SQL and
+    # keeps the parameter list honest.
+    basis_source = (
+        "JOIN UNNEST(@basis_segments) b ON b.valid_from <= s.snapshot_date"
+        if segments else
+        "JOIN UNNEST(ARRAY<STRUCT<portfolio_id STRING, ticker STRING, "
+        "valid_from DATE, basis FLOAT64>>[]) b ON b.valid_from <= s.snapshot_date"
+    )
+
     query = f"""
         WITH
           positions AS (
@@ -870,21 +959,6 @@ def get_portfolio_history(
             FROM ops_daily
             GROUP BY portfolio_id, ticker
           ),
-          ops_basis AS (
-            -- Stand-in cost basis for a ticker with no position row left (sold to zero;
-            -- the import deletes the row).  Without it such a ticker adds value to the
-            -- historical days it was held while adding no basis, and the curve shows a
-            -- phantom profit that unwinds on the sale date.  Same class of number as
-            -- avg_buy_price — a time-blind weighted average — so it changes nothing
-            -- about the approximation, only about which tickers have one.
-            SELECT portfolio_id, ticker,
-                   SAFE_DIVIDE(SUM(volume * unit_price), SUM(volume)) AS avg_op_price
-            FROM `{ops_ref}`
-            WHERE user_id = @user_id {portfolio_filter}
-              AND ticker IS NOT NULL AND op_type = 'buy'
-              AND unit_price IS NOT NULL AND volume > 0
-            GROUP BY portfolio_id, ticker
-          ),
           inception AS (
             -- The first share-affecting operation, or — for a wallet that has none —
             -- the day the wallet was created.  See get_portfolio_calendar_data for why
@@ -901,18 +975,43 @@ def get_portfolio_history(
               COALESCE(p.ticker, t.ticker)             AS ticker,
               COALESCE(p.shares, 0)                    AS today_shares,
               COALESCE(t.total_signed, 0)              AS total_signed,
-              COALESCE(p.avg_buy_price, b.avg_op_price) AS avg_price
+              -- The declared fallback, and the *only* thing that prices a position
+              -- entered by hand: such a position has no operations, so the ledger
+              -- never produces a segment for it, and shares_on_day equals its
+              -- residual on every day of the range.  Not dead defensive code.
+              p.avg_buy_price                          AS avg_price
             FROM positions p
             FULL OUTER JOIN ops_totals t
               ON t.portfolio_id = p.portfolio_id AND t.ticker = p.ticker
-            LEFT JOIN ops_basis b
-              ON  b.portfolio_id = COALESCE(p.portfolio_id, t.portfolio_id)
-              AND b.ticker       = COALESCE(p.ticker, t.ticker)
           ),
           spine AS (
             SELECT DISTINCT snapshot_date
             FROM `{cds_ref}`
             WHERE snapshot_date BETWEEN DATE_SUB(@start_date, INTERVAL 400 DAY) AND CURRENT_DATE()
+          ),
+          dated_basis AS (
+            -- The dated cost basis, computed in Python from the FIFO lot ledger and
+            -- handed in whole (PUL-114).  A segment exists only on a day a key's own
+            -- basis moved — 210 rows across all of production — so the step function
+            -- is resolved by this window rather than by a row per ticker per day.
+            --
+            -- This replaced `ops_basis`, a plain all-buys average that stood in for
+            -- tickers with no position row left.  That average was measured wrong for
+            -- 8 of 20 such tickers (worst +11.33%), and being one constant it was
+            -- applied to every past day rather than to the lots actually open then.
+            SELECT snapshot_date, portfolio_id, ticker, basis
+            FROM (
+              SELECT
+                s.snapshot_date, b.portfolio_id, b.ticker, b.basis,
+                ROW_NUMBER() OVER (
+                  PARTITION BY s.snapshot_date, b.portfolio_id, b.ticker
+                  ORDER BY b.valid_from DESC
+                ) AS rn
+              FROM spine s
+              {basis_source}
+              WHERE s.snapshot_date BETWEEN @start_date AND CURRENT_DATE()
+            )
+            WHERE rn = 1
           ),
           px_raw AS (
             SELECT ticker, snapshot_date, kurs_zamkniecia AS px, 0 AS src
@@ -966,10 +1065,11 @@ def get_portfolio_history(
             -- that day), matched by RANGE because an operation day need not be a
             -- trading day.  Restricted to the requested window: the pre-roll days are
             -- only ever needed by the price fill above.
-            SELECT snapshot_date, ticker, avg_price, shares_on_day
+            SELECT snapshot_date, portfolio_id, ticker, avg_price, shares_on_day
             FROM (
               SELECT
                 s.snapshot_date,
+                h.portfolio_id,
                 h.ticker,
                 h.avg_price,
                 h.today_shares - (h.total_signed - COALESCE(SUM(o.signed_volume), 0))
@@ -1020,18 +1120,38 @@ def get_portfolio_history(
                  AND ABS(today_shares - total_signed) > 1e-9) AS residual_holders
           ),
           valued AS (
-            SELECT h.snapshot_date, h.shares_on_day, h.avg_price, f.px_ff
+            SELECT
+              h.snapshot_date, h.shares_on_day, f.px_ff,
+              -- Segment first, stored basis second.  See `holders` for why the
+              -- second arm is load-bearing rather than defensive.
+              COALESCE(db.basis, h.avg_price) AS basis
             FROM held h
             LEFT JOIN filled f
               ON f.ticker = h.ticker AND f.snapshot_date = h.snapshot_date
+            LEFT JOIN dated_basis db
+              ON  db.portfolio_id  = h.portfolio_id
+              AND db.ticker        = h.ticker
+              AND db.snapshot_date = h.snapshot_date
           ),
           daily AS (
             SELECT
               snapshot_date,
-              SUM(IF(px_ff IS NOT NULL, shares_on_day * px_ff, 0)) AS value_pln,
-              SUM(IF(px_ff IS NOT NULL, shares_on_day * (px_ff - avg_price), 0)) AS pnl_pln,
-              COUNTIF(px_ff IS NOT NULL) AS covered
-            FROM valued
+              -- One predicate for all three.  A ticker priced but not costed used
+              -- to contribute value while `SUM` skipped its NULL basis, so the day
+              -- read as pure profit; it is now dropped from the day entirely, the
+              -- same treatment the coverage gate already gives an unpriced ticker.
+              -- Splitting the predicate would let `covered > 0` measure something
+              -- other than what the sums measure, and a day could survive the gate
+              -- carrying value nobody costed.
+              SUM(IF(usable, shares_on_day * px_ff, 0)) AS value_pln,
+              SUM(IF(usable, shares_on_day * (px_ff - basis), 0)) AS pnl_pln,
+              COUNTIF(usable) AS covered,
+              -- Diagnostic only: priced, but no basis from either source.  Zero on
+              -- production today; reachable via an export window that opens after
+              -- the purchase, and silent under-valuation is exactly what must not
+              -- happen quietly.
+              COUNTIF(px_ff IS NOT NULL AND basis IS NULL) AS basis_gaps
+            FROM (SELECT *, px_ff IS NOT NULL AND basis IS NOT NULL AS usable FROM valued)
             -- GREATEST(@start_date, inception): `held` is already clamped to the range,
             -- so this is the inception half.  COALESCE keeps a wallet whose inception
             -- cannot be determined reporting rather than blank.
@@ -1039,7 +1159,10 @@ def get_portfolio_history(
             GROUP BY snapshot_date
           )
         SELECT d.snapshot_date, d.value_pln, d.pnl_pln, m.notes, m.excluded, m.data_from,
-               m.residual_holders
+               m.residual_holders,
+               -- Carried on every row like the other diagnostics, so the caller reads
+               -- it the same way: the worst day's count, not the first day's.
+               MAX(d.basis_gaps) OVER () AS basis_gaps
         FROM meta m
         LEFT JOIN daily d ON d.covered > 0
         ORDER BY d.snapshot_date
@@ -1048,6 +1171,8 @@ def get_portfolio_history(
         bigquery.ScalarQueryParameter("user_id",    "STRING", user_id),
         bigquery.ScalarQueryParameter("start_date", "DATE",   start_date),
     ]
+    if segments:
+        params.append(_basis_segments_param(segments))
     if portfolio_id is not None:
         params.append(bigquery.ScalarQueryParameter("portfolio_id", "STRING", portfolio_id))
     job_config = bigquery.QueryJobConfig(query_parameters=params)
@@ -1062,6 +1187,15 @@ def get_portfolio_history(
         _residual,
     )
     _log_unexplained_holdings("get_portfolio_history", user_id, portfolio_id, _residual)
+    _gaps = getattr(rows[0], "basis_gaps", None) if rows else 0
+    if _gaps:
+        # INFO, not DEBUG: api_main.py configures the root logger at INFO, so a
+        # DEBUG diagnostic never leaves the process in Cloud Run.
+        logger.info(
+            "get_portfolio_history: %s holding(s) priced but not costed, dropped from "
+            "the curve (user=%s, portfolio=%s)",
+            _gaps, user_id, portfolio_id,
+        )
     # The meta-first join emits one metadata-only row (NULL date) when no day survives the
     # gate — carry its lists, but never let it become a data point.
     series = [
@@ -1363,7 +1497,10 @@ _PRICE_HISTORY_SCAN_DAYS = 90  # scan floor — generous margin over 30 sessions
 
 
 def list_user_portfolio_positions(
-    user_id: str, portfolio_id: str | None = None, include_history: bool = False
+    user_id: str,
+    portfolio_id: str | None = None,
+    include_history: bool = False,
+    include_first_buy_date: bool = False,
 ) -> list[dict]:
     """Return positions for user_id joined with the latest available close price.
 
@@ -1382,7 +1519,18 @@ def list_user_portfolio_positions(
     last 30 trading-session close prices (PLN, ascending by date), unioned across
     company_daily_stats and etf_quotes so ETFs are covered too; None when the ticker
     has no rows. The treemap path leaves include_history=False so it never pays the
-    ARRAY_AGG cost. Raises BigQueryError on query failure.
+    ARRAY_AGG cost.
+
+    When include_first_buy_date=True, each row also carries first_buy_date: date |
+    None — when the shares held *now* were acquired (PUL-114/PUL-123). This is the
+    oldest **open** FIFO lot, deliberately not MIN(buy date): three of thirteen live
+    production tickers differ, by 424, 332 and 249 days, because they were sold to
+    zero and bought again, and MIN would report a holding period whose shares the
+    owner no longer has. Off by default and opt-in for the same reason
+    include_history is: it costs one extra query, and neither the treemap nor the
+    import-resolution path has any use for it.
+
+    Raises BigQueryError on query failure.
     """
     client = _get_client()
     _t = time.time()
@@ -1485,7 +1633,33 @@ def list_user_portfolio_positions(
     except Exception as exc:
         raise BigQueryError(f"list_user_portfolio_positions failed: {exc}") from exc
     logger.debug("BQ list_user_portfolio_positions: %.0fms", (time.time() - _t) * 1000)
-    return [dict(row) for row in rows]
+    out = [dict(row) for row in rows]
+    if include_first_buy_date:
+        acquired = _first_open_lot_dates(user_id, portfolio_id)
+        for row in out:
+            row["first_buy_date"] = acquired.get(
+                (row.get("portfolio_id") or "", row.get("ticker"))
+            )
+    return out
+
+
+def _first_open_lot_dates(user_id: str, portfolio_id: str | None) -> dict:
+    """When the shares held now were acquired, per (wallet, ticker).
+
+    The arithmetic is `src.portfolio_lots.first_open_lot_dates`, which is pure and
+    unit-tested; this only fetches and adapts. A ticker with nothing open is absent
+    rather than dated — there is no holding period for shares nobody holds.
+    """
+    events_by_wallet: dict[str, list[LotEvent]] = {}
+    for row in list_broker_trades(user_id, portfolio_id):
+        events_by_wallet.setdefault(row.get("portfolio_id") or "", []).append(LotEvent(
+            ticker=row["ticker"],
+            op_type=row["op_type"],
+            occurred_at=row["occurred_at"],
+            volume=float(row.get("volume") or 0.0),
+            unit_price=float(row.get("unit_price") or 0.0),
+        ))
+    return first_open_lot_dates(events_by_wallet)
 
 
 # Reserved ticker for uninvested cash (PUL-95 Phase 8). Kept as an ordinary
@@ -3960,6 +4134,9 @@ def list_broker_trades(user_id: str, portfolio_id: str | None = None) -> list[di
     is one small scan rather than something worth pushing into SQL.
 
     ``portfolio_id=None`` spans every wallet of the user (the "Wszystkie" view).
+    ``portfolio_id`` rides on every row (PUL-114): the cost basis has to be keyed
+    per wallet, or a sale in one wallet consumes a lot belonging to another.
+
     Raises BigQueryError on failure.
     """
     client = _get_client()
@@ -3967,7 +4144,8 @@ def list_broker_trades(user_id: str, portfolio_id: str | None = None) -> list[di
     table = _table_ref(client, _USER_BROKER_OPERATIONS_TABLE_NAME)
     portfolio_filter = "AND portfolio_id = @portfolio_id" if portfolio_id is not None else ""
     query = f"""
-        SELECT ticker, op_type, occurred_at, volume, unit_price, instrument_name
+        SELECT portfolio_id, ticker, op_type, occurred_at, volume, unit_price,
+               instrument_name
         FROM `{table}`
         WHERE user_id = @user_id {portfolio_filter}
           AND op_type IN ('buy', 'sell')

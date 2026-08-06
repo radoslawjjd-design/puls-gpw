@@ -3,6 +3,19 @@ name: Deploy
 on:
   push:
     branches: [master]
+    # A skipped deploy is only safe for paths that cannot change the image, and the
+    # file that decides that is .dockerignore — which excludes context/ and, since
+    # PUL-122, markdown. Keep the two in step: tests/test_deploy_workflow_filter.py
+    # fails if an entry here is one Docker would still copy in.
+    #
+    # Deliberately a denylist. An allowlist would fail silent — a path nobody thought
+    # of would stop deploying — where an unlisted path here merely deploys as before.
+    #
+    # tests/ is excluded from the image too, so skipping it would be sound, but it
+    # stays deploying on purpose: deploy.yml's own suite run is the post-merge gate.
+    paths-ignore:
+      - 'context/**'
+      - '**.md'
 
 env:
   PROJECT_ID: puls-gpw
