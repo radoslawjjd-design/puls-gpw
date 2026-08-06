@@ -3962,10 +3962,10 @@ function _renderPortfolioTable(positions) {
       <td>${company}</td>
       <td data-label="Ilość akcji">${shares}</td>
       <td data-label="Śr. cena zakupu">${avgPrice} PLN</td>
-      <td data-label="Okres posiadania">${_holdingText(_daysSince(pos.first_buy_date)) || '—'}</td>
       <td data-label="Aktualny kurs">${curPrice}</td>
       <td class="${dailyClass}" data-label="Zmiana dzienna">${daily}</td>
       <td class="${pnlClass}" data-label="Zysk/strata">${pnlText}</td>
+      <td data-label="Okres posiadania">${_holdingText(_daysSince(pos.first_buy_date)) || '—'}</td>
       <td data-label="30 dni">${_sparklineSvg(pos.price_history)}</td>
       ${actionsCell}
     </tr>`;
@@ -4623,10 +4623,11 @@ function _buildPortfolioPositionsViewContent(view) {
           <thead id="pp-thead">
             <tr>
               <th class="th-sortable" data-key="ticker">Ticker</th><th class="th-sortable" data-key="company_name">Spółka</th><th class="th-sortable" data-key="shares">Ilość akcji</th><th class="th-sortable" data-key="avg_buy_price">Śr. cena zakupu</th>
-              <!-- Sorted by data-key, i.e. the raw ISO date: the cell renders in two
-                   different formats, so sorting its text would be meaningless. -->
+              <th class="th-sortable" data-key="current_price">Aktualny kurs</th><th class="th-sortable" data-key="daily_change_pct">Zmiana dzienna</th><th class="th-sortable" data-key="pnl_pln">Zysk/strata</th>
+              <!-- Sorted by data-key, i.e. the raw ISO date. Sorting the printed text
+                   would be lexicographic and would put "100 dni" above "15 dni". -->
               <th class="th-sortable" data-key="first_buy_date">Okres posiadania</th>
-              <th class="th-sortable" data-key="current_price">Aktualny kurs</th><th class="th-sortable" data-key="daily_change_pct">Zmiana dzienna</th><th class="th-sortable" data-key="pnl_pln">Zysk/strata</th><th>30 dni</th><th></th>
+              <th>30 dni</th><th></th>
             </tr>
           </thead>
           <tbody id="pp-tbody"></tbody>
@@ -6064,14 +6065,17 @@ function _exportAnnouncementsCsv(rows, filename) {
 }
 function _exportPortfolioCsv() {
   if (!_ppPositions.length) { alert('Brak pozycji do eksportu.'); return; }
-  const out = [['Ticker', 'Spółka', 'Ilość akcji', 'Śr. cena zakupu', 'Okres posiadania',
-                'Aktualny kurs', 'Zmiana dzienna %', 'Zysk/strata PLN', 'Zysk/strata %']];
+  const out = [['Ticker', 'Spółka', 'Ilość akcji', 'Śr. cena zakupu',
+                'Aktualny kurs', 'Zmiana dzienna %', 'Zysk/strata PLN', 'Zysk/strata %',
+                'Okres posiadania']];
   _ppPositions.forEach(p => out.push([
     p.ticker, p.company_name || '', _csvNum(p.shares), _csvNum(p.avg_buy_price),
-    // Same position and same text as the table — an export that reorders or
-    // omits a visible column is the surprise, not the one that mirrors it.
-    _holdingText(_daysSince(p.first_buy_date)) || '',
-    _csvNum(p.current_price), _csvNum(p.daily_change_pct), _csvNum(p.pnl_pln), _csvNum(p.pnl_pct)
+    _csvNum(p.current_price), _csvNum(p.daily_change_pct), _csvNum(p.pnl_pln), _csvNum(p.pnl_pct),
+    // Same position and same text as the table — an export that reorders or omits a
+    // visible column is the surprise, not the one that mirrors it. In the table the
+    // column sits after Zysk/strata and before the 30-day sparkline; the sparkline has
+    // no CSV counterpart, so mirroring puts it last here.
+    _holdingText(_daysSince(p.first_buy_date)) || ''
   ]));
   _downloadCsv(_csvFilename(_ppExportWalletName(), _csvToday()), out);
 }

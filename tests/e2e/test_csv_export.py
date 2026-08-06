@@ -165,7 +165,9 @@ def test_the_positions_export_carries_the_holding_period_where_the_table_shows_i
     rows = _rows_of(dl.value)
 
     header = rows[0]
-    assert header.index("Okres posiadania") == header.index("Śr. cena zakupu") + 1, (
+    # In the table the column sits after Zysk/strata and before the 30-day sparkline.
+    # The sparkline has no CSV counterpart, so mirroring the table puts it last here.
+    assert header.index("Okres posiadania") == header.index("Zysk/strata %") + 1, (
         f"the column moved relative to the table: {header}"
     )
     pko = next(r for r in rows[1:] if r[0] == "PKO")

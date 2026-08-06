@@ -92,8 +92,12 @@ figure whose unit is months.
 
 **File**: `static/index.html` (`pp-thead` ~`:4570`, row renderer ~`:3904`)
 
-**Intent**: A tenth column, sortable, after `Śr. cena zakupu` — the purchase facts stay
-together before the market ones.
+**Intent**: A tenth column, sortable. ~~After `Śr. cena zakupu` — the purchase facts stay
+together before the market ones.~~ **Moved 2026-08-06 on the owner's call: between
+`Zysk/strata` and the 30-day sparkline.** The CSV mirrors the table, and since the
+sparkline has no CSV counterpart the column lands last in the export. A test now pins the
+placement by its neighbours — previously only the CSV test constrained it, so the table
+and the export could have drifted together and stayed self-consistent.
 
 **Contract**: `<th class="th-sortable" data-key="first_buy_date">Okres posiadania</th>`
 and a matching `<td data-label="Okres posiadania">`, rendering the helper's output or
