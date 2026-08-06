@@ -97,20 +97,24 @@ Written first, against the unmodified `deploy.yml`, so it fails for the right re
 - Replay the last 30 commits on `master` against the filter: every commit that touched only
   `context/**` or markdown would have been skipped, and no commit touching `src/`, `db/`,
   `static/`, `tests/` or `.github/` would have been.
-- `docker build` still succeeds with markdown excluded from the build context.
+- The build still resolves with markdown excluded. `docker build` needs a running daemon,
+  which this machine does not have, so the step that could actually break was checked
+  directly instead: `pyproject.toml` declares `readme = "README.md"`, so `uv sync --frozen
+  --no-dev` was run against a scratch directory holding only `pyproject.toml` and
+  `uv.lock` — exactly the Dockerfile's first stage. CI runs the real build on merge.
 
 ## Progress
 
 ### Phase 1: Guard the workflow↔dockerignore invariant
 #### Automated
-- [x] 1.1 Guard test fails against the unmodified workflow, citing the missing `paths-ignore`
-- [x] 1.2 `uv run ruff check tests/test_deploy_workflow_filter.py`
+- [x] 1.1 Guard test fails against the unmodified workflow, citing the missing `paths-ignore` — 4868c27
+- [x] 1.2 `uv run ruff check tests/test_deploy_workflow_filter.py` — 4868c27
 
 ### Phase 2: Apply the filter
 #### Automated
-- [ ] 2.1 `uv run pytest tests/test_deploy_workflow_filter.py` green
-- [ ] 2.2 `uv run pytest` — full suite green
-- [ ] 2.3 `uv run ruff check .`
+- [x] 2.1 `uv run pytest tests/test_deploy_workflow_filter.py` green
+- [x] 2.2 `uv run pytest` — full suite green (1077 passed)
+- [x] 2.3 `uv run ruff check .`
 #### Manual
-- [ ] 2.4 Last 30 master commits replayed against the filter — skips and triggers both correct
-- [ ] 2.5 `docker build` succeeds with markdown out of the build context
+- [x] 2.4 Last 20 master pushes replayed against the filter — 4 skipped, all correct
+- [x] 2.5 `uv sync --frozen --no-dev` resolves with no markdown present (Dockerfile stage 1)

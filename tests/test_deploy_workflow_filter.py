@@ -46,12 +46,20 @@ def _glob_to_regex(pattern: str) -> re.Pattern:
 
     `**` crosses directory separators, `*` and `?` do not — the same distinction Docker
     makes, which is why one translator serves both dialects here.
+
+    `**/` matches *zero* or more directories, so `**/*.md` covers `README.md` at the root.
+    Both dialects agree on that (Docker compiles it to `(.*/)?`), and getting it wrong is
+    what a first draft of this file did — reporting a sound `.dockerignore` as broken.
     """
     out = []
     i = 0
     while i < len(pattern):
         char = pattern[i]
         if char == "*":
+            if pattern[i : i + 3] == "**/":
+                out.append("(?:.*/)?")
+                i += 3
+                continue
             if pattern[i : i + 2] == "**":
                 out.append(".*")
                 i += 2
