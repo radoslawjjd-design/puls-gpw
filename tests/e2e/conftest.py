@@ -332,7 +332,7 @@ _FAKE_PORTFOLIO_POSITIONS = [
         "daily_change_pct": 1.5, "price_as_of": "2026-06-27",
         # >=2 ascending points → sparkline <svg> renders
         "price_history": [45.0, 47.5, 50.0],
-        "first_buy_date": _held_since(800),   # → "2 lata 2 mies."
+        "first_buy_date": _held_since(800),   # → "800 dni"
     },
     {
         "ticker": "CDR", "company_name": "CD Projekt", "shares": 10.0,
@@ -349,7 +349,7 @@ _FAKE_PORTFOLIO_POSITIONS = [
         "avg_buy_price": 8.0, "current_price": 7.6,
         "daily_change_pct": -2.4, "price_as_of": "2026-06-27",
         "price_history": [8.0, 7.8, 7.6],
-        "first_buy_date": _held_since(100),   # → "3 mies."
+        "first_buy_date": _held_since(100),   # → "100 dni"
     },
     {
         "ticker": "LPP", "company_name": "LPP", "shares": 1.0,
@@ -371,7 +371,7 @@ _FAKE_PORTFOLIO_POSITIONS = [
         # Dated so LPP is the ONLY position without one — the sort test needs the
         # undated row to be unambiguous, and one deliberate absence reads better
         # than two accidental ones.
-        "first_buy_date": _held_since(400),   # → "1 rok 1 mies."
+        "first_buy_date": _held_since(400),   # → "400 dni"
     },
 ]
 

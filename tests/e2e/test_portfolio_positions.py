@@ -197,18 +197,19 @@ def _held_cell(page: Page, ticker: str):
     return page.locator("#pp-tbody tr", has_text=ticker).locator(_HELD_CELL)
 
 
-def test_holding_period_switches_units_instead_of_printing_raw_days(
+def test_the_holding_period_is_reported_in_days_at_every_magnitude(
     page: Page, live_server_url: str
 ):
-    """Days stay days while they are readable; past a quarter they become months
-    and years. Nobody reads "800 dni" as two years and two months."""
+    """Days, never months or years — the owner's call. Two positions are then
+    comparable by reading, and the count is exact rather than rounded to a unit
+    that has no fixed length."""
     _login(page, live_server_url)
     _open_portfolio(page)
     expect(page.locator("#pp-tbody")).to_contain_text("PGE")
 
-    expect(_held_cell(page, "PKO")).to_have_text("2 lata 2 mies.")   # 800 days
-    expect(_held_cell(page, "PGE")).to_have_text("3 mies.")          # 100 days
-    expect(_held_cell(page, "CDR")).to_have_text("15 dni")           # 15 days
+    expect(_held_cell(page, "PKO")).to_have_text("800 dni")
+    expect(_held_cell(page, "PGE")).to_have_text("100 dni")
+    expect(_held_cell(page, "CDR")).to_have_text("15 dni")
 
 
 def test_a_position_with_no_acquisition_date_shows_no_holding_period(
@@ -229,9 +230,9 @@ def test_a_position_with_no_acquisition_date_shows_no_holding_period(
 def test_holding_period_sorts_by_date_not_by_the_text_it_prints(
     page: Page, live_server_url: str
 ):
-    """The cell renders in two different formats, so sorting its text would put
-    "15 dni" above "3 mies.". The header sorts on the raw ISO date instead, and
-    the undated position goes last in both directions rather than counting as
+    """One unit did not make text sorting safe — it is lexicographic, so "100
+    dni" would sort above "15 dni". The header sorts on the raw ISO date instead,
+    and the undated position goes last in both directions rather than counting as
     the oldest."""
     _login(page, live_server_url)
     _open_portfolio(page)
@@ -262,7 +263,7 @@ def test_holding_period_survives_the_phone_card_layout(
 
     cell = _held_cell(page, "PKO")
     expect(cell).to_be_visible()
-    expect(cell).to_have_text("2 lata 2 mies.")
+    expect(cell).to_have_text("800 dni")
     label = cell.evaluate("e => getComputedStyle(e, '::before').content")
     assert "Okres posiadania" in label, f"the card layout dropped the label: {label}"
 
@@ -270,19 +271,23 @@ def test_holding_period_survives_the_phone_card_layout(
 def test_the_holding_period_never_reads_shorter_as_a_position_gets_older(
     page: Page, live_server_url: str
 ):
-    """The unit switches at 90 days, and that is where the formatter can lie. 89
-    days is ~2.9 months, so flooring made the cell read "89 dni" one day and
-    "2 mies." the next — the displayed age going *backwards* while the position
-    aged. Checked against the function itself rather than through a fixture,
-    because pinning a boundary needs day-by-day resolution."""
+    """A unit switch is where this formatter used to lie: 89 days is ~2.9 months,
+    so rounding made the cell read "89 dni" one day and "3 mies." the next — the
+    displayed age going *backwards* while the position aged. Days-only removes
+    the failure by construction, and this pins it there.
+
+    Checked against the function itself rather than through a fixture, because
+    pinning a boundary needs day-by-day resolution. 90 and 424 are in the list on
+    purpose: they are where the old formatter changed units."""
     _login(page, live_server_url)
     _open_portfolio(page)
 
-    texts = page.evaluate(
-        "() => [88, 89, 90, 91, 92, 120, 364, 365, 424].map(d => _holdingText(d))"
-    )
-    assert texts[:3] == ["88 dni", "89 dni", "3 mies."], texts
-    # Months must never decrease across the switch, nor within the months branch.
-    months = [int(t.split()[0]) for t in texts[2:6]]
-    assert months == sorted(months), f"the reported age went backwards: {texts}"
-    assert texts[-1] == "1 rok 2 mies.", "424 days is a year and ~1.9 months"
+    days = [1, 2, 5, 88, 89, 90, 91, 120, 364, 365, 424, 800, 4000]
+    texts = page.evaluate(f"() => {days}.map(d => _holdingText(d))")
+
+    assert texts[0] == "1 dzień", texts[0]
+    assert texts[2] == "5 dni", texts[2]
+    # No unit may appear other than days, at any magnitude.
+    assert all(t.split(maxsplit=1)[1] in ("dzień", "dni") for t in texts), texts
+    # And the number is the day count itself, so it cannot go backwards.
+    assert [int(t.split()[0]) for t in texts] == days, texts

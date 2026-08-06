@@ -53,6 +53,11 @@ and two more were cheap to automate — so nothing is left resting on a promise 
   test pins the boundary day-by-day via `page.evaluate` rather than through a fixture,
   since a fixture cannot give day-level resolution.
 - **Decision**: FIXED
+- **Superseded 2026-08-06**: the owner reversed the format to a plain day count at every
+  magnitude, so there is no unit switch left to round across and this class of defect is
+  gone by construction. The boundary test survives in amended form — it now pins that
+  *no* unit other than days can appear. Kept as the record of why the rounding existed,
+  and as the strongest argument for the reversal.
 
 ### F2 — A malformed date and a genuinely absent one render identically
 

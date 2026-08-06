@@ -23,9 +23,17 @@ ledger.
 
 ### Decisions taken with the owner before any code (2026-08-05)
 
-1. **Format: days below 90, years and months above.** `47 dni` / `3 mies.` /
-   `1 rok 2 mies.`. The ticket's own suggestion, and it fits the real data — live
-   positions run from 15 days to 424. Same format in both views.
+1. ~~**Format: days below 90, years and months above.**~~ **Reversed by the owner
+   (2026-08-06): always days, at every magnitude.** `47 dni` / `100 dni` / `800 dni`.
+   Same format in both views.
+
+   The original decision was the ticket's own suggestion and it shipped that way. The
+   reversal is worth the churn because months and years have no fixed length, so any
+   conversion rounds — and a rounded age can read *shorter* as the position gets older.
+   The implementation had already hit that: 89 days is ~2.9 months, so the cell read
+   `89 dni` one day and `3 mies.` the next, and a whole comment plus a boundary test
+   existed to hold the rounding in place. Days remove the failure by construction, are
+   exact, and let two positions be compared by reading rather than by arithmetic.
 2. **Zrealizowane shows the volume-weighted figure**, with the oldest consumed lot in the
    cell's `title`. Weighted is the answer to "how long did I hold this"; the oldest-lot
    number is what the ticket's acceptance criterion asks for, and it stays checkable.
@@ -44,5 +52,8 @@ honestly, so this change only has to not invent something.
 
 `_sortRows` (`static/index.html:2496`) needs **no change**. ISO dates compare
 lexicographically in chronological order, and it already pushes `null` to the end
-regardless of sort direction — so the new column sorts correctly by raw date, which is
-what a two-format cell requires.
+regardless of sort direction — so the new column sorts correctly by raw date.
+
+Sorting on the raw date rather than the printed text survives the format reversal, and
+still has to: one unit did not make text sorting safe, because it is lexicographic and
+would put `100 dni` above `15 dni`.

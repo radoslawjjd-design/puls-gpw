@@ -3865,20 +3865,15 @@ function _daysSince(iso) {
   return days >= 0 ? days : null;
 }
 
-// Below 90 days the exact count is what the reader wants; above it, "424 dni"
-// stops meaning anything and years+months does the arithmetic for them.
+// Always days, at every magnitude — the owner's call, and it removes a whole
+// class of defect rather than trading one unit for another. Months and years are
+// not a fixed length, so any conversion has to round, and a rounded age can read
+// *shorter* as the position gets older (89 days is ~2.9 months: the cell said
+// "89 dni" one day and "2 mies." the next). A day count is exact, monotonic, and
+// directly comparable between two positions without arithmetic.
 function _holdingText(days) {
   if (days == null || days < 0) return null;
-  if (days < 90) return days + ' ' + _plPlural(days, 'dzień', 'dni', 'dni');
-  // Rounded, not floored, and the boundary is why: 89 days is ~2.9 months, so
-  // flooring made the cell read "89 dni" one day and "2 mies." the next — the
-  // displayed age going backwards as the position got older. Rounding is also
-  // simply closer (424 days is a year and ~1.9 months, not a year and 1).
-  const months = Math.round(days / 30.4375);
-  const y = Math.floor(months / 12), m = months % 12;
-  if (!y) return m + ' mies.';
-  const years = y + ' ' + _plPlural(y, 'rok', 'lata', 'lat');
-  return m ? years + ' ' + m + ' mies.' : years;
+  return days + ' ' + _plPlural(days, 'dzień', 'dni', 'dni');
 }
 
 // The Zrealizowane cell. The volume-weighted figure answers "how long did I hold
