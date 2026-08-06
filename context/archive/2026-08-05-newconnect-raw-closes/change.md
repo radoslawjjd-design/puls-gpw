@@ -1,10 +1,10 @@
 ---
 change_id: newconnect-raw-closes
 title: Repair NewConnect historical closes from stooq's unadjusted series
-status: implemented
+status: archived
 created: 2026-08-05
-updated: 2026-08-05
-archived_at: null
+updated: 2026-08-06
+archived_at: 2026-08-06T10:40:02Z
 tracking:
   linear: PUL-96
   github: 191

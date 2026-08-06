@@ -1,10 +1,10 @@
 ---
 change_id: vertex-ai-cost-verification
 title: Verify Vertex AI costs in the BigQuery billing export
-status: implemented
+status: archived
 created: 2026-08-06
 updated: 2026-08-06
-archived_at: null
+archived_at: 2026-08-06T10:40:02Z
 tracking:
   linear: PUL-69
   github: null
