@@ -37,7 +37,7 @@ dev = [
     # asserts a fact about deploy.yml's trigger, and a regex would keep passing while
     # the YAML came to mean something else. Dev-only, so `uv sync --no-dev` keeps it
     # out of the image.
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.3",
 ]
 
 [tool.pytest.ini_options]
