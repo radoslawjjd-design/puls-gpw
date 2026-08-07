@@ -542,30 +542,30 @@ nothing else depends on it.
 
 #### Automated
 
-- [x] 2.1 Unit tests pass: `uv run pytest tests/test_cost_report.py`
-- [x] 2.2 All six recorded SKU strings classify correctly, each named verbatim
-- [x] 2.3 Lite and GA map to different models and do not collapse into one row
-- [x] 2.4 Per-model gross sums to the Vertex AI service total for the same day
-- [x] 2.5 Median over fewer than 4 days returns None and suppresses the flag
-- [x] 2.6 A day exactly at the factor does not flag; strictly above it does
-- [x] 2.7 Month-to-date on the 1st of a month covers the previous month
-- [x] 2.8 Full suite passes: `uv run pytest`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_cost_report.py` — 727e03e
+- [x] 2.2 All six recorded SKU strings classify correctly, each named verbatim — 727e03e
+- [x] 2.3 Lite and GA map to different models and do not collapse into one row — 727e03e
+- [x] 2.4 Per-model gross sums to the Vertex AI service total for the same day — 727e03e
+- [x] 2.5 Median over fewer than 4 days returns None and suppresses the flag — 727e03e
+- [x] 2.6 A day exactly at the factor does not flag; strictly above it does — 727e03e
+- [x] 2.7 Month-to-date on the 1st of a month covers the previous month — 727e03e
+- [x] 2.8 Full suite passes: `uv run pytest` — 727e03e
 
 #### Manual
 
-- [ ] 2.9 Real 2026-08-05 rows produce ratio ≈ 2.17 and is_anomaly True at factor 2.0
+- [x] 2.9 Real 2026-08-05 rows produce ratio ≈ 2.17 and is_anomaly True at factor 2.0 — 727e03e (measured 2.2446; the day kept amending upward after the plan was written)
 
 ### Phase 3: Mail rendering and sender
 
 #### Automated
 
-- [ ] 3.1 Unit tests pass: `uv run pytest tests/test_notifier.py`
-- [ ] 3.2 Sender wiring shows html=True, no to, no from_name
-- [ ] 3.3 The anomaly subject differs from the normal subject and names the ratio
-- [ ] 3.4 A short baseline renders the "baseline still building" line and names the day count
-- [ ] 3.5 A hostile service name is escaped
-- [ ] 3.6 The token column is labelled tokens, not requests
-- [ ] 3.7 Full suite passes: `uv run pytest`
+- [x] 3.1 Unit tests pass: `uv run pytest tests/test_notifier.py`
+- [x] 3.2 Sender wiring shows html=True, no to, no from_name
+- [x] 3.3 The anomaly subject differs from the normal subject and names the ratio
+- [x] 3.4 A short baseline renders the "baseline still building" line and names the day count
+- [x] 3.5 A hostile service name is escaped
+- [x] 3.6 The token column is labelled tokens, not requests
+- [x] 3.7 Full suite passes: `uv run pytest`
 
 #### Manual
 

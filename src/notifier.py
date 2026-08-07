@@ -365,6 +365,171 @@ def send_announcement_digest_email(to_email: str, items: list[dict], base_url: s
     )
 
 
+def _pln(value: float | None) -> str:
+    """Polish money formatting: comma decimal, thin-space thousands, `zł` suffix."""
+    if value is None:
+        return "—"
+    # Credits cancel gross almost exactly, leaving values like -0.00004 that
+    # would render as "-0,00 zł" and read as a bug. At two decimals they are zero.
+    if abs(value) < 0.005:
+        value = 0.0
+    return f"{value:,.2f}".replace(",", " ").replace(".", ",") + " zł"
+
+
+def _tokens(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value:,.0f}".replace(",", " ")
+
+
+def _cost_report_subject(summary: dict) -> str:
+    """The subject carries the verdict, because a flagged day that reads like a
+    calm one in the inbox defeats the point of a daily cadence."""
+    day = summary.get("report_date")
+    gross = _pln(summary.get("day_gross"))
+    if summary.get("is_anomaly") and summary.get("ratio") is not None:
+        ratio = f"{summary['ratio']:.1f}".replace(".", ",")
+        return f"[puls-gpw] ⚠️ Koszty {day} — {gross}, {ratio}× mediany"
+    return f"[puls-gpw] Koszty {day} — {gross}"
+
+
+def _cost_report_html(
+    summary: dict, services: list[dict], models: list[dict], base_url: str
+) -> str:
+    """Faro-branded daily GCP cost report (PUL-125).
+
+    Takes primitives rather than the `CostReport` dataclass on purpose: this
+    module imports only stdlib — no `src.*`, no `db.*` — and every other sender
+    here takes `str` / `list[dict]`. The caller unpacks.
+
+    Three things the numbers cannot say for themselves are said in prose, because
+    a reader who infers the wrong thing from them will infer something reassuring:
+
+    * **The previous day is provisional.** Billing rows keep landing for a day or
+      two; at 09:00 the day holds 85-100 % of what it will finally cost.
+    * **Net is not "what we pay forever".** A promotional credit currently cancels
+      the whole bill, and the export does not carry the credit's remaining balance
+      or expiry — that lives in the console and needs a human (PUL-69).
+    * **A short baseline is not a calm day.** With fewer than four days of history
+      the flag is suppressed, which in the inbox is indistinguishable from nothing
+      being wrong unless the mail says so.
+
+    Every interpolated value is escaped (defense-in-depth, PR #159).
+    """
+    logo_url = _html_escape(f"{base_url}/static/img/faro-mark.png", quote=True)
+
+    service_rows = "".join(
+        f"""
+    <tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;">{_html_escape(str(s.get('name') or ''), quote=True)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:right;">{_html_escape(_pln(s.get('gross')), quote=True)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280;">{_html_escape(_pln(s.get('net')), quote=True)}</td>
+    </tr>"""
+        for s in services
+    )
+
+    model_rows = "".join(
+        f"""
+    <tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;">{_html_escape(str(m.get('model') or ''), quote=True)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:right;">{_html_escape(_pln(m.get('gross')), quote=True)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280;">{_html_escape(_tokens(m.get('input_tokens')), quote=True)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280;">{_html_escape(_tokens(m.get('output_tokens')), quote=True)}</td>
+    </tr>"""
+        for m in models
+    )
+
+    if summary.get("median_7d") is None:
+        baseline = (
+            f"""<p style="font-size:13px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;"""
+            f"""border-radius:6px;padding:10px 12px;margin:0 0 16px;">"""
+            f"""Baza porównawcza wciąż się buduje — mam {_html_escape(str(summary.get('baseline_days', 0)))} """
+            f"""z 4 wymaganych dni historii, więc dziś nic nie jest oznaczane jako anomalia.</p>"""
+        )
+    else:
+        ratio = summary.get("ratio")
+        ratio_txt = f"{ratio:.1f}".replace(".", ",") if ratio is not None else "—"
+        baseline = (
+            f"""<p style="font-size:13px;color:#6b7280;margin:0 0 16px;">"""
+            f"""Mediana z 7 dni: <strong>{_html_escape(_pln(summary.get('median_7d')), quote=True)}</strong> """
+            f"""· stosunek: <strong>{_html_escape(ratio_txt)}×</strong></p>"""
+        )
+
+    return f"""<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:20px;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<div style="max-width:560px;margin:0 auto;">
+
+<div style="background:#14304A;color:#ffffff;padding:18px 24px;border-radius:8px 8px 0 0;">
+  <span style="display:inline-block;background:#ffffff;border-radius:8px;padding:5px 7px;vertical-align:middle;"><img src="{logo_url}" alt="Faro" height="28" style="display:block;height:28px;"></span>
+  <span style="font-size:20px;font-weight:700;vertical-align:middle;margin-left:10px;">Koszty GCP</span>
+</div>
+
+<div style="background:#ffffff;padding:24px;">
+
+  <p style="font-size:15px;line-height:1.6;color:#111827;margin:0 0 4px;">
+    <strong>{_html_escape(str(summary.get('report_date') or ''), quote=True)}</strong> — brutto
+    <strong>{_html_escape(_pln(summary.get('day_gross')), quote=True)}</strong>,
+    po kredytach {_html_escape(_pln(summary.get('day_net')), quote=True)}
+  </p>
+  <p style="font-size:12px;color:#6b7280;margin:0 0 16px;">
+    Dane za wczoraj są <strong>prowizoryczne</strong> — rozliczenia dopływają jeszcze przez dobę lub dwie,
+    więc kwota może jeszcze urosnąć.
+  </p>
+
+  {baseline}
+
+  <p style="font-size:15px;color:#111827;margin:0 0 6px;font-weight:700;">Wg usługi</p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;margin:0 0 20px;">
+    <tr style="background:#f9fafb;">
+      <th style="padding:6px 10px;text-align:left;color:#6b7280;font-weight:600;">Usługa</th>
+      <th style="padding:6px 10px;text-align:right;color:#6b7280;font-weight:600;">Brutto</th>
+      <th style="padding:6px 10px;text-align:right;color:#6b7280;font-weight:600;">Po kredytach</th>
+    </tr>{service_rows}
+  </table>
+
+  <p style="font-size:15px;color:#111827;margin:0 0 6px;font-weight:700;">Vertex AI wg modelu</p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;margin:0 0 20px;">
+    <tr style="background:#f9fafb;">
+      <th style="padding:6px 10px;text-align:left;color:#6b7280;font-weight:600;">Model</th>
+      <th style="padding:6px 10px;text-align:right;color:#6b7280;font-weight:600;">Brutto</th>
+      <th style="padding:6px 10px;text-align:right;color:#6b7280;font-weight:600;">Tokeny wej.</th>
+      <th style="padding:6px 10px;text-align:right;color:#6b7280;font-weight:600;">Tokeny wyj.</th>
+    </tr>{model_rows}
+  </table>
+
+  <p style="font-size:14px;color:#111827;margin:0 0 16px;">
+    Od początku miesiąca: <strong>{_html_escape(_pln(summary.get('mtd_gross')), quote=True)}</strong> brutto,
+    {_html_escape(_pln(summary.get('mtd_net')), quote=True)} po kredytach.
+  </p>
+
+  <p style="font-size:12px;color:#6b7280;margin:0;">
+    Kredyt promocyjny wciąż pokrywa rachunek, dlatego kwota „po kredytach" jest bliska zeru.
+    Ile kredytu zostało i kiedy wygasa — tego eksport rozliczeń nie zawiera; to trzeba sprawdzić
+    ręcznie w konsoli (Billing → Credits).
+  </p>
+
+</div>
+
+<div style="background:#f9fafb;border:1px solid #e5e7eb;border-top:none;padding:12px 18px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280;text-align:center;">
+  Faro — dzienny raport kosztów GCP.
+</div>
+
+</div>
+</body>
+</html>"""
+
+
+def send_cost_report_email(
+    summary: dict, services: list[dict], models: list[dict], base_url: str
+) -> None:
+    """Email the owner the daily GCP cost report (PUL-125).
+
+    Raises on SMTP failure — the job catches it, alerts, and exits non-zero.
+    """
+    _send(_cost_report_subject(summary), _cost_report_html(summary, services, models, base_url), html=True)
+
+
 def send_password_reset_email(to_email: str, reset_link: str, origin: str) -> None:
     """PUL-85: Faro-branded password-reset e-mail (Polish) sent via own SMTP.
 
