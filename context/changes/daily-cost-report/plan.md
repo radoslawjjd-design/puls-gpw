@@ -101,10 +101,19 @@ updated `infra.md` — the step PUL-67 skipped, which is why that doc is stale t
 only. Merging before the human provisioning step turns the deploy step red and blocks the pipeline
 for every other change. The runbook lands in Phase 5 but must be *executed* before the PR merges.
 
-**The Vertex model mapping is order-dependent and fails quietly.** `"Gemini 2.5 Flash Lite Text
-Input - Predictions"` matches a `Flash` test as readily as `"Gemini 2.5 Flash GA Text Input"`. The
-Lite branch must be evaluated first. Wrong ordering produces a plausible-looking single-model
-breakdown that no reviewer would question — hence a dedicated test naming both SKUs.
+**The Vertex SKU classification has three separate traps, all of which fail quietly.**
+
+1. `"Gemini 2.5 Flash Lite Text Input - Predictions"` matches a `Flash` test as readily as
+   `"Gemini 2.5 Flash GA Text Input"`. **The Lite branch must be evaluated first.**
+2. **Flash GA has two distinct output SKUs** — `"Gemini 2.5 Flash GA Thinking Text Output"` and
+   `"Gemini 2.5 Flash GA Text Output (Thinking On)"`. The second ends in `)`, so any rule shaped
+   like `desc.endswith("Output")` drops it and understates output tokens.
+3. `"Flash GA / Lite input caching"` **spans both models** and cannot be attributed to either by
+   matching a model name.
+
+Every one of these produces a plausible-looking table that no reviewer would question. The six SKU
+strings are recorded verbatim in `context/archive/2026-08-06-vertex-ai-cost-verification/findings.md:76-83`,
+so the test can name them all.
 
 **`send_alert` reads the ambient traceback, not its argument.** `traceback.format_exc()` called
 outside an `except` block prints `NoneType: None` (`main.py:188` already does this). The zero-row
@@ -200,25 +209,48 @@ day is anomalous.
 `vertex_models` (model, gross, input_tokens, output_tokens), `day_gross`, `day_net`, `mtd_gross`,
 `mtd_net`, `median_7d`, `ratio`, `is_anomaly`, `baseline_days`. Plus:
 
-- `map_sku_to_model(sku_description: str) -> str | None` — **the Lite branch is tested before the
-  Flash branch**; returns `None` for non-Gemini SKUs.
+- `classify_sku(sku_description: str) -> tuple[str, str] | None` — returns `(model, direction)`
+  where direction is `"input"` or `"output"`. **The Lite branch is evaluated before the Flash
+  branch**, and **both** Flash GA output SKUs map to `("gemini-2.5-flash", "output")`. The shared
+  `"Flash GA / Lite input caching"` SKU maps to the model `"shared (input caching)"` so it gets its
+  own row rather than being attributed to either model or silently dropped — the per-model rows
+  must sum to the Vertex AI service line, or the table contradicts itself. Any SKU matching nothing
+  falls into a `"other"` row for the same reason; returning `None` is reserved for non-Vertex SKUs.
 - `trailing_median(daily: dict[date, float], as_of: date) -> float | None` — median over the up-to-7
   days before `as_of`, returning `None` when fewer than `_MIN_BASELINE_DAYS` (4) are present.
-- `build_report(rows, daily_gross, report_date) -> CostReport` — assembles the above; the
-  month-to-date window is **the month `report_date` belongs to**, so on the 1st of a month the
-  report closes out the previous month rather than showing a near-zero current one.
-- `_ANOMALY_FACTOR = float(os.environ.get("COST_ANOMALY_FACTOR", "2.0"))`, following the house
-  env-with-literal-default pattern (`src/http_client.py:12-14`, `src/parser.py:21-23`).
+- `build_report(rows, daily_gross, report_date, anomaly_factor: float) -> CostReport` — assembles
+  the above; the month-to-date window is **the month `report_date` belongs to**, so on the 1st of a
+  month the report closes out the previous month rather than showing a near-zero current one.
+
+The factor is a **parameter, not a module constant**: this module is otherwise pure, and an
+import-time `os.environ` read would be the one impure thing in it. The env read
+(`COST_ANOMALY_FACTOR`, default `2.0`) happens at the call site in `cost_report_main.py`, following
+the house env-with-literal-default pattern (`src/http_client.py:12-14`) but keeping it out of the
+tested surface.
 
 `is_anomaly` is `False` whenever `median_7d` is `None` — an insufficient baseline never flags.
+
+#### 2. Default application URL
+
+**File**: `src/cost_report.py`
+
+**Intent**: Give the mail's logo a base URL that a second entry point can actually import.
+
+**Contract**: `DEFAULT_BASE_URL = "https://puls-gpw-api-5zlombicra-lm.a.run.app"` — the same value
+as `main.py:41`, but public and in `src/`, because `main.py`'s copy is private to an entry point
+that runs `load_dotenv()` and a large `db.bigquery` import block at import time and therefore
+cannot be imported from another entry point.
 
 ### Success Criteria:
 
 #### Automated Verification:
 
 - Unit tests pass: `uv run pytest tests/test_cost_report.py`
-- Both Gemini SKUs map to distinct models: a test naming `"Gemini 2.5 Flash Lite Text Input -
-  Predictions"` and `"Gemini 2.5 Flash GA Text Input - Predictions"` asserts two different values
+- All six recorded SKU strings classify correctly, in one test that names each verbatim: the two
+  input SKUs, **both** Flash GA output SKUs, the Lite output SKU, and the shared caching SKU
+- Lite and GA map to different models — `"…Flash Lite Text Input…"` and `"…Flash GA Text Input…"`
+  do not collapse into one row
+- Per-model gross sums to the Vertex AI service total for the same day (nothing silently dropped)
 - Median over fewer than 4 days returns `None` and suppresses the flag
 - A day at exactly the factor does not flag; strictly above it does
 - Month-to-date on the 1st of a month covers the previous month
@@ -247,19 +279,25 @@ already enforces.
 owner, matching how every other sender wraps `_send`.
 
 **Contract**: Two additions, modelled on `_announcement_digest_html` (`:303-348`) and
-`send_announcement_digest_email` (`:351-365`):
+`send_announcement_digest_email` (`:351-365`). Both take **primitives, not the `CostReport`
+dataclass**: `src/notifier.py` imports only stdlib today — zero `src.*`, zero `db.*` — and all six
+existing senders take `str` / `list[dict]` / `list[str]`. Keeping that property means the caller
+unpacks the dataclass, not the mailer.
 
-- `_cost_report_html(report: CostReport, base_url: str) -> str` — navy `#14304A` header with the
-  Faro mark from `{base_url}/static/img/faro-mark.png`, a per-service table (gross and net), a
-  Vertex-by-model table whose token column is labelled **tokens**, the month-to-date line, a note
-  that the previous day is provisional because billing rows keep arriving for 1-2 days, and a note
-  that credit remaining is not available from the export. Every interpolated value goes through
-  `html.escape(..., quote=True)`.
-- `send_cost_report_email(report: CostReport, base_url: str) -> None` — calls `_send(subject, html,
-  html=True)` with no `to` and no `from_name`, matching the owner-mail convention. Subject is
-  prefixed `[puls-gpw]`, carries the date and gross, and states the anomaly when `is_anomaly` —
-  including the ratio, so the subject alone answers "how much worse". Raises on failure; the
-  docstring says so, as `:275-277` does.
+- `_cost_report_html(summary: dict, services: list[dict], models: list[dict], base_url: str) -> str`
+  — navy `#14304A` header with the Faro mark from `{base_url}/static/img/faro-mark.png`, a
+  per-service table (gross and net), a Vertex-by-model table whose token column is labelled
+  **tokens**, the month-to-date line, a note that the previous day is provisional because billing
+  rows keep arriving for 1-2 days, and a note that credit remaining is not available from the
+  export. **When the baseline is too short to judge** (`summary["median_7d"] is None`) the mail says
+  the baseline is still building, naming how many days it has — otherwise a suppressed flag reads
+  identically to a calm day, which is the ambiguity the daily cadence exists to remove. Every
+  interpolated value goes through `html.escape(..., quote=True)`.
+- `send_cost_report_email(summary: dict, services: list[dict], models: list[dict], base_url: str) -> None`
+  — calls `_send(subject, html, html=True)` with no `to` and no `from_name`, matching the owner-mail
+  convention. Subject is prefixed `[puls-gpw]`, carries the date and gross, and states the anomaly
+  when flagged — including the ratio, so the subject alone answers "how much worse". Raises on
+  failure; the docstring says so, as `:275-277` does.
 
 ### Success Criteria:
 
@@ -269,6 +307,7 @@ owner, matching how every other sender wraps `_send`.
 - The sender is wired correctly: patching `src.notifier._send` shows `html=True`, no `to`, no
   `from_name`
 - The anomaly subject differs from the normal subject and names the ratio
+- A short baseline renders the "baseline still building" line and names the day count
 - A hostile service name is escaped: the raw payload is absent from the HTML and its escaped form
   present
 - The token column is labelled tokens, not requests
@@ -297,7 +336,13 @@ The script the job runs: resolve yesterday, query, build, send, and fail loudly.
 **Contract**: Import order is load-bearing — `load_dotenv()` → `configure_logging()` → then `db.*`
 and `src.*` (`context/foundation/lessons.md:5-21`), with `WARSAW = ZoneInfo("Europe/Warsaw")` and
 `report_date = datetime.now(WARSAW).date() - timedelta(days=1)`. The body queries the 8-day window
-plus the month-to-date window, builds the report, and sends it.
+plus the month-to-date window, builds the report, unpacks it into the primitives the sender takes,
+and sends it.
+
+This entry point owns the two environment reads the pure modules deliberately do not:
+`anomaly_factor = float(os.environ.get("COST_ANOMALY_FACTOR", "2.0"))` and
+`base_url = os.environ.get("APP_BASE_URL", DEFAULT_BASE_URL)` — the latter imported from
+`src/cost_report.py`, since `main.py`'s equivalent constant is not importable.
 
 **The zero-row guard raises from inside the `try`**, mirroring `etf_quotes_main.py:42-45`: no
 billing rows for the report date means the query broke, not that the day was free. The failure
@@ -322,7 +367,9 @@ mandatory `load_dotenv()`-before-imports ordering.
 - A query failure alerts and exits non-zero
 - Zero billing rows alerts and exits non-zero, and **no mail is sent**
 - An alert that itself fails is logged and still exits non-zero
-- Linting passes: `uv run ruff check .` (proves the E402 entry is present)
+- Linting passes: `uv run ruff check .` — a **local** gate only; ruff runs in no workflow
+  (`tests.yml` and `deploy.yml` both run only `uv run pytest`), so a missing E402 entry would not
+  block a merge
 - Full suite passes: `uv run pytest`
 
 #### Manual Verification:
@@ -373,7 +420,9 @@ the prose still says "wszystkie trzy joby".
 **Contract**: Rows for **both** `puls-gpw-etf-quotes` and `puls-gpw-cost-report` in the Cloud Run
 Jobs table (`:9-13`) and the Cloud Scheduler table (`:90-96`); the "trzy joby" prose corrected; and
 a HUMAN-ONLY runbook appended in the shape of `:100-132` — `gcloud run jobs create
-puls-gpw-cost-report` with the five SMTP secrets, `COST_ANOMALY_FACTOR`, cpu 1 / memory 1Gi /
+puls-gpw-cost-report` with the five SMTP secrets, `COST_ANOMALY_FACTOR`, **`APP_BASE_URL`** (the
+mail's logo resolves against it; it appears nowhere in `deploy.yml` and is set out-of-band on the
+scraper job today), cpu 1 / memory 1Gi /
 task-timeout 300s, then `gcloud scheduler jobs create http puls-gpw-cost-report-trigger` with
 `--schedule="0 9 * * *"` and `--time-zone="Europe/Warsaw"`, then the two `list` verification
 commands.
@@ -403,11 +452,14 @@ commands.
 - **SQL shape** (`tests/test_bigquery_cost_report.py`): patch `db.bigquery._get_client`, assert the
   built query contains `'Europe/Warsaw'` and `UNNEST(credits)`, and that bounds are `DATE`
   parameters. Mocked BQ does not validate syntax — that is what the round-trip script is for.
-- **Report logic** (`tests/test_cost_report.py`): the Lite-before-Flash mapping with both real SKU
-  strings; median with 3 days (suppressed) and 7 days; ratio exactly at the factor vs above it;
+- **Report logic** (`tests/test_cost_report.py`): one table-driven test naming all six recorded SKU
+  strings verbatim and asserting `(model, direction)` for each — this is the test that catches
+  Lite-collapsed-into-Flash, the dropped `(Thinking On)` output SKU, and the unattributed caching
+  SKU in one place; a reconciliation test that per-model gross sums to the Vertex service total;
+  median with 3 days (suppressed) and 7 days; ratio exactly at the factor vs above it;
   month-to-date on the 1st of a month; a report whose services list is empty.
 - **Mail** (`tests/test_notifier.py`): sender wiring via `patch("src.notifier._send")`; escaping of
-  a hostile service name; anomaly vs normal subject.
+  a hostile service name; anomaly vs normal subject; the baseline-still-building line.
 - **Entry point** (`tests/test_cost_report_main.py`): patch collaborators on the *importing* module
   (`monkeypatch.setattr(cost_report_main, "send_alert", ...)`), plus `sys.exit`, following
   `tests/test_company_stats_main.py:89-112`. Cover happy path, query failure, zero rows, and a
@@ -480,15 +532,17 @@ nothing else depends on it.
 #### Automated
 
 - [ ] 2.1 Unit tests pass: `uv run pytest tests/test_cost_report.py`
-- [ ] 2.2 Both Gemini SKUs map to distinct models
-- [ ] 2.3 Median over fewer than 4 days returns None and suppresses the flag
-- [ ] 2.4 A day exactly at the factor does not flag; strictly above it does
-- [ ] 2.5 Month-to-date on the 1st of a month covers the previous month
-- [ ] 2.6 Full suite passes: `uv run pytest`
+- [ ] 2.2 All six recorded SKU strings classify correctly, each named verbatim
+- [ ] 2.3 Lite and GA map to different models and do not collapse into one row
+- [ ] 2.4 Per-model gross sums to the Vertex AI service total for the same day
+- [ ] 2.5 Median over fewer than 4 days returns None and suppresses the flag
+- [ ] 2.6 A day exactly at the factor does not flag; strictly above it does
+- [ ] 2.7 Month-to-date on the 1st of a month covers the previous month
+- [ ] 2.8 Full suite passes: `uv run pytest`
 
 #### Manual
 
-- [ ] 2.7 Real 2026-08-05 rows produce ratio ≈ 2.17 and is_anomaly True at factor 2.0
+- [ ] 2.9 Real 2026-08-05 rows produce ratio ≈ 2.17 and is_anomaly True at factor 2.0
 
 ### Phase 3: Mail rendering and sender
 
@@ -497,13 +551,14 @@ nothing else depends on it.
 - [ ] 3.1 Unit tests pass: `uv run pytest tests/test_notifier.py`
 - [ ] 3.2 Sender wiring shows html=True, no to, no from_name
 - [ ] 3.3 The anomaly subject differs from the normal subject and names the ratio
-- [ ] 3.4 A hostile service name is escaped
-- [ ] 3.5 The token column is labelled tokens, not requests
-- [ ] 3.6 Full suite passes: `uv run pytest`
+- [ ] 3.4 A short baseline renders the "baseline still building" line and names the day count
+- [ ] 3.5 A hostile service name is escaped
+- [ ] 3.6 The token column is labelled tokens, not requests
+- [ ] 3.7 Full suite passes: `uv run pytest`
 
 #### Manual
 
-- [ ] 3.7 The rendered HTML opens correctly in Gmail on desktop and mobile
+- [ ] 3.8 The rendered HTML opens correctly in Gmail on desktop and mobile
 
 ### Phase 4: Cloud Run Job entry point
 
@@ -514,7 +569,7 @@ nothing else depends on it.
 - [ ] 4.3 A query failure alerts and exits non-zero
 - [ ] 4.4 Zero billing rows alerts, exits non-zero, and sends no mail
 - [ ] 4.5 A failing alert is logged and still exits non-zero
-- [ ] 4.6 Linting passes: `uv run ruff check .`
+- [ ] 4.6 Linting passes: `uv run ruff check .` (local gate only — ruff runs in no workflow)
 - [ ] 4.7 Full suite passes: `uv run pytest`
 
 #### Manual

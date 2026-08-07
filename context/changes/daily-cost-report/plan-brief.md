@@ -42,6 +42,9 @@ quietly.
 | Month-to-date on the 1st | Month of D-1 | Keeps both figures on the same day and closes each month out exactly once | Plan |
 | Zero rows | Raise and alert | Zero rows means the query broke, not that the day was free; a 0,00 zł mail looks like a healthy morning | Plan |
 | Mail format | HTML in the Faro chrome | The builder is a copy-paste of `_announcement_digest_html`, and a cost table reads badly as plain text | Plan |
+| Vertex SKU handling | `classify_sku` → (model, direction) | Flash GA has two output SKUs and one caching SKU spans both models; a model-only mapping cannot express it | Plan review |
+| Mailer arguments | Primitives, not `CostReport` | `src/notifier.py` is stdlib-only today and all six senders take primitives; the caller unpacks | Plan review |
+| Anomaly factor plumbing | Parameter, env read in the entry point | Keeps `src/cost_report.py` genuinely pure and the factor directly testable | Plan review |
 | `infra.md` | Fix both missing jobs | `puls-gpw-etf-quotes` was never recorded either; fixing it now stops the doc drifting further | Plan |
 
 ## Scope
@@ -76,7 +79,7 @@ Cloud Scheduler 09:00 Warsaw
 | Phase | What it delivers | Key risk |
 | --- | --- | --- |
 | 1. BigQuery read layer | Two read functions + read-only round-trip script | First `UNNEST` over a table column in this repo; mocked tests cannot validate the syntax |
-| 2. Report logic | `src/cost_report.py` — mapping, median, threshold, MTD | "Flash Lite" contains "Flash": wrong branch order silently collapses the breakdown |
+| 2. Report logic | `src/cost_report.py` — SKU classifier, median, threshold, MTD | Three quiet SKU traps: "Flash Lite" contains "Flash", Flash GA has two output SKUs (one ending in `)`), and a caching SKU spans both models |
 | 3. Mail rendering | `_cost_report_html` + `send_cost_report_email` | First HTML table in a mail here; must escape every value and not overflow in Gmail |
 | 4. Entry point | `cost_report_main.py` + ruff E402 entry | The zero-row guard must raise inside the `try`, or the alert carries no traceback |
 | 5. Deployment wiring | `deploy.yml` step, `.env.example`, `infra.md` + runbook | The job must exist in GCP **before** merge — CI only runs `jobs update`, never `create` |

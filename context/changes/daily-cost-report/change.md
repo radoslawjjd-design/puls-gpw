@@ -1,9 +1,9 @@
 ---
 change_id: daily-cost-report
 title: Daily cost report emailed at 09:00 with anomaly flagging
-status: planned
+status: plan_reviewed
 created: 2026-08-06
-updated: 2026-08-06
+updated: 2026-08-07
 archived_at: null
 tracking:
   linear: PUL-125
