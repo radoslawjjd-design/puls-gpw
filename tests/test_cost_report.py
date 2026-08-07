@@ -63,6 +63,18 @@ def test_lite_and_ga_do_not_collapse_into_one_model():
     assert classify_sku(SKU_LITE_INPUT)[0] != classify_sku(SKU_GA_INPUT)[0]
 
 
+def test_another_models_ga_sku_does_not_land_in_the_flash_row():
+    """Matching on a bare "GA" would file this under Flash — and it would reconcile perfectly.
+
+    That is the whole danger: the per-model rows would still sum to the Vertex AI
+    service line, so the one check that catches dropped SKUs would pass while the
+    table attributed another model's spend to Flash. Unrecognised models belong in
+    "other", where they are visible.
+    """
+    assert classify_sku("Gemini 3 Pro GA Text Input - Predictions") is None
+    assert classify_sku("Gemini 3 Pro Text Output - Predictions") is None
+
+
 def test_non_vertex_sku_does_not_classify():
     """None is reserved for SKUs that are not a Gemini model line."""
     assert classify_sku("Jobs CPU in europe-central2") is None

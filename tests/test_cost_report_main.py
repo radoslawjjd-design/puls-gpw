@@ -12,8 +12,9 @@ Collaborators are patched on the *importing* module, not at their source, per
 echo back the date range they were handed, so the tests never need to know what
 day it is.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -70,12 +71,23 @@ def test_happy_path_sends_one_report_and_does_not_alert(mocks):
     assert base_url.startswith("https://")
 
 
-def test_the_report_covers_yesterday_not_today(mocks):
-    """A report for today would always be near-empty — the export lags by hours."""
+def test_the_report_covers_yesterday_in_warsaw_not_today(mocks):
+    """A report for today would always be near-empty — the export lags by hours.
+
+    The expected date is computed here from the clock, not read back from
+    `_report_date()`. Comparing that function against itself would pass just as
+    happily if it returned today, or next week.
+    """
+    expected = datetime.now(ZoneInfo("Europe/Warsaw")).date() - timedelta(days=1)
+
     cost_report_main.main()
 
     summary = mocks["send"].call_args[0][0]
-    assert summary["report_date"] == cost_report_main._report_date()
+    assert summary["report_date"] == expected
+
+    # And the fetches are anchored to that same day, not to the local date.
+    assert mocks["rows"].call_args[0][1] == expected
+    assert mocks["daily"].call_args[0][1] == expected
 
 
 def test_a_query_failure_alerts_and_exits_non_zero(mocks):

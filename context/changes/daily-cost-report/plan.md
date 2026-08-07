@@ -591,9 +591,9 @@ nothing else depends on it.
 
 #### Automated
 
-- [x] 5.1 Deploy filter invariant holds: `uv run pytest tests/test_deploy_workflow_filter.py`
-- [x] 5.2 The workflow is valid YAML and the new step names the new script
-- [x] 5.3 Linting passes: `uv run ruff check .`
+- [x] 5.1 Deploy filter invariant holds: `uv run pytest tests/test_deploy_workflow_filter.py` — 12be853
+- [x] 5.2 The workflow is valid YAML and the new step names the new script — 12be853
+- [x] 5.3 Linting passes: `uv run ruff check .` — 12be853
 
 #### Manual
 

@@ -37,7 +37,13 @@ _MIN_BASELINE_DAYS = 4
 
 # How far back the baseline reaches. Seven days so a weekly rhythm (the scraper
 # runs on business days) sits inside the window rather than skewing it.
-_BASELINE_WINDOW_DAYS = 7
+#
+# Public because the entry point has to fetch exactly this many days. It used to
+# hold its own copy, which is a silent-failure shape: shrink the fetch and the
+# median quietly runs on fewer days than _MIN_BASELINE_DAYS wants, so
+# trailing_median returns None forever, the flag never fires again, and every
+# test stays green because each side is self-consistent.
+BASELINE_WINDOW_DAYS = 7
 
 _VERTEX_SERVICE = "Vertex AI"
 
@@ -89,9 +95,15 @@ def classify_sku(sku_description: str) -> tuple[str, str] | None:
     if "Gemini" not in desc:
         return None
 
-    if "Lite" in desc:
+    # Matched on the full model name, not on "Lite" / "GA" alone. A bare "GA"
+    # test would file a future "Gemini 3 Pro GA Text Input" under Flash: the
+    # per-model sum would still reconcile against the Vertex service line and
+    # every test would pass, while the table quietly attributed another model's
+    # spend to this one. All seven live SKUs carry the full name, so this costs
+    # nothing and an unrecognised model correctly falls through to "other".
+    if "Flash Lite" in desc:
         model = _FLASH_LITE
-    elif "GA" in desc:
+    elif "Flash GA" in desc:
         model = _FLASH
     else:
         return None
@@ -111,7 +123,7 @@ def trailing_median(daily: dict[date, float], as_of: date) -> float | None:
     barely moves a median, but on a three-day window it moves it a lot, and
     those are exactly the windows this job will see in its first week.
     """
-    window_start = as_of - timedelta(days=_BASELINE_WINDOW_DAYS)
+    window_start = as_of - timedelta(days=BASELINE_WINDOW_DAYS)
     values = [v for day, v in daily.items() if window_start <= day < as_of]
     if len(values) < _MIN_BASELINE_DAYS:
         return None
@@ -119,7 +131,7 @@ def trailing_median(daily: dict[date, float], as_of: date) -> float | None:
 
 
 def _baseline_day_count(daily: dict[date, float], as_of: date) -> int:
-    window_start = as_of - timedelta(days=_BASELINE_WINDOW_DAYS)
+    window_start = as_of - timedelta(days=BASELINE_WINDOW_DAYS)
     return sum(1 for day in daily if window_start <= day < as_of)
 
 

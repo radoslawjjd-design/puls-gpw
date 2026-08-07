@@ -443,7 +443,7 @@ def _cost_report_html(
         baseline = (
             f"""<p style="font-size:13px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;"""
             f"""border-radius:6px;padding:10px 12px;margin:0 0 16px;">"""
-            f"""Baza porównawcza wciąż się buduje — mam {_html_escape(str(summary.get('baseline_days', 0)))} """
+            f"""Baza porównawcza wciąż się buduje — mam {_html_escape(str(summary.get('baseline_days', 0)), quote=True)} """
             f"""z 4 wymaganych dni historii, więc dziś nic nie jest oznaczane jako anomalia.</p>"""
         )
     else:
@@ -452,7 +452,7 @@ def _cost_report_html(
         baseline = (
             f"""<p style="font-size:13px;color:#6b7280;margin:0 0 16px;">"""
             f"""Mediana z 7 dni: <strong>{_html_escape(_pln(summary.get('median_7d')), quote=True)}</strong> """
-            f"""· stosunek: <strong>{_html_escape(ratio_txt)}×</strong></p>"""
+            f"""· stosunek: <strong>{_html_escape(ratio_txt, quote=True)}×</strong></p>"""
         )
 
     return f"""<!DOCTYPE html>

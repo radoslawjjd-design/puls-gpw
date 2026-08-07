@@ -15,15 +15,10 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 from db.bigquery import get_billing_rows, get_daily_gross
-from src.cost_report import DEFAULT_BASE_URL, build_report
+from src.cost_report import BASELINE_WINDOW_DAYS, DEFAULT_BASE_URL, build_report
 from src.notifier import send_alert, send_cost_report_email
 
 WARSAW = ZoneInfo("Europe/Warsaw")
-
-# How far back the anomaly baseline reaches. Kept in step with the window
-# src/cost_report.py medians over — this side decides what to *fetch*, that side
-# decides what to *judge*, and a shorter fetch would silently starve the median.
-_BASELINE_WINDOW_DAYS = 7
 
 
 def _report_date() -> date:
@@ -50,8 +45,11 @@ def main() -> None:
         # Two windows, two reads: the month-to-date figure cannot reach into the
         # previous month, and early in a month the baseline must.
         rows = get_billing_rows(report_date.replace(day=1), report_date)
+        # The window comes from src/cost_report.py rather than a local copy: this
+        # side decides what to fetch, that side decides what to judge, and the
+        # two disagreeing is a silent failure — the flag would just stop firing.
         daily_gross = get_daily_gross(
-            report_date - timedelta(days=_BASELINE_WINDOW_DAYS), report_date
+            report_date - timedelta(days=BASELINE_WINDOW_DAYS), report_date
         )
 
         # Raised from *inside* the try on purpose: send_alert reads the ambient
