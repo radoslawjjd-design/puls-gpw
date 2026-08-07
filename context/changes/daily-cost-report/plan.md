@@ -108,12 +108,14 @@ for every other change. The runbook lands in Phase 5 but must be *executed* befo
 2. **Flash GA has two distinct output SKUs** — `"Gemini 2.5 Flash GA Thinking Text Output"` and
    `"Gemini 2.5 Flash GA Text Output (Thinking On)"`. The second ends in `)`, so any rule shaped
    like `desc.endswith("Output")` drops it and understates output tokens.
-3. `"Flash GA / Lite input caching"` **spans both models** and cannot be attributed to either by
-   matching a model name.
+3. ~~`"Flash GA / Lite input caching"` **spans both models**~~ — **corrected in Phase 2**: the
+   export has a separate caching SKU per model. The real trap is that both of them **begin with a
+   literal space**, so the description must be stripped before matching.
 
-Every one of these produces a plausible-looking table that no reviewer would question. The six SKU
-strings are recorded verbatim in `context/archive/2026-08-06-vertex-ai-cost-verification/findings.md:76-83`,
-so the test can name them all.
+Every one of these produces a plausible-looking table that no reviewer would question. The seven SKU
+strings are pinned verbatim at the top of `tests/test_cost_report.py`, read from the live export
+rather than from `context/archive/2026-08-06-vertex-ai-cost-verification/findings.md:76-83` — that
+document displays them shortened and merges the two caching SKUs into one line.
 
 **`send_alert` reads the ambient traceback, not its argument.** `traceback.format_exc()` called
 outside an `except` block prints `NoneType: None` (`main.py:188` already does this). The zero-row
@@ -211,11 +213,20 @@ day is anomalous.
 
 - `classify_sku(sku_description: str) -> tuple[str, str] | None` — returns `(model, direction)`
   where direction is `"input"` or `"output"`. **The Lite branch is evaluated before the Flash
-  branch**, and **both** Flash GA output SKUs map to `("gemini-2.5-flash", "output")`. The shared
-  `"Flash GA / Lite input caching"` SKU maps to the model `"shared (input caching)"` so it gets its
-  own row rather than being attributed to either model or silently dropped — the per-model rows
-  must sum to the Vertex AI service line, or the table contradicts itself. Any SKU matching nothing
-  falls into a `"other"` row for the same reason; returning `None` is reserved for non-Vertex SKUs.
+  branch**, and **both** Flash GA output SKUs map to `("gemini-2.5-flash", "output")`. Any SKU
+  matching nothing falls into an `"other"` row, because the per-model rows must sum to the Vertex
+  AI service line or the table contradicts itself; returning `None` is reserved for non-Gemini SKUs.
+
+  **Corrected against the live export (2026-08-07, during Phase 2).** The export carries **seven**
+  Vertex SKUs, not six, and the caching line is **two** SKUs — one per model
+  (`" Gemini 2.5 Flash GA Input Text Caching"`, `" Gemini 2.5 Flash Lite Input Text Caching"`) —
+  so there is nothing shared to attribute and the planned `"shared (input caching)"` row is
+  dropped. Caching is input-side, so its tokens count toward the model's `input_tokens`. Two
+  further corrections: those two SKU descriptions **begin with a literal space** (verified with
+  `STARTS_WITH(sku.description, ' ')`), so the description is stripped before matching; and every
+  prediction SKU ends in `- Predictions`, which makes the planned `endswith("Output")` trap wider
+  than described — it would drop *all* output SKUs, not only the `(Thinking On)` one. Direction is
+  therefore decided by substring, never by suffix.
 - `trailing_median(daily: dict[date, float], as_of: date) -> float | None` — median over the up-to-7
   days before `as_of`, returning `None` when fewer than `_MIN_BASELINE_DAYS` (4) are present.
 - `build_report(rows, daily_gross, report_date, anomaly_factor: float) -> CostReport` — assembles
@@ -246,8 +257,8 @@ cannot be imported from another entry point.
 #### Automated Verification:
 
 - Unit tests pass: `uv run pytest tests/test_cost_report.py`
-- All six recorded SKU strings classify correctly, in one test that names each verbatim: the two
-  input SKUs, **both** Flash GA output SKUs, the Lite output SKU, and the shared caching SKU
+- All seven live SKU strings classify correctly, in one test that names each verbatim: the two
+  input SKUs, **both** Flash GA output SKUs, the Lite output SKU, and **both** caching SKUs
 - Lite and GA map to different models — `"…Flash Lite Text Input…"` and `"…Flash GA Text Input…"`
   do not collapse into one row
 - Per-model gross sums to the Vertex AI service total for the same day (nothing silently dropped)
@@ -515,30 +526,30 @@ nothing else depends on it.
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery_cost_report.py`
-- [x] 1.2 The built SQL buckets days in Warsaw
-- [x] 1.3 The built SQL joins credits via UNNEST
-- [x] 1.4 Date bounds are bound as DATE parameters
-- [x] 1.5 Full suite passes: `uv run pytest`
-- [x] 1.6 Linting passes: `uv run ruff check .`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery_cost_report.py` — 58cfafa
+- [x] 1.2 The built SQL buckets days in Warsaw — 58cfafa
+- [x] 1.3 The built SQL joins credits via UNNEST — 58cfafa
+- [x] 1.4 Date bounds are bound as DATE parameters — 58cfafa
+- [x] 1.5 Full suite passes: `uv run pytest` — 58cfafa
+- [x] 1.6 Linting passes: `uv run ruff check .` — 58cfafa
 
 #### Manual
 
-- [x] 1.7 Round-trip script exits 0 and prints non-empty rows for the last 8 days
-- [x] 1.8 Printed daily gross for a settled day matches a hand-run `bq query`
+- [x] 1.7 Round-trip script exits 0 and prints non-empty rows for the last 8 days — 58cfafa
+- [x] 1.8 Printed daily gross for a settled day matches a hand-run `bq query` — 58cfafa
 
 ### Phase 2: Report logic
 
 #### Automated
 
-- [ ] 2.1 Unit tests pass: `uv run pytest tests/test_cost_report.py`
-- [ ] 2.2 All six recorded SKU strings classify correctly, each named verbatim
-- [ ] 2.3 Lite and GA map to different models and do not collapse into one row
-- [ ] 2.4 Per-model gross sums to the Vertex AI service total for the same day
-- [ ] 2.5 Median over fewer than 4 days returns None and suppresses the flag
-- [ ] 2.6 A day exactly at the factor does not flag; strictly above it does
-- [ ] 2.7 Month-to-date on the 1st of a month covers the previous month
-- [ ] 2.8 Full suite passes: `uv run pytest`
+- [x] 2.1 Unit tests pass: `uv run pytest tests/test_cost_report.py`
+- [x] 2.2 All six recorded SKU strings classify correctly, each named verbatim
+- [x] 2.3 Lite and GA map to different models and do not collapse into one row
+- [x] 2.4 Per-model gross sums to the Vertex AI service total for the same day
+- [x] 2.5 Median over fewer than 4 days returns None and suppresses the flag
+- [x] 2.6 A day exactly at the factor does not flag; strictly above it does
+- [x] 2.7 Month-to-date on the 1st of a month covers the previous month
+- [x] 2.8 Full suite passes: `uv run pytest`
 
 #### Manual
 
