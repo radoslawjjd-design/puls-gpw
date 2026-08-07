@@ -600,4 +600,4 @@ nothing else depends on it.
 - [x] 5.4 Job and scheduler created by hand; both `list` commands show them — before the PR merges — done 2026-08-07, PR #257 still open
 - [x] 5.5 After merge, the deploy workflow's cost-report step is green — d324027, all five job-update steps success
 - [x] 5.6 A manual `gcloud run jobs execute` delivers the mail — execution puls-gpw-cost-report-9t7n4, exit 0
-- [ ] 5.7 The next morning's 09:00 mail arrives unprompted
+- [ ] 5.7 The next morning's 09:00 mail arrives unprompted — trigger path verified 2026-08-07 by firing the scheduler by hand (execution `puls-gpw-cost-report-j7b98`, succeeded); what remains unproven is only the cron firing itself on 2026-08-08
