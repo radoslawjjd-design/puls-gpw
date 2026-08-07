@@ -53,6 +53,7 @@ markers = [
 "main.py" = ["E402"]
 "company_stats_main.py" = ["E402"]
 "etf_quotes_main.py" = ["E402"]
+"cost_report_main.py" = ["E402"]
 "post_main.py" = ["E402"]
 "api_main.py" = ["E402"]
 "_run_generate_post.py" = ["E402"]
