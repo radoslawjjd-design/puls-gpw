@@ -515,17 +515,17 @@ nothing else depends on it.
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery_cost_report.py`
-- [ ] 1.2 The built SQL buckets days in Warsaw
-- [ ] 1.3 The built SQL joins credits via UNNEST
-- [ ] 1.4 Date bounds are bound as DATE parameters
-- [ ] 1.5 Full suite passes: `uv run pytest`
-- [ ] 1.6 Linting passes: `uv run ruff check .`
+- [x] 1.1 Unit tests pass: `uv run pytest tests/test_bigquery_cost_report.py`
+- [x] 1.2 The built SQL buckets days in Warsaw
+- [x] 1.3 The built SQL joins credits via UNNEST
+- [x] 1.4 Date bounds are bound as DATE parameters
+- [x] 1.5 Full suite passes: `uv run pytest`
+- [x] 1.6 Linting passes: `uv run ruff check .`
 
 #### Manual
 
-- [ ] 1.7 Round-trip script exits 0 and prints non-empty rows for the last 8 days
-- [ ] 1.8 Printed daily gross for a settled day matches a hand-run `bq query`
+- [x] 1.7 Round-trip script exits 0 and prints non-empty rows for the last 8 days
+- [x] 1.8 Printed daily gross for a settled day matches a hand-run `bq query`
 
 ### Phase 2: Report logic
 

@@ -4389,3 +4389,105 @@ def record_notification_sent(user_id: str, announcement_id: str, email: str | No
     if job.errors:
         raise BigQueryError(f"record_notification_sent failed: {job.errors}")
     logger.debug("record_notification_sent: user_id=%s announcement_id=%s", user_id, announcement_id)
+
+
+# ── GCP billing export (PUL-125 daily-cost-report) ────────────────────────────
+
+# Written by Google's billing export, not by us. Deliberately has no _SCHEMA,
+# no create_*_if_not_exists() and no ensure_*_schema_current() — our DDL must
+# never touch this table. It happens to sit in the same project and dataset as
+# the app tables, so _table_ref composes it without a new helper.
+_GCP_BILLING_EXPORT_TABLE_NAME = "gcp_billing_export_v1_01E214_63C8A3_9E57E3"
+
+# `credits` is a REPEATED RECORD of (name, amount, type). Netting it out is the
+# only UNNEST in this file that unnests a *table column* rather than a query
+# parameter, hence the correlated-subquery form: one credit sum per row, so the
+# row's own cost is not multiplied by a JOIN fan-out.
+_NET_COST_SQL = "SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0))"
+
+# usage_start_time is a UTC instant. The report is a Warsaw-day report, so the
+# zone is named inside the SQL rather than pre-converted in Python — the same
+# convention (and the same reason) as the dividend period extraction above.
+_BILLING_DAY_SQL = "DATE(usage_start_time, 'Europe/Warsaw')"
+
+
+def _billing_date_bounds(start: date, end: date) -> bigquery.QueryJobConfig:
+    return bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("start", "DATE", start),
+            bigquery.ScalarQueryParameter("end", "DATE", end),
+        ]
+    )
+
+
+def get_billing_rows(start: date, end: date) -> list[dict]:
+    """Return per (day, service, sku) cost rows from the billing export, inclusive of both bounds.
+
+    Gross is what Google charged; net is gross after promotional credits, which
+    on this project currently cancel it to ~zero. Both are reported — only gross
+    is worth watching for spikes.
+
+    `usage_amount` is labelled `requests` by the export but carries token counts
+    for the Gemini SKUs; the naming is Google's, not ours (PUL-69).
+
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    table = _table_ref(client, _GCP_BILLING_EXPORT_TABLE_NAME)
+    query = f"""
+        SELECT
+          {_BILLING_DAY_SQL} AS day,
+          service.description AS service,
+          sku.description AS sku,
+          SUM(cost) AS gross,
+          {_NET_COST_SQL} AS net,
+          SUM(usage.amount) AS usage_amount,
+          ANY_VALUE(usage.unit) AS usage_unit
+        FROM `{table}`
+        WHERE {_BILLING_DAY_SQL} BETWEEN @start AND @end
+        GROUP BY day, service, sku
+        ORDER BY day, gross DESC
+    """
+    try:
+        rows = list(client.query(query, job_config=_billing_date_bounds(start, end)).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_billing_rows failed: {exc}") from exc
+
+    return [
+        {
+            "day": r.day,
+            "service": r.service,
+            "sku": r.sku,
+            "gross": r.gross,
+            "net": r.net,
+            "usage_amount": r.usage_amount,
+            "usage_unit": r.usage_unit,
+        }
+        for r in rows
+    ]
+
+
+def get_daily_gross(start: date, end: date) -> dict[date, float]:
+    """Return {day: gross cost} for the anomaly baseline, inclusive of both bounds.
+
+    Separate from get_billing_rows on purpose: the baseline window can reach
+    into the previous month while the month-to-date window cannot, so the two
+    reads genuinely span different ranges.
+
+    Raises BigQueryError on query failure.
+    """
+    client = _get_client()
+    table = _table_ref(client, _GCP_BILLING_EXPORT_TABLE_NAME)
+    query = f"""
+        SELECT {_BILLING_DAY_SQL} AS day, SUM(cost) AS gross
+        FROM `{table}`
+        WHERE {_BILLING_DAY_SQL} BETWEEN @start AND @end
+        GROUP BY day
+        ORDER BY day
+    """
+    try:
+        rows = list(client.query(query, job_config=_billing_date_bounds(start, end)).result())
+    except Exception as exc:
+        raise BigQueryError(f"get_daily_gross failed: {exc}") from exc
+
+    return {r.day: r.gross for r in rows}
