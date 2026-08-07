@@ -597,7 +597,7 @@ nothing else depends on it.
 
 #### Manual
 
-- [ ] 5.4 Job and scheduler created by hand; both `list` commands show them — before the PR merges
+- [x] 5.4 Job and scheduler created by hand; both `list` commands show them — before the PR merges — done 2026-08-07, PR #257 still open
 - [ ] 5.5 After merge, the deploy workflow's cost-report step is green
 - [ ] 5.6 A manual `gcloud run jobs execute` delivers the mail
 - [ ] 5.7 The next morning's 09:00 mail arrives unprompted

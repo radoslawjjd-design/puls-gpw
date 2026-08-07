@@ -157,11 +157,28 @@ gcloud scheduler jobs list --location=europe-central2 --project=puls-gpw
 > Żadnych nowych sekretów ani uprawnień — `puls-gpw-runner@` ma już dostęp do BQ, a billing
 > export leży w tym samym datasecie. Job czyta ~1000 wierszy i kończy w kilka sekund;
 > timeout 300 s to zapas, nie potrzeba.
+>
+> **Tag `:latest` NIE ISTNIEJE w tym rejestrze** — `deploy.yml` taguje wyłącznie
+> `:<github.sha>`. Runbook company-stats wyżej mówi `:latest` i jest w tym punkcie
+> błędny; `create` kończy się `Image not found`, ale **i tak zostawia zasób joba**, więc
+> druga próba wita cię `Job already exists` i trzeba dokończyć przez `jobs update`.
+> Podstaw najnowszy tag:
+> `gcloud artifacts docker images list <repo> --include-tags --sort-by=~UPDATE_TIME --limit=1`
+>
+> Obraz przy `create` to tylko ziarno — pierwszy merge do `master` i tak podmieni go na
+> świeży. Dlatego **`gcloud run jobs execute` ma sens dopiero PO mergu**: obraz sprzed
+> tej gałęzi nie zawiera `cost_report_main.py`.
 
 ```bash
-# 1. Utwórz job
+# 0. Najnowszy dostępny tag (NIE ma tagu `latest`)
+gcloud artifacts docker images list \
+  europe-central2-docker.pkg.dev/puls-gpw/puls-gpw/puls-gpw \
+  --project=puls-gpw --include-tags --sort-by=~UPDATE_TIME --limit=1 \
+  --format="value(tags)"
+
+# 1. Utwórz job (podstaw tag z kroku 0)
 gcloud run jobs create puls-gpw-cost-report \
-  --image=europe-central2-docker.pkg.dev/puls-gpw/puls-gpw/puls-gpw:latest \
+  --image=europe-central2-docker.pkg.dev/puls-gpw/puls-gpw/puls-gpw:<TAG> \
   --command=uv --args="run,--no-dev,python,cost_report_main.py" \
   --region=europe-central2 \
   --project=puls-gpw \
@@ -185,9 +202,15 @@ gcloud scheduler jobs create http puls-gpw-cost-report-trigger \
 gcloud run jobs list --region=europe-central2 --project=puls-gpw
 gcloud scheduler jobs list --location=europe-central2 --project=puls-gpw
 
-# 4. Próbny przebieg (mail powinien przyjść od razu)
+# 4. Próbny przebieg — DOPIERO PO MERGU do master, nie teraz.
+#    Obraz podstawiony w kroku 1 pochodzi sprzed tej gałęzi i nie zawiera
+#    cost_report_main.py; deploy po mergu podmienia go na właściwy.
 gcloud run jobs execute puls-gpw-cost-report --region=europe-central2 --project=puls-gpw --wait
 ```
+
+> **Wykonane 2026-08-07** (PUL-125). Job i trigger stoją, oba `ENABLED`, pierwszy zaplanowany
+> odpal 2026-08-08 09:00 Warsaw. Job niesie tymczasowo obraz `938db09` — pierwszy merge
+> podmieni go na bieżący.
 
 > **Rollback**: `gcloud scheduler jobs pause puls-gpw-cost-report-trigger`. Job przestaje się
 > odpalać, nic innego od niego nie zależy — nie ma tabeli, którą pisze, ani endpointu, który
