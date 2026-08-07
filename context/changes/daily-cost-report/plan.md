@@ -569,7 +569,7 @@ nothing else depends on it.
 
 #### Manual
 
-- [ ] 3.8 The rendered HTML opens correctly in Gmail on desktop and mobile
+- [x] 3.8 The rendered HTML opens correctly in Gmail on desktop and mobile — confirmed by the owner 2026-08-07
 
 ### Phase 4: Cloud Run Job entry point
 
@@ -585,7 +585,7 @@ nothing else depends on it.
 
 #### Manual
 
-- [ ] 4.8 A local run against real credentials delivers a correct mail
+- [x] 4.8 A local run against real credentials delivers a correct mail — confirmed by the owner 2026-08-07
 
 ### Phase 5: Deployment wiring and documentation
 
