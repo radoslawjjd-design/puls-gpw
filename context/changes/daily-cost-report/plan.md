@@ -559,13 +559,13 @@ nothing else depends on it.
 
 #### Automated
 
-- [x] 3.1 Unit tests pass: `uv run pytest tests/test_notifier.py`
-- [x] 3.2 Sender wiring shows html=True, no to, no from_name
-- [x] 3.3 The anomaly subject differs from the normal subject and names the ratio
-- [x] 3.4 A short baseline renders the "baseline still building" line and names the day count
-- [x] 3.5 A hostile service name is escaped
-- [x] 3.6 The token column is labelled tokens, not requests
-- [x] 3.7 Full suite passes: `uv run pytest`
+- [x] 3.1 Unit tests pass: `uv run pytest tests/test_notifier.py` — e88c3fa
+- [x] 3.2 Sender wiring shows html=True, no to, no from_name — e88c3fa
+- [x] 3.3 The anomaly subject differs from the normal subject and names the ratio — e88c3fa
+- [x] 3.4 A short baseline renders the "baseline still building" line and names the day count — e88c3fa
+- [x] 3.5 A hostile service name is escaped — e88c3fa
+- [x] 3.6 The token column is labelled tokens, not requests — e88c3fa
+- [x] 3.7 Full suite passes: `uv run pytest` — e88c3fa
 
 #### Manual
 
@@ -575,13 +575,13 @@ nothing else depends on it.
 
 #### Automated
 
-- [ ] 4.1 Unit tests pass: `uv run pytest tests/test_cost_report_main.py`
-- [ ] 4.2 The happy path sends exactly one mail and does not alert
-- [ ] 4.3 A query failure alerts and exits non-zero
-- [ ] 4.4 Zero billing rows alerts, exits non-zero, and sends no mail
-- [ ] 4.5 A failing alert is logged and still exits non-zero
-- [ ] 4.6 Linting passes: `uv run ruff check .` (local gate only — ruff runs in no workflow)
-- [ ] 4.7 Full suite passes: `uv run pytest`
+- [x] 4.1 Unit tests pass: `uv run pytest tests/test_cost_report_main.py`
+- [x] 4.2 The happy path sends exactly one mail and does not alert
+- [x] 4.3 A query failure alerts and exits non-zero
+- [x] 4.4 Zero billing rows alerts, exits non-zero, and sends no mail
+- [x] 4.5 A failing alert is logged and still exits non-zero
+- [x] 4.6 Linting passes: `uv run ruff check .` (local gate only — ruff runs in no workflow)
+- [x] 4.7 Full suite passes: `uv run pytest`
 
 #### Manual
 
