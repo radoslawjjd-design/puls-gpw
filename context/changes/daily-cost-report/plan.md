@@ -575,13 +575,13 @@ nothing else depends on it.
 
 #### Automated
 
-- [x] 4.1 Unit tests pass: `uv run pytest tests/test_cost_report_main.py`
-- [x] 4.2 The happy path sends exactly one mail and does not alert
-- [x] 4.3 A query failure alerts and exits non-zero
-- [x] 4.4 Zero billing rows alerts, exits non-zero, and sends no mail
-- [x] 4.5 A failing alert is logged and still exits non-zero
-- [x] 4.6 Linting passes: `uv run ruff check .` (local gate only — ruff runs in no workflow)
-- [x] 4.7 Full suite passes: `uv run pytest`
+- [x] 4.1 Unit tests pass: `uv run pytest tests/test_cost_report_main.py` — 1985d4d
+- [x] 4.2 The happy path sends exactly one mail and does not alert — 1985d4d
+- [x] 4.3 A query failure alerts and exits non-zero — 1985d4d
+- [x] 4.4 Zero billing rows alerts, exits non-zero, and sends no mail — 1985d4d
+- [x] 4.5 A failing alert is logged and still exits non-zero — 1985d4d
+- [x] 4.6 Linting passes: `uv run ruff check .` (local gate only — ruff runs in no workflow) — 1985d4d
+- [x] 4.7 Full suite passes: `uv run pytest` — 1985d4d
 
 #### Manual
 
@@ -591,9 +591,9 @@ nothing else depends on it.
 
 #### Automated
 
-- [ ] 5.1 Deploy filter invariant holds: `uv run pytest tests/test_deploy_workflow_filter.py`
-- [ ] 5.2 The workflow is valid YAML and the new step names the new script
-- [ ] 5.3 Linting passes: `uv run ruff check .`
+- [x] 5.1 Deploy filter invariant holds: `uv run pytest tests/test_deploy_workflow_filter.py`
+- [x] 5.2 The workflow is valid YAML and the new step names the new script
+- [x] 5.3 Linting passes: `uv run ruff check .`
 
 #### Manual
 

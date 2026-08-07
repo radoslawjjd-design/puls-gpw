@@ -91,6 +91,18 @@ jobs:
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }}
 
+      # --update-* is additive, so the SMTP secrets and APP_BASE_URL set at
+      # create time survive this. The anomaly factor is passed here rather than
+      # frozen at create time so it can be tuned by editing this file.
+      - name: Update Cloud Run Job (cost-report)
+        run: |
+          gcloud run jobs update puls-gpw-cost-report \
+            --image="${{ env.IMAGE }}:${{ github.sha }}" \
+            --command=uv --args="run,--no-dev,python,cost_report_main.py" \
+            --update-env-vars="COST_ANOMALY_FACTOR=2.0,GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},BIGQUERY_DATASET=espi_ebi" \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }}
+
       - name: Deploy Cloud Run Service (api)
         run: |
           # --concurrency was never passed, so the service ran at Cloud Run's
