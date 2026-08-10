@@ -113,7 +113,9 @@ z czterech faz jest realne, nie deklaratywne.
 Artefakty: `context/domain/01…03`.
 
 **Ubiquitous language.** Produkt ma **dwie domeny, nie jedną**: analiza ESPI/EBI (**Core** — cała
-wizja, 11 FR-ów i oba Success Criteria) oraz portfel (w `prd.md:150` jawny **Non-goal → v3+**).
+wizja, 11 FR-ów i oba Success Criteria) oraz portfel — **bez ani jednego FR-a**: słowo „portfel"
+pada w całym `prd.md` **dokładnie raz**, i to na liście non-goali (`:150`, integracja z brokerami
+→ v3+).
 Pojęcia nośne: *komunikat* / *ocena punktowa* (próg 50), *lot*, *residuum*, *pozycja*.
 
 **Najostrzejszy rozjazd model-vs-kod.** Produkt **już ma** słownik akcji korporacyjnych — **sześć z piętnastu**
@@ -131,7 +133,9 @@ Znalezisko domykające sprawę: **w całym `db/` nie ma ani jednej transakcji**
 (`src/api.py:1450-1454`) — maszyna produkująca dokładnie te naruszenia, które licznik zlicza.
 
 **Anti-Corruption Layer.** Przecieka **`google-genai`** — jedyna zależność przekraczająca granice
-warstw: **8 plików wg kryterium sukcesu** (5 produkcyjnych + 3 testowe), a w samych warstwach produkcyjnych **6 plików w 4 warstwach** — docelowo 1. Dowód absurdu: `structured_analysis` powstaje
+warstw: **8 plików wg kryterium sukcesu** (`rg -e 'google\.genai' -e json5`) — 5 produkcyjnych
+i 3 testowe. Doliczając `src/exceptions.py`, który zna Gemini wyłącznie z docstringa `AnalysisError`,
+daje to **6 plików produkcyjnych w 4 warstwach**; docelowo 1. Dowód absurdu: `structured_analysis` powstaje
 z `json.dumps` (`src/analyzer.py:272`), więc nie może mieć trailing comma — a `src/api.py:238`
 i `src/post_selection.py:38` czytają ją parserem `json5`, czyli **dwie warstwy stosują obejście
 defektu Gemini do stringa, którego Gemini nigdy nie dotknął**.
