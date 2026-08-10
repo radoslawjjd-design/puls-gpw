@@ -18,7 +18,7 @@ kandydata, analiza domenowa odpowiedziała na pytania, przed którymi research s
 | -- | -- |
 | **Produkt** | analizator komunikatów ESPI/EBI dla GPW i NewConnect: scraping → ocena przez Gemini → powiadomienia → portfel i watchlista |
 | **Stack** | Python 3.13, FastAPI, BigQuery, Cloud Run, uv, Vertex/Gemini, Firebase Auth; front bez bundlera: `static/index.html` (6326 linii) + jeden pomocniczy `static/js/treemap-layout.js` |
-| **Skala** | 500 commitów / 82 dni (2026-05-20 → 2026-08-10), jeden autor. `db/bigquery.py` 4493 linie, `static/index.html` 6326, `src/api.py` 1568 przy **32 trasach**. 1180 testów (984 jednostkowe + 196 e2e). **79 zamkniętych zmian w `context/archive/`** |
+| **Skala** | 500 commitów / 82 dni (2026-05-20 → 2026-08-10), jeden autor. `db/bigquery.py` 4493 linie, `static/index.html` 6326, `src/api.py` 1568 przy **32 trasach**. 1193 testy (997 jednostkowych + 196 e2e). **79 zamkniętych zmian w `context/archive/`** |
 | **Gdzie się pojawia** | L2, L3, L4, L5 — wszędzie |
 
 ## 2. Mapa projektu (z L2)
@@ -98,12 +98,15 @@ odchył); nie wstrzykujemy repozytorium (32 trasy i 30 plików e2e naraz — kam
 | -- | -- |
 | 1. Test `list_broker_trades` — pin filtrów, parametrów i kształtu wyniku | auto: bramka `Tests` · ręcznie: test musi **poczerwienieć** po usunięciu warunku z SQL-a |
 | 2. `_first_open_lot_dates` na **niepustym** wejściu (dziś tylko `return_value=[]`) | auto: bramka `Tests` · ręcznie: czy nie duplikuje testów czystej funkcji |
-| 3. Kontrola równoważności obu rekonstrukcji w istniejącym skrypcie round-trip | **brak auto — i tak ma być** · ręcznie: zepsuć jedną stronę i potwierdzić czerwień |
-| 4. Egzekwowanie: zapis w `lessons.md`, że kontrola jest obowiązkowa | ręcznie · nie wywołuje deployu (`paths-ignore`) |
+| 3. Kontrola równoważności obu rekonstrukcji w istniejącym skrypcie round-trip | auto: test `ast`-owy pilnujący, że kontrola jest **podpięta do `main()`** · ręcznie: zepsuć jedną stronę i potwierdzić czerwień |
+| 4. Egzekwowanie: zapis w `lessons.md`, że kontrola jest obowiązkowa | auto: test sprzęgający `lessons.md` ze skryptami, na które się powołuje · ręcznie: czy zapis mówi **kiedy** uruchomić |
 
-Mechanizm ląduje na zielono w fazach 1–3; **egzekwowanie włącza się dopiero fazą 4**. Czysty
-pytest jest dla fazy 3 strukturalnie niemożliwy — strona SQL wykonuje się w BigQuery,
-a zamockowana porównywałaby mock ze sobą.
+Mechanizm ląduje na zielono w fazach 1–3; **egzekwowanie włącza się dopiero fazą 4**. Sama
+równoważność rekonstrukcji jest dla pytesta nieosiągalna — strona SQL wykonuje się w BigQuery,
+a zamockowana porównywałaby mock ze sobą. Automatyzowalne jest za to **okablowanie**: że
+kontrola jest podpięta i że dokument nie wskazuje na skasowany mechanizm. Oba testy istnieją
+i są dziś zielone (`tests/test_roundtrip_script_wiring.py`), więc kryterium automatyczne każdej
+z czterech faz jest realne, nie deklaratywne.
 
 ## 5. Domena wg DDD (z L5)
 

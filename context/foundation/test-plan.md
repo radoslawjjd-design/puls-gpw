@@ -15,11 +15,11 @@ updated: 2026-08-10
 
 **Approach: two layers, both with mocked boundaries.**
 
-**Unit** — 984 tests across 43 files in `tests/`. All external services (BigQuery, Bankier.pl HTTP, Gemini API) are mocked via `unittest.mock.patch`.
+**Unit** — 997 tests across 44 files in `tests/`. Nine of them skip by design: `test_roundtrip_script_wiring.py` parametrises over every `scripts/test_bq_*.py`, and the scripts that assert inline in `main()` have no unwired-check failure mode. All external services (BigQuery, Bankier.pl HTTP, Gemini API) are mocked via `unittest.mock.patch`.
 
 **End-to-end** — 196 tests across 30 files in `tests/e2e/`, driving the real frontend in headless Chromium via Playwright against a live app instance (`live_server_url` fixture). BigQuery is stubbed at the `db.bigquery.*` boundary in `tests/e2e/conftest.py`, so e2e exercises the true request → API → template → DOM path without touching a real dataset. This is the only automated coverage the frontend has: `static/index.html` is a single 6326-line file with no unit-testable module structure.
 
-Both layers are fast, deterministic, and need no credentials — the whole suite (**1180 tests**) runs in about two minutes.
+Both layers are fast, deterministic, and need no credentials — the whole suite (**1193 tests**) runs in about two minutes.
 
 **Not covered by either layer:** anything whose behaviour lives in BigQuery's own SQL engine. A mocked query returns whatever the mock was told to return, so a malformed statement or a schema constraint passes green — this has caused production failures twice (see `lessons.md`: `400 Syntax error: Unexpected keyword WINDOW`, and `400 Required field client_id cannot be null`). The round-trip script `scripts/test_bq_portfolio_time_dimension.py` is the only thing that runs statements against a real dataset, and it is manual by design (it creates and drops tables).
 

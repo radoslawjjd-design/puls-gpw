@@ -139,7 +139,14 @@ w BigQuery; zamockowana porównywałaby mock ze sobą. `tests.yml` nie ma uwierz
 Odpowiedź na „test czy żywe dane" brzmi: **ani jedno — zasiane dane, prawdziwy silnik**.
 
 **Weryfikacja**
-- *automatyczna:* brak i **tak ma być na tym etapie** — patrz faza 4.
+- *automatyczna:* **`tests/test_roundtrip_script_wiring.py::test_every_check_function_is_called_from_main`**
+  — parsuje skrypt `ast`-em i sprawdza, że każda funkcja `_check_*` jest wołana z `main()`.
+  Nie uruchamia BigQuery, więc chodzi w bramce `Tests` bez poświadczeń. Łapie dokładnie ten
+  sposób, w jaki ta faza może zawieść po cichu: kontrola **napisana, ale niepodpięta** — skrypt
+  wypisze wtedy „All checks passed", a właściwość nie będzie sprawdzona. Test istnieje i jest
+  zielony **dziś** (9 zdefiniowanych, 9 wołanych), więc zaczerwieni się w momencie dodania
+  `_check_reconstruction_agreement()` bez wpisu w `main()`.
+  Czego **nie** obejmuje: samej równoważności rekonstrukcji — do tego trzeba prawdziwego silnika.
 - *ręczna:* uruchomić skrypt; kontrola musi przejść na obecnym kodzie. Następnie **celowo
   zepsuć jedną stronę** (np. zmienić znak w `signed_volume`) i potwierdzić, że kontrola
   czerwienieje. Guard, którego nie widziano na czerwono, nie jest guardem.
@@ -170,7 +177,14 @@ Wciągnięcie ich do CI to osobna decyzja infrastrukturalna z własnym kosztem �
 nie doklejenie tutaj**.
 
 **Weryfikacja**
-- *automatyczna:* brak — to zmiana dokumentacyjna.
+- *automatyczna:* **`tests/test_roundtrip_script_wiring.py::test_scripts_cited_in_lessons_still_exist`**
+  — sprzęga `lessons.md` ze skryptami, na które się powołuje: każda wymieniona ścieżka
+  `scripts/*.py` musi istnieć. To jest właśnie **moment, w którym reguła przestaje być
+  konwencją**: zapis w `lessons.md` staje się egzekwowalny, bo skasowanie mechanizmu, na który
+  wskazuje, zaczerwieni bramkę `Tests`. Ten sam wzorzec, co
+  `tests/test_deploy_workflow_filter.py` sprzęgający `deploy.yml` z `.dockerignore` — gdy dwa
+  artefakty muszą się zgadzać, komentarz nie wystarcza.
+  Czego **nie** obejmuje: czy treść zapisu jest sensowna. Test pilnuje istnienia celu, nie jakości reguły.
 - *ręczna:* czy zapis mówi, **kiedy** kontrolę uruchomić (przed zmianą `ops_daily`/`ops_totals`
   albo `basis_segments`), a nie tylko, że istnieje.
 
