@@ -1,9 +1,9 @@
 ---
 project: ESPI/EBI Analyzer
-version: 1
-status: draft
+version: 2
+status: active
 created: 2026-06-08
-updated: 2026-06-08
+updated: 2026-08-10
 ---
 
 # Test Plan: ESPI/EBI Analyzer
@@ -13,14 +13,19 @@ updated: 2026-06-08
 
 ## Testing strategy
 
-**Approach: unit tests with mocked boundaries.**
+**Approach: two layers, both with mocked boundaries.**
 
-All external services (BigQuery, Bankier.pl HTTP, Gemini API) are mocked via `unittest.mock.patch`. Tests are fast, deterministic, and require no credentials — suitable for CI.
+**Unit** — 982 tests across 43 files in `tests/`. All external services (BigQuery, Bankier.pl HTTP, Gemini API) are mocked via `unittest.mock.patch`.
 
-No integration or end-to-end tests exist yet. Manual verification steps in each change plan cover the production path.
+**End-to-end** — 196 tests across 30 files in `tests/e2e/`, driving the real frontend in headless Chromium via Playwright against a live app instance (`live_server_url` fixture). BigQuery is stubbed at the `db.bigquery.*` boundary in `tests/e2e/conftest.py`, so e2e exercises the true request → API → template → DOM path without touching a real dataset. This is the only automated coverage the frontend has: `static/index.html` is a single 6326-line file with no unit-testable module structure.
+
+Both layers are fast, deterministic, and need no credentials — the whole suite (**1178 tests**) runs in about two minutes.
+
+**Not covered by either layer:** anything whose behaviour lives in BigQuery's own SQL engine. A mocked query returns whatever the mock was told to return, so a malformed statement or a schema constraint passes green — this has caused production failures twice (see `lessons.md`: `400 Syntax error: Unexpected keyword WINDOW`, and `400 Required field client_id cannot be null`). The round-trip script `scripts/test_bq_portfolio_time_dimension.py` is the only thing that runs statements against a real dataset, and it is manual by design (it creates and drops tables).
 
 **Runner:** `uv run pytest --tb=short`
-**CI:** runs as a required step in `.github/workflows/deploy.yml` before the docker build.
+
+**CI:** the same command runs twice — as the required `Tests` job on every PR (`.github/workflows/tests.yml`, pre-merge gate) and again in `.github/workflows/deploy.yml` before the Docker build on `master`. The PR gate exists because e2e used to run post-merge only, so a CI-environment-only flake surfaced after landing instead of blocking the PR.
 
 ---
 
@@ -80,14 +85,14 @@ No integration or end-to-end tests exist yet. Manual verification steps in each 
 
 ### R4 — BigQuery write failures (silent data loss)
 
-**Risk:** A DML operation (save analysis, save post text) silently succeeds without writing any rows. The `num_dml_affected_rows == 0` check must raise rather than let the job complete with a false success.
+**Risk:** A DML operation (save analysis, save X-post, delete announcement) silently succeeds without writing any rows. The `num_dml_affected_rows == 0` check must raise rather than let the job complete with a false success.
 
 | Test | File | What it covers |
 |---|---|---|
 | `test_save_analysis_result_null_approved_does_not_raise` | `tests/test_bigquery.py` | `NULL` for BOOL param is valid; does not raise |
 | `test_save_analysis_result_approved_true` | `tests/test_bigquery.py` | Approved result written without error |
-| `test_save_post_text_calls_query_with_unnest` | `tests/test_bigquery.py` | `UNNEST(@ids)` present in update query |
-| `test_save_post_text_none_records_failure` | `tests/test_bigquery.py` | `post_text=None` records supervisor failure (no raise) |
+| `test_save_x_post_raises_on_no_announcements_updated` | `tests/test_bigquery.py` | Post write matching zero announcements raises instead of reporting success |
+| `test_delete_announcement_raises_on_no_match` | `tests/test_bigquery.py` | Delete matching no row raises `no row matched` |
 | `test_fetch_top_n_for_window_returns_rows` | `tests/test_bigquery.py` | Rows returned and mapped correctly |
 | `test_fetch_top_n_for_window_empty` | `tests/test_bigquery.py` | Empty result handled without error |
 
@@ -113,10 +118,10 @@ No integration or end-to-end tests exist yet. Manual verification steps in each 
 
 | Gap | Risk | Notes |
 |---|---|---|
-| No integration tests against real BQ | R1, R4 | Manual verification covers production path via change plan steps |
+| No automated test runs SQL against a real BigQuery dataset | R1, R4 | The largest gap, and the source of two production failures. `scripts/test_bq_portfolio_time_dimension.py` does run real statements (throwaway `_rt_<uuid>` tables, cleanup in `finally`), but it is manual — it needs GCP credentials and creates/drops tables, so it cannot run in `tests.yml` |
 | No HTTP contract tests for Bankier.pl | R5 | Bankier HTML structure changes are caught at runtime; `_FIXTURES/` HTML is locked to current structure |
-| No email send test (`src/notifier.py`) | Low | SMTP call uses `unittest.mock` context implicitly; full send tested manually |
-| No auth / API key test | Medium | FastAPI admin API (PUL-17) not yet implemented |
+| Line/branch coverage is not measured | Low | `pytest-cov` is not a project dependency, so no coverage number exists for this suite. Adding it is a decision, not an oversight — the number would be reported but nothing would gate on it |
+| `list_broker_trades` — the only production entry point into the portfolio import flow — has no direct test | Medium | Every test reaches it through `patch`, so no test would notice a change to its SQL filters. Queued as phase 1 of `context/changes/refactor-opportunities/plan.md` |
 
 ---
 
@@ -129,6 +134,11 @@ uv run pytest --tb=short
 # Single module
 uv run pytest tests/test_scraper.py -v
 
-# With coverage (dev use)
-uv run pytest --tb=short --cov=src --cov=db
+# Unit layer only (skips Playwright, ~10s)
+uv run pytest --tb=short --ignore=tests/e2e
+
+# E2E only (needs `uv run playwright install chromium` once)
+uv run pytest tests/e2e --tb=short
 ```
+
+Coverage flags are deliberately absent: `pytest-cov` is not installed (see Coverage gaps).
