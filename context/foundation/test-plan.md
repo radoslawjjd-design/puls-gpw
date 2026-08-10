@@ -15,11 +15,11 @@ updated: 2026-08-10
 
 **Approach: two layers, both with mocked boundaries.**
 
-**Unit** — 982 tests across 43 files in `tests/`. All external services (BigQuery, Bankier.pl HTTP, Gemini API) are mocked via `unittest.mock.patch`.
+**Unit** — 984 tests across 43 files in `tests/`. All external services (BigQuery, Bankier.pl HTTP, Gemini API) are mocked via `unittest.mock.patch`.
 
 **End-to-end** — 196 tests across 30 files in `tests/e2e/`, driving the real frontend in headless Chromium via Playwright against a live app instance (`live_server_url` fixture). BigQuery is stubbed at the `db.bigquery.*` boundary in `tests/e2e/conftest.py`, so e2e exercises the true request → API → template → DOM path without touching a real dataset. This is the only automated coverage the frontend has: `static/index.html` is a single 6326-line file with no unit-testable module structure.
 
-Both layers are fast, deterministic, and need no credentials — the whole suite (**1178 tests**) runs in about two minutes.
+Both layers are fast, deterministic, and need no credentials — the whole suite (**1180 tests**) runs in about two minutes.
 
 **Not covered by either layer:** anything whose behaviour lives in BigQuery's own SQL engine. A mocked query returns whatever the mock was told to return, so a malformed statement or a schema constraint passes green — this has caused production failures twice (see `lessons.md`: `400 Syntax error: Unexpected keyword WINDOW`, and `400 Required field client_id cannot be null`). The round-trip script `scripts/test_bq_portfolio_time_dimension.py` is the only thing that runs statements against a real dataset, and it is manual by design (it creates and drops tables).
 
@@ -87,14 +87,19 @@ Both layers are fast, deterministic, and need no credentials — the whole suite
 
 **Risk:** A DML operation (save analysis, save X-post, delete announcement) silently succeeds without writing any rows. The `num_dml_affected_rows == 0` check must raise rather than let the job complete with a false success.
 
-| Test | File | What it covers |
+Every test below drives the guard itself: the client mock is built with `affected_rows=0`, and each one turns red if the corresponding `if job.num_dml_affected_rows == 0:` block is deleted (verified by mutation, 2026-08-10). Happy-path tests of the same functions are deliberately **not** listed here — they exercise parameter binding, not this risk.
+
+| Test | File | Guard it pins |
 |---|---|---|
-| `test_save_analysis_result_null_approved_does_not_raise` | `tests/test_bigquery.py` | `NULL` for BOOL param is valid; does not raise |
-| `test_save_analysis_result_approved_true` | `tests/test_bigquery.py` | Approved result written without error |
-| `test_save_x_post_raises_on_no_announcements_updated` | `tests/test_bigquery.py` | Post write matching zero announcements raises instead of reporting success |
-| `test_delete_announcement_raises_on_no_match` | `tests/test_bigquery.py` | Delete matching no row raises `no row matched` |
-| `test_fetch_top_n_for_window_returns_rows` | `tests/test_bigquery.py` | Rows returned and mapped correctly |
-| `test_fetch_top_n_for_window_empty` | `tests/test_bigquery.py` | Empty result handled without error |
+| `test_save_analysis_result_raises_when_no_row_matched` | `tests/test_bigquery.py` | `db/bigquery.py:2337` — analysis result lost if the announcement row is gone |
+| `test_update_parsed_content_raises_when_no_row_matched` | `tests/test_bigquery.py` | `db/bigquery.py:2292` — parser output lost on the same pipeline |
+| `test_save_x_post_raises_on_no_announcements_updated` | `tests/test_bigquery.py` | `db/bigquery.py:3055` — post write matching zero announcements |
+| `test_update_x_post_publish_result_raises_on_no_match` | `tests/test_bigquery.py` | `db/bigquery.py:3099` — publish result written against a vanished post |
+| `test_delete_announcement_raises_on_no_match` | `tests/test_bigquery.py` | `db/bigquery.py:3228` — delete matching no row |
+
+**Known gap:** the repo has **6** such guards; the 5 above are pinned. `create_user_portfolio` (`db/bigquery.py:1793`) is not — deleting its guard breaks no test.
+
+**Trap when adding tests here:** `_mock_bq_client_with_rows` sets no `num_dml_affected_rows`, so the attribute stays a `MagicMock` and `== 0` is always false — a DML test written with that helper passes whether or not the guard exists. Use `_mock_bq_client(affected_rows=0)`.
 
 ---
 

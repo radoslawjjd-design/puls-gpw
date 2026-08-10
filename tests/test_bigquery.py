@@ -105,6 +105,42 @@ def test_save_analysis_result_approved_true():
         )
 
 
+def test_save_analysis_result_raises_when_no_row_matched():
+    """R4: a write that matches zero rows must raise, not report a silent success.
+
+    save_analysis_result UPDATEs a row keyed on announcement_id. If that row is
+    gone, BigQuery reports the job as successful with zero rows affected and the
+    analysis is lost without a trace — the exact failure R4 exists to prevent.
+    Deleting the guard at db/bigquery.py:2337 must turn this test red.
+    """
+    from src.exceptions import BigQueryError
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client(affected_rows=0)):
+        with pytest.raises(BigQueryError, match="no row matched"):
+            save_analysis_result(
+                announcement_id="missing",
+                structured_analysis='{"company": "Test"}',
+                analysis_approved=True,
+                analysis_reject_reason=None,
+                event_type="wyniki_finansowe",
+                analysis_score=125.0,
+            )
+
+
+def test_update_parsed_content_raises_when_no_row_matched():
+    """R4, second write on the same pipeline: parser output must not vanish either."""
+    from src.exceptions import BigQueryError
+
+    with patch("db.bigquery._get_client", return_value=_mock_bq_client(affected_rows=0)):
+        with pytest.raises(BigQueryError, match="no row matched"):
+            update_parsed_content(
+                announcement_id="missing",
+                parsed_content="body",
+                ticker="XYZ",
+                company="Test SA",
+            )
+
+
 # ── fetch_top_n_for_window ────────────────────────────────────────────────────
 
 def test_fetch_top_n_for_window_returns_rows():
