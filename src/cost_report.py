@@ -22,6 +22,7 @@ manual round-trip really tests.
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+import re
 from statistics import median
 
 # The public app URL the mail's logo resolves against. `main.py` has the same
@@ -84,8 +85,8 @@ def classify_sku(sku_description: str) -> tuple[str, str] | None:
 
     * Two SKUs start with a literal space (` Gemini 2.5 Flash GA Input Text
       Caching`), so the description is stripped before anything else looks at it.
-    * `"Gemini 2.5 Flash Lite …"` contains `"Flash"`. The Lite test runs first or
-      both models collapse into one row and the Lite spend disappears into Flash.
+    * The version and optional Lite suffix are captured together, so a newer
+      model cannot silently inherit a legacy model's name.
     * Every prediction SKU ends in `- Predictions`, so direction is decided by a
       substring, never by a suffix. `endswith("Output")` matches none of them.
     * Caching is an input-side SKU and is attributed to its own model — the
@@ -95,17 +96,12 @@ def classify_sku(sku_description: str) -> tuple[str, str] | None:
     if "Gemini" not in desc:
         return None
 
-    # Matched on the full model name, not on "Lite" / "GA" alone. A bare "GA"
-    # test would file a future "Gemini 3 Pro GA Text Input" under Flash: the
-    # per-model sum would still reconcile against the Vertex service line and
-    # every test would pass, while the table quietly attributed another model's
-    # spend to this one. All seven live SKUs carry the full name, so this costs
-    # nothing and an unrecognised model correctly falls through to "other".
-    if "Flash Lite" in desc:
-        model = _FLASH_LITE
-    elif "Flash GA" in desc:
-        model = _FLASH
-    else:
+    # Keep unknown model versions in "other" instead of mislabeling their cost.
+    match = re.search(r"\bGemini (\d+\.\d+) Flash([ -]Lite)?\b", desc)
+    if match is None:
+        return None
+    model = f"gemini-{match[1]}-flash" + ("-lite" if match[2] else "")
+    if model not in {_FLASH, _FLASH_LITE, "gemini-3.1-flash-lite", "gemini-3.5-flash"}:
         return None
 
     if "Output" in desc:

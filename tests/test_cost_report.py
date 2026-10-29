@@ -81,6 +81,23 @@ def test_non_vertex_sku_does_not_classify():
     assert classify_sku("Active Logical Storage (europe-central2)") is None
 
 
+def test_migrated_models_keep_their_own_names_and_costs():
+    day = date(2026, 10, 29)
+    lite = "Gemini 3.1 Flash Lite Text Input - Predictions"
+    flash = "Gemini 3.5 Flash GA Text Output - Predictions"
+    assert classify_sku(lite) == ("gemini-3.1-flash-lite", "input")
+    assert classify_sku(lite.replace("Flash Lite", "Flash-Lite")) == ("gemini-3.1-flash-lite", "input")
+    assert classify_sku(flash) == ("gemini-3.5-flash", "output")
+    assert classify_sku("Gemini 9.9 Flash Lite Text Input - Predictions") is None
+    report = build_report([
+        _row(day, "Vertex AI", lite, 0.25),
+        _row(day, "Vertex AI", flash, 0.75),
+    ], {}, day, anomaly_factor=2.0)
+    assert {item["model"]: item["gross"] for item in report.vertex_models} == {
+        "gemini-3.1-flash-lite": 0.25, "gemini-3.5-flash": 0.75,
+    }
+
+
 def test_per_model_gross_sums_to_the_vertex_service_total():
     """An unclassified Vertex SKU lands in its own row rather than vanishing."""
     day = date(2026, 8, 5)
