@@ -51,6 +51,26 @@ def _params(client: MagicMock) -> dict:
     return {p.name: p for p in client.query.call_args.kwargs["job_config"].query_parameters}
 
 
+@pytest.mark.parametrize("reader", [get_billing_rows, get_daily_gross])
+def test_billing_export_can_follow_a_different_account(reader, monkeypatch):
+    client = _mock_client_with_rows([])
+    monkeypatch.setenv("GCP_BILLING_EXPORT_TABLE", "gcp_billing_export_v1_NEW_ACCOUNT")
+    with patch("db.bigquery._get_client", return_value=client):
+        reader(date(2026, 10, 28), date(2026, 10, 29))
+    assert "test-project.espi_ebi.gcp_billing_export_v1_NEW_ACCOUNT" in _sql(client)
+    assert "01E214_63C8A3_9E57E3" not in _sql(client)
+
+
+@pytest.mark.parametrize("reader", [get_billing_rows, get_daily_gross])
+@pytest.mark.parametrize("name", ["", "bad`table", "other_project.dataset.table"])
+def test_invalid_billing_export_setting_fails_before_query(reader, name, monkeypatch):
+    client = _mock_client_with_rows([])
+    monkeypatch.setenv("GCP_BILLING_EXPORT_TABLE", name)
+    with patch("db.bigquery._get_client", return_value=client), pytest.raises(BigQueryError):
+        reader(date(2026, 10, 28), date(2026, 10, 29))
+    client.query.assert_not_called()
+
+
 def test_billing_rows_bucket_the_day_in_warsaw_not_utc():
     """usage_start_time is a UTC instant; the report is a Warsaw-day report."""
     client = _mock_client_with_rows([])

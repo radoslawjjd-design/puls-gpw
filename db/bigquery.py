@@ -4399,6 +4399,14 @@ def record_notification_sent(user_id: str, announcement_id: str, email: str | No
 # the app tables, so _table_ref composes it without a new helper.
 _GCP_BILLING_EXPORT_TABLE_NAME = "gcp_billing_export_v1_01E214_63C8A3_9E57E3"
 
+
+def _billing_table_ref(client: bigquery.Client) -> str:
+    """Select the current billing account's export without rewriting queries."""
+    name = os.environ.get("GCP_BILLING_EXPORT_TABLE", _GCP_BILLING_EXPORT_TABLE_NAME)
+    if not name or not all(char.isascii() and (char.isalnum() or char == "_") for char in name):
+        raise BigQueryError("GCP_BILLING_EXPORT_TABLE must be a table name containing only letters, digits and underscores")
+    return _table_ref(client, name)
+
 # `credits` is a REPEATED RECORD of (name, amount, type). Netting it out is the
 # only UNNEST in this file that unnests a *table column* rather than a query
 # parameter, hence the correlated-subquery form: one credit sum per row, so the
@@ -4433,7 +4441,7 @@ def get_billing_rows(start: date, end: date) -> list[dict]:
     Raises BigQueryError on query failure.
     """
     client = _get_client()
-    table = _table_ref(client, _GCP_BILLING_EXPORT_TABLE_NAME)
+    table = _billing_table_ref(client)
     query = f"""
         SELECT
           {_BILLING_DAY_SQL} AS day,
@@ -4477,7 +4485,7 @@ def get_daily_gross(start: date, end: date) -> dict[date, float]:
     Raises BigQueryError on query failure.
     """
     client = _get_client()
-    table = _table_ref(client, _GCP_BILLING_EXPORT_TABLE_NAME)
+    table = _billing_table_ref(client)
     query = f"""
         SELECT {_BILLING_DAY_SQL} AS day, SUM(cost) AS gross
         FROM `{table}`
