@@ -10,6 +10,7 @@ __pycache__/
 *.pyo
 .pytest_cache/
 .cache/
+gha-creds-*.json
 tests/
 # Markdown as a class, not just README.md. deploy.yml skips a build for commits
 # confined to '**.md', and that skip is only sound while no markdown reaches the
