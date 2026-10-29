@@ -32,6 +32,10 @@ Account identities and billing IDs are in the local ignored scope file.
 
 Private API probes passed: health, frontend, admin authorization, announcement
 query, ticker autocomplete. Target Firebase credential reads all 7 preserved UIDs.
+Post-CI public checks passed for health, frontend and public announcements; the
+old public API returned 404 after its ingress was restricted. Read-only quotation
+probes from target Cloud Run returned 368 GPW instruments, 330 NewConnect
+instruments and 44 ETF instruments/quotes.
 Cloud Run BQ probe passed. Bankier still returns 403 with a Cloudflare challenge.
 Legacy Gemini 2.5 model returned 404 in the new project. Runtime configuration
 now selects gemini-3.1-flash-lite and gemini-3.5-flash, both verified with JSON
