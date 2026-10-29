@@ -1,6 +1,7 @@
 name: Deploy
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     # A skipped deploy is only safe for paths that cannot change the image, and the
@@ -18,14 +19,23 @@ on:
       - '**.md'
 
 env:
-  PROJECT_ID: puls-gpw
-  REGION: europe-central2
-  IMAGE: europe-central2-docker.pkg.dev/puls-gpw/puls-gpw/puls-gpw
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'puls-gpw' }}
+  REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
+  IMAGE: ${{ format('{0}-docker.pkg.dev/{1}/puls-gpw/puls-gpw', vars.GCP_REGION || 'europe-central2', vars.GCP_PROJECT_ID || 'puls-gpw') }}
+  X_AUTO_PUBLISH: ${{ vars.X_AUTO_PUBLISH || 'true' }}
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
     name: Build & deploy
+    if: vars.DEPLOY_PAUSED != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v6
@@ -33,7 +43,10 @@ jobs:
       - id: auth
         uses: google-github-actions/auth@v3
         with:
-          credentials_json: ${{ secrets.puls_gpw_secret }}
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+          credentials_json: ${{ vars.GCP_WIF_PROVIDER == '' && secrets.puls_gpw_secret || '' }}
 
       - uses: google-github-actions/setup-gcloud@v3
 
@@ -49,7 +62,7 @@ jobs:
         run: uv run pytest --tb=short
 
       - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker europe-central2-docker.pkg.dev --quiet
+        run: gcloud auth configure-docker "${{ env.REGION }}-docker.pkg.dev" --quiet
 
       - name: Build and push image
         run: |
@@ -71,7 +84,7 @@ jobs:
             --image="${{ env.IMAGE }}:${{ github.sha }}" \
             --command=uv --args="run,--no-dev,python,post_main.py" \
             --update-secrets="X_API_KEY=x-api-key:latest,X_API_SECRET=x-api-secret:latest,X_ACCESS_TOKEN=x-access-token:latest,X_ACCESS_SECRET=x-access-secret:latest" \
-            --update-env-vars="X_AUTO_PUBLISH=true,GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},BIGQUERY_DATASET=espi_ebi" \
+            --update-env-vars="X_AUTO_PUBLISH=${{ env.X_AUTO_PUBLISH }},GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},BIGQUERY_DATASET=espi_ebi" \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }}
 
@@ -121,9 +134,9 @@ jobs:
             --port=8080 \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }} \
-            --service-account=puls-gpw-runner@puls-gpw.iam.gserviceaccount.com \
+            --service-account=puls-gpw-runner@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
             --set-secrets="ADMIN_API_KEY=admin-api-key:latest,USER_API_KEY=user-api-key:latest,JWT_SECRET=jwt-secret:latest,FIREBASE_SERVICE_ACCOUNT_JSON=firebase-service-account:latest,FIREBASE_WEB_API_KEY=firebase-web-api-key:latest,SMTP_HOST=smtp-host:latest,SMTP_PORT=smtp-port:latest,SMTP_USER=smtp-user:latest,SMTP_PASSWORD=smtp-password:latest,OWNER_EMAIL=owner-email:latest" \
-            --set-env-vars="GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},BIGQUERY_DATASET=espi_ebi" \
+            --update-env-vars="GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},BIGQUERY_DATASET=espi_ebi" \
             --allow-unauthenticated \
             --cpu=1 \
             --memory=512Mi \
